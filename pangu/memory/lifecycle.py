@@ -230,7 +230,18 @@ class LifecycleManager:
         - 新增 >50 条 → 触发全量 lifecycle
         """
         new_count = self._count_new_memories()
-        if new_count < 10:
+
+        # 神经记忆：海马体负载超过 50% 时自动巩固
+        neural_result = {}
+        try:
+            from pangu.memory.neural_memory import get_neural_engine
+            engine = get_neural_engine()
+            if engine.needs_sleep() or engine.hippocampus.load_factor > 0.5:
+                neural_result = engine.sleep()
+        except Exception:
+            pass
+
+        if new_count < 10 and not neural_result:
             return {"status": "deferred", "new_count": new_count}
 
         results = {"new_count": new_count}
@@ -264,6 +275,10 @@ class LifecycleManager:
             if self.needs_index_rebuild():
                 results["index_rebuild"] = self.rebuild_vector_index()
 
+        # 神经记忆巩固结果
+        if neural_result:
+            results["neural_sleep"] = neural_result
+
         # 重置计数器
         self._last_consolidation = time.time()
         self._save_state()
@@ -296,6 +311,17 @@ class LifecycleManager:
         kg_result = self.run_kg_enrichment()
         if kg_result.get("entities_added", 0) > 0:
             results["kg_enrichment"] = kg_result
+
+        # 神经记忆巩固
+        try:
+            from pangu.memory.neural_memory import get_neural_engine
+            engine = get_neural_engine()
+            if engine.needs_sleep() or engine.hippocampus.load_factor > 0.5:
+                neural_result = engine.sleep()
+                if neural_result.get("consolidated", 0) > 0:
+                    results["neural_sleep"] = neural_result
+        except Exception:
+            pass
 
         return results
 

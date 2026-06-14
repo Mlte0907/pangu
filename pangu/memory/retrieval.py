@@ -289,10 +289,17 @@ def recall_context(
 
 
 def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0) -> dict:
-    """将 Drawer 转换为字典"""
+    """将 Drawer 转换为字典（自动解密内容）"""
+    content = drawer.content
+    if content and content.startswith("gAAAAAB"):
+        try:
+            from pangu.memory.encryption import decrypt
+            content = decrypt(content)
+        except Exception:
+            pass
     return {
         "id": drawer.id,
-        "content": drawer.content,
+        "content": content,
         "wing": drawer.wing,
         "room": drawer.room,
         "importance": drawer.importance,
