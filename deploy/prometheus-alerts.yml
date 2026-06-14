@@ -1,0 +1,124 @@
+groups:
+  - name: pangu.rules
+    interval: 30s
+    rules:
+      # ── 服务可用性 ──
+      - alert: PanguDown
+        expr: up{job="pangu"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: pangu
+        annotations:
+          summary: "盘古服务宕机"
+          description: "实例 {{ $labels.instance }} 已下线超过 1 分钟。"
+
+      - alert: PanguHighErrorRate
+        expr: |
+          sum(rate(pangu_api_requests_total{status_code=~"5.."}[5m]))
+          / sum(rate(pangu_api_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: pangu
+        annotations:
+          summary: "盘古 5xx 错误率 > 5%"
+          description: "过去 5 分钟错误率 {{ $value | humanizePercentage }}"
+
+      - alert: PanguHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(pangu_api_request_duration_seconds_bucket[5m]))
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "盘古 P95 延迟 > 1s"
+          description: "P95 = {{ $value }}s"
+
+      # ── 嵌入服务 ──
+      - alert: EmbedCircuitOpen
+        expr: pangu_embed_circuit_open == 1
+        for: 30s
+        labels:
+          severity: critical
+          service: pangu
+        annotations:
+          summary: "嵌入服务断路器已打开"
+          description: "连续失败 {{ with query (printf \"pangu_embed_fail_count{instance='%s'\", $labels.instance) }}{{ . | first | value }}{{ end }} 次"
+
+      - alert: EmbedHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(pangu_embed_latency_seconds_bucket[5m]))
+          ) > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "嵌入服务 P95 延迟 > 5s"
+
+      - alert: EmbedHighFailure
+        expr: |
+          sum(rate(pangu_embed_requests_total{outcome="error"}[5m]))
+          / sum(rate(pangu_embed_requests_total[5m])) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "嵌入失败率 > 10%"
+
+      # ── LLM 缓存 ──
+      - alert: LLMCacheHitRateLow
+        expr: pangu_llm_cache_hit_rate < 30
+        for: 10m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "LLM 缓存命中率过低（{{ $value | humanize }}%）"
+          description: "持续 10 分钟，可能存在大量重复请求未命中"
+
+      - alert: LLMCostSpike
+        expr: |
+          sum by (model) (rate(pangu_llm_cost_usd_total[1h])) > 1
+        for: 30m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "{{ $labels.model }} 模型每小时成本 > $1"
+          description: "当前 ${{ $value }}/h，请检查是否有滥用"
+
+      # ── 资源 ──
+      - alert: PanguDBTooLarge
+        expr: pangu_db_size_bytes > 5 * 1024 * 1024 * 1024  # 5GB
+        for: 30m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "盘古数据库 > 5GB"
+          description: "考虑归档/清理旧数据"
+
+      - alert: PanguHighMemory
+        expr: process_resident_memory_bytes{job="pangu"} > 4 * 1024 * 1024 * 1024  # 4GB
+        for: 5m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "盘古进程内存 > 4GB"
+
+      - alert: PanguHighFD
+        expr: process_open_fds{job="pangu"} / process_max_fds{job="pangu"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: pangu
+        annotations:
+          summary: "盘古打开文件描述符使用率 > 80%"

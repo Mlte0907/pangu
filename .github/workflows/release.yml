@@ -1,0 +1,82 @@
+# 盘古 — 自动发布
+# ==================
+# tag 推送 → 自动创建 GitHub Release
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 提取版本
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 生成变更日志
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^v$VERSION" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s" --no-merges)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -n 50)
+          fi
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 上传测试报告（可选）
+        continue-on-error: true
+        run: |
+          if [ -d reports/ ]; then
+            cd reports
+            tar -czf test-report-${{ steps.version.outputs.VERSION }}.tar.gz \
+              perf.json perf_baseline.json regression.json \
+              security.json api_smoke.json junit-*.xml 2>/dev/null || true
+            ls -la
+          fi
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "盘古 v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## 盘古 v${{ steps.version.outputs.VERSION }}
+
+            ### 变更内容
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ### 镜像
+            - `docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}`
+            - `docker pull ghcr.io/${{ github.repository }}:latest`
+
+            ### 安装
+            ```bash
+            pip install pangu==${{ steps.version.outputs.VERSION }}
+            ```
+
+            ### 验证
+            - 测试报告：`test-report-${{ steps.version.outputs.VERSION }}.tar.gz`
+          files: |
+            reports/test-report-*.tar.gz
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          generate_release_notes: true

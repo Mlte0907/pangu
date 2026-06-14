@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+/tmp/
+
+# Cache
+.cache/
+.pytest_cache/
+
+# Data
+~/.pangu/
+*.db
+*.sqlite
+
+# ONNX models
+*.onnx
+
+# Environment
+.env
+.env.local
+
+# Reports (keep structure but not generated files)
+reports/*.xml
+reports/*.json
+reports/*.txt
+
+# Test artifacts
+.coverage
+htmlcov/

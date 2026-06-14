@@ -1,0 +1,226 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_DEFAULT: "3.11"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # 1. Lint & 静态分析
+  # ──────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff + bandit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+
+      - name: 安装工具
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff bandit
+
+      - name: ruff 检查
+        run: ruff check pangu/ tests/ --output-format=github
+
+      - name: ruff 格式
+        run: ruff format --check pangu/ tests/
+
+      - name: bandit 安全扫描
+        run: |
+          bandit -r pangu/ -ll -i -f json -o reports/bandit.json || true
+          bandit -r pangu/ -ll -i
+
+      - name: 上传 bandit 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: reports/bandit.json
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────
+  # 2. 依赖安全审计
+  # ──────────────────────────────────────────────────────────────
+  audit:
+    name: 依赖安全审计 (OSV)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+
+      - name: 收集依赖
+        run: |
+          pip install -q safety
+          pip list --format=json > /tmp/installed.json || true
+
+      - name: OSV 批量扫描
+        run: |
+          mkdir -p reports
+          python scripts/osv_audit.py requirements.txt > reports/osv.json
+          # 仅 HIGH/CRITICAL 才失败
+          python -c "
+          import json
+          data = json.load(open('reports/osv.json'))
+          sev_count = sum(1 for v in data.values() for i in v if i['severity'] in ('HIGH','CRITICAL'))
+          print(f'🔴 HIGH/CRITICAL: {sev_count}')
+          exit(0 if sev_count == 0 else 1)
+          "
+
+      - name: 上传 OSV 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-report
+          path: reports/osv.json
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────
+  # 3. 单元 + 集成测试（多 Python × 多平台）
+  # ──────────────────────────────────────────────────────────────
+  test:
+    name: 测试 (Py ${{ matrix.python }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+        os: [ubuntu-latest]
+        include:
+          - python: "3.11"
+            os: ubuntu-24.04-arm64  # aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: 安装项目（含 ONNX）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" || pip install -e .
+
+      - name: 单元 + 集成测试
+        env:
+          PANGU_DATA_DIR: .test_data
+          HF_HUB_OFFLINE: "0"
+          TRANSFORMERS_OFFLINE: "0"
+        run: |
+          mkdir -p reports
+          python -m pytest tests/test_core.py tests/test_persistent_cache.py \
+                          tests/test_onnx_embedder.py tests/test_integration.py \
+                          --junitxml=reports/junit-${{ matrix.python }}-${{ matrix.os }}.xml \
+                          -q --tb=short --maxfail=20
+
+      - name: 覆盖率
+        if: matrix.python == '3.11' && matrix.os == 'ubuntu-latest'
+        run: |
+          pip install pytest-cov
+          python -m pytest tests/test_core.py tests/test_persistent_cache.py \
+                          --cov=pangu --cov-report=xml:reports/coverage.xml \
+                          --cov-report=term-missing:skip-covered \
+                          -q --no-header
+
+      - name: 上传测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python }}-${{ matrix.os }}
+          path: |
+            reports/junit-*.xml
+            reports/coverage.xml
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────
+  # 4. 性能基准
+  # ──────────────────────────────────────────────────────────────
+  benchmark:
+    name: 性能基准
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+
+      - name: 安装
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: 性能基准测试
+        env:
+          PANGU_DATA_DIR: .test_data
+          HF_HUB_OFFLINE: "0"
+        run: |
+          mkdir -p reports
+          python tests/manual_perf.py --output reports/perf.json
+          # 与基线对比（容差 20%）
+          python -c "
+          import json, sys
+          cur = json.load(open('reports/perf.json'))
+          base = json.load(open('reports/perf_baseline.json')) if __import__('os').path.exists('reports/perf_baseline.json') else None
+          if not base:
+              print('⚠ 无基线，仅记录')
+              sys.exit(0)
+          regressions = []
+          for key, val in cur.items():
+              if key in base and isinstance(val, (int, float)) and val > base[key] * 1.2:
+                  regressions.append(f'{key}: {base[key]:.2f} → {val:.2f} (+{(val/base[key]-1)*100:.0f}%)')
+          if regressions:
+              print('❌ 性能回归：'); [print('  -', r) for r in regressions]
+              sys.exit(1)
+          print('✅ 性能无回归')
+          "
+
+      - name: 上传基准报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: reports/perf.json
+          retention-days: 90
+
+  # ──────────────────────────────────────────────────────────────
+  # 5. 质量门禁（汇总）
+  # ──────────────────────────────────────────────────────────────
+  quality-gate:
+    name: 质量门禁
+    runs-on: ubuntu-latest
+    needs: [lint, audit, test, benchmark]
+    if: always()
+    steps:
+      - name: 检查所有上游通过
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "❌ 上游任务存在失败/取消"
+            exit 1
+          fi
+          echo "✅ 所有质量检查通过"

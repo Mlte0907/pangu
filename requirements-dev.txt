@@ -1,0 +1,38 @@
+# 盘古 — 可选依赖
+# =================
+# 按需安装，开发/测试/Docker 工具
+
+# ── 性能基准测试 ──
+pytest-benchmark>=4.0.0
+
+# ── 测试工具 ──
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+coverage>=7.4.0
+respx>=0.21.0          # httpx mock
+httpx-mock>=0.1.0
+
+# ── Lint 与类型 ──
+ruff>=0.4.0
+mypy>=1.10.0
+types-requests
+types-PyYAML
+
+# ── 文档 ──
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+mkdocstrings[python]>=0.24.0
+
+# ── 镜像构建（多架构） ──
+# docker buildx 已内置，无需额外包
+# 但 CI 中需要：
+#   - docker/setup-buildx-action@v3
+#   - docker/setup-qemu-action@v3
+#   - docker/build-push-action@v5
+
+# ── 高级 LLM 后端（可选） ──
+langchain>=0.2.0          # 可选，链式 LLM 编排
+anthropic>=0.30.0         # Anthropic SDK
+openai>=1.30.0            # OpenAI SDK

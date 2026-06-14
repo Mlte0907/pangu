@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>盘古 — 专业记忆系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- 侧边栏 -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">盘 古</h1>
+                <span class="subtitle">专业记忆系统</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>导航</h3>
+                    <a href="#" class="nav-item active" data-view="dashboard">
+                        <span class="icon">🏠</span> 仪表盘
+                    </a>
+                    <a href="#" class="nav-item" data-view="palace3d">
+                        <span class="icon">🏛️</span> 记忆宫殿
+                    </a>
+                    <a href="#" class="nav-item" data-view="graph">
+                        <span class="icon">🔗</span> 知识图谱
+                    </a>
+                    <a href="#" class="nav-item" data-view="timeline">
+                        <span class="icon">📅</span> 时间线
+                    </a>
+                    <a href="#" class="nav-item" data-view="memories">
+                        <span class="icon">🧠</span> 记忆库
+                    </a>
+                    <a href="#" class="nav-item" data-view="wiki">
+                        <span class="icon">📚</span> 知识 Wiki
+                    </a>
+                    <a href="#" class="nav-item" data-view="search">
+                        <span class="icon">🔍</span> 深度搜索
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <h3>空间</h3>
+                    <div id="wings-list">
+                        <a href="#" class="nav-item wing-item" data-wing="default">
+                            <span class="icon">📁</span> default
+                        </a>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="add-wing-btn">+ 新建空间</button>
+                </div>
+
+                <div class="nav-section">
+                    <h3>系统</h3>
+                    <a href="#" class="nav-item" data-view="analytics">
+                        <span class="icon">📊</span> 分析看板
+                    </a>
+                    <a href="#" class="nav-item" data-view="settings">
+                        <span class="icon">⚙️</span> 设置
+                    </a>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <span class="version">v0.2.0</span>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main id="main-content">
+            <!-- 仪表盘 -->
+            <div id="view-dashboard" class="view active">
+                <div class="view-header">
+                    <h2>仪表盘</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="quick-mine-btn">📥 快速挖掘</button>
+                        <button class="btn btn-outline" id="refresh-stats-btn">🔄 刷新</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-wings">-</div>
+                        <div class="stat-label">空间 (Wings)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-drawers">-</div>
+                        <div class="stat-label">记忆片段</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-wiki-pages">-</div>
+                        <div class="stat-label">Wiki 页面</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-kg-entities">-</div>
+                        <div class="stat-label">知识实体</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-health">-</div>
+                        <div class="stat-label">健康评分</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-growth">-</div>
+                        <div class="stat-label">今日增长</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h3>🧠 唤醒上下文</h3>
+                        <div id="wake-up-content" class="markdown-content">
+                            <p class="placeholder">加载中...</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>📝 最近记忆</h3>
+                        <div id="recent-memories" class="list-content">
+                            <p class="placeholder">加载中...</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>📈 增长趋势</h3>
+                        <div id="growth-chart" class="chart-container">
+                            <canvas id="growth-canvas"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>🎯 记忆分布</h3>
+                        <div id="distribution-chart" class="chart-container">
+                            <canvas id="distribution-canvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D记忆宫殿 -->
+            <div id="view-palace3d" class="view">
+                <div class="view-header">
+                    <h2>记忆宫殿</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-outline" id="reset-camera-btn">🔄 重置视角</button>
+                        <button class="btn btn-outline" id="toggle-labels-btn">🏷️ 标签</button>
+                    </div>
+                </div>
+                <div id="palace3d-container" class="palace3d-container">
+                    <canvas id="palace3d-canvas"></canvas>
+                    <div id="palace3d-info" class="palace3d-info"></div>
+                </div>
+            </div>
+
+            <!-- 知识图谱 -->
+            <div id="view-graph" class="view">
+                <div class="view-header">
+                    <h2>知识图谱</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-outline" id="graph-zoom-in-btn">🔍+</button>
+                        <button class="btn btn-outline" id="graph-zoom-out-btn">🔍-</button>
+                        <button class="btn btn-outline" id="graph-reset-btn">🔄 重置</button>
+                    </div>
+                </div>
+                <div id="graph-container" class="graph-container">
+                    <svg id="graph-svg"></svg>
+                </div>
+                <div id="graph-tooltip" class="graph-tooltip hidden"></div>
+            </div>
+
+            <!-- 时间线 -->
+            <div id="view-timeline" class="view">
+                <div class="view-header">
+                    <h2>时间线</h2>
+                    <div class="header-actions">
+                        <select id="timeline-range">
+                            <option value="1d">最近1天</option>
+                            <option value="7d" selected>最近7天</option>
+                            <option value="30d">最近30天</option>
+                            <option value="all">全部</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="timeline-container" class="timeline-container">
+                    <div id="timeline-line"></div>
+                    <div id="timeline-events"></div>
+                </div>
+            </div>
+
+            <!-- 记忆库 -->
+            <div id="view-memories" class="view">
+                <div class="view-header">
+                    <h2>记忆库</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="add-memory-btn">+ 添加记忆</button>
+                        <button class="btn btn-outline" id="mine-files-btn">📂 挖掘文件</button>
+                    </div>
+                </div>
+
+                <div class="filters">
+                    <select id="memory-wing-filter">
+                        <option value="">所有空间</option>
+                    </select>
+                    <input type="text" id="memory-search" placeholder="搜索记忆..." class="search-input">
+                </div>
+
+                <div id="memories-list" class="list-content">
+                    <p class="placeholder">加载中...</p>
+                </div>
+            </div>
+
+            <!-- 知识 Wiki -->
+            <div id="view-wiki" class="view">
+                <div class="view-header">
+                    <h2>知识 Wiki</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="create-wiki-btn">+ 新建页面</button>
+                        <button class="btn btn-outline" id="generate-wiki-btn">🤖 LMM 自动生成</button>
+                    </div>
+                </div>
+
+                <div id="wiki-pages-list" class="wiki-grid">
+                    <p class="placeholder">加载中...</p>
+                </div>
+            </div>
+
+            <!-- 深度搜索 -->
+            <div id="view-search" class="view">
+                <div class="view-header">
+                    <h2>深度搜索</h2>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="deep-search-input" placeholder="输入搜索关键词..." class="search-input-lg">
+                    <button class="btn btn-primary" id="deep-search-btn">搜索</button>
+                </div>
+                <div id="search-results" class="list-content">
+                    <p class="placeholder">输入关键词开始搜索...</p>
+                </div>
+            </div>
+
+            <!-- 分析看板 -->
+            <div id="view-analytics" class="view">
+                <div class="view-header">
+                    <h2>分析看板</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-outline" id="refresh-analytics-btn">🔄 刷新</button>
+                    </div>
+                </div>
+
+                <div class="analytics-grid">
+                    <div class="card">
+                        <h3>📊 记忆健康度</h3>
+                        <div id="health-score" class="score-circle"></div>
+                    </div>
+                    <div class="card">
+                        <h3>📈 增长趋势</h3>
+                        <div id="growth-trend" class="chart-container"></div>
+                    </div>
+                    <div class="card">
+                        <h3>🏷️ 标签云</h3>
+                        <div id="tag-cloud" class="tag-cloud"></div>
+                    </div>
+                    <div class="card">
+                        <h3>⏰ 活跃时段</h3>
+                        <div id="activity-heatmap" class="heatmap"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置 -->
+            <div id="view-settings" class="view">
+                <div class="view-header">
+                    <h2>设置</h2>
+                </div>
+                <div class="settings-content">
+                    <div class="card">
+                        <h3>系统配置</h3>
+                        <div id="config-form" class="form-content"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 模态框 -->
+        <div id="modal-overlay" class="modal-overlay hidden">
+            <div class="modal" id="modal-content"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/palace3d.js"></script>
+    <script src="/static/js/graph.js"></script>
+    <script src="/static/js/timeline.js"></script>
+</body>
+</html>

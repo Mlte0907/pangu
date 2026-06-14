@@ -1,0 +1,40 @@
+# 盘古 — Python 依赖
+# =================
+# 核心运行时依赖（生产环境必需）
+
+# ── Web 框架 ──
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.18  # CVE-2024-53981: >= 0.0.18 修复
+jinja2>=3.1.0
+
+# ── 数据验证与配置 ──
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# ── HTTP 客户端 ──
+httpx>=0.27.0
+requests>=2.28.0
+aiofiles>=23.0.0
+
+# ── 向量与嵌入 ──
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+numpy>=1.24.0
+
+# ── ONNX 本地加速嵌入（CPU 推理，3-10x 加速） ──
+onnxruntime>=1.16.0
+tokenizers>=0.15.0
+
+# ── 模板与文档 ──
+markdown>=3.6.0
+watchfiles>=0.21.0
+
+# ── CLI 与 UI ──
+typer>=0.12.0
+rich>=13.0.0
+
+# ── 监控与指标 ──
+prometheus-client>=0.19.0
