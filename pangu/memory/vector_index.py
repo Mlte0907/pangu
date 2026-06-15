@@ -3,11 +3,15 @@
 从伏羲移植：基于 numpy 的向量索引，支持快速近似最近邻搜索。
 当记忆数量超过阈值时自动构建索引，大幅提升搜索速度。
 
-纯大脑能力：只做索引加速，不执行搜索任务。
+性能优化：
+1. 写入缓冲：批量写入减少磁盘 I/O
+2. FAISS/hnswlib 增量更新：无需重建索引
+3. 线程安全：并发读写保护
 """
 
 import json
 import logging
+import threading
 
 import numpy as np
 
@@ -15,6 +19,7 @@ logger = logging.getLogger("pangu.memory.vector_index")
 
 
 FAISS_THRESHOLD = 1000  # 超过此数量自动切换 FAISS
+AUTO_FLUSH_THRESHOLD = 100  # 写入缓冲自动刷新阈值
 
 
 class VectorIndex:
@@ -45,6 +50,12 @@ class VectorIndex:
         self._faiss_ids_file = self._cache_dir / "vector_index_ids.json"
         self._hnsw_file = self._cache_dir / "vector_index.hnsw"
         self._hnsw_ids_file = self._cache_dir / "vector_index_hnsw_ids.json"
+        # 写入缓冲
+        self._pending_vectors: list[np.ndarray] = []
+        self._pending_ids: list[str] = []
+        self._pending_count: int = 0
+        # 线程安全
+        self._lock = threading.RLock()
         self._load()  # 启动时自动加载
 
     def _save(self) -> None:
@@ -200,81 +211,127 @@ class VectorIndex:
         return vec / norm if norm > 1e-8 else vec
 
     def add(self, vector: list[float], item_id: str) -> bool:
-        """增量添加单个向量"""
-        try:
-            vec = self._normalize(np.array([vector], dtype=np.float32))
-            if self._use_faiss and self._faiss_index is not None:
-                self._faiss_index.add(vec.reshape(1, -1).astype(np.float32))
-                self._ids.append(item_id)
-            elif self._is_built and self._index is not None:
-                self._index = np.vstack([self._index, vec])
-                self._ids.append(item_id)
-            else:
-                self._index = vec
-                self._ids = [item_id]
-                self._is_built = True
-            self._size += 1
-            # 超过阈值时重建为 FAISS
-            if not self._use_faiss and self._size >= FAISS_THRESHOLD:
+        """增量添加单个向量（写入缓冲 + 线程安全）"""
+        with self._lock:
+            try:
+                vec = self._normalize(np.array([vector], dtype=np.float32))
+                self._pending_vectors.append(vec)
+                self._pending_ids.append(item_id)
+                self._pending_count += 1
+                self._size += 1
+
+                # 自动刷新缓冲
+                if self._pending_count >= AUTO_FLUSH_THRESHOLD:
+                    self._flush_pending()
+                return True
+            except Exception as e:
+                logger.debug(f"Vector index add failed: {e}")
+                return False
+
+    def _flush_pending(self) -> None:
+        """刷新写入缓冲到索引"""
+        if not self._pending_vectors:
+            return
+
+        batch = np.array(self._pending_vectors, dtype=np.float32)
+        batch = self._normalize(batch)
+
+        if self._use_hnsw and self._hnsw_index is not None:
+            # hnswlib 增量添加
+            self._hnsw_index.add_items(batch, list(range(self._size - len(self._pending_vectors), self._size)))
+            self._ids.extend(self._pending_ids)
+        elif self._use_faiss and self._faiss_index is not None:
+            # FAISS 增量添加（无需重建）
+            self._faiss_index.add(batch.astype(np.float32))
+            self._ids.extend(self._pending_ids)
+        elif self._is_built and self._index is not None:
+            self._index = np.vstack([self._index, batch])
+            self._ids.extend(self._pending_ids)
+        else:
+            self._index = batch
+            self._ids = list(self._pending_ids)
+            self._is_built = True
+
+        self._pending_vectors.clear()
+        self._pending_ids.clear()
+        self._pending_count = 0
+
+        # 跨过阈值时重建
+        if not self._use_faiss and not self._use_hnsw and self._size >= FAISS_THRESHOLD:
+            try:
+                import hnswlib
+                self._build_hnsw(self._index)
+            except ImportError:
                 self._build_faiss(self._index)
-            self._save()
-            return True
-        except Exception as e:
-            logger.debug(f"Vector index add failed: {e}")
-            return False
+
+        self._save()
 
     def add_batch(self, vectors: list[list[float]], ids: list[str]) -> int:
-        """批量添加向量"""
+        """批量添加向量（线程安全）"""
         if len(vectors) != len(ids):
             return 0
 
-        try:
-            batch = np.array(vectors, dtype=np.float32)
-            batch = self._normalize(batch)
-            if self._use_faiss and self._faiss_index is not None:
-                self._faiss_index.add(batch.astype(np.float32))
-                self._ids.extend(ids)
-            elif self._is_built and self._index is not None:
-                self._index = np.vstack([self._index, batch])
-                self._ids.extend(ids)
-            else:
-                self._index = batch
-                self._ids = list(ids)
-                self._is_built = True
-            self._size += len(ids)
-            if not self._use_faiss and self._size >= FAISS_THRESHOLD:
-                self._build_faiss(self._index)
-            self._save()
-            return len(ids)
-        except Exception as e:
-            logger.debug(f"Vector index batch add failed: {e}")
-            return 0
+        with self._lock:
+            try:
+                batch = np.array(vectors, dtype=np.float32)
+                batch = self._normalize(batch)
+
+                if self._use_hnsw and self._hnsw_index is not None:
+                    self._hnsw_index.add_items(batch, list(range(self._size, self._size + len(ids))))
+                    self._ids.extend(ids)
+                elif self._use_faiss and self._faiss_index is not None:
+                    self._faiss_index.add(batch.astype(np.float32))
+                    self._ids.extend(ids)
+                elif self._is_built and self._index is not None:
+                    self._index = np.vstack([self._index, batch])
+                    self._ids.extend(ids)
+                else:
+                    self._index = batch
+                    self._ids = list(ids)
+                    self._is_built = True
+
+                self._size += len(ids)
+                if not self._use_faiss and not self._use_hnsw and self._size >= FAISS_THRESHOLD:
+                    try:
+                        import hnswlib
+                        self._build_hnsw(self._index)
+                    except ImportError:
+                        self._build_faiss(self._index)
+                self._save()
+                return len(ids)
+            except Exception as e:
+                logger.debug(f"Vector index batch add failed: {e}")
+                return 0
 
     def search(self, query_vec: list[float], top_k: int = 10) -> list[tuple[str, float]]:
-        """搜索最相似的 top_k 个向量
+        """搜索最相似的 top_k 个向量（线程安全）
 
         自动选择后端：hnswlib > FAISS > numpy brute-force。
         """
-        if not self._is_built:
-            return []
-
-        try:
-            query = np.array([query_vec], dtype=np.float32)
-            qnorm = np.linalg.norm(query)
-            if qnorm > 1e-8:
-                query = query / qnorm
-
-            if self._use_hnsw and self._hnsw_index is not None:
-                return self._search_hnsw(query, top_k)
-            elif self._use_faiss and self._faiss_index is not None:
-                return self._search_faiss(query[0], top_k)
-            elif self._index is not None:
-                return self._search_numpy(query[0], top_k)
-            else:
+        with self._lock:
+            if not self._is_built:
                 return []
-        except Exception as e:
-            logger.debug(f"Vector index search failed: {e}")
-            return []
+
+            # 刷新待写入数据
+            self._flush_pending()
+
+            try:
+                query = np.array([query_vec], dtype=np.float32)
+                qnorm = np.linalg.norm(query)
+                if qnorm > 1e-8:
+                    query = query / qnorm
+
+                if self._use_hnsw and self._hnsw_index is not None:
+                    return self._search_hnsw(query, top_k)
+                elif self._use_faiss and self._faiss_index is not None:
+                    return self._search_faiss(query[0], top_k)
+                elif self._index is not None:
+                    return self._search_numpy(query[0], top_k)
+                else:
+                    return []
+            except Exception as e:
+                logger.debug(f"Vector index search failed: {e}")
+                return []
 
     def _search_hnsw(self, query: np.ndarray, top_k: int) -> list[tuple[str, float]]:
         """hnswlib 近似最近邻搜索"""
@@ -348,13 +405,19 @@ class VectorIndex:
         return self.build(vectors, ids)
 
     def clear(self):
-        """清空索引"""
-        self._index = None
-        self._faiss_index = None
-        self._ids = []
-        self._is_built = False
-        self._size = 0
-        self._use_faiss = False
+        """清空索引（线程安全）"""
+        with self._lock:
+            self._index = None
+            self._faiss_index = None
+            self._hnsw_index = None
+            self._ids = []
+            self._is_built = False
+            self._size = 0
+            self._use_faiss = False
+            self._use_hnsw = False
+            self._pending_vectors.clear()
+            self._pending_ids.clear()
+            self._pending_count = 0
 
     def stats(self) -> dict:
         """索引统计"""
