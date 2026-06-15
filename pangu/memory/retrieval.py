@@ -277,19 +277,20 @@ def recall(
             drawer_map = {d.id: d for d in filtered}
 
             def _compute_score(did: str) -> float:
-                """多维度综合评分 = RRF + 时间 + 重要性 + 标签"""
+                """多维度综合评分 = RRF + 神经衰减 + 重要性 + 标签"""
                 d = drawer_map.get(did)
                 if not d:
                     return rrf_scores.get(did, 0)
 
                 base = rrf_scores[did]
 
-                # 时间加成：新记忆 +10%
+                # 神经衰减加成（替代简单时间加成）
                 try:
-                    days_old = (datetime.now() - datetime.fromisoformat(d.created_at)).total_seconds() / 86400
-                    time_boost = max(0.0, 0.1 * (1.0 - min(days_old / 30, 1.0)))
+                    from pangu.memory.retrieval import _get_neural_decay_score
+                    decay_score = _get_neural_decay_score(d)
+                    decay_boost = decay_score * 0.15
                 except Exception:
-                    time_boost = 0.0
+                    decay_boost = 0.0
 
                 # 重要性加成：高重要性 +5%
                 imp_boost = (d.importance / 5.0) * 0.05
@@ -299,7 +300,7 @@ def recall(
                 tag_match = sum(1 for t in d.tags if t.lower() in query_words or query_words & set(t.lower().split()))
                 tag_boost = min(tag_match * 0.03, 0.09)
 
-                return base + time_boost + imp_boost + tag_boost
+                return base + decay_boost + imp_boost + tag_boost
 
             sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -_compute_score(x))
             results = []
