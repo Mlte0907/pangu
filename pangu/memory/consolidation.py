@@ -175,13 +175,13 @@ class MemoryConsolidator:
         - 其他 → 保留前50字
         """
         content = drawer.content
-        if len(content) <= 200:
-            return content[:50] + ("..." if len(content) > 50 else "")
+        if len(content) <= 100:
+            return content
 
         # 尝试提取关键句（包含标签词或重要性关键词的句子）
         sentences = content.replace("。", "。\n").replace("！", "！\n").replace("？", "？\n").split("\n")
         key_sentences = []
-        important_words = set(drawer.tags) | {"重要", "关键", "决定", "结论", "注意", "总结"}
+        important_words = set(drawer.tags) | {"重要", "关键", "决定", "结论", "注意", "总结", "方法", "原因", "结果"}
         for s in sentences:
             s = s.strip()
             if not s:
@@ -193,6 +193,9 @@ class MemoryConsolidator:
             summary = "。".join(key_sentences[:3])
             if len(summary) > 150:
                 summary = summary[:150] + "..."
+        else:
+            # 降级：保留前 80 字
+            summary = content[:80] + ("..." if len(content) > 80 else "")
             return summary
 
         # 降级：保留前100字
