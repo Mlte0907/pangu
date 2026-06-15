@@ -18,16 +18,23 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import secrets
+import sqlite3
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import bcrypt
 import jwt
 from jwt.exceptions import PyJWTError
+
+from pangu.core.config import config
+
+logger = logging.getLogger("pangu.api.auth")
 
 
 # ──────────────────────────────────────────────
@@ -242,7 +249,7 @@ def verify_token(
 # UserStore：用户密码 + refresh token 撤销
 # ──────────────────────────────────────────────
 class UserStore:
-    """轻量用户存储。
+    """轻量用户存储（SQLite 持久化）。
 
     参数:
         users:        dict[username, bcrypt_hash] 或 {username: plain}（仅用于初始化）
@@ -259,6 +266,13 @@ class UserStore:
         self._users: dict[str, str] = {}
         self._revoked: set[str] = set()
         self._persist_path = Path(persist_path) if persist_path else None
+        self._db_path = Path(config.palace_path) / "users.db"
+
+        # 初始化 SQLite
+        self._init_db()
+
+        # 加载已有用户
+        self._load_users_from_db()
 
         if users:
             for username, value in users.items():
@@ -267,9 +281,12 @@ class UserStore:
                 # 自动检测：bcrypt 哈希以 $2 开头
                 if value.startswith(("$2a$", "$2b$", "$2y$")):
                     self._users[username] = value
+                    self._save_user_to_db(username, value)
                 else:
                     # 视为明文，自动哈希
-                    self._users[username] = hash_password(value)
+                    hashed = hash_password(value)
+                    self._users[username] = hashed
+                    self._save_user_to_db(username, hashed)
 
         if self._persist_path and self._persist_path.exists():
             try:
@@ -278,9 +295,67 @@ class UserStore:
             except (json.JSONDecodeError, OSError):
                 self._revoked = set()
 
+    def _init_db(self) -> None:
+        """初始化用户表"""
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.commit()
+        finally:
+            conn.close()
+
+        # 清理旧测试数据
+        if self._db_path.exists():
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                conn.execute("DELETE FROM users WHERE password_hash = 'test_hash'")
+                conn.commit()
+            except Exception:
+                pass
+            finally:
+                conn.close()
+
+    def _load_users_from_db(self) -> None:
+        """从数据库加载用户"""
+        try:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                rows = conn.execute("SELECT username, password_hash FROM users").fetchall()
+                for username, password_hash in rows:
+                    self._users[username] = password_hash
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    def _save_user_to_db(self, username: str, password_hash: str) -> None:
+        """保存用户到数据库"""
+        try:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                    (username, password_hash, datetime.now().isoformat())
+                )
+                conn.commit()
+                logger.debug(f"User saved to DB: {username}")
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Failed to save user to DB: {e}")
+
     # ── 密码 ──
     def add_user(self, username: str, password_hash: str) -> None:
         self._users[username] = password_hash
+        self._save_user_to_db(username, password_hash)
 
     def verify(self, username: str, password: str) -> bool:
         h = self._users.get(username)
