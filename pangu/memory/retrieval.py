@@ -161,14 +161,9 @@ def recall(
                 if sim < 0.25:
                     continue
 
-                # 综合打分
-                try:
-                    days_old = (datetime.now() - datetime.fromisoformat(d.created_at)).total_seconds() / 86400
-                    recency = max(0.0, 1.0 - days_old / 365)
-                except (ValueError, TypeError):
-                    recency = 0.5
-
-                importance_factor = (d.importance / 5.0) * 0.6 + recency * 0.4
+                # 综合打分（神经记忆衰减）
+                decay_score = _get_neural_decay_score(d)
+                importance_factor = (d.importance / 5.0) * 0.6 + decay_score * 0.4
                 relevance = sim * vector_weight + importance_factor * (1 - vector_weight)
                 scored.append((d, relevance, sim))
 
@@ -276,16 +271,55 @@ def recall_context(
     # 综合评分：重要性 * 0.4 + 衰减分 * 0.3 - 时间衰减 * 0.3
     scored = []
     for d in filtered:
-        try:
-            days_old = (datetime.now() - datetime.fromisoformat(d.created_at)).total_seconds() / 86400
-        except (ValueError, TypeError):
-            days_old = 365  # 默认视为旧记忆
-
-        score = (d.importance / 5.0) * 0.4 + d.metadata.get("decay_score", 0.5) * 0.3 - min(days_old / 365, 1.0) * 0.3
+        decay_score = _get_neural_decay_score(d)
+        score = (d.importance / 5.0) * 0.4 + decay_score * 0.6
         scored.append((d, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
     return [_drawer_to_dict(d, s) for d, s in scored[:budget]]
+
+
+def _get_neural_decay_score(drawer: Drawer) -> float:
+    """用神经记忆的个性化遗忘曲线计算衰减分数"""
+    try:
+        from pangu.memory.neural_memory import PersonalizedDecay, NeuralMemory, MemoryType
+        decay = PersonalizedDecay()
+
+        # 从 Drawer 推断记忆类型
+        tags_lower = [t.lower() for t in drawer.tags] if drawer.tags else []
+        if any(t in tags_lower for t in ["decision", "fact", "concept"]):
+            mtype = MemoryType.SEMANTIC
+        elif any(t in tags_lower for t in ["event", "milestone"]):
+            mtype = MemoryType.EPISODIC
+        elif any(t in tags_lower for t in ["preference", "advice"]):
+            mtype = MemoryType.PROCEDURAL
+        elif drawer.emotional_weight and abs(drawer.emotional_weight) > 0.5:
+            mtype = MemoryType.EMOTIONAL
+        else:
+            mtype = MemoryType.EPISODIC
+
+        # 解析 created_at
+        try:
+            created_ts = datetime.fromisoformat(drawer.created_at).timestamp()
+        except (ValueError, TypeError):
+            created_ts = time.time()
+
+        mem = NeuralMemory(
+            id=drawer.id,
+            content=drawer.content,
+            memory_type=mtype,
+            strength=drawer.importance / 5.0,
+            created_at=created_ts,
+            access_count=drawer.metadata.get("access_count", 0),
+        )
+        return decay.retention(mem)
+    except Exception:
+        # 降级到简单衰减
+        try:
+            days_old = (datetime.now() - datetime.fromisoformat(drawer.created_at)).total_seconds() / 86400
+            return max(0.0, 1.0 - days_old / 365)
+        except Exception:
+            return 0.5
 
 
 def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0) -> dict:
