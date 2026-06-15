@@ -210,17 +210,41 @@ def recall(
             if not query_vec:
                 return {}
 
+            # 使用 VectorIndex 加速搜索（FAISS/hnswlib）
             vec_results = {}
-            for d in filtered:
-                stored_vec = d.metadata.get("embedding")
-                if not stored_vec:
-                    continue
-                try:
-                    sim = _cosine_similarity(query_vec, stored_vec)
-                except Exception:
-                    sim = 0.0
-                if sim >= 0.65:
-                    vec_results[d.id] = sim
+            try:
+                from pangu.memory.vector_index import get_vector_index
+                idx = get_vector_index()
+                if idx.is_built and idx.size > 0:
+                    # 使用 VectorIndex 搜索
+                    search_results = idx.search(query_vec, top_k=min(len(filtered), 100))
+                    for did, sim in search_results:
+                        if did in {d.id for d in filtered} and sim >= 0.65:
+                            vec_results[did] = sim
+                else:
+                    # 降级：逐条遍历
+                    for d in filtered:
+                        stored_vec = d.metadata.get("embedding")
+                        if not stored_vec:
+                            continue
+                        try:
+                            sim = _cosine_similarity(query_vec, stored_vec)
+                        except Exception:
+                            sim = 0.0
+                        if sim >= 0.65:
+                            vec_results[d.id] = sim
+            except Exception:
+                # 降级：逐条遍历
+                for d in filtered:
+                    stored_vec = d.metadata.get("embedding")
+                    if not stored_vec:
+                        continue
+                    try:
+                        sim = _cosine_similarity(query_vec, stored_vec)
+                    except Exception:
+                        sim = 0.0
+                    if sim >= 0.65:
+                        vec_results[d.id] = sim
             return vec_results
 
         def _fts_search_task() -> dict[str, float]:
