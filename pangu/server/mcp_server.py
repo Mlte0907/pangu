@@ -413,6 +413,7 @@ class MCPServer:
             {"name": "pangu_learning_stats", "description": "获取自适应学习统计", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_popular_queries", "description": "获取热门查询", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
             {"name": "pangu_frequent_memories", "description": "获取频繁访问的记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
+            {"name": "pangu_auto_collect", "description": "从会话文件自动提取记忆", "inputSchema": {"type": "object", "properties": {"session_file": {"type": "string", "description": "会话文件路径"}, "min_importance": {"type": "number", "description": "最小重要性阈值", "default": 0.3}}, "required": ["session_file"]}},
 
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
@@ -1907,6 +1908,14 @@ class MCPServer:
                 al = get_adaptive_learning(self.config)
                 limit = arguments.get("limit", 10)
                 return json.dumps(al.get_frequent_memories(limit), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_auto_collect":
+                from ..memory.auto_collector import AutoCollector
+                collector = AutoCollector(self.config)
+                session_file = arguments.get("session_file", "")
+                min_importance = arguments.get("min_importance", 0.3)
+                result = collector.collect_from_file(session_file, min_importance=min_importance)
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             # ── 社交记忆 ──
             elif tool_name == "pangu_comment_add":
