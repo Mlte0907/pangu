@@ -383,6 +383,12 @@ class MCPServer:
             {"name": "pangu_cluster_by_tags", "description": "按标签聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 20}}, "required": ["query"]}},
             {"name": "pangu_cluster_by_time", "description": "按时间聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "buckets": {"type": "integer", "description": "时间段数", "default": 3}}, "required": ["query"]}},
             {"name": "pangu_hierarchical_cluster", "description": "层次聚类（基于向量相似度）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "max_clusters": {"type": "integer", "description": "最大聚类数", "default": 5}}, "required": ["query"]}},
+
+            # ── 多Agent协作记忆 (v2.0) ──
+            {"name": "pangu_multi_register", "description": "注册Agent到协作记忆空间", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID"}, "priority": {"type": "integer", "description": "优先级", "default": 5}}, "required": ["agent_id"]}},
+            {"name": "pangu_multi_write", "description": "写入多Agent共享记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "写入者Agent ID"}, "content": {"type": "string", "description": "记忆内容"}, "scope": {"type": "string", "description": "权限范围: private/shared/public", "default": "public"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "标签列表"}}, "required": ["agent_id", "content"]}},
+            {"name": "pangu_multi_read", "description": "读取Agent可见的记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "过滤标签"}}, "required": ["agent_id"]}},
+            {"name": "pangu_multi_agents", "description": "获取所有已注册Agent", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_search_stats", "description": "获取搜索命中率统计"},
         ]
         for tool in raw:
@@ -1725,9 +1731,43 @@ class MCPServer:
                 from ..memory.cluster import hierarchical_cluster
                 query = arguments.get("query", "")
                 max_clusters = arguments.get("max_clusters", 5)
-                results = hybrid_search(query, drawers, self.config, 20)
+                results = hybrid_search(query, drawers, self.config, limit=20)
                 clusters = hierarchical_cluster(results, max_clusters=max_clusters)
                 return json.dumps({"clusters": clusters, "total_clusters": len(clusters)}, ensure_ascii=False, indent=2)
+
+            # ── 多Agent协作记忆 ──
+            elif tool_name == "pangu_multi_register":
+                from ..memory.multi_agent import get_multi_agent_memory
+                mam = get_multi_agent_memory()
+                agent_id = arguments.get("agent_id", "")
+                priority = arguments.get("priority", 5)
+                mam.register_agent(agent_id, priority)
+                return json.dumps({"status": "registered", "agent_id": agent_id, "priority": priority}, ensure_ascii=False)
+
+            elif tool_name == "pangu_multi_write":
+                from ..memory.multi_agent import get_multi_agent_memory, MemoryScope
+                mam = get_multi_agent_memory()
+                agent_id = arguments.get("agent_id", "")
+                content = arguments.get("content", "")
+                scope_str = arguments.get("scope", "public")
+                tags = arguments.get("tags", [])
+                scope = MemoryScope(scope_str) if scope_str in ["private", "shared", "public"] else MemoryScope.PUBLIC
+                mem = mam.write(agent_id, content, scope=scope, tags=tags)
+                return json.dumps({"id": mem.id, "content": mem.content[:50], "scope": mem.scope.value}, ensure_ascii=False)
+
+            elif tool_name == "pangu_multi_read":
+                from ..memory.multi_agent import get_multi_agent_memory
+                mam = get_multi_agent_memory()
+                agent_id = arguments.get("agent_id", "")
+                tags = arguments.get("tags", None)
+                results = mam.read(agent_id, tags=tags)
+                return json.dumps({"count": len(results), "memories": [{"id": m.id, "content": m.content[:50], "owner": m.owner, "scope": m.scope.value} for m in results[:10]]}, ensure_ascii=False)
+
+            elif tool_name == "pangu_multi_agents":
+                from ..memory.multi_agent import get_multi_agent_memory
+                mam = get_multi_agent_memory()
+                agents = mam.get_agents()
+                return json.dumps({"agents": agents, "count": len(agents)}, ensure_ascii=False)
 
             elif tool_name == "pangu_search_stats":
                 from ..memory.retrieval import get_search_stats
