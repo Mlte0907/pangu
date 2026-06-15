@@ -390,6 +390,10 @@ class MCPServer:
             {"name": "pangu_multi_read", "description": "读取Agent可见的记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "过滤标签"}}, "required": ["agent_id"]}},
             {"name": "pangu_multi_agents", "description": "获取所有已注册Agent", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 图推理 (v2.0) ──
+            {"name": "pangu_graph_infer", "description": "基于知识图谱推理", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "推理查询"}}, "required": ["query"]}},
+            {"name": "pangu_graph_contradictions", "description": "检测图中的矛盾关系", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
             {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1774,6 +1778,30 @@ class MCPServer:
                 mam = get_multi_agent_memory()
                 agents = mam.get_agents()
                 return json.dumps({"agents": agents, "count": len(agents)}, ensure_ascii=False)
+
+            # ── 图推理 ──
+            elif tool_name == "pangu_graph_infer":
+                from ..memory.graph_reasoning import GraphReasoning
+                gr = GraphReasoning(self.config)
+                query = arguments.get("query", "")
+                result = gr.infer(query)
+                summary = gr.get_reasoning_summary(result)
+                return json.dumps({
+                    "entities": len(result.entities),
+                    "paths": len(result.paths),
+                    "inferences": len(result.inferences),
+                    "confidence": result.confidence,
+                    "summary": summary,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_contradictions":
+                from ..memory.graph_reasoning import GraphReasoning
+                gr = GraphReasoning(self.config)
+                contradictions = gr.detect_contradictions()
+                return json.dumps({
+                    "contradictions": contradictions,
+                    "count": len(contradictions),
+                }, ensure_ascii=False, indent=2)
 
             # ── 社交记忆 ──
             elif tool_name == "pangu_comment_add":
