@@ -535,8 +535,9 @@ class MemoryStack:
 
         # 搜索统计
         try:
-            from pangu.memory.retrieval import get_search_stats
+            from pangu.memory.retrieval import get_search_stats, get_search_history
             search_stats = get_search_stats()
+            search_stats["recent_history"] = get_search_history(limit=5)
         except Exception:
             search_stats = {}
 

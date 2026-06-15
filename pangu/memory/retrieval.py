@@ -34,6 +34,10 @@ _search_stats: dict = {
     "neural_hits": 0,
 }
 
+# 搜索历史（最近 50 条）
+_search_history: list[dict] = []
+_search_history_max = 50
+
 
 def get_search_stats() -> dict:
     """获取搜索命中率统计"""
@@ -45,7 +49,12 @@ def get_search_stats() -> dict:
     }
 
 
-def _record_search(hit: bool, method: str = "") -> None:
+def get_search_history(limit: int = 10) -> list[dict]:
+    """获取搜索历史"""
+    return _search_history[-limit:]
+
+
+def _record_search(hit: bool, method: str = "", query: str = "", result_count: int = 0) -> None:
     """记录搜索结果"""
     _search_stats["total_searches"] += 1
     if hit:
@@ -58,6 +67,19 @@ def _record_search(hit: bool, method: str = "") -> None:
             _search_stats["neural_hits"] += 1
     else:
         _search_stats["misses"] += 1
+
+    # 记录搜索历史
+    if query:
+        entry = {
+            "query": query,
+            "hit": hit,
+            "method": method,
+            "result_count": result_count,
+            "timestamp": time.time(),
+        }
+        _search_history.append(entry)
+        if len(_search_history) > _search_history_max:
+            _search_history.pop(0)
 
 
 def _cosine_similarity(a: list, b: list) -> float:
@@ -245,7 +267,7 @@ def recall(
                 method = "fts"
             else:
                 method = "vector"
-        _record_search(has_results, method)
+        _record_search(has_results, method, query, len(results))
 
     return results
 
