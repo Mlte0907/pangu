@@ -401,6 +401,11 @@ class MCPServer:
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
 
+            # ── 记忆可视化 (v2.0) ──
+            {"name": "pangu_visualize_graph", "description": "可视化知识图谱", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_visualize_network", "description": "可视化记忆网络", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_visualize_stats", "description": "可视化统计信息", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
             {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1839,6 +1844,28 @@ class MCPServer:
                 v2 = arguments.get("v2", 2)
                 diff = vc.compare_versions(memory_id, v1, v2)
                 return json.dumps(diff, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_visualize_graph":
+                from ..memory.knowledge_graph import KnowledgeGraph
+                kg = KnowledgeGraph(self.config)
+                entities = kg.list_entities()
+                relations = []
+                with kg._conn() as conn:
+                    rows = conn.execute("SELECT * FROM relations").fetchall()
+                    relations = [dict(r) for r in rows]
+                from ..memory.visualization import get_visualizer
+                viz = get_visualizer(self.config)
+                return viz.visualize_graph(entities, relations)
+
+            elif tool_name == "pangu_visualize_network":
+                from ..memory.visualization import get_visualizer
+                viz = get_visualizer(self.config)
+                return viz.visualize_network(drawers)
+
+            elif tool_name == "pangu_visualize_stats":
+                from ..memory.visualization import get_visualizer
+                viz = get_visualizer(self.config)
+                return viz.visualize_stats(drawers)
 
             # ── 社交记忆 ──
             elif tool_name == "pangu_comment_add":
