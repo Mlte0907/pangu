@@ -339,12 +339,14 @@ class MemoryStack:
         self._drawers = self._load_drawers()
         self._drawers.append(drawer)
         self._save_drawers()
+        self._cache.invalidate()
 
     def add_drawers(self, drawers: list[Drawer]) -> None:
         """批量添加记忆抽屉"""
         self._drawers = self._load_drawers()
         self._drawers.extend(drawers)
         self._save_drawers()
+        self._cache.invalidate()
 
     def get_drawers(self) -> list[Drawer]:
         """获取所有抽屉"""
@@ -365,25 +367,61 @@ class MemoryStack:
         """获取抽屉总数"""
         return len(self._load_drawers())
 
+    def _backup_drawers(self) -> str | None:
+        """备份 drawers.json，返回备份路径"""
+        import shutil
+        from datetime import datetime
+        if not self._drawers_file.exists():
+            return None
+        backup_dir = Path(self.config.palace_path) / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"drawers_{ts}.json"
+        shutil.copy2(self._drawers_file, backup_path)
+        # 保留最近 5 个备份
+        backups = sorted(backup_dir.glob("drawers_*.json"))
+        for old in backups[:-5]:
+            old.unlink()
+        return str(backup_path)
+
+    def _remove_from_vector_index(self, drawer_ids: list[str]) -> None:
+        """从向量索引中删除指定记忆"""
+        try:
+            from pangu.memory.vector_index import get_vector_index
+            idx = get_vector_index()
+            for did in drawer_ids:
+                if did in idx._ids:
+                    idx._ids.remove(did)
+                    idx._size -= 1
+            idx._save()
+        except Exception:
+            pass
+
     def remove_drawer(self, drawer_id: str) -> bool:
-        """删除指定抽屉"""
+        """删除指定抽屉（自动备份 + 向量索引同步）"""
         self._drawers = self._load_drawers()
         original_len = len(self._drawers)
         self._drawers = [d for d in self._drawers if d.id != drawer_id]
         if len(self._drawers) < original_len:
+            self._backup_drawers()
             self._save_drawers()
+            self._remove_from_vector_index([drawer_id])
+            self._cache.invalidate()
             return True
         return False
 
     def remove_drawers(self, drawer_ids: list[str]) -> int:
-        """批量删除抽屉，返回删除数量"""
+        """批量删除抽屉（自动备份 + 向量索引同步）"""
         self._drawers = self._load_drawers()
         ids_set = set(drawer_ids)
         original_len = len(self._drawers)
         self._drawers = [d for d in self._drawers if d.id not in ids_set]
         removed = original_len - len(self._drawers)
         if removed > 0:
+            self._backup_drawers()
             self._save_drawers()
+            self._remove_from_vector_index(drawer_ids)
+            self._cache.invalidate()
         return removed
 
     # ── 记忆栈接口 ──
