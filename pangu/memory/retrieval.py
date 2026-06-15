@@ -234,22 +234,36 @@ def recall(
         except Exception:
             pass
 
-        # ── 排序返回（含时间加成） ──
+        # ── 排序返回（多维度综合评分） ──
         if rrf_scores:
             drawer_map = {d.id: d for d in filtered}
 
-            # 时间加成：新记忆 +10%
-            def _recency_boost(did: str) -> float:
+            def _compute_score(did: str) -> float:
+                """多维度综合评分 = RRF + 时间 + 重要性 + 标签"""
                 d = drawer_map.get(did)
                 if not d:
-                    return 0.0
+                    return rrf_scores.get(did, 0)
+
+                base = rrf_scores[did]
+
+                # 时间加成：新记忆 +10%
                 try:
                     days_old = (datetime.now() - datetime.fromisoformat(d.created_at)).total_seconds() / 86400
-                    return max(0.0, 0.1 * (1.0 - min(days_old / 30, 1.0)))
+                    time_boost = max(0.0, 0.1 * (1.0 - min(days_old / 30, 1.0)))
                 except Exception:
-                    return 0.0
+                    time_boost = 0.0
 
-            sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -(rrf_scores[x] + _recency_boost(x)))
+                # 重要性加成：高重要性 +5%
+                imp_boost = (d.importance / 5.0) * 0.05
+
+                # 标签加成：匹配查询词的标签 +3%
+                query_words = set(query.lower().split())
+                tag_match = sum(1 for t in d.tags if t.lower() in query_words or query_words & set(t.lower().split()))
+                tag_boost = min(tag_match * 0.03, 0.09)
+
+                return base + time_boost + imp_boost + tag_boost
+
+            sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -_compute_score(x))
             results = []
             for did in sorted_ids[offset : offset + limit]:
                 if did in drawer_map:
