@@ -38,9 +38,10 @@ _search_stats: dict = {
 _search_history: list[dict] = []
 _search_history_max = 50
 
-# 向量搜索缓存（query → embedding）
-_vector_cache: dict[str, list[float]] = {}
+# 向量搜索缓存（query → embedding + timestamp）
+_vector_cache: dict[str, tuple[list[float], float]] = {}
 _vector_cache_max = 1000
+_vector_cache_ttl = 3600  # 1小时过期
 
 
 def get_search_stats() -> dict:
@@ -156,16 +157,24 @@ def recall(
         filtered = [d for d in filtered if d.importance >= min_importance]
 
     if query and filtered:
+        # 查询扩展（短查询自动扩展）
+        expanded_query = _expand_query(query, filtered) if len(query) < 4 else query
+
         # 并行搜索：向量 + FTS
         RRF_K = 60
         rrf_scores: dict[str, float] = {}
 
-        # ── 向量搜索（带缓存） ──
+        # ── 向量搜索（带缓存 + TTL） ──
         query_vec = None
         cache_key = f"vec_{query}"
+        now = time.time()
         if cache_key in _vector_cache:
-            query_vec = _vector_cache[cache_key]
-        else:
+            cached_vec, cached_ts = _vector_cache[cache_key]
+            if now - cached_ts < _vector_cache_ttl:
+                query_vec = cached_vec
+            else:
+                del _vector_cache[cache_key]
+        if query_vec is None:
             try:
                 from pangu.memory.onnx_embedder import get_onnx_embedder
                 onnx = get_onnx_embedder()
@@ -180,9 +189,10 @@ def recall(
                 except Exception:
                     pass
             if query_vec:
-                _vector_cache[cache_key] = query_vec
+                _vector_cache[cache_key] = (query_vec, now)
                 if len(_vector_cache) > _vector_cache_max:
-                    _vector_cache.pop(next(iter(_vector_cache)))
+                    oldest_key = min(_vector_cache, key=lambda k: _vector_cache[k][1])
+                    del _vector_cache[oldest_key]
 
         if query_vec:
             vec_results = {}
@@ -207,7 +217,7 @@ def recall(
             from pangu.memory.fts_search import FTS5SearchEngine
             fts = FTS5SearchEngine()
             fts.build_index(filtered)
-            fts_results = fts._fts_search(query, filtered)
+            fts_results = fts._fts_search(expanded_query, filtered)
             for rank, (did, _) in enumerate(sorted(fts_results.items(), key=lambda x: -x[1])):
                 rrf_scores[did] = rrf_scores.get(did, 0) + 0.5 / (RRF_K + rank + 1)
         except Exception:
@@ -379,6 +389,27 @@ def _get_neural_decay_score(drawer: Drawer) -> float:
             return max(0.0, 1.0 - days_old / 365)
         except Exception:
             return 0.5
+
+
+def _expand_query(query: str, drawers: list[Drawer]) -> str:
+    """短查询自动扩展关键词（基于已有记忆的标签）"""
+    if len(query) >= 4 or not drawers:
+        return query
+
+    # 提取所有标签
+    all_tags = set()
+    for d in drawers:
+        all_tags.update(t.lower() for t in d.tags if t)
+
+    # 找与查询词相关的标签
+    expanded = [query]
+    for tag in all_tags:
+        if query.lower() in tag or tag in query.lower():
+            expanded.append(tag)
+        elif len(query) >= 2 and any(c in tag for c in query):
+            expanded.append(tag)
+
+    return " ".join(expanded[:3]) if len(expanded) > 1 else query
 
 
 def _get_search_suggestions(query: str, drawers: list[Drawer], max_suggestions: int = 3) -> list[str]:
