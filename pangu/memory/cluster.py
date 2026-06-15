@@ -111,9 +111,9 @@ def _get_embedding(text: str) -> list[float] | None:
 def hierarchical_cluster(
     results: list[dict],
     max_clusters: int = 5,
-    min_similarity: float = 0.3,
+    min_similarity: float = 0.5,
 ) -> list[dict]:
-    """层次聚类 — 基于向量相似度的自底向上聚合
+    """层次聚类 — 结合标签重叠 + 向量相似度的自底向上聚合
 
     Args:
         results: 搜索结果列表
@@ -133,18 +133,34 @@ def hierarchical_cluster(
         if emb:
             embeddings[r["id"]] = emb
 
-    if len(embeddings) < 2:
-        # 无法获取嵌入，降级到标签聚类
-        clusters = cluster_by_tags(results)
-        return [{"name": k, "count": len(v), "items": v, "centroid": ""} for k, v in clusters.items()]
-
-    # 计算相似度矩阵
-    ids = list(embeddings.keys())
+    # 计算相似度矩阵（结合标签重叠 + 向量相似度）
+    ids = [r["id"] for r in results]
+    id_map = {r["id"]: r for r in results}
     n = len(ids)
     sim_matrix = [[0.0] * n for _ in range(n)]
+
     for i in range(n):
         for j in range(i + 1, n):
-            sim = _cosine_similarity(embeddings[ids[i]], embeddings[ids[j]])
+            ri, rj = id_map[ids[i]], id_map[ids[j]]
+
+            # 标签重叠度
+            tags_i = set(ri.get("tags", []))
+            tags_j = set(rj.get("tags", []))
+            if tags_i and tags_j:
+                tag_sim = len(tags_i & tags_j) / max(len(tags_i | tags_j), 1)
+            else:
+                tag_sim = 0.0
+
+            # 向量相似度
+            emb_i = embeddings.get(ids[i])
+            emb_j = embeddings.get(ids[j])
+            if emb_i and emb_j:
+                vec_sim = _cosine_similarity(emb_i, emb_j)
+            else:
+                vec_sim = 0.0
+
+            # 综合相似度：标签 0.6 + 向量 0.4
+            sim = tag_sim * 0.6 + vec_sim * 0.4
             sim_matrix[i][j] = sim
             sim_matrix[j][i] = sim
 
@@ -152,7 +168,6 @@ def hierarchical_cluster(
     clusters = {i: [ids[i]] for i in range(n)}
 
     while len(clusters) > max_clusters:
-        # 找最相似的两个聚类
         best_sim = -1
         best_pair = None
         cluster_ids = list(clusters.keys())
@@ -178,20 +193,26 @@ def hierarchical_cluster(
         if best_sim < min_similarity or best_pair is None:
             break
 
-        # 合并两个聚类
         ci, cj = best_pair
         clusters[ci].extend(clusters[cj])
         del clusters[cj]
 
     # 构建结果
     result = []
-    id_map = {r["id"]: r for r in results}
     for cluster_id, member_ids in clusters.items():
         items = [id_map[mid] for mid in member_ids if mid in id_map]
-        # 生成聚类名称（取第一个内容的前20字）
         centroid = items[0].get("content", "")[:20] if items else ""
+        # 聚类名称：取最频繁的标签
+        all_tags = []
+        for item in items:
+            all_tags.extend(item.get("tags", []))
+        if all_tags:
+            from collections import Counter
+            name = Counter(all_tags).most_common(1)[0][0]
+        else:
+            name = f"聚类{len(result)+1}"
         result.append({
-            "name": f"聚类{len(result)+1}",
+            "name": name,
             "count": len(items),
             "items": items,
             "centroid": centroid,
