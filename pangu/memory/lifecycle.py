@@ -361,6 +361,11 @@ class LifecycleManager:
         if fusion_result.get("fused", 0) > 0:
             results["fusion"] = fusion_result
 
+        # LLM 压缩旧记忆
+        llm_compress_result = self.run_llm_compress()
+        if llm_compress_result.get("compressed", 0) > 0:
+            results["llm_compression"] = llm_compress_result
+
         # 自动压缩长记忆
         compress_result = self.run_auto_compress()
         if compress_result.get("compressed", 0) > 0:
@@ -485,8 +490,42 @@ class LifecycleManager:
         logger.info(f"KG enrichment: {result}")
         return result
 
+    def run_llm_compress(self) -> dict:
+        """LLM 驱动的记忆压缩"""
+        try:
+            from pangu.memory.compression import get_compressor
+            compressor = get_compressor(self.config)
+        except ImportError:
+            return {"status": "skip", "reason": "compression module not available"}
+
+        drawers_file = Path(self.config.palace_path) / "drawers.json"
+        if not drawers_file.exists():
+            return {"status": "no_memories"}
+
+        with open(drawers_file, encoding="utf-8") as f:
+            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+
+        results = compressor.batch_compress(drawers)
+        if not results:
+            return {"status": "skip", "reason": "no compressible memories"}
+
+        # 保存压缩结果
+        for r in results:
+            for d in drawers:
+                if d.id == r.memory_id:
+                    d.content = r.compressed
+                    d.metadata["compressed"] = True
+                    d.metadata["original_content"] = r.original
+                    d.metadata["compression_ratio"] = r.compression_ratio
+                    break
+
+        with open(drawers_file, "w", encoding="utf-8") as f:
+            json.dump([d.to_dict() for d in drawers], f, ensure_ascii=False, indent=2)
+
+        return {"status": "completed", "compressed": len(results), "total": len(drawers)}
+
     def run_auto_compress(self) -> dict:
-        """自动压缩长记忆 — >30天且importance<0.3的长记忆自动压缩"""
+        """自动压缩长记忆"""
         try:
             from pangu.memory.consolidation import MemoryConsolidator
         except ImportError:
