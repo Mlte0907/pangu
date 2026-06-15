@@ -380,6 +380,8 @@ class MCPServer:
 
             # ── 混合检索 (v2.0) ──
             {"name": "pangu_hybrid_search", "description": "FTS+向量+KG三路召回 RRF融合检索", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 10}}, "required": ["query"]}},
+            {"name": "pangu_cluster_by_tags", "description": "按标签聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 20}}, "required": ["query"]}},
+            {"name": "pangu_cluster_by_time", "description": "按时间聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "buckets": {"type": "integer", "description": "时间段数", "default": 3}}, "required": ["query"]}},
             {"name": "pangu_search_stats", "description": "获取搜索命中率统计"},
         ]
         for tool in raw:
@@ -1699,6 +1701,24 @@ class MCPServer:
                 limit = arguments.get("limit", 10)
                 results = hybrid_search(query, drawers, self.config, limit)
                 return json.dumps({"results": results, "total": len(results)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cluster_by_tags":
+                from ..memory.cluster import cluster_by_tags, get_cluster_summary
+                query = arguments.get("query", "")
+                limit = arguments.get("limit", 20)
+                results = hybrid_search(query, drawers, self.config, limit)
+                clusters = cluster_by_tags(results)
+                summary = get_cluster_summary(clusters)
+                return json.dumps({"clusters": summary, "total_clusters": len(clusters)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cluster_by_time":
+                from ..memory.cluster import cluster_by_time, get_cluster_summary
+                query = arguments.get("query", "")
+                buckets = arguments.get("buckets", 3)
+                results = hybrid_search(query, drawers, self.config, 20)
+                clusters = cluster_by_time(results, buckets)
+                summary = get_cluster_summary(clusters)
+                return json.dumps({"clusters": summary, "total_clusters": len(clusters)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_search_stats":
                 from ..memory.retrieval import get_search_stats
