@@ -409,6 +409,11 @@ class MCPServer:
             # ── 重要性评分 (v2.0) ──
             {"name": "pangu_importance_score", "description": "计算记忆重要性评分", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "context": {"type": "string", "description": "当前上下文"}}, "required": ["memory_id"]}},
 
+            # ── 自适应学习 (v2.0) ──
+            {"name": "pangu_learning_stats", "description": "获取自适应学习统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_popular_queries", "description": "获取热门查询", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
+            {"name": "pangu_frequent_memories", "description": "获取频繁访问的记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
+
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
             {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1885,6 +1890,23 @@ class MCPServer:
                     "factors": result.factors,
                     "explanation": result.explanation,
                 }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_learning_stats":
+                from ..memory.adaptive_learning import get_adaptive_learning
+                al = get_adaptive_learning(self.config)
+                return json.dumps(al.get_learning_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_popular_queries":
+                from ..memory.adaptive_learning import get_adaptive_learning
+                al = get_adaptive_learning(self.config)
+                limit = arguments.get("limit", 10)
+                return json.dumps(al.get_popular_queries(limit), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_frequent_memories":
+                from ..memory.adaptive_learning import get_adaptive_learning
+                al = get_adaptive_learning(self.config)
+                limit = arguments.get("limit", 10)
+                return json.dumps(al.get_frequent_memories(limit), ensure_ascii=False, indent=2)
 
             # ── 社交记忆 ──
             elif tool_name == "pangu_comment_add":
