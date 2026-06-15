@@ -33,21 +33,30 @@ class VectorIndex:
         self.dim = dim
         self._index: np.ndarray | None = None  # numpy 模式
         self._faiss_index = None                # FAISS 模式
+        self._hnsw_index = None                 # hnswlib 模式
         self._ids: list[str] = []
         self._is_built: bool = False
         self._size: int = 0
         self._use_faiss: bool = False
+        self._use_hnsw: bool = False
         self._cache_dir = Path(os.environ.get('PANGU_CACHE_DIR', '/home/xiaoxin/.cache/pangu'))
         self._index_file = self._cache_dir / "vector_index.npz"
         self._faiss_file = self._cache_dir / "vector_index.faiss"
         self._faiss_ids_file = self._cache_dir / "vector_index_ids.json"
+        self._hnsw_file = self._cache_dir / "vector_index.hnsw"
+        self._hnsw_ids_file = self._cache_dir / "vector_index_hnsw_ids.json"
         self._load()  # 启动时自动加载
 
     def _save(self) -> None:
         """保存索引到磁盘"""
         try:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
-            if self._use_faiss and self._faiss_index is not None:
+            if self._use_hnsw and self._hnsw_index is not None:
+                self._hnsw_index.save_index(str(self._hnsw_file))
+                with open(self._hnsw_ids_file, 'w') as f:
+                    json.dump(self._ids, f)
+                logger.debug(f"hnswlib index saved")
+            elif self._use_faiss and self._faiss_index is not None:
                 import faiss
                 faiss.write_index(self._faiss_index, str(self._faiss_file))
                 with open(self._faiss_ids_file, 'w') as f:
@@ -67,6 +76,18 @@ class VectorIndex:
     def _load(self) -> None:
         """从磁盘加载索引"""
         try:
+            # 尝试加载 hnswlib
+            if self._hnsw_file.exists() and self._hnsw_ids_file.exists():
+                import hnswlib
+                self._hnsw_index = hnswlib.Index(space='cosine', dim=self.dim)
+                self._hnsw_index.load_index(str(self._hnsw_file))
+                with open(self._hnsw_ids_file) as f:
+                    self._ids = json.load(f)
+                self._is_built = True
+                self._use_hnsw = True
+                self._size = len(self._ids)
+                logger.info(f"hnswlib index loaded: {self._size} vectors")
+                return
             # 尝试加载 FAISS
             if self._faiss_file.exists() and self._faiss_ids_file.exists():
                 import faiss
@@ -119,14 +140,21 @@ class VectorIndex:
             self._is_built = True
             self._size = len(vectors)
 
+            # 自动选择后端：hnswlib > FAISS > numpy
             if self._size >= FAISS_THRESHOLD:
-                self._build_faiss(arr)
+                try:
+                    import hnswlib
+                    self._build_hnsw(arr)
+                except ImportError:
+                    self._build_faiss(arr)
             else:
                 self._index = arr
                 self._use_faiss = False
+                self._use_hnsw = False
 
             self._save()
-            logger.info(f"Vector index built: {self._size} vectors, dim={self.dim}, faiss={self._use_faiss}")
+            backend = "hnswlib" if self._use_hnsw else ("FAISS" if self._use_faiss else "numpy")
+            logger.info(f"Vector index built: {self._size} vectors, dim={self.dim}, backend={backend}")
             return True
         except Exception as e:
             logger.warning(f"Vector index build failed: {e}")
@@ -149,6 +177,22 @@ class VectorIndex:
             logger.warning("FAISS not available, falling back to numpy")
             self._index = arr
             self._use_faiss = False
+
+    def _build_hnsw(self, arr: np.ndarray) -> None:
+        """构建 hnswlib 索引"""
+        try:
+            import hnswlib
+            self._hnsw_index = hnswlib.Index(space='cosine', dim=self.dim)
+            self._hnsw_index.init_index(max_elements=self._size, ef_construction=200, M=16)
+            self._hnsw_index.add_items(arr.astype(np.float32), list(range(self._size)))
+            self._hnsw_index.set_ef(50)  # 搜索时的 ef 参数
+            self._use_hnsw = True
+            self._index = None  # 释放 numpy 内存
+            logger.info(f"hnswlib index built: {self._size} vectors")
+        except ImportError:
+            logger.warning("hnswlib not available, falling back to numpy")
+            self._index = arr
+            self._use_hnsw = False
 
     def _normalize(self, vec: np.ndarray) -> np.ndarray:
         """归一化向量"""
@@ -209,7 +253,7 @@ class VectorIndex:
     def search(self, query_vec: list[float], top_k: int = 10) -> list[tuple[str, float]]:
         """搜索最相似的 top_k 个向量
 
-        自动选择 FAISS（>=1000 条）或 numpy brute-force。
+        自动选择后端：hnswlib > FAISS > numpy brute-force。
         """
         if not self._is_built:
             return []
@@ -220,7 +264,9 @@ class VectorIndex:
             if qnorm > 1e-8:
                 query = query / qnorm
 
-            if self._use_faiss and self._faiss_index is not None:
+            if self._use_hnsw and self._hnsw_index is not None:
+                return self._search_hnsw(query, top_k)
+            elif self._use_faiss and self._faiss_index is not None:
                 return self._search_faiss(query[0], top_k)
             elif self._index is not None:
                 return self._search_numpy(query[0], top_k)
@@ -229,6 +275,18 @@ class VectorIndex:
         except Exception as e:
             logger.debug(f"Vector index search failed: {e}")
             return []
+
+    def _search_hnsw(self, query: np.ndarray, top_k: int) -> list[tuple[str, float]]:
+        """hnswlib 近似最近邻搜索"""
+        indices, distances = self._hnsw_index.knn_query(query.reshape(1, -1), k=top_k)
+        results = []
+        for idx, dist in zip(indices[0], distances[0]):
+            if idx < len(self._ids):
+                # hnswlib 返回距离，转换为相似度
+                similarity = 1.0 - dist
+                if similarity > 0:
+                    results.append((self._ids[idx], float(similarity)))
+        return results
 
     def _search_faiss(self, query: np.ndarray, top_k: int) -> list[tuple[str, float]]:
         """FAISS 近似最近邻搜索"""
