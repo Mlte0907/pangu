@@ -223,10 +223,22 @@ def recall(
         except Exception:
             pass
 
-        # ── 排序返回 ──
+        # ── 排序返回（含时间加成） ──
         if rrf_scores:
-            sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -rrf_scores[x])
             drawer_map = {d.id: d for d in filtered}
+
+            # 时间加成：新记忆 +10%
+            def _recency_boost(did: str) -> float:
+                d = drawer_map.get(did)
+                if not d:
+                    return 0.0
+                try:
+                    days_old = (datetime.now() - datetime.fromisoformat(d.created_at)).total_seconds() / 86400
+                    return max(0.0, 0.1 * (1.0 - min(days_old / 30, 1.0)))
+                except Exception:
+                    return 0.0
+
+            sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -(rrf_scores[x] + _recency_boost(x)))
             results = []
             for did in sorted_ids[offset : offset + limit]:
                 if did in drawer_map:

@@ -515,6 +515,72 @@ class MemoryStack:
             return self.consolidator.calculate_importance(drawer)
         return 0.0
 
+    def health_check(self) -> dict:
+        """系统健康检查 — 验证所有组件状态"""
+        checks = {}
+        drawers = self._load_drawers()
+
+        # 1. 数据文件
+        checks["drawers_file"] = {
+            "exists": self._drawers_file.exists(),
+            "size_kb": round(self._drawers_file.stat().st_size / 1024, 1) if self._drawers_file.exists() else 0,
+            "count": len(drawers),
+        }
+
+        # 2. 身份文件
+        identity_exists = os.path.exists(self.config.identity_path)
+        checks["identity"] = {"exists": identity_exists}
+
+        # 3. ONNX 嵌入器
+        try:
+            from pangu.memory.onnx_embedder import get_onnx_embedder
+            onnx = get_onnx_embedder()
+            checks["onnx"] = {"available": onnx.is_available, "loaded": onnx.is_loaded}
+        except Exception as e:
+            checks["onnx"] = {"available": False, "error": str(e)}
+
+        # 4. 向量索引
+        try:
+            from pangu.memory.vector_index import get_vector_index
+            idx = get_vector_index()
+            checks["vector_index"] = {"size": idx.size, "backend": "FAISS" if idx._use_faiss else "numpy"}
+        except Exception as e:
+            checks["vector_index"] = {"error": str(e)}
+
+        # 5. 神经记忆
+        try:
+            from pangu.memory.neural_memory import get_neural_engine
+            engine = get_neural_engine()
+            checks["neural_memory"] = {
+                "hippocampus": engine.hippocampus.buffer_size,
+                "neocortex": engine.neocortex.count(),
+            }
+        except Exception as e:
+            checks["neural_memory"] = {"error": str(e)}
+
+        # 6. 加密状态
+        try:
+            from pangu.memory.encryption import is_enabled
+            checks["encryption"] = {"enabled": is_enabled()}
+        except Exception:
+            checks["encryption"] = {"enabled": False}
+
+        # 7. 搜索统计
+        try:
+            from pangu.memory.retrieval import get_search_stats
+            checks["search"] = get_search_stats()
+        except Exception:
+            checks["search"] = {}
+
+        # 总体状态
+        all_ok = all(
+            v.get("exists", True) and v.get("available", True) and "error" not in v
+            for v in checks.values() if isinstance(v, dict)
+        )
+        checks["status"] = "healthy" if all_ok else "degraded"
+
+        return checks
+
     def status(self) -> dict:
         """记忆栈状态（含各层 token 估算 + 动态预算 + 搜索统计）"""
         drawers = self._load_drawers()
