@@ -90,18 +90,20 @@ def _record_search(hit: bool, method: str = "", query: str = "", result_count: i
 
 
 def _cosine_similarity(a: list, b: list) -> float:
-    """余弦相似度"""
-    n = min(len(a), len(b))
+    """余弦相似度（numpy 向量化）"""
+    import numpy as np
+    a_arr = np.asarray(a, dtype=np.float32)
+    b_arr = np.asarray(b, dtype=np.float32)
+    n = min(len(a_arr), len(b_arr))
     if n == 0:
         return 0.0
-    a_trunc = a[:n]
-    b_trunc = b[:n]
-    dot = sum(x * y for x, y in zip(a_trunc, b_trunc, strict=False))
-    norm_a = sum(x * x for x in a_trunc) ** 0.5
-    norm_b = sum(x * x for x in b_trunc) ** 0.5
+    a_trunc = a_arr[:n]
+    b_trunc = b_arr[:n]
+    norm_a = np.linalg.norm(a_trunc)
+    norm_b = np.linalg.norm(b_trunc)
     if norm_a == 0 or norm_b == 0:
         return 0.0
-    return dot / (norm_a * norm_b)
+    return float(np.dot(a_trunc, b_trunc) / (norm_a * norm_b))
 
 
 def recall(
