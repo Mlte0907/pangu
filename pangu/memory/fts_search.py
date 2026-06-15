@@ -1,7 +1,7 @@
 """盘古 FTS5 全文搜索 + RRF 混合搜索引擎
 
 从伏羲移植：FTS5 全文搜索 + 向量语义搜索 + RRF 倒数排名融合
-支持自适应权重、结果缓存、多级过滤
+支持自适应权重、结果缓存、多级过滤、中文分词
 """
 
 import json
@@ -16,6 +16,22 @@ from pangu.core.hashing import hex_digest
 from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.fts_search")
+
+# 中文分词器（jieba）
+_jieba = None
+
+
+def _get_jieba():
+    """获取 jieba 分词器（懒加载）"""
+    global _jieba
+    if _jieba is None:
+        try:
+            import jieba
+            jieba.setLogLevel(logging.WARNING)
+            _jieba = jieba
+        except ImportError:
+            logger.debug("jieba not available, using regex fallback")
+    return _jieba
 
 _FTS_SPECIAL_RE = re.compile(r'\b(AND|OR|NOT|NEAR)\b|[()"*^]')
 
@@ -96,26 +112,53 @@ class FTS5SearchEngine:
         return self._embedder
 
     def build_index(self, drawers: list[Drawer]) -> int:
-        """构建 FTS 内存索引"""
+        """构建 FTS 内存索引（支持中文分词）"""
         self._fts_index.clear()
         self._fts_content_map = {}
+        jieba = _get_jieba()
+
         for d in drawers:
             content_lower = d.content.lower()
             self._fts_content_map[d.id] = content_lower
-            tokens = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', content_lower))
+
+            # 中文分词 + 英文单词
+            tokens = set()
+            if jieba:
+                # jieba 分词
+                words = jieba.cut(content_lower)
+                for w in words:
+                    w = w.strip()
+                    if len(w) >= 1:
+                        tokens.add(w)
+            else:
+                # 降级：正则分词
+                tokens = set(re.findall(r'[\u4e00-\u9fff]{1,}|[a-zA-Z]{2,}', content_lower))
+
+            # 标签也加入索引
+            for tag in d.tags:
+                tokens.add(tag.lower())
+
             for token in tokens:
                 if token not in self._fts_index:
                     self._fts_index[token] = set()
                 self._fts_index[token].add(d.id)
+
         self._indexed = True
         total_tokens = len(self._fts_index)
-        logger.info(f"FTS index built: {total_tokens} tokens, {len(drawers)} documents")
+        logger.info(f"FTS index built: {total_tokens} tokens, {len(drawers)} documents, jieba={'yes' if jieba else 'no'}")
         return total_tokens
 
     def _fts_search(self, query: str, drawers: list[Drawer], limit: int = 50) -> dict[str, float]:
         """FTS 全文搜索，返回 {drawer_id: score}"""
         safe_query = _sanitize_fts_query(query).lower()
-        keywords = safe_query.split()
+
+        # 中文分词
+        jieba = _get_jieba()
+        if jieba:
+            keywords = [w.strip() for w in jieba.cut(safe_query) if w.strip()]
+        else:
+            keywords = safe_query.split()
+
         if not keywords:
             return {}
 
