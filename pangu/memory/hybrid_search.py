@@ -49,12 +49,14 @@ def hybrid_search(
     vector_ranks: dict[str, int] = {}
     kg_ranks: dict[str, int] = {}
 
-    # ── FTS 召回 ──
+    # ── FTS 召回（使用缓存的 FTS 引擎） ──
     try:
-        from pangu.memory.fts_search import FTS5SearchEngine
-        fts = FTS5SearchEngine()
-        fts_results = fts._fts_search(query, limit=len(drawers))
-        for rank, (mid, score) in enumerate(fts_results):
+        from pangu.memory.fts_search import FTS5SearchEngine, _get_fts_engine
+        fts = _get_fts_engine()
+        if not fts._indexed or fts._indexed_count != len(drawers):
+            fts.build_index(drawers)
+        fts_results = fts._fts_search(query, drawers)
+        for rank, (mid, score) in enumerate(fts_results.items()):
             if mid in all_ids:
                 fts_ranks[mid] = rank + 1
     except Exception as e:

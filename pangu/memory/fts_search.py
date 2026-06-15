@@ -489,3 +489,14 @@ def holographic_search(
         })
 
     return results
+
+
+_fts_engine: FTS5SearchEngine | None = None
+
+
+def _get_fts_engine() -> FTS5SearchEngine:
+    """获取全局 FTS 引擎实例（避免重复创建）"""
+    global _fts_engine
+    if _fts_engine is None:
+        _fts_engine = FTS5SearchEngine()
+    return _fts_engine
