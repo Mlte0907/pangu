@@ -38,6 +38,10 @@ _search_stats: dict = {
 _search_history: list[dict] = []
 _search_history_max = 50
 
+# 向量搜索缓存（query → embedding）
+_vector_cache: dict[str, list[float]] = {}
+_vector_cache_max = 1000
+
 
 def get_search_stats() -> dict:
     """获取搜索命中率统计"""
@@ -152,54 +156,81 @@ def recall(
         filtered = [d for d in filtered if d.importance >= min_importance]
 
     if query and filtered:
-        # 向量语义搜索（ONNX 优先）
+        # 并行搜索：向量 + FTS
+        RRF_K = 60
+        rrf_scores: dict[str, float] = {}
+
+        # ── 向量搜索（带缓存） ──
         query_vec = None
-        try:
-            from pangu.memory.onnx_embedder import get_onnx_embedder
-            onnx = get_onnx_embedder()
-            if onnx.is_available:
-                query_vec = onnx.embed(query)
-        except Exception:
-            pass
-        if query_vec is None:
+        cache_key = f"vec_{query}"
+        if cache_key in _vector_cache:
+            query_vec = _vector_cache[cache_key]
+        else:
             try:
-                embed_svc = get_embedding_service()
-                query_vec = embed_svc.embed(query)
+                from pangu.memory.onnx_embedder import get_onnx_embedder
+                onnx = get_onnx_embedder()
+                if onnx.is_available:
+                    query_vec = onnx.embed(query)
             except Exception:
                 pass
+            if query_vec is None:
+                try:
+                    embed_svc = get_embedding_service()
+                    query_vec = embed_svc.embed(query)
+                except Exception:
+                    pass
+            if query_vec:
+                _vector_cache[cache_key] = query_vec
+                if len(_vector_cache) > _vector_cache_max:
+                    _vector_cache.pop(next(iter(_vector_cache)))
 
         if query_vec:
-            scored = []
+            vec_results = {}
             for d in filtered:
                 stored_vec = d.metadata.get("embedding")
                 if not stored_vec:
-                    sim = 0.0
-                else:
-                    try:
-                        sim = _cosine_similarity(query_vec, stored_vec)
-                    except Exception:
-                        sim = 0.0
-
-                if sim < 0.65:  # ONNX 语义嵌入阈值
                     continue
+                try:
+                    sim = _cosine_similarity(query_vec, stored_vec)
+                except Exception:
+                    sim = 0.0
+                if sim >= 0.65:
+                    vec_results[d.id] = sim
 
-                # 综合打分（神经记忆衰减）
-                decay_score = _get_neural_decay_score(d)
-                importance_factor = (d.importance / 5.0) * 0.6 + decay_score * 0.4
-                relevance = sim * vector_weight + importance_factor * (1 - vector_weight)
-                scored.append((d, relevance, sim))
+            # 转为 RRF 排名
+            sorted_vec = sorted(vec_results.items(), key=lambda x: -x[1])
+            for rank, (did, _) in enumerate(sorted_vec):
+                rrf_scores[did] = rrf_scores.get(did, 0) + 1.0 / (RRF_K + rank + 1)
 
-            scored.sort(key=lambda x: x[1], reverse=True)
-            results = [_drawer_to_dict(s[0], s[1], s[2], query) for s in scored[offset : offset + limit]]
+        # ── FTS 搜索 ──
+        try:
+            from pangu.memory.fts_search import FTS5SearchEngine
+            fts = FTS5SearchEngine()
+            fts.build_index(filtered)
+            fts_results = fts._fts_search(query, filtered)
+            for rank, (did, _) in enumerate(sorted(fts_results.items(), key=lambda x: -x[1])):
+                rrf_scores[did] = rrf_scores.get(did, 0) + 0.5 / (RRF_K + rank + 1)
+        except Exception:
+            pass
+
+        # ── 排序返回 ──
+        if rrf_scores:
+            sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -rrf_scores[x])
+            drawer_map = {d.id: d for d in filtered}
+            results = []
+            for did in sorted_ids[offset : offset + limit]:
+                if did in drawer_map:
+                    d = drawer_map[did]
+                    vec_sim = vec_results.get(did, 0.0)
+                    results.append(_drawer_to_dict(d, rrf_scores[did], vec_sim, query))
         else:
-            # 关键词降级
+            # 降级：关键词匹配
             query_lower = query.lower()
             keyword_matches = []
             for d in filtered:
                 score = 0.0
                 if query_lower in d.content.lower():
                     score = 0.8
-                # 标签匹配加分
                 tag_match = sum(1 for t in d.tags if query_lower in t.lower())
                 score += tag_match * 0.2
                 if score > 0:
