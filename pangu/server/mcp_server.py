@@ -382,6 +382,7 @@ class MCPServer:
             {"name": "pangu_hybrid_search", "description": "FTS+向量+KG三路召回 RRF融合检索", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 10}}, "required": ["query"]}},
             {"name": "pangu_cluster_by_tags", "description": "按标签聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 20}}, "required": ["query"]}},
             {"name": "pangu_cluster_by_time", "description": "按时间聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "buckets": {"type": "integer", "description": "时间段数", "default": 3}}, "required": ["query"]}},
+            {"name": "pangu_hierarchical_cluster", "description": "层次聚类（基于向量相似度）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "max_clusters": {"type": "integer", "description": "最大聚类数", "default": 5}}, "required": ["query"]}},
             {"name": "pangu_search_stats", "description": "获取搜索命中率统计"},
         ]
         for tool in raw:
@@ -1719,6 +1720,14 @@ class MCPServer:
                 clusters = cluster_by_time(results, buckets)
                 summary = get_cluster_summary(clusters)
                 return json.dumps({"clusters": summary, "total_clusters": len(clusters)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_hierarchical_cluster":
+                from ..memory.cluster import hierarchical_cluster
+                query = arguments.get("query", "")
+                max_clusters = arguments.get("max_clusters", 5)
+                results = hybrid_search(query, drawers, self.config, 20)
+                clusters = hierarchical_cluster(results, max_clusters=max_clusters)
+                return json.dumps({"clusters": clusters, "total_clusters": len(clusters)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_search_stats":
                 from ..memory.retrieval import get_search_stats
