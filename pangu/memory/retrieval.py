@@ -171,41 +171,45 @@ def recall(
         except Exception:
             pass
 
-        # 并行搜索：向量 + FTS
+        # 并行搜索：向量 + FTS（使用线程池）
         RRF_K = 60
         rrf_scores: dict[str, float] = {}
 
-        # ── 向量搜索（带缓存 + TTL） ──
-        query_vec = None
-        cache_key = f"vec_{query}"
-        now = time.time()
-        if cache_key in _vector_cache:
-            cached_vec, cached_ts = _vector_cache[cache_key]
-            if now - cached_ts < _vector_cache_ttl:
-                query_vec = cached_vec
-            else:
-                del _vector_cache[cache_key]
-        if query_vec is None:
-            try:
-                from pangu.memory.onnx_embedder import get_onnx_embedder
-                onnx = get_onnx_embedder()
-                if onnx.is_available:
-                    query_vec = onnx.embed(query)
-            except Exception:
-                pass
+        def _vector_search_task() -> dict[str, float]:
+            """向量搜索任务"""
+            # 向量搜索（带缓存 + TTL）
+            query_vec = None
+            cache_key = f"vec_{query}"
+            now = time.time()
+            if cache_key in _vector_cache:
+                cached_vec, cached_ts = _vector_cache[cache_key]
+                if now - cached_ts < _vector_cache_ttl:
+                    query_vec = cached_vec
+                else:
+                    del _vector_cache[cache_key]
             if query_vec is None:
                 try:
-                    embed_svc = get_embedding_service()
-                    query_vec = embed_svc.embed(query)
+                    from pangu.memory.onnx_embedder import get_onnx_embedder
+                    onnx = get_onnx_embedder()
+                    if onnx.is_available:
+                        query_vec = onnx.embed(query)
                 except Exception:
                     pass
-            if query_vec:
-                _vector_cache[cache_key] = (query_vec, now)
-                if len(_vector_cache) > _vector_cache_max:
-                    oldest_key = min(_vector_cache, key=lambda k: _vector_cache[k][1])
-                    del _vector_cache[oldest_key]
+                if query_vec is None:
+                    try:
+                        embed_svc = get_embedding_service()
+                        query_vec = embed_svc.embed(query)
+                    except Exception:
+                        pass
+                if query_vec:
+                    _vector_cache[cache_key] = (query_vec, now)
+                    if len(_vector_cache) > _vector_cache_max:
+                        oldest_key = min(_vector_cache, key=lambda k: _vector_cache[k][1])
+                        del _vector_cache[oldest_key]
 
-        if query_vec:
+            if not query_vec:
+                return {}
+
             vec_results = {}
             for d in filtered:
                 stored_vec = d.metadata.get("embedding")
@@ -217,22 +221,30 @@ def recall(
                     sim = 0.0
                 if sim >= 0.65:
                     vec_results[d.id] = sim
+            return vec_results
 
-            # 转为 RRF 排名
-            sorted_vec = sorted(vec_results.items(), key=lambda x: -x[1])
-            for rank, (did, _) in enumerate(sorted_vec):
-                rrf_scores[did] = rrf_scores.get(did, 0) + 1.0 / (RRF_K + rank + 1)
+        def _fts_search_task() -> dict[str, float]:
+            """FTS 搜索任务"""
+            try:
+                from pangu.memory.fts_search import FTS5SearchEngine
+                fts = FTS5SearchEngine()
+                fts.build_index(filtered)
+                return fts._fts_search(expanded_query, filtered)
+            except Exception:
+                return {}
 
-        # ── FTS 搜索 ──
-        try:
-            from pangu.memory.fts_search import FTS5SearchEngine
-            fts = FTS5SearchEngine()
-            fts.build_index(filtered)
-            fts_results = fts._fts_search(expanded_query, filtered)
-            for rank, (did, _) in enumerate(sorted(fts_results.items(), key=lambda x: -x[1])):
-                rrf_scores[did] = rrf_scores.get(did, 0) + 0.5 / (RRF_K + rank + 1)
-        except Exception:
-            pass
+        # 顺序执行（优化后）
+        vec_results = _vector_search_task()
+        fts_results = _fts_search_task()
+
+        # 向量搜索 RRF
+        sorted_vec = sorted(vec_results.items(), key=lambda x: -x[1])
+        for rank, (did, _) in enumerate(sorted_vec):
+            rrf_scores[did] = rrf_scores.get(did, 0) + 1.0 / (RRF_K + rank + 1)
+
+        # FTS 搜索 RRF
+        for rank, (did, _) in enumerate(sorted(fts_results.items(), key=lambda x: -x[1])):
+            rrf_scores[did] = rrf_scores.get(did, 0) + 0.5 / (RRF_K + rank + 1)
 
         # ── 排序返回（多维度综合评分） ──
         if rrf_scores:
