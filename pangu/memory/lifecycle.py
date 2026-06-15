@@ -197,6 +197,65 @@ class LifecycleManager:
         logger.info(f"Vector index rebuilt: {result}")
         return result
 
+    def run_decay(self) -> dict:
+        """执行记忆衰减"""
+        try:
+            from pangu.memory.decay import decay_batch
+        except ImportError:
+            return {"status": "skip", "reason": "decay module not available"}
+
+        drawers_file = Path(self.config.palace_path) / "drawers.json"
+        if not drawers_file.exists():
+            return {"status": "no_memories"}
+
+        with open(drawers_file, encoding="utf-8") as f:
+            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+
+        # 执行衰减
+        stats = decay_batch(drawers, dry_run=False)
+
+        # 保存衰减后的记忆
+        if stats.get("decayed", 0) > 0 or stats.get("purge_candidates", 0) > 0:
+            with open(drawers_file, "w", encoding="utf-8") as f:
+                json.dump([d.to_dict() for d in drawers], f, ensure_ascii=False, indent=2)
+
+        return stats
+
+    def get_decay_stats(self) -> dict:
+        """获取衰减统计信息"""
+        try:
+            from pangu.memory.consolidation import MemoryConsolidator
+        except ImportError:
+            return {"status": "skip", "reason": "consolidation module not available"}
+
+        drawers_file = Path(self.config.palace_path) / "drawers.json"
+        if not drawers_file.exists():
+            return {"status": "no_memories"}
+
+        with open(drawers_file, encoding="utf-8") as f:
+            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+
+        consolidator = MemoryConsolidator(self.config)
+        forgotten = consolidator.find_forgotten(drawers)
+        compressible = consolidator.find_compressible(drawers)
+
+        importance_dist = {"high": 0, "medium": 0, "low": 0}
+        for d in drawers:
+            if d.importance >= 4.0:
+                importance_dist["high"] += 1
+            elif d.importance >= 2.0:
+                importance_dist["medium"] += 1
+            else:
+                importance_dist["low"] += 1
+
+        return {
+            "total": len(drawers),
+            "forgotten": len(forgotten),
+            "compressible": len(compressible),
+            "importance_distribution": importance_dist,
+            "average_importance": round(sum(d.importance for d in drawers) / max(len(drawers), 1), 2),
+        }
+
     def _count_new_memories(self) -> int:
         """自上次巩固以来新增的记忆数"""
         drawers_file = Path(self.config.palace_path) / "drawers.json"
@@ -306,6 +365,11 @@ class LifecycleManager:
         compress_result = self.run_auto_compress()
         if compress_result.get("compressed", 0) > 0:
             results["compression"] = compress_result
+
+        # 记忆衰减
+        decay_result = self.run_decay()
+        if decay_result.get("decayed", 0) > 0:
+            results["decay"] = decay_result
 
         # KG 实体自动提取
         kg_result = self.run_kg_enrichment()
