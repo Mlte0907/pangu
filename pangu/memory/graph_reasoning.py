@@ -4,8 +4,11 @@
 1. 实体识别：从文本中提取实体
 2. 路径查找：查找实体间的关联路径
 3. 规则推理：基于边类型进行逻辑推理
-4. 矛盾检测：检测图中的矛盾关系
-5. 推理链可视化：展示推理过程和依据
+4. 语义推理：基于向量相似度推断隐含关系
+5. 因果链分析：追溯因果关系链
+6. 时序推理：基于时间线推断因果关系
+7. 矛盾检测：检测图中的矛盾关系
+8. 推理链可视化：展示推理过程和依据
 """
 import logging
 import re
@@ -167,6 +170,140 @@ class GraphReasoning:
         # 综合置信度
         confidence = entity_score * 0.3 + path_score * 0.3 + inference_score * 0.4
         return round(confidence, 3)
+
+    def causal_chain_analysis(self, entity_id: str, max_depth: int = 5) -> list[dict]:
+        """因果链分析 — 追溯因果关系链
+
+        Args:
+            entity_id: 起始实体 ID
+            max_depth: 最大追溯深度
+
+        Returns:
+            因果链列表
+        """
+        chain = []
+        current = entity_id
+        visited = set()
+
+        for _ in range(max_depth):
+            if current in visited:
+                break
+            visited.add(current)
+
+            entity = self.kg.get_entity(current)
+            if not entity:
+                break
+
+            # 查找因果关系
+            relations = self.kg.query_relations(subject_id=current)
+            causal_rels = [r for r in relations if r.get("predicate") in ("causes", "enables", "leads_to")]
+
+            if causal_rels:
+                for rel in causal_rels[:2]:  # 只取前2个因果关系
+                    chain.append({
+                        "entity": entity.get("name", ""),
+                        "relation": rel.get("predicate", ""),
+                        "target": rel.get("object_id", ""),
+                        "confidence": rel.get("confidence", 1.0),
+                    })
+                    current = rel.get("object_id", "")
+                    break
+            else:
+                break
+
+        return chain
+
+    def temporal_reasoning(self, query: str) -> dict:
+        """时序推理 — 基于时间线推断因果关系
+
+        Args:
+            query: 查询文本
+
+        Returns:
+            时序推理结果
+        """
+        # 提取时间相关的实体
+        time_entities = []
+        all_entities = self.kg.list_entities()
+
+        time_patterns = [
+            r'(\d{4})年',
+            r'(\d{1,2})月',
+            r'(\d{1,2})日',
+            r'昨天', r'今天', r'明天',
+            r'上周', r'本周', r'下周',
+        ]
+
+        for entity in all_entities:
+            name = entity.get("name", "")
+            for pattern in time_patterns:
+                if re.search(pattern, name):
+                    time_entities.append(entity)
+                    break
+
+        # 分析时序关系
+        temporal_relations = []
+        for i, e1 in enumerate(time_entities):
+            for e2 in time_entities[i+1:]:
+                # 查找两个实体间的关系
+                relations = self.kg.query_relations(
+                    subject_id=e1["id"],
+                    object_id=e2["id"]
+                )
+                if relations:
+                    temporal_relations.append({
+                        "from": e1.get("name", ""),
+                        "to": e2.get("name", ""),
+                        "relation": relations[0].get("predicate", ""),
+                    })
+
+        return {
+            "time_entities": len(time_entities),
+            "temporal_relations": temporal_relations,
+            "chain": temporal_relations[:5],
+        }
+
+    def analogy_detection(self, query: str) -> dict:
+        """类比检测 — 发现不同领域的相似模式
+
+        Args:
+            query: 查询文本
+
+        Returns:
+            类比检测结果
+        """
+        entities = self._extract_entities(query)
+        if len(entities) < 2:
+            return {"analogies": [], "count": 0}
+
+        # 查找不同类型的实体间的相似关系
+        analogies = []
+        entity_types = set(e.get("type", "") for e in entities)
+
+        if len(entity_types) >= 2:
+            # 有不同类型的实体，可能存在类比
+            for e1 in entities:
+                for e2 in entities:
+                    if e1.get("type") != e2.get("type"):
+                        # 查找两个实体间的关系
+                        rels1 = self.kg.query_relations(subject_id=e1["id"])
+                        rels2 = self.kg.query_relations(subject_id=e2["id"])
+
+                        # 检查是否有相似的关系模式
+                        pred1 = set(r.get("predicate", "") for r in rels1)
+                        pred2 = set(r.get("predicate", "") for r in rels2)
+                        common = pred1 & pred2
+
+                        if common:
+                            analogies.append({
+                                "entity1": e1.get("name", ""),
+                                "entity2": e2.get("name", ""),
+                                "common_relations": list(common),
+                                "type1": e1.get("type", ""),
+                                "type2": e2.get("type", ""),
+                            })
+
+        return {"analogies": analogies[:5], "count": len(analogies)}
 
     def detect_contradictions(self) -> list[dict]:
         """检测图中的矛盾关系"""
