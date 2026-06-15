@@ -4,9 +4,66 @@ All notable changes to Pangu will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 
-## [2.0.0] - 2026-06-14
+## [2.0.0] - 2026-06-16
 
-### Added — 神经记忆系统
+### Added — 图推理引擎
+- **GraphReasoning**: 基于知识图谱的推理：实体识别、路径查找、规则推理、矛盾检测
+- MCP 工具：`pangu_graph_infer`, `pangu_graph_contradictions`
+
+### Added — 预测性记忆
+- **ProactiveEngine**: 基于上下文预加载相关记忆
+- MCP 工具：`pangu_proactive_predict`
+
+### Added — 记忆版本控制
+- **MemoryVersionControl**: 版本记录、对比、回滚、变更历史
+- MCP 工具：`pangu_version_history`, `pangu_version_compare`
+
+### Added — 记忆可视化
+- **MemoryVisualizer**: 图谱/网络/时间线/统计文本化展示
+- MCP 工具：`pangu_visualize_graph`, `pangu_visualize_network`, `pangu_visualize_stats`
+
+### Added — ML 重要性评分
+- **ImportanceScorer**: 多维度特征（内容/时间/访问/标签/情感）+ 自适应权重
+- MCP 工具：`pangu_importance_score`
+
+### Added — hnswlib 向量索引
+- **VectorIndex**: 自动切换 numpy→hnswlib→FAISS
+- 性能：0.3ms@1000v, 0.9ms@5000v, 1.1ms@10000v
+
+### Added — 向量索引性能优化
+- 写入缓冲：批量写入减少磁盘 I/O
+- FAISS/hnswlib 增量添加：无需重建索引
+- threading.RLock 线程安全：并发读写保护
+
+### Added — 多 Agent 协作
+- **MultiAgentMemory**: private/shared/public 三级权限，跨 Agent 同步
+- MCP 工具：`pangu_multi_register`, `pangu_multi_write`, `pangu_multi_read`, `pangu_multi_agents`
+
+### Added — 社交记忆
+- **SocialMemory**: 评论/投票系统，记忆社交化
+- MCP 工具：`pangu_comment_add`, `pangu_comment_list`, `pangu_vote`, `pangu_vote_stats`
+
+### Added — 持久化
+- **routes_tasks.py**: SQLite 持久化任务数据
+- **UserStore**: SQLite 持久化用户数据
+- **SocialMemory**: SQLite 持久化评论/投票数据
+- **routes_tags.py**: 标签管理系统
+
+### Added — 测试补全
+- **test_v2_features.py**: 17 个新测试覆盖 neural_memory/multi_agent/social_memory/cluster/tags
+
+### Added — 性能优化
+- FTS 中文分词 (jieba)
+- 同义词扩展
+- 搜索聚类（标签/时间/层次）
+- 衰减自动化
+- 缓存命中率统计
+- API 速率限制
+- 搜索排序优化（多维度综合评分）
+- 向量缓存 TTL
+- 查询扩展
+
+## [2.0.0] - 2026-06-14
 - **NeuralMemoryEngine**: 海马体-新皮层双系统，4 种记忆类型 (episodic/semantic/procedural/emotional) × 5 种状态
 - **PersonalizedDecay**: 不同记忆类型不同遗忘曲线（语义 4.6 天半衰期 vs 情景 1.2 天）
 - **Hippocampus**: 短期记忆缓冲，容量管理，竞争抑制淘汰最弱记忆
