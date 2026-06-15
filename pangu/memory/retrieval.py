@@ -32,6 +32,8 @@ _search_stats: dict = {
     "vector_hits": 0,
     "fts_hits": 0,
     "neural_hits": 0,
+    "cache_hits": 0,
+    "cache_misses": 0,
 }
 
 # 搜索历史（最近 50 条）
@@ -143,7 +145,9 @@ def recall(
             if cache_key in _recall_cache:
                 entry = _recall_cache[cache_key]
                 if time.time() - entry["ts"] < _cache_ttl:
+                    _search_stats["cache_hits"] += 1
                     return entry["data"]
+        _search_stats["cache_misses"] += 1
 
     # 过滤
     filtered = list(drawers)
