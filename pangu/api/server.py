@@ -87,6 +87,44 @@ def create_app() -> FastAPI:
         allow_headers=["X-API-Key", "X-Agent-ID", "Content-Type", "Accept", "Accept-Version", "Accept-Encoding"],
     )
 
+    # ── 速率限制 ──
+    class RateLimitMiddleware:
+        """速率限制中间件 — 每分钟最多 100 次请求"""
+        def __init__(self, app: ASGIApp, max_requests: int = 100, window_seconds: int = 60):
+            self.app = app
+            self.max_requests = max_requests
+            self.window = window_seconds
+            self._requests: dict[str, list[float]] = {}
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            # 获取客户端 IP
+            client = scope.get("client", ("unknown", 0))
+            client_ip = client[0] if client else "unknown"
+            now = time.time()
+
+            # 清理过期请求
+            if client_ip in self._requests:
+                self._requests[client_ip] = [t for t in self._requests[client_ip] if now - t < self.window]
+
+            # 检查速率限制
+            if len(self._requests.get(client_ip, [])) >= self.max_requests:
+                response = JSONResponse(
+                    status_code=429,
+                    content={"error": "Rate limit exceeded", "retry_after": self.window}
+                )
+                await response(scope, receive, send)
+                return
+
+            # 记录请求
+            self._requests.setdefault(client_ip, []).append(now)
+            await self.app(scope, receive, send)
+
+    app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
+
     # ── Block /docs from external access ──
     # 白名单：localhost / 127.0.0.1 / ::1 / starlette TestClient 内置的 testclient 哨兵
     _docs_allowed_clients = frozenset({"127.0.0.1", "localhost", "::1", "testclient"})
