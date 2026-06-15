@@ -397,6 +397,10 @@ class MCPServer:
             # ── 预测性记忆 (v2.0) ──
             {"name": "pangu_proactive_predict", "description": "基于上下文预测相关记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前上下文"}, "limit": {"type": "integer", "description": "推荐数量", "default": 5}}, "required": ["context"]}},
 
+            # ── 记忆版本控制 (v2.0) ──
+            {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
+            {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
+
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
             {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1819,6 +1823,22 @@ class MCPServer:
                     ],
                     "count": len(predictions),
                 }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_version_history":
+                from ..memory.versioning import get_version_control
+                vc = get_version_control(self.config)
+                memory_id = arguments.get("memory_id", "")
+                history = vc.get_change_history(memory_id)
+                return json.dumps({"history": history, "count": len(history)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_version_compare":
+                from ..memory.versioning import get_version_control
+                vc = get_version_control(self.config)
+                memory_id = arguments.get("memory_id", "")
+                v1 = arguments.get("v1", 1)
+                v2 = arguments.get("v2", 2)
+                diff = vc.compare_versions(memory_id, v1, v2)
+                return json.dumps(diff, ensure_ascii=False, indent=2)
 
             # ── 社交记忆 ──
             elif tool_name == "pangu_comment_add":
