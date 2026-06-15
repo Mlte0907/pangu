@@ -8,11 +8,14 @@
 - 记忆专家推荐（基于使用频率和评分）
 - 记忆共享权限管理（private / team / public）
 """
+import json
 import logging
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from pangu.core.hashing import hex_digest
@@ -85,17 +88,133 @@ class SharePermission:
 
 
 class SocialMemory:
-    """记忆社交化管理器
+    """记忆社交化管理器（SQLite 持久化）
 
     管理记忆的社交属性：评论、投票、推荐和权限。
     """
 
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
-        self._comments: dict[str, Comment] = {}  # comment_id -> Comment
-        self._votes: dict[str, list[Vote]] = {}  # memory_id -> [Vote]
-        self._experts: dict[str, ExpertProfile] = {}  # user_id -> ExpertProfile
-        self._permissions: dict[str, SharePermission] = {}  # memory_id -> SharePermission
+        self._comments: dict[str, Comment] = {}
+        self._votes: dict[str, list[Vote]] = {}
+        self._experts: dict[str, ExpertProfile] = {}
+        self._permissions: dict[str, SharePermission] = {}
+
+        # SQLite 持久化
+        from pangu.core.config import config as pangu_config
+        self._db_path = Path(pangu_config.palace_path) / "social.db"
+        self._init_db()
+        self._load_from_db()
+
+    def _init_db(self) -> None:
+        """初始化社交数据表"""
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS comments (
+                id TEXT PRIMARY KEY, memory_id TEXT, author_id TEXT, content TEXT,
+                parent_id TEXT, created_at TEXT, likes INTEGER DEFAULT 0, replies TEXT DEFAULT '[]'
+            )""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, memory_id TEXT, user_id TEXT,
+                vote_type TEXT, timestamp TEXT, weight REAL DEFAULT 1.0
+            )""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS experts (
+                user_id TEXT PRIMARY KEY, name TEXT, expertise_tags TEXT DEFAULT '[]',
+                total_votes INTEGER DEFAULT 0, helpful_votes INTEGER DEFAULT 0,
+                accuracy REAL DEFAULT 0.0, memories_used TEXT DEFAULT '[]'
+            )""")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _load_from_db(self) -> None:
+        """从数据库加载数据"""
+        try:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                # 加载评论
+                rows = conn.execute("SELECT * FROM comments").fetchall()
+                for row in rows:
+                    comment = Comment(
+                        id=row[0], memory_id=row[1], author_id=row[2],
+                        content=row[3], parent_id=row[4], created_at=row[5],
+                        likes=row[6], replies=json.loads(row[7])
+                    )
+                    self._comments[comment.id] = comment
+
+                # 加载投票
+                rows = conn.execute("SELECT * FROM votes").fetchall()
+                for row in rows:
+                    vote = Vote(
+                        user_id=row[2], memory_id=row[1],
+                        vote_type=VoteType(row[3]), timestamp=row[4], weight=row[5]
+                    )
+                    self._votes.setdefault(vote.memory_id, []).append(vote)
+
+                # 加载专家
+                rows = conn.execute("SELECT * FROM experts").fetchall()
+                for row in rows:
+                    expert = ExpertProfile(
+                        user_id=row[0], name=row[1],
+                        expertise_tags=json.loads(row[2]),
+                        total_votes=row[3], helpful_votes=row[4],
+                        accuracy=row[5], memories_used=json.loads(row[6])
+                    )
+                    self._experts[expert.user_id] = expert
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    def _save_comment(self, comment: Comment) -> None:
+        """保存评论到数据库"""
+        try:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO comments VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (comment.id, comment.memory_id, comment.author_id, comment.content,
+                     comment.parent_id, comment.created_at, comment.likes, json.dumps(comment.replies))
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    def _save_vote(self, vote: Vote) -> None:
+        """保存投票到数据库"""
+        try:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                conn.execute(
+                    "INSERT INTO votes (memory_id, user_id, vote_type, timestamp, weight) VALUES (?, ?, ?, ?, ?)",
+                    (vote.memory_id, vote.user_id, vote.vote_type.value, vote.timestamp, vote.weight)
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    def _save_expert(self, expert: ExpertProfile) -> None:
+        """保存专家到数据库"""
+        try:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO experts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (expert.user_id, expert.name, json.dumps(expert.expertise_tags),
+                     expert.total_votes, expert.helpful_votes, expert.accuracy,
+                     json.dumps(expert.memories_used))
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
 
     # ---- 评论管理 ----
 
@@ -111,10 +230,12 @@ class SocialMemory:
             parent_id=parent_id
         )
         self._comments[comment_id] = comment
+        self._save_comment(comment)
 
         # 如果是回复，添加到父评论的 replies 列表
         if parent_id and parent_id in self._comments:
             self._comments[parent_id].replies.append(comment_id)
+            self._save_comment(self._comments[parent_id])
 
         logger.info(f"评论已添加: {comment_id} (记忆: {memory_id})")
         return comment
@@ -177,6 +298,7 @@ class SocialMemory:
             weight=weight
         )
         self._votes[memory_id].append(vote)
+        self._save_vote(vote)
 
         # 更新专家统计
         self._update_expert_stats(user_id, memory_id, vote_type)
@@ -234,6 +356,7 @@ class SocialMemory:
             expert.memories_used.append(memory_id)
         if expert.total_votes > 0:
             expert.accuracy = expert.helpful_votes / expert.total_votes
+        self._save_expert(expert)
 
     # ---- 专家推荐 ----
 
