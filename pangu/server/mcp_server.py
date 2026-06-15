@@ -406,6 +406,9 @@ class MCPServer:
             {"name": "pangu_visualize_network", "description": "可视化记忆网络", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_visualize_stats", "description": "可视化统计信息", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 重要性评分 (v2.0) ──
+            {"name": "pangu_importance_score", "description": "计算记忆重要性评分", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "context": {"type": "string", "description": "当前上下文"}}, "required": ["memory_id"]}},
+
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
             {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1866,6 +1869,22 @@ class MCPServer:
                 from ..memory.visualization import get_visualizer
                 viz = get_visualizer(self.config)
                 return viz.visualize_stats(drawers)
+
+            elif tool_name == "pangu_importance_score":
+                from ..memory.importance_scorer import get_importance_scorer
+                scorer = get_importance_scorer(self.config)
+                memory_id = arguments.get("memory_id", "")
+                context = arguments.get("context", "")
+                # 查找记忆
+                drawer = next((d for d in drawers if d.id == memory_id), None)
+                if not drawer:
+                    return json.dumps({"error": f"Memory not found: {memory_id}"})
+                result = scorer.score(drawer, context)
+                return json.dumps({
+                    "score": result.score,
+                    "factors": result.factors,
+                    "explanation": result.explanation,
+                }, ensure_ascii=False, indent=2)
 
             # ── 社交记忆 ──
             elif tool_name == "pangu_comment_add":
