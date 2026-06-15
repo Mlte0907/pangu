@@ -99,7 +99,9 @@ class FTS5SearchEngine:
         self.similarity_threshold = similarity_threshold
         self._embedder = None
         self._fts_index: dict[str, set[str]] = {}  # token -> drawer_ids
+        self._fts_content_map: dict[str, str] = {}  # drawer_id -> content
         self._indexed: bool = False
+        self._indexed_count: int = 0  # 索引的文档数量
 
     @property
     def embedder(self):
@@ -113,8 +115,13 @@ class FTS5SearchEngine:
 
     def build_index(self, drawers: list[Drawer]) -> int:
         """构建 FTS 内存索引（支持中文分词）"""
+        # 如果索引已构建且文档数量相同，跳过重建
+        if self._indexed and self._indexed_count == len(drawers):
+            return len(self._fts_index)
+
         self._fts_index.clear()
         self._fts_content_map = {}
+        self._indexed_count = len(drawers)
         jieba = _get_jieba()
 
         for d in drawers:
