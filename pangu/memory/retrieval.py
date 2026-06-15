@@ -157,8 +157,15 @@ def recall(
         filtered = [d for d in filtered if d.importance >= min_importance]
 
     if query and filtered:
-        # 查询扩展（短查询自动扩展）
+        # 查询扩展（短查询 + 同义词）
         expanded_query = _expand_query(query, filtered) if len(query) < 4 else query
+        try:
+            from pangu.memory.synonyms import expand_synonyms
+            syn_words = expand_synonyms(query)
+            if syn_words:
+                expanded_query = expanded_query + " " + " ".join(syn_words[:3])
+        except Exception:
+            pass
 
         # 并行搜索：向量 + FTS
         RRF_K = 60
