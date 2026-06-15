@@ -394,6 +394,9 @@ class MCPServer:
             {"name": "pangu_graph_infer", "description": "基于知识图谱推理", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "推理查询"}}, "required": ["query"]}},
             {"name": "pangu_graph_contradictions", "description": "检测图中的矛盾关系", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 预测性记忆 (v2.0) ──
+            {"name": "pangu_proactive_predict", "description": "基于上下文预测相关记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前上下文"}, "limit": {"type": "integer", "description": "推荐数量", "default": 5}}, "required": ["context"]}},
+
             # ── 社交记忆 (v2.0) ──
             {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
             {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1801,6 +1804,20 @@ class MCPServer:
                 return json.dumps({
                     "contradictions": contradictions,
                     "count": len(contradictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_proactive_predict":
+                from ..memory.proactive import get_proactive_engine
+                engine = get_proactive_engine(self.config)
+                context = arguments.get("context", "")
+                limit = arguments.get("limit", 5)
+                predictions = engine.predict(context, drawers, limit)
+                return json.dumps({
+                    "predictions": [
+                        {"id": p.memory_id, "content": p.content, "score": p.relevance_score, "reason": p.reason}
+                        for p in predictions
+                    ],
+                    "count": len(predictions),
                 }, ensure_ascii=False, indent=2)
 
             # ── 社交记忆 ──
