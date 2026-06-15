@@ -129,7 +129,7 @@ class PanguConfig(BaseSettings):
     recall_cache_max: int = 128
     vector_weight_default: float = 0.6
     fts_weight_default: float = 4.0
-    similarity_threshold: float = 0.35
+    similarity_threshold: float = 0.65  # ONNX 语义嵌入需要更高阈值
 
     # ── 衰减配置 ──
     decay_base: float = 0.95

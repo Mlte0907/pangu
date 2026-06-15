@@ -158,7 +158,7 @@ def recall(
                     except Exception:
                         sim = 0.0
 
-                if sim < 0.25:
+                if sim < 0.65:  # ONNX 语义嵌入阈值
                     continue
 
                 # 综合打分（神经记忆衰减）
@@ -168,7 +168,7 @@ def recall(
                 scored.append((d, relevance, sim))
 
             scored.sort(key=lambda x: x[1], reverse=True)
-            results = [_drawer_to_dict(s[0], s[1], s[2]) for s in scored[offset : offset + limit]]
+            results = [_drawer_to_dict(s[0], s[1], s[2], query) for s in scored[offset : offset + limit]]
         else:
             # 关键词降级
             query_lower = query.lower()
@@ -183,7 +183,7 @@ def recall(
                 if score > 0:
                     keyword_matches.append((d, score))
             keyword_matches.sort(key=lambda x: x[1], reverse=True)
-            results = [_drawer_to_dict(m[0], m[1]) for m in keyword_matches[offset : offset + limit]]
+            results = [_drawer_to_dict(m[0], m[1], 0.0, query) for m in keyword_matches[offset : offset + limit]]
     else:
         # 无查询：按排序方式返回
         if sort_by == "importance":
@@ -228,9 +228,15 @@ def recall(
                 del _recall_cache[oldest]
             _recall_cache[cache_key] = {"ts": time.time(), "data": results}
 
+    # 无结果时提供搜索建议
+    if query and not results and drawers:
+        suggestions = _get_search_suggestions(query, drawers)
+        if suggestions:
+            results = [{"id": "__suggestion__", "content": f"试试: {', '.join(suggestions)}", "suggestion": True}]
+
     # 记录命中率
     if query:
-        has_results = len(results) > 0
+        has_results = len(results) > 0 and not any(r.get("suggestion") for r in results)
         method = ""
         if has_results:
             if any(r.get("source") == "neural_spreading" for r in results):
@@ -322,8 +328,66 @@ def _get_neural_decay_score(drawer: Drawer) -> float:
             return 0.5
 
 
-def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0) -> dict:
-    """将 Drawer 转换为字典（自动解密内容）"""
+def _get_search_suggestions(query: str, drawers: list[Drawer], max_suggestions: int = 3) -> list[str]:
+    """基于已有记忆生成搜索建议"""
+    if not drawers or not query:
+        return []
+
+    # 提取所有标签和关键词
+    all_tags = set()
+    all_keywords = set()
+    for d in drawers:
+        all_tags.update(t.lower() for t in d.tags if t)
+        # 从内容提取关键词（取前 3 个词）
+        words = [w.lower() for w in d.content.split() if len(w) >= 2]
+        all_keywords.update(words[:3])
+
+    # 合并标签和关键词
+    candidates = all_tags | all_keywords
+
+    # 找与查询词相关的建议
+    query_lower = query.lower()
+    suggestions = []
+    for cand in candidates:
+        # 精确匹配
+        if cand == query_lower:
+            continue
+        # 包含匹配
+        if query_lower in cand or cand in query_lower:
+            suggestions.append(cand)
+        # 字符重叠匹配
+        elif len(query_lower) >= 2 and len(cand) >= 2:
+            overlap = sum(1 for c in query_lower if c in cand)
+            if overlap / max(len(query_lower), len(cand)) > 0.5:
+                suggestions.append(cand)
+
+    # 去重并限制数量
+    seen = set()
+    unique = []
+    for s in suggestions:
+        if s not in seen:
+            seen.add(s)
+            unique.append(s)
+    return unique[:max_suggestions]
+
+
+def _highlight_content(content: str, query: str) -> str:
+    """在内容中标记匹配关键词"""
+    if not query or not content:
+        return content
+    keywords = query.lower().split()
+    highlighted = content
+    for kw in keywords:
+        if len(kw) >= 2 and kw in highlighted.lower():
+            import re
+            pattern = re.compile(re.escape(kw), re.IGNORECASE)
+            highlighted = pattern.sub(f"**{kw}**", highlighted)
+    return highlighted
+
+
+def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0,
+                    query: str = "") -> dict:
+    """将 Drawer 转换为字典（自动解密 + 高亮）"""
     content = drawer.content
     if content and content.startswith("gAAAAAB"):
         try:
@@ -331,9 +395,11 @@ def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0) 
             content = decrypt(content)
         except Exception:
             pass
+    highlighted = _highlight_content(content, query) if query else content
     return {
         "id": drawer.id,
         "content": content,
+        "highlighted": highlighted,
         "wing": drawer.wing,
         "room": drawer.room,
         "importance": drawer.importance,
