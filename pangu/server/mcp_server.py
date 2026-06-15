@@ -389,6 +389,12 @@ class MCPServer:
             {"name": "pangu_multi_write", "description": "写入多Agent共享记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "写入者Agent ID"}, "content": {"type": "string", "description": "记忆内容"}, "scope": {"type": "string", "description": "权限范围: private/shared/public", "default": "public"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "标签列表"}}, "required": ["agent_id", "content"]}},
             {"name": "pangu_multi_read", "description": "读取Agent可见的记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "过滤标签"}}, "required": ["agent_id"]}},
             {"name": "pangu_multi_agents", "description": "获取所有已注册Agent", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 社交记忆 (v2.0) ──
+            {"name": "pangu_comment_add", "description": "添加记忆评论", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "author_id": {"type": "string", "description": "作者ID"}, "content": {"type": "string", "description": "评论内容"}}, "required": ["memory_id", "author_id", "content"]}},
+            {"name": "pangu_comment_list", "description": "获取记忆评论列表", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
+            {"name": "pangu_vote", "description": "对记忆投票", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "user_id": {"type": "string", "description": "用户ID"}, "vote_type": {"type": "string", "description": "投票类型: up/down/bookmark"}}, "required": ["memory_id", "user_id", "vote_type"]}},
+            {"name": "pangu_vote_stats", "description": "获取记忆投票统计", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_search_stats", "description": "获取搜索命中率统计"},
         ]
         for tool in raw:
@@ -1768,6 +1774,40 @@ class MCPServer:
                 mam = get_multi_agent_memory()
                 agents = mam.get_agents()
                 return json.dumps({"agents": agents, "count": len(agents)}, ensure_ascii=False)
+
+            # ── 社交记忆 ──
+            elif tool_name == "pangu_comment_add":
+                from ..memory.social_memory import SocialMemory
+                sm = SocialMemory(self.config)
+                memory_id = arguments.get("memory_id", "")
+                author_id = arguments.get("author_id", "")
+                content = arguments.get("content", "")
+                comment = sm.add_comment(memory_id, author_id, content)
+                return json.dumps({"id": comment.id, "memory_id": memory_id, "content": content[:50]}, ensure_ascii=False)
+
+            elif tool_name == "pangu_comment_list":
+                from ..memory.social_memory import SocialMemory
+                sm = SocialMemory(self.config)
+                memory_id = arguments.get("memory_id", "")
+                comments = sm.get_comments(memory_id, top_level_only=False)
+                return json.dumps({"count": len(comments), "comments": [{"id": c.id, "author": c.author_id, "content": c.content[:50], "likes": c.likes} for c in comments[:10]]}, ensure_ascii=False)
+
+            elif tool_name == "pangu_vote":
+                from ..memory.social_memory import SocialMemory, VoteType
+                sm = SocialMemory(self.config)
+                memory_id = arguments.get("memory_id", "")
+                user_id = arguments.get("user_id", "")
+                vote_type_str = arguments.get("vote_type", "up")
+                vote_type = VoteType(vote_type_str) if vote_type_str in ["up", "down", "bookmark"] else VoteType.UP
+                vote = sm.vote(memory_id, user_id, vote_type)
+                return json.dumps({"memory_id": memory_id, "user_id": user_id, "vote_type": vote_type.value}, ensure_ascii=False)
+
+            elif tool_name == "pangu_vote_stats":
+                from ..memory.social_memory import SocialMemory
+                sm = SocialMemory(self.config)
+                memory_id = arguments.get("memory_id", "")
+                stats = sm.get_votes(memory_id)
+                return json.dumps(stats, ensure_ascii=False)
 
             elif tool_name == "pangu_search_stats":
                 from ..memory.retrieval import get_search_stats

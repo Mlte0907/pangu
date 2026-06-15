@@ -8,6 +8,7 @@
 - 记忆专家推荐（基于使用频率和评分）
 - 记忆共享权限管理（private / team / public）
 """
+import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -18,6 +19,8 @@ from pangu.core.hashing import hex_digest
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
+
+logger = logging.getLogger("pangu.memory.social_memory")
 
 
 class ShareLevel(str, Enum):
@@ -113,7 +116,7 @@ class SocialMemory:
         if parent_id and parent_id in self._comments:
             self._comments[parent_id].replies.append(comment_id)
 
-        Drawer.info(f"评论已添加: {comment_id} (记忆: {memory_id})")
+        logger.info(f"评论已添加: {comment_id} (记忆: {memory_id})")
         return comment
 
     def get_comments(self, memory_id: str, top_level_only: bool = True) -> list[Comment]:
