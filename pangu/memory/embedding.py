@@ -195,6 +195,8 @@ class EmbeddingService:
 
     def _call_api_batch(self, texts: list[str]) -> list[list[float] | None]:
         """调用批量API"""
+        if not self.config.embed_api_url:
+            return None  # 未配置 API URL，跳过 API 直接走 ONNX
         try:
             import aiohttp
 
@@ -208,7 +210,7 @@ class EmbeddingService:
                 async with (
                     aiohttp.ClientSession(timeout=timeout) as session,
                     session.post(
-                        self.config.embed_api_url or "http://localhost:11434/api/embed",
+                        self.config.embed_api_url,
                         json=data,
                         headers={"Authorization": f"Bearer {self.config.llm_api_key}"} if self.config.llm_api_key else {},
                     ) as resp,
@@ -237,6 +239,8 @@ class EmbeddingService:
 
     def _call_api(self, text: str) -> list[float] | None:
         """同步调用API"""
+        if not self.config.embed_api_url:
+            return None  # 未配置 API URL，跳过 API 直接走 ONNX
         try:
             import aiohttp
 
@@ -250,7 +254,7 @@ class EmbeddingService:
                 async with (
                     aiohttp.ClientSession(timeout=timeout) as session,
                     session.post(
-                        self.config.embed_api_url or "http://localhost:11434/api/embed",
+                        self.config.embed_api_url,
                         json=data,
                         headers={"Authorization": f"Bearer {self.config.llm_api_key}"} if self.config.llm_api_key else {},
                     ) as resp,

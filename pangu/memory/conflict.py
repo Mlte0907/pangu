@@ -80,11 +80,20 @@ class ConflictDetector:
     def embedder(self):
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
-            except Exception:
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
+            except ImportError:
                 self._embedder = None
         return self._embedder
+
+    @staticmethod
+    def _cosine_sim(a, b) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na and nb else 0.0
 
     def detect_conflicts(self, drawers: list[Drawer],
                          min_similarity: float = 0.5,
@@ -141,7 +150,7 @@ class ConflictDetector:
         conflicts = []
         for a in range(len(candidates)):
             for b in range(a + 1, len(candidates)):
-                sim = self.embedder.similarity(embeddings[a], embeddings[b])
+                sim = self._cosine_sim(embeddings[a], embeddings[b])
                 if sim < min_similarity:
                     continue
 
@@ -280,7 +289,7 @@ class ConflictDetector:
             try:
                 emb_a = self.embedder.embed(drawer_a.content)
                 emb_b = self.embedder.embed(drawer_b.content)
-                sim = self.embedder.similarity(emb_a, emb_b)
+                sim = self._cosine_sim(emb_a, emb_b)
             except Exception:
                 pass
 
