@@ -381,6 +381,11 @@ class LifecycleManager:
         if kg_result.get("entities_added", 0) > 0:
             results["kg_enrichment"] = kg_result
 
+        # 跨会话记忆整合
+        cross_result = self.run_cross_session()
+        if cross_result.get("cross_session_links", 0) > 0:
+            results["cross_session"] = cross_result
+
         # 神经记忆巩固
         try:
             from pangu.memory.neural_memory import get_neural_engine
@@ -467,6 +472,35 @@ class LifecycleManager:
         if self.needs_index_rebuild():
             return self.rebuild_vector_index()
         return {"status": "deferred"}
+
+    def run_cross_session(self) -> dict:
+        """跨会话记忆整合"""
+        try:
+            from pangu.memory.cross_session import CrossSessionIntegrator
+            integrator = CrossSessionIntegrator(self.config)
+        except ImportError:
+            return {"status": "skip", "reason": "cross_session module not available"}
+
+        drawers_file = Path(self.config.palace_path) / "drawers.json"
+        if not drawers_file.exists():
+            return {"status": "no_memories"}
+
+        with open(drawers_file, encoding="utf-8") as f:
+            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+
+        if len(drawers) < 5:
+            return {"status": "skip", "reason": "too_few_memories"}
+
+        # 使用最近 10 条记忆作为新会话记忆
+        new_drawers = drawers[-10:] if len(drawers) > 10 else drawers
+        links = integrator.find_cross_session_links(new_drawers, drawers)
+
+        if links:
+            # 写入 KG
+            added = integrator.build_kg_links(links)
+            return {"status": "completed", "cross_session_links": len(links), "kg_links_added": added}
+
+        return {"status": "completed", "cross_session_links": 0}
 
     def run_kg_enrichment(self) -> dict:
         """KG 实体自动提取 — 从记忆中提取实体和关系"""
