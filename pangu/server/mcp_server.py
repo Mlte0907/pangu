@@ -409,6 +409,11 @@ class MCPServer:
             {"name": "pangu_generate_ideas", "description": "基于记忆生成新想法", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "想法数量", "default": 5}}}},
             {"name": "pangu_discover_patterns", "description": "发现记忆中的模式", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 自主学习 (v2.0) ──
+            {"name": "pangu_discover_knowledge", "description": "从记忆中自动发现新知识", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_generate_hypotheses", "description": "基于记忆生成假设", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "假设数量", "default": 5}}}},
+            {"name": "pangu_learning_stats", "description": "获取自主学习统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -1943,6 +1948,30 @@ class MCPServer:
                 ct = get_creative_thinking(self.config)
                 patterns = ct.discover_patterns(drawers)
                 return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_discover_knowledge":
+                from ..memory.autonomous_learning import get_autonomous_learning
+                al = get_autonomous_learning(self.config)
+                discoveries = al.discover_knowledge(drawers)
+                return json.dumps({"discoveries": discoveries, "count": len(discoveries)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_generate_hypotheses":
+                from ..memory.autonomous_learning import get_autonomous_learning
+                al = get_autonomous_learning(self.config)
+                limit = arguments.get("limit", 5)
+                hypotheses = al.generate_hypotheses(drawers)
+                return json.dumps({
+                    "hypotheses": [
+                        {"statement": h.statement, "confidence": h.confidence, "status": h.status}
+                        for h in hypotheses[:limit]
+                    ],
+                    "count": len(hypotheses),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_learning_stats":
+                from ..memory.autonomous_learning import get_autonomous_learning
+                al = get_autonomous_learning(self.config)
+                return json.dumps(al.get_learning_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
