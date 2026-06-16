@@ -418,6 +418,7 @@ class MCPServer:
             {"name": "pangu_discover_knowledge", "description": "从记忆中自动发现新知识", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_generate_hypotheses", "description": "基于记忆生成假设", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "假设数量", "default": 5}}}},
             {"name": "pangu_learning_stats", "description": "获取自主学习统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -2014,6 +2015,12 @@ class MCPServer:
                 from ..memory.autonomous_learning import get_autonomous_learning
                 al = get_autonomous_learning(self.config)
                 return json.dumps(al.get_learning_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_auto_learn":
+                from ..memory.autonomous_learning import get_autonomous_learning
+                al = get_autonomous_learning(self.config)
+                result = al.auto_learn(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control

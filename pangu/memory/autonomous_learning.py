@@ -121,6 +121,43 @@ class AutonomousLearning:
             "pending": sum(1 for h in self._hypotheses if h.status == "pending"),
         }
 
+    def auto_learn(self, drawers: list[Drawer]) -> dict:
+        """自主学习循环 — 发现→假设→验证→更新"""
+        # 1. 发现知识
+        discoveries = self.discover_knowledge(drawers)
+
+        # 2. 生成假设
+        hypotheses = self.generate_hypotheses(drawers)
+
+        # 3. 验证假设
+        verified = []
+        rejected = []
+        for h in hypotheses[:5]:
+            result = self.verify_hypothesis(h, drawers)
+            if result["status"] == "verified":
+                verified.append(h)
+                h.status = "verified"
+            else:
+                rejected.append(h)
+                h.status = "rejected"
+
+        # 4. 记录学习结果
+        self._learning_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "discoveries": len(discoveries),
+            "hypotheses": len(hypotheses),
+            "verified": len(verified),
+            "rejected": len(rejected),
+        })
+
+        return {
+            "discoveries": len(discoveries),
+            "hypotheses_generated": len(hypotheses),
+            "verified": len(verified),
+            "rejected": len(rejected),
+            "total_learning_cycles": len(self._learning_history),
+        }
+
 
 # 全局单例
 _autonomous_learning: AutonomousLearning | None = None
