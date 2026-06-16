@@ -405,6 +405,10 @@ class MCPServer:
             {"name": "pangu_analyze_emotion", "description": "分析文本情感", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "待分析文本"}}, "required": ["text"]}},
             {"name": "pangu_emotion_stats", "description": "获取情感统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 创造性思维 (v2.0) ──
+            {"name": "pangu_generate_ideas", "description": "基于记忆生成新想法", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "想法数量", "default": 5}}}},
+            {"name": "pangu_discover_patterns", "description": "发现记忆中的模式", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -1920,6 +1924,25 @@ class MCPServer:
                 from ..memory.emotional_intelligence import get_emotional_intelligence
                 ei = get_emotional_intelligence(self.config)
                 return json.dumps(ei.get_emotion_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_generate_ideas":
+                from ..memory.creative_thinking import get_creative_thinking
+                ct = get_creative_thinking(self.config)
+                limit = arguments.get("limit", 5)
+                ideas = ct.generate_ideas(drawers)
+                return json.dumps({
+                    "ideas": [
+                        {"title": i.title, "description": i.description, "category": i.category, "confidence": i.confidence}
+                        for i in ideas[:limit]
+                    ],
+                    "count": len(ideas),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_discover_patterns":
+                from ..memory.creative_thinking import get_creative_thinking
+                ct = get_creative_thinking(self.config)
+                patterns = ct.discover_patterns(drawers)
+                return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
