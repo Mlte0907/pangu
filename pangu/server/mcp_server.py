@@ -528,6 +528,11 @@ class MCPServer:
             {"name": "pangu_extract_keywords", "description": "提取关键词", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "top_k": {"type": "integer", "default": 5}}, "required": ["text"]}},
             {"name": "pangu_distillation_stats", "description": "蒸馏统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 查询重写 (v3.0) ──
+            {"name": "pangu_rewrite_query", "description": "重写搜索查询", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "strategy": {"type": "string", "default": "auto"}}, "required": ["query"]}},
+            {"name": "pangu_suggest_queries", "description": "查询建议", "inputSchema": {"type": "object", "properties": {"partial": {"type": "string"}, "top_k": {"type": "integer", "default": 5}}, "required": ["partial"]}},
+            {"name": "pangu_rewrite_stats", "description": "重写统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2773,6 +2778,33 @@ class MCPServer:
                 from ..memory.distillation import get_distiller
                 d = get_distiller(self.config)
                 return json.dumps(d.get_distillation_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_rewrite_query":
+                from ..memory.query_rewriter import get_rewriter
+                rw = get_rewriter(self.config)
+                query = arguments.get("query", "")
+                strategy = arguments.get("strategy", "auto")
+                result = rw.rewrite(query, strategy)
+                return json.dumps({
+                    "original": result.original,
+                    "rewritten": result.rewritten,
+                    "strategy": result.strategy,
+                    "expanded_terms": result.expanded_terms,
+                    "confidence": result.confidence,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_suggest_queries":
+                from ..memory.query_rewriter import get_rewriter
+                rw = get_rewriter(self.config)
+                partial = arguments.get("partial", "")
+                top_k = arguments.get("top_k", 5)
+                suggestions = rw.suggest_queries(partial, drawers, top_k)
+                return json.dumps({"suggestions": suggestions, "count": len(suggestions)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_rewrite_stats":
+                from ..memory.query_rewriter import get_rewriter
+                rw = get_rewriter(self.config)
+                return json.dumps(rw.get_rewrite_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
