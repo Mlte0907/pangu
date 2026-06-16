@@ -81,7 +81,7 @@ class GraphReasoning:
                         max_depth=3
                     )
                     if path:
-                        paths.append(path)
+                        paths.extend(path)
                         reasoning_chain.append(
                             f"找到路径: {entities[i].get('name', '')} → {entities[j].get('name', '')}"
                         )

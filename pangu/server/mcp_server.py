@@ -1998,7 +1998,7 @@ class MCPServer:
                 ct = get_creative_thinking(self.config)
                 domain = arguments.get("domain", "")
                 context = arguments.get("context", "")
-                ideas = ct.generate_novel_ideas(domain, context)
+                ideas = ct.generate_novel_ideas(domain, context, drawers)
                 return json.dumps({"ideas": ideas, "count": len(ideas)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_discover_knowledge":

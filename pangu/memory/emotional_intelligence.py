@@ -130,7 +130,7 @@ class EmotionalIntelligence:
             "distribution": emotion_counts,
         }
 
-def record_emotion(self, text: str, emotion: EmotionResult) -> None:
+    def record_emotion(self, text: str, emotion: EmotionResult) -> None:
         """记录情感"""
         self._emotion_history.append({
             "text": text[:50],
