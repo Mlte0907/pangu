@@ -533,6 +533,13 @@ class MCPServer:
             {"name": "pangu_suggest_queries", "description": "查询建议", "inputSchema": {"type": "object", "properties": {"partial": {"type": "string"}, "top_k": {"type": "integer", "default": 5}}, "required": ["partial"]}},
             {"name": "pangu_rewrite_stats", "description": "重写统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 图谱构建 (v3.0) ──
+            {"name": "pangu_build_graph", "description": "从记忆构建知识图谱", "inputSchema": {"type": "object", "properties": {"max_drawers": {"type": "integer", "default": 100}}}},
+            {"name": "pangu_graph_entity", "description": "获取实体信息", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+            {"name": "pangu_graph_path", "description": "查找实体间路径", "inputSchema": {"type": "object", "properties": {"from_name": {"type": "string"}, "to_name": {"type": "string"}}, "required": ["from_name", "to_name"]}},
+            {"name": "pangu_graph_quality", "description": "评估图谱质量", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_graph_stats", "description": "图谱统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2805,6 +2812,46 @@ class MCPServer:
                 from ..memory.query_rewriter import get_rewriter
                 rw = get_rewriter(self.config)
                 return json.dumps(rw.get_rewrite_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_build_graph":
+                from ..memory.graph_builder import get_builder
+                gb = get_builder(self.config)
+                max_d = arguments.get("max_drawers", 100)
+                result = gb.build_from_drawers(drawers, max_d)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_entity":
+                from ..memory.graph_builder import get_builder
+                gb = get_builder(self.config)
+                name = arguments.get("name", "")
+                entity = gb.get_entity(name)
+                if not entity:
+                    return json.dumps({"error": f"Entity '{name}' not found"}, ensure_ascii=False, indent=2)
+                rels = gb.get_entity_relations(name)
+                return json.dumps({
+                    "name": entity.name, "type": entity.entity_type,
+                    "confidence": entity.confidence,
+                    "relations": rels, "relation_count": len(rels),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_path":
+                from ..memory.graph_builder import get_builder
+                gb = get_builder(self.config)
+                path = gb.find_path(arguments["from_name"], arguments["to_name"])
+                return json.dumps({
+                    "from": arguments["from_name"], "to": arguments["to_name"],
+                    "path": path, "found": len(path) > 0,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_quality":
+                from ..memory.graph_builder import get_builder
+                gb = get_builder(self.config)
+                return json.dumps(gb.assess_quality(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_stats":
+                from ..memory.graph_builder import get_builder
+                gb = get_builder(self.config)
+                return json.dumps(gb.get_graph_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
