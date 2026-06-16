@@ -1,0 +1,188 @@
+"""盘古记忆导出导入 — 多格式导出和跨系统导入
+
+核心能力：
+1. JSON 导出：标准 JSON 格式全量导出
+2. Markdown 导出：可读 Markdown 格式导出
+3. CSV 导出：表格格式导出
+4. JSON 导入：标准格式导入
+5. 格式检测：自动检测导入文件格式
+"""
+import csv
+import io
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger("pangu.memory.export_import")
+
+
+class ExportImportEngine:
+    """导出导入引擎"""
+
+    def __init__(self, config=None):
+        self.config = config
+        self._export_dir = Path.home() / ".pangu" / "exports"
+        self._export_dir.mkdir(parents=True, exist_ok=True)
+        self._history: list[dict] = []
+
+    def export_json(self, drawers: list, filepath: str = None) -> dict:
+        """JSON 格式导出"""
+        data = []
+        for d in drawers:
+            data.append({
+                "id": d.id,
+                "content": d.content,
+                "wing": d.wing,
+                "importance": d.importance,
+                "tags": d.tags,
+                "created_at": getattr(d, "created_at", ""),
+                "updated_at": getattr(d, "updated_at", ""),
+            })
+
+        if not filepath:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = str(self._export_dir / f"export_{ts}.json")
+
+        Path(filepath).write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+        self._record_export("json", len(data), filepath)
+        return {"format": "json", "count": len(data), "filepath": filepath}
+
+    def export_markdown(self, drawers: list, filepath: str = None) -> dict:
+        """Markdown 格式导出"""
+        lines = ["# 盘古记忆导出\n"]
+        lines.append(f"导出时间: {datetime.now().isoformat()}\n")
+        lines.append(f"记忆总数: {len(drawers)}\n\n")
+
+        by_wing: dict[str, list] = {}
+        for d in drawers:
+            by_wing.setdefault(d.wing, []).append(d)
+
+        for wing, wing_drawers in by_wing.items():
+            lines.append(f"## {wing} ({len(wing_drawers)} 条)\n\n")
+            for d in wing_drawers:
+                imp_bar = "★" * int(d.importance) + "☆" * (5 - int(d.importance))
+                lines.append(f"### {d.id[:12]} {imp_bar}\n")
+                lines.append(f"{d.content}\n")
+                if d.tags:
+                    lines.append(f"\n标签: {', '.join(d.tags)}\n")
+                lines.append("\n---\n\n")
+
+        if not filepath:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = str(self._export_dir / f"export_{ts}.md")
+
+        Path(filepath).write_text("\n".join(lines))
+        self._record_export("markdown", len(drawers), filepath)
+        return {"format": "markdown", "count": len(drawers), "filepath": filepath}
+
+    def export_csv(self, drawers: list, filepath: str = None) -> dict:
+        """CSV 格式导出"""
+        if not filepath:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = str(self._export_dir / f"export_{ts}.csv")
+
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "content", "wing", "importance", "tags", "created_at"])
+            for d in drawers:
+                writer.writerow([
+                    d.id, d.content[:200], d.wing, d.importance,
+                    "|".join(d.tags), getattr(d, "created_at", ""),
+                ])
+
+        self._record_export("csv", len(drawers), filepath)
+        return {"format": "csv", "count": len(drawers), "filepath": filepath}
+
+    def import_json(self, filepath: str) -> dict:
+        """JSON 格式导入"""
+        content = Path(filepath).read_text()
+        data = json.loads(content)
+
+        imported = []
+        for item in data:
+            imported.append({
+                "id": item.get("id", ""),
+                "content": item.get("content", ""),
+                "wing": item.get("wing", "imported"),
+                "importance": item.get("importance", 3.0),
+                "tags": item.get("tags", []),
+            })
+
+        self._record_import("json", len(imported), filepath)
+        return {"format": "json", "imported": len(imported), "data": imported}
+
+    def detect_format(self, filepath: str) -> str:
+        """检测文件格式"""
+        path = Path(filepath)
+        ext = path.suffix.lower()
+        if ext == ".json":
+            return "json"
+        elif ext == ".md":
+            return "markdown"
+        elif ext == ".csv":
+            return "csv"
+
+        try:
+            content = path.read_text()[:100]
+            if content.strip().startswith("{") or content.strip().startswith("["):
+                return "json"
+            elif content.startswith("#"):
+                return "markdown"
+        except Exception:
+            pass
+
+        return "unknown"
+
+    def smart_import(self, filepath: str) -> dict:
+        """智能导入（自动检测格式）"""
+        fmt = self.detect_format(filepath)
+        if fmt == "json":
+            return self.import_json(filepath)
+        else:
+            return {"error": f"不支持的导入格式: {fmt}", "detected": fmt}
+
+    def _record_export(self, format_name: str, count: int, filepath: str):
+        self._history.append({
+            "operation": "export", "format": format_name,
+            "count": count, "filepath": filepath,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    def _record_import(self, format_name: str, count: int, filepath: str):
+        self._history.append({
+            "operation": "import", "format": format_name,
+            "count": count, "filepath": filepath,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    def list_exports(self) -> list[dict]:
+        """列出所有导出文件"""
+        exports = []
+        for f in self._export_dir.iterdir():
+            if f.suffix in (".json", ".md", ".csv"):
+                exports.append({
+                    "name": f.name,
+                    "format": f.suffix[1:],
+                    "size": f.stat().st_size,
+                    "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                })
+        exports.sort(key=lambda x: x["modified"], reverse=True)
+        return exports
+
+    def get_stats(self) -> dict:
+        """获取统计"""
+        exports = sum(1 for h in self._history if h["operation"] == "export")
+        imports = sum(1 for h in self._history if h["operation"] == "import")
+        return {"total_exports": exports, "total_imports": imports, "history": len(self._history)}
+
+
+_engine: ExportImportEngine | None = None
+
+
+def get_export_engine(config=None) -> ExportImportEngine:
+    global _engine
+    if _engine is None:
+        _engine = ExportImportEngine(config)
+    return _engine

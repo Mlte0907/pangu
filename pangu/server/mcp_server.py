@@ -611,6 +611,14 @@ class MCPServer:
             {"name": "pangu_diff_similarity", "description": "计算记忆相似度矩阵", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_diff_stats", "description": "差异统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 导出导入 (v3.0) ──
+            {"name": "pangu_export_json", "description": "JSON格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
+            {"name": "pangu_export_markdown", "description": "Markdown格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
+            {"name": "pangu_export_csv", "description": "CSV格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
+            {"name": "pangu_import_smart", "description": "智能导入（自动检测格式）", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}, "required": ["filepath"]}},
+            {"name": "pangu_list_exports", "description": "列出所有导出文件", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_export_stats", "description": "导出导入统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3248,6 +3256,41 @@ class MCPServer:
                 from ..memory.memory_diff import get_diff_engine
                 de = get_diff_engine(self.config)
                 return json.dumps(de.get_diff_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_export_json":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                result = ee.export_json(drawers, arguments.get("filepath"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_export_markdown":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                result = ee.export_markdown(drawers, arguments.get("filepath"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_export_csv":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                result = ee.export_csv(drawers, arguments.get("filepath"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_import_smart":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                result = ee.smart_import(arguments["filepath"])
+                result.pop("data", None)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_list_exports":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                return json.dumps({"exports": ee.list_exports()}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_export_stats":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                return json.dumps(ee.get_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
