@@ -49,22 +49,41 @@ class QAEngine:
 
     def answer(self, question: str, drawers: list, recall_fn=None) -> QAResult:
         """回答问题"""
+        import re
         intent = self.detect_intent(question)
         reasoning = [f"检测到意图: {intent}"]
 
         # 1. 检索相关记忆
         relevant = []
-        q_words = set(question.split())
+        # 提取问题关键词（中文2字+，英文整体）
+        q_keywords = set()
+        for segment in re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]+', question):
+            q_keywords.add(segment.lower())
+
+        q_lower = question.lower()
         for d in drawers:
             score = 0
-            d_content = d.content.lower()
-            q_lower = question.lower()
-            for word in q_words:
-                if word in d_content and len(word) >= 2:
-                    score += 1
+            d_lower = d.content.lower()
+
+            # 关键词匹配
+            for kw in q_keywords:
+                if kw in d_lower:
+                    score += 2
+
+            # 标签匹配
             if d.tags:
-                tag_overlap = len(q_words & set(t.lower() for t in d.tags))
-                score += tag_overlap * 2
+                for tag in d.tags:
+                    tag_l = tag.lower()
+                    for kw in q_keywords:
+                        if kw in tag_l or tag_l in kw:
+                            score += 3
+
+            # 内容片段匹配（连续2字）
+            for i in range(len(q_lower) - 1):
+                bigram = q_lower[i:i+2]
+                if bigram in d_lower:
+                    score += 0.5
+
             if score > 0:
                 relevant.append((d, score))
 
