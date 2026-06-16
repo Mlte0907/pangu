@@ -443,6 +443,17 @@ class MCPServer:
             {"name": "pangu_agent_share", "description": "Agent 间共享知识", "inputSchema": {"type": "object", "properties": {"from_agent": {"type": "string"}, "to_agent": {"type": "string"}, "knowledge_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["from_agent", "to_agent", "knowledge_ids"]}},
             {"name": "pangu_collaborative_reason", "description": "协作推理", "inputSchema": {"type": "object", "properties": {"task": {"type": "string"}, "agent_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["task"]}},
             {"name": "pangu_agent_stats", "description": "获取 Agent 统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 因果推理 (v3.0) ──
+            {"name": "pangu_causal_discover", "description": "发现因果链接", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_causal_chains", "description": "构建因果链", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_counterfactual", "description": "反事实推理", "inputSchema": {"type": "object", "properties": {"cause_id": {"type": "string"}, "counterfactual": {"type": "string"}}, "required": ["cause_id", "counterfactual"]}},
+            {"name": "pangu_root_cause", "description": "根因分析", "inputSchema": {"type": "object", "properties": {"effect_text": {"type": "string"}}, "required": ["effect_text"]}},
+            {"name": "pangu_causal_stats", "description": "因果推理统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 可解释搜索 (v3.0) ──
+            {"name": "pangu_explain_search", "description": "解释搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "result_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["query"]}},
+            {"name": "pangu_search_suggestions", "description": "搜索改进建议", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
             {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
             # ── 记忆版本控制 (v2.0) ──
@@ -2199,6 +2210,85 @@ class MCPServer:
                 from ..memory.collaborative_intelligence import get_collaborative
                 ci = get_collaborative(self.config)
                 return json.dumps(ci.get_agent_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_causal_discover":
+                from ..memory.causal_reasoning import get_causal_engine
+                cr = get_causal_engine(self.config)
+                links = cr.discover_causal_links(drawers)
+                return json.dumps({
+                    "links": [
+                        {"cause": l.cause_text[:50], "effect": l.effect_text[:50],
+                         "type": l.relation_type, "confidence": l.confidence}
+                        for l in links
+                    ],
+                    "count": len(links),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_causal_chains":
+                from ..memory.causal_reasoning import get_causal_engine
+                cr = get_causal_engine(self.config)
+                cr.discover_causal_links(drawers)
+                chains = cr.build_causal_chains()
+                return json.dumps({
+                    "chains": [
+                        {"id": c.chain_id, "root": c.root_cause[:50],
+                         "effect": c.final_effect[:50], "length": c.chain_length,
+                         "confidence": c.overall_confidence}
+                        for c in chains
+                    ],
+                    "count": len(chains),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_counterfactual":
+                from ..memory.causal_reasoning import get_causal_engine
+                cr = get_causal_engine(self.config)
+                cr.discover_causal_links(drawers)
+                result = cr.counterfactual_reasoning(
+                    arguments["cause_id"], arguments["counterfactual"], drawers,
+                )
+                return json.dumps({
+                    "original": result.original_cause,
+                    "counterfactual": result.counterfactual,
+                    "predicted_effect": result.predicted_effect,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_root_cause":
+                from ..memory.causal_reasoning import get_causal_engine
+                cr = get_causal_engine(self.config)
+                cr.discover_causal_links(drawers)
+                result = cr.root_cause_analysis(arguments["effect_text"], drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_causal_stats":
+                from ..memory.causal_reasoning import get_causal_engine
+                cr = get_causal_engine(self.config)
+                return json.dumps(cr.get_causal_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_explain_search":
+                from ..memory.explainable_search import get_explainable_engine
+                ee = get_explainable_engine(self.config)
+                query = arguments.get("query", "")
+                result_ids = arguments.get("result_ids", [])
+                mock_results = [{"id": rid, "score": 0.5} for rid in result_ids]
+                explanations = ee.explain_results(query, mock_results, drawers)
+                return json.dumps({
+                    "explanations": [
+                        {"id": e.memory_id, "preview": e.content_preview,
+                         "score": e.score, "factors": e.factors,
+                         "reason": e.primary_reason}
+                        for e in explanations
+                    ],
+                    "count": len(explanations),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_search_suggestions":
+                from ..memory.explainable_search import get_explainable_engine
+                ee = get_explainable_engine(self.config)
+                query = arguments.get("query", "")
+                suggestions = ee.suggest_improvement(query, [])
+                return json.dumps({"suggestions": suggestions}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
