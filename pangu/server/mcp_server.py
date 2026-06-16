@@ -484,6 +484,12 @@ class MCPServer:
             {"name": "pangu_qa_batch", "description": "批量智能问答", "inputSchema": {"type": "object", "properties": {"questions": {"type": "array", "items": {"type": "string"}, "description": "问题列表"}}, "required": ["questions"]}},
             {"name": "pangu_qa_stats", "description": "问答统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 上下文注入 (v3.0) ──
+            {"name": "pangu_inject_context", "description": "为文本注入相关记忆上下文", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "待注入文本"}, "token_budget": {"type": "integer", "description": "Token预算", "default": 500}}, "required": ["text"]}},
+            {"name": "pangu_update_context", "description": "增量更新上下文", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "新文本"}}, "required": ["text"]}},
+            {"name": "pangu_current_context", "description": "获取当前上下文缓冲", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_injection_stats", "description": "上下文注入统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2470,6 +2476,41 @@ class MCPServer:
                 from ..memory.qa_engine import get_qa_engine
                 qa = get_qa_engine(self.config)
                 return json.dumps(qa.get_qa_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_inject_context":
+                from ..memory.context_injection import get_injection_engine
+                ie = get_injection_engine(self.config)
+                text = arguments.get("text", "")
+                budget = arguments.get("token_budget", 500)
+                result = ie.inject_context(text, drawers, budget)
+                return json.dumps({
+                    "injected_text": result.injected_text[:2000],
+                    "context_count": result.context_count,
+                    "tokens_used": result.tokens_used,
+                    "token_budget": result.token_budget,
+                    "injections": result.injection_positions,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_update_context":
+                from ..memory.context_injection import get_injection_engine
+                ie = get_injection_engine(self.config)
+                text = arguments.get("text", "")
+                result = ie.update_context(text, drawers)
+                return json.dumps({
+                    "context_count": result.context_count,
+                    "tokens_used": result.tokens_used,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_current_context":
+                from ..memory.context_injection import get_injection_engine
+                ie = get_injection_engine(self.config)
+                context = ie.get_current_context()
+                return json.dumps({"context": context, "count": len(context)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_injection_stats":
+                from ..memory.context_injection import get_injection_engine
+                ie = get_injection_engine(self.config)
+                return json.dumps(ie.get_injection_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
