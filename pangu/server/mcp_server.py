@@ -419,6 +419,18 @@ class MCPServer:
             {"name": "pangu_discover_knowledge", "description": "从记忆中自动发现新知识", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_generate_hypotheses", "description": "基于记忆生成假设", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "假设数量", "default": 5}}}},
             {"name": "pangu_learning_stats", "description": "获取自主学习统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 自进化引擎 (v3.0) ──
+            {"name": "pangu_self_diagnose", "description": "系统自我诊断", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_evolution_plan", "description": "生成进化计划", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_performance_trend", "description": "查看性能趋势", "inputSchema": {"type": "object", "properties": {"metric": {"type": "string", "description": "指标名称"}}}},
+            {"name": "pangu_evolution_stats", "description": "获取进化统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 时间推理 (v3.0) ──
+            {"name": "pangu_temporal_timeline", "description": "构建时间线", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_temporal_relations", "description": "发现时间关系", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_temporal_query", "description": "按时间范围查询", "inputSchema": {"type": "object", "properties": {"start": {"type": "string", "description": "开始日期 (YYYY-MM-DD)"}, "end": {"type": "string", "description": "结束日期 (YYYY-MM-DD)"}}, "required": []}},
+            {"name": "pangu_temporal_stats", "description": "获取时间统计", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
             # ── 记忆版本控制 (v2.0) ──
@@ -2030,6 +2042,85 @@ class MCPServer:
                 al = get_autonomous_learning(self.config)
                 result = al.auto_learn(drawers)
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_self_diagnose":
+                from ..memory.self_evolution import get_evolution_engine
+                se = get_evolution_engine(self.config)
+                diagnosis = se.diagnose(drawers)
+                return json.dumps({
+                    "issues": [
+                        {"category": d.category, "severity": d.severity,
+                         "description": d.description, "recommendation": d.recommendation}
+                        for d in diagnosis
+                    ],
+                    "total_issues": len(diagnosis),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_evolution_plan":
+                from ..memory.self_evolution import get_evolution_engine
+                se = get_evolution_engine(self.config)
+                diagnosis = se.diagnose(drawers)
+                plan = se.generate_evolution_plan(diagnosis)
+                return json.dumps({
+                    "name": plan.name,
+                    "actions": plan.actions,
+                    "expected_improvement": plan.expected_improvement,
+                    "priority": plan.priority,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_performance_trend":
+                from ..memory.self_evolution import get_evolution_engine
+                se = get_evolution_engine(self.config)
+                metric = arguments.get("metric", "search_score")
+                trend = se.get_performance_trend(metric)
+                return json.dumps(trend, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_evolution_stats":
+                from ..memory.self_evolution import get_evolution_engine
+                se = get_evolution_engine(self.config)
+                return json.dumps(se.get_evolution_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_temporal_timeline":
+                from ..memory.temporal_reasoning import get_temporal_engine
+                te = get_temporal_engine(self.config)
+                events = te.build_timeline(drawers)
+                return json.dumps({
+                    "events": [
+                        {"id": e.memory_id, "content": e.content,
+                         "timestamp": e.timestamp, "wing": e.wing}
+                        for e in events
+                    ],
+                    "count": len(events),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_temporal_relations":
+                from ..memory.temporal_reasoning import get_temporal_engine
+                te = get_temporal_engine(self.config)
+                rels = te.find_temporal_relations(drawers)
+                return json.dumps({
+                    "relations": [
+                        {"before": r.before_id, "after": r.after_id,
+                         "relation": r.relation, "confidence": r.confidence}
+                        for r in rels
+                    ],
+                    "count": len(rels),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_temporal_query":
+                from ..memory.temporal_reasoning import get_temporal_engine
+                te = get_temporal_engine(self.config)
+                start = arguments.get("start")
+                end = arguments.get("end")
+                results = te.query_by_time_range(drawers, start, end)
+                return json.dumps({
+                    "results": [{"id": d.id, "content": d.content[:80]} for d in results],
+                    "count": len(results),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_temporal_stats":
+                from ..memory.temporal_reasoning import get_temporal_engine
+                te = get_temporal_engine(self.config)
+                return json.dumps(te.get_temporal_stats(drawers), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
