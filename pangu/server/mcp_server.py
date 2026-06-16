@@ -564,6 +564,13 @@ class MCPServer:
             {"name": "pangu_project_delete", "description": "删除项目", "inputSchema": {"type": "object", "properties": {"project_id": {"type": "string"}}, "required": ["project_id"]}},
             {"name": "pangu_project_stats", "description": "项目统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 审计分析 (v3.0) ──
+            {"name": "pangu_audit_log", "description": "记录审计日志", "inputSchema": {"type": "object", "properties": {"operation": {"type": "string"}, "target_id": {"type": "string", "default": ""}}, "required": ["operation"]}},
+            {"name": "pangu_audit_query", "description": "查询审计日志", "inputSchema": {"type": "object", "properties": {"operation": {"type": "string"}, "user_id": {"type": "string"}, "limit": {"type": "integer", "default": 50}}}},
+            {"name": "pangu_audit_stats", "description": "操作统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_access_patterns", "description": "访问模式分析", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_security_summary", "description": "安全摘要", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2981,6 +2988,36 @@ class MCPServer:
                 from ..memory.project_manager import get_project_manager
                 pm = get_project_manager(self.config)
                 return json.dumps(pm.get_project_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_audit_log":
+                from ..memory.audit_analytics import get_audit
+                audit = get_audit(self.config)
+                entry = audit.log(arguments["operation"], arguments.get("target_id", ""))
+                return json.dumps({"entry_id": entry.entry_id, "timestamp": entry.timestamp}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_audit_query":
+                from ..memory.audit_analytics import get_audit
+                audit = get_audit(self.config)
+                entries = audit.get_entries(
+                    arguments.get("operation"), arguments.get("user_id"),
+                    arguments.get("limit", 50),
+                )
+                return json.dumps({"entries": entries, "count": len(entries)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_audit_stats":
+                from ..memory.audit_analytics import get_audit
+                audit = get_audit(self.config)
+                return json.dumps(audit.get_operation_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_access_patterns":
+                from ..memory.audit_analytics import get_audit
+                audit = get_audit(self.config)
+                return json.dumps(audit.get_access_patterns(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_security_summary":
+                from ..memory.audit_analytics import get_audit
+                audit = get_audit(self.config)
+                return json.dumps(audit.get_security_summary(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
