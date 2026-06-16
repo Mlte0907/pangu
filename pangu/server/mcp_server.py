@@ -605,6 +605,12 @@ class MCPServer:
             {"name": "pangu_portal_maintain", "description": "一键维护", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_portal_summary", "description": "智能摘要", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 记忆差异 (v3.0) ──
+            {"name": "pangu_diff_content", "description": "对比两段内容差异", "inputSchema": {"type": "object", "properties": {"content_a": {"type": "string"}, "content_b": {"type": "string"}}, "required": ["content_a", "content_b"]}},
+            {"name": "pangu_diff_batch", "description": "批量差异对比", "inputSchema": {"type": "object", "properties": {"reference_id": {"type": "string"}}}},
+            {"name": "pangu_diff_similarity", "description": "计算记忆相似度矩阵", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_diff_stats", "description": "差异统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3214,6 +3220,34 @@ class MCPServer:
                 portal = get_portal(self.config)
                 summary = portal.get_smart_summary(drawers)
                 return json.dumps({"summary": summary}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_diff_content":
+                from ..memory.memory_diff import get_diff_engine
+                de = get_diff_engine(self.config)
+                diff = de.diff_content(arguments["content_a"], arguments["content_b"])
+                return json.dumps({
+                    "similarity": diff.similarity,
+                    "added": diff.added, "removed": diff.removed,
+                    "modified": diff.modified, "unchanged": diff.unchanged,
+                    "summary": de.generate_change_summary(diff),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_diff_batch":
+                from ..memory.memory_diff import get_diff_engine
+                de = get_diff_engine(self.config)
+                results = de.batch_diff(drawers, arguments.get("reference_id"))
+                return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_diff_similarity":
+                from ..memory.memory_diff import get_diff_engine
+                de = get_diff_engine(self.config)
+                matrix = de.similarity_matrix(drawers)
+                return json.dumps({"size": matrix["size"], "ids": matrix["ids"]}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_diff_stats":
+                from ..memory.memory_diff import get_diff_engine
+                de = get_diff_engine(self.config)
+                return json.dumps(de.get_diff_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
