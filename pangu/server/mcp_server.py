@@ -413,6 +413,7 @@ class MCPServer:
             # ── 创造性思维 (v2.0) ──
             {"name": "pangu_generate_ideas", "description": "基于记忆生成新想法", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "想法数量", "default": 5}}}},
             {"name": "pangu_discover_patterns", "description": "发现记忆中的模式", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_generate_novel", "description": "生成原创想法", "inputSchema": {"type": "object", "properties": {"domain": {"type": "string", "description": "领域"}, "context": {"type": "string", "description": "上下文"}}}},
 
             # ── 自主学习 (v2.0) ──
             {"name": "pangu_discover_knowledge", "description": "从记忆中自动发现新知识", "inputSchema": {"type": "object", "properties": {}}},
@@ -1991,6 +1992,14 @@ class MCPServer:
                 ct = get_creative_thinking(self.config)
                 patterns = ct.discover_patterns(drawers)
                 return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_generate_novel":
+                from ..memory.creative_thinking import get_creative_thinking
+                ct = get_creative_thinking(self.config)
+                domain = arguments.get("domain", "")
+                context = arguments.get("context", "")
+                ideas = ct.generate_novel_ideas(domain, context)
+                return json.dumps({"ideas": ideas, "count": len(ideas)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_discover_knowledge":
                 from ..memory.autonomous_learning import get_autonomous_learning

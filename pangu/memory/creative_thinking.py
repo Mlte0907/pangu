@@ -149,6 +149,39 @@ class CreativeThinking:
             for idea in self._idea_history[-limit:]
         ]
 
+    def generate_novel_ideas(self, domain: str, context: str) -> list[dict]:
+        """生成原创想法 — 基于领域知识和上下文生成创新方案"""
+        ideas = []
+
+        # 分析上下文关键词
+        context_keywords = set()
+        for word in context.split():
+            if len(word) >= 2:
+                context_keywords.add(word.lower())
+
+        # 基于领域发现创新机会
+        for wing, wing_drawers in self._group_by_wing(drawers).items():
+            if wing == domain or not domain:
+                # 查找不常见的标签组合
+                all_tags = set()
+                for d in wing_drawers:
+                    all_tags.update(d.tags)
+
+                # 生成创新组合
+                if len(all_tags) >= 3:
+                    tag_list = list(all_tags)
+                    for i in range(min(3, len(tag_list))):
+                        for j in range(i + 1, min(5, len(tag_list))):
+                            if tag_list[i] != tag_list[j]:
+                                ideas.append({
+                                    "title": f"跨领域创新: {tag_list[i]} + {tag_list[j]}",
+                                    "description": f"结合 {tag_list[i]} 和 {tag_list[j]} 可能产生创新",
+                                    "confidence": 0.7,
+                                    "category": "innovation",
+                                })
+
+        return ideas[:10]
+
 
 # 全局单例
 _creative_thinking: CreativeThinking | None = None
