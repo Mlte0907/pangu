@@ -100,14 +100,14 @@ class ResonanceEngine:
     def embedder(self):
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
         return self._embedder
 
     def find_resonance(self, drawers: list, limit: int = 30,
-                       sim_threshold: float = 0.7) -> list[dict]:
+                       sim_threshold: float = 0.99) -> list[dict]:
         """发现共鸣记忆对
 
         Args:
@@ -163,7 +163,7 @@ class ResonanceEngine:
 
         return top_matches
 
-    def find_cross_wing_resonance(self, drawers: list, sim_threshold: float = 0.65) -> list[dict]:
+    def find_cross_wing_resonance(self, drawers: list, sim_threshold: float = 0.99) -> list[dict]:
         """发现跨 Wing 的共鸣关系 — 不同领域间的知识迁移
 
         只考虑不同 Wing 之间的记忆对，发现潜在的知识关联。

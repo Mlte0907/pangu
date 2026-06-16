@@ -35,6 +35,16 @@ class FusedKnowledge:
 class FusionEngine:
     """记忆融合引擎"""
 
+    @staticmethod
+    def _cosine_sim(a, b) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na and nb else 0.0
+
+
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
         self._embedder = None
@@ -43,14 +53,14 @@ class FusionEngine:
     def embedder(self):
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
 
     def fuse_topic(self, topic: str, drawers: list[Drawer],
-                   min_similarity: float = 0.3) -> FusedKnowledge | None:
+                   min_similarity: float = 0.99) -> FusedKnowledge | None:
         """融合同一主题的记忆
 
         Args:
@@ -72,7 +82,7 @@ class FusionEngine:
                 try:
                     topic_emb = self.embedder.embed(topic)
                     content_emb = self.embedder.embed(d.content)
-                    sim = self.embedder.similarity(topic_emb, content_emb)
+                    sim = self._cosine_sim(topic_emb, content_emb)
                     if sim >= min_similarity:
                         relevant.append((d, sim))
                 except Exception:

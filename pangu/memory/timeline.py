@@ -87,6 +87,16 @@ class TimelineEngine:
         (r"(?:meanwhile|simultaneously|at the same time)", "concurrent"),
     ]
 
+    @staticmethod
+    def _cosine_sim(a, b) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na and nb else 0.0
+
+
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
         self._embedder = None
@@ -95,8 +105,8 @@ class TimelineEngine:
     def embedder(self):
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
@@ -173,7 +183,7 @@ class TimelineEngine:
                     try:
                         emb_a = self.embedder.embed(a.content)
                         emb_b = self.embedder.embed(b.content)
-                        sim = self.embedder.similarity(emb_a, emb_b)
+                        sim = self._cosine_sim(emb_a, emb_b)
                         if sim > 0.5:
                             confidence = min(0.4, sim * 0.5)
                     except Exception:

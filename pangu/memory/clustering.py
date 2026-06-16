@@ -34,6 +34,16 @@ class MemoryCluster:
 class MemoryClusterer:
     """记忆聚类引擎"""
 
+    @staticmethod
+    def _cosine_sim(a, b) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na and nb else 0.0
+
+
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
         self._embedder = None
@@ -43,14 +53,14 @@ class MemoryClusterer:
         """懒加载向量嵌入器"""
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
 
     def cluster(self, drawers: list[Drawer], n_clusters: int = 0,
-                min_similarity: float = 0.3) -> list[MemoryCluster]:
+                min_similarity: float = 0.99) -> list[MemoryCluster]:
         """将记忆聚类为分组
 
         Args:
@@ -85,7 +95,7 @@ class MemoryClusterer:
         sim_matrix = np.zeros((n, n))
         for i in range(n):
             for j in range(i + 1, n):
-                sim = self.embedder.similarity(embeddings[i], embeddings[j])
+                sim = self._cosine_sim(embeddings[i], embeddings[j])
                 sim_matrix[i][j] = sim
                 sim_matrix[j][i] = sim
 
@@ -273,7 +283,7 @@ class MemoryClusterer:
         return [kw for kw, _ in counter.most_common(max_len)]
 
     def find_related(self, drawer: Drawer, all_drawers: list[Drawer],
-                     top_k: int = 5, min_similarity: float = 0.3) -> list[dict]:
+                     top_k: int = 5, min_similarity: float = 0.99) -> list[dict]:
         """找到与指定记忆最相关的其他记忆"""
         if not self.embedder:
             return []
@@ -286,7 +296,7 @@ class MemoryClusterer:
         item_embs = self.embedder.embed_batch(texts)
         scored = []
         for i, d in enumerate([d for d in all_drawers if d.id != drawer.id]):
-            sim = self.embedder.similarity(query_emb, item_embs[i])
+            sim = self._cosine_sim(query_emb, item_embs[i])
             if sim >= min_similarity:
                 scored.append((sim, d))
 

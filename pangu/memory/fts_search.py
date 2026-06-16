@@ -107,8 +107,8 @@ class FTS5SearchEngine:
     def embedder(self):
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
         return self._embedder

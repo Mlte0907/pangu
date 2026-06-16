@@ -34,6 +34,16 @@ class DuplicateGroup:
 class MemoryDeduplicator:
     """记忆去重引擎"""
 
+    @staticmethod
+    def _cosine_sim(a, b) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na and nb else 0.0
+
+
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
         self._embedder = None
@@ -42,14 +52,14 @@ class MemoryDeduplicator:
     def embedder(self):
         if self._embedder is None:
             try:
-                from ..search.embedder import VectorEmbedder
-                self._embedder = VectorEmbedder(self.config)
+                from pangu.memory.embedding import EmbeddingService
+                self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
 
     def find_duplicates(self, drawers: list[Drawer],
-                        threshold: float = 0.85,
+                        threshold: float = 0.99,
                         method: str = "auto") -> list[DuplicateGroup]:
         """查找重复记忆
 
@@ -89,7 +99,7 @@ class MemoryDeduplicator:
         similar_pairs = []
         for i in range(n):
             for j in range(i + 1, n):
-                sim = self.embedder.similarity(embeddings[i], embeddings[j])
+                sim = self._cosine_sim(embeddings[i], embeddings[j])
                 if sim >= threshold:
                     similar_pairs.append((i, j, sim))
 
@@ -276,7 +286,7 @@ class MemoryDeduplicator:
             try:
                 emb_a = self.embedder.embed(drawer_a.content)
                 emb_b = self.embedder.embed(drawer_b.content)
-                sim = self.embedder.similarity(emb_a, emb_b)
+                sim = self._cosine_sim(emb_a, emb_b)
                 return {"similarity": round(sim, 4), "method": "vector"}
             except Exception:
                 pass
