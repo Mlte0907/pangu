@@ -115,8 +115,8 @@ class AdaptiveLearningSystem:
         self._weight_adjustments["importance"] = self._weight_adjustments.get("importance", 0.0) + delta
         self._weight_adjustments["frequency"] = self._weight_adjustments.get("frequency", 0.0) + delta * 0.5
 
-    def predict_relevance(self, query: str, memory_id: str) -> float:
-        """预测记忆与查询的相关性"""
+    def predict_relevance(self, query: str, memory_id: str, context: str = "") -> float:
+        """预测记忆与查询的相关性（支持上下文感知）"""
         score = 0.5  # 基础分数
 
         # 搜索模式加成
@@ -132,7 +132,46 @@ class AdaptiveLearningSystem:
             if access["count"] > 0:
                 score += min(access["count"] / 100.0, 0.2)
 
+        # 上下文感知加成
+        if context:
+            # 检查查询词是否在上下文中出现
+            query_words = set(query.lower().split())
+            context_words = set(context.lower().split())
+            overlap = len(query_words & context_words)
+            if overlap > 0:
+                score += min(overlap * 0.05, 0.15)
+
         return min(1.0, max(0.0, score))
+
+    def detect_patterns(self) -> list[dict]:
+        """检测用户行为模式"""
+        patterns = []
+
+        # 检测重复查询模式
+        if len(self._search_patterns) > 5:
+            sorted_queries = sorted(self._search_patterns.items(), key=lambda x: x[1]["count"], reverse=True)
+            top_queries = sorted_queries[:3]
+            if top_queries[0][1]["count"] > 5:
+                patterns.append({
+                    "type": "frequent_query",
+                    "query": top_queries[0][0],
+                    "count": top_queries[0][1]["count"],
+                    "suggestion": f"用户经常搜索 \"{top_queries[0][0]}\"，建议将其设为快捷查询",
+                })
+
+        # 检测记忆访问模式
+        if len(self._memory_access) > 10:
+            sorted_memories = sorted(self._memory_access.items(), key=lambda x: x[1]["count"], reverse=True)
+            top_memory = sorted_memories[0]
+            if top_memory[1]["count"] > 10:
+                patterns.append({
+                    "type": "frequent_memory",
+                    "memory_id": top_memory[0],
+                    "count": top_memory[1]["count"],
+                    "suggestion": f"记忆 {top_memory[0][:8]} 被频繁访问，建议提升重要性",
+                })
+
+        return patterns
 
     def get_popular_queries(self, limit: int = 10) -> list[dict]:
         """获取热门查询"""

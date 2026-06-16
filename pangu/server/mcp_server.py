@@ -413,6 +413,7 @@ class MCPServer:
 
             # ── 自适应学习 (v2.0) ──
             {"name": "pangu_learning_stats", "description": "获取自适应学习统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_detect_patterns", "description": "检测用户行为模式", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_popular_queries", "description": "获取热门查询", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
             {"name": "pangu_frequent_memories", "description": "获取频繁访问的记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
             {"name": "pangu_benchmark", "description": "运行性能基准测试", "inputSchema": {"type": "object", "properties": {}}},
@@ -1929,6 +1930,12 @@ class MCPServer:
                 from ..memory.adaptive_learning import get_adaptive_learning
                 al = get_adaptive_learning(self.config)
                 return json.dumps(al.get_learning_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_detect_patterns":
+                from ..memory.adaptive_learning import get_adaptive_learning
+                al = get_adaptive_learning(self.config)
+                patterns = al.detect_patterns()
+                return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_popular_queries":
                 from ..memory.adaptive_learning import get_adaptive_learning
