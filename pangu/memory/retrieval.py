@@ -89,6 +89,15 @@ def _record_search(hit: bool, method: str = "", query: str = "", result_count: i
             _search_history.pop(0)
 
 
+def _safe_execute(func, default=None, error_msg: str = "") -> Any:
+    """安全执行函数，捕获异常并返回默认值"""
+    try:
+        return func()
+    except Exception as e:
+        logger.warning(f"{error_msg}: {e}")
+        return default
+
+
 def _cosine_similarity(a: list, b: list) -> float:
     """余弦相似度（numpy 向量化）"""
     import numpy as np
