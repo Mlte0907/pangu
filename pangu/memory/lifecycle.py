@@ -344,6 +344,28 @@ class LifecycleManager:
 
         return results
 
+    def run_auto_decay(self) -> dict:
+        """自动衰减：定期降低未访问记忆的重要性"""
+        try:
+            from pangu.memory.decay import decay_batch
+        except ImportError:
+            return {"status": "skip", "reason": "decay module not available"}
+
+        drawers_file = Path(self.config.palace_path) / "drawers.json"
+        if not drawers_file.exists():
+            return {"status": "no_memories"}
+
+        with open(drawers_file, encoding="utf-8") as f:
+            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+
+        stats = decay_batch(drawers, dry_run=False)
+
+        if stats.get("decayed", 0) > 0 or stats.get("purge_candidates", 0) > 0:
+            with open(drawers_file, "w", encoding="utf-8") as f:
+                json.dump([d.to_dict() for d in drawers], f, ensure_ascii=False, indent=2)
+
+        return stats
+
     def on_session_end(self) -> dict:
         """会话结束时触发的生命周期任务"""
         results = {}
@@ -375,6 +397,11 @@ class LifecycleManager:
         decay_result = self.run_decay()
         if decay_result.get("decayed", 0) > 0:
             results["decay"] = decay_result
+
+        # 自动衰减（定期降低未访问记忆的重要性）
+        auto_decay_result = self.run_auto_decay()
+        if auto_decay_result.get("decayed", 0) > 0:
+            results["auto_decay"] = auto_decay_result
 
         # KG 实体自动提取
         kg_result = self.run_kg_enrichment()
