@@ -598,6 +598,13 @@ class MCPServer:
             {"name": "pangu_cache_cleanup", "description": "清理过期缓存", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_cache_invalidate", "description": "失效缓存", "inputSchema": {"type": "object", "properties": {"pattern": {"type": "string"}}, "required": ["pattern"]}},
 
+            # ── 统一门户 (v3.0) ──
+            {"name": "pangu_portal_write", "description": "智能写入（自动标签+索引+事件）", "inputSchema": {"type": "object", "properties": {"content": {"type": "string"}, "wing": {"type": "string", "default": "default"}, "tags": {"type": "array", "items": {"type": "string"}, "default": []}, "importance": {"type": "number", "default": 3.0}}, "required": ["content"]}},
+            {"name": "pangu_portal_search", "description": "智能搜索（自动重写+索引+排序）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 5}}, "required": ["query"]}},
+            {"name": "pangu_portal_panorama", "description": "系统全景", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_portal_maintain", "description": "一键维护", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_portal_summary", "description": "智能摘要", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3174,6 +3181,39 @@ class MCPServer:
                 c1 = cm._l1.invalidate_pattern(pattern)
                 c2 = cm._l2.invalidate_pattern(pattern)
                 return json.dumps({"pattern": pattern, "invalidated": c1 + c2}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_portal_write":
+                from ..memory.portal import get_portal
+                portal = get_portal(self.config)
+                result = portal.smart_write(
+                    drawers, arguments["content"],
+                    arguments.get("wing", "default"),
+                    arguments.get("tags", []),
+                    arguments.get("importance", 3.0),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_portal_search":
+                from ..memory.portal import get_portal
+                portal = get_portal(self.config)
+                result = portal.smart_search(drawers, arguments["query"], arguments.get("limit", 5))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_portal_panorama":
+                from ..memory.portal import get_portal
+                portal = get_portal(self.config)
+                return json.dumps(portal.system_panorama(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_portal_maintain":
+                from ..memory.portal import get_portal
+                portal = get_portal(self.config)
+                return json.dumps(portal.one_click_maintenance(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_portal_summary":
+                from ..memory.portal import get_portal
+                portal = get_portal(self.config)
+                summary = portal.get_smart_summary(drawers)
+                return json.dumps({"summary": summary}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
