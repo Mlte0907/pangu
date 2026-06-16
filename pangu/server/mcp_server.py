@@ -466,6 +466,19 @@ class MCPServer:
             {"name": "pangu_core_insights", "description": "提取核心洞察", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 10}}}},
             {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 预测分析 (v3.0) ──
+            {"name": "pangu_predict_queries", "description": "预测用户下一步查询", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 5}}}},
+            {"name": "pangu_predict_forgetting", "description": "预测即将遗忘的记忆", "inputSchema": {"type": "object", "properties": {"days_threshold": {"type": "integer", "default": 30}}}},
+            {"name": "pangu_growth_trend", "description": "分析增长趋势", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_hot_topics", "description": "预测热点主题", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 5}}}},
+            {"name": "pangu_predictive_stats", "description": "预测分析统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 自适应架构 (v3.0) ──
+            {"name": "pangu_arch_analyze", "description": "分析记忆架构", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_arch_suggest", "description": "架构重构建议", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_cold_hot", "description": "冷热分离建议", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_arch_stats", "description": "架构统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2354,6 +2367,72 @@ class MCPServer:
                 top_k = arguments.get("top_k", 10)
                 insights = ks.extract_core_insights(drawers, top_k)
                 return json.dumps({"insights": insights, "count": len(insights)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_predict_queries":
+                from ..memory.predictive_analytics import get_analytics
+                pa = get_analytics(self.config)
+                top_k = arguments.get("top_k", 5)
+                predictions = pa.predict_next_queries([], top_k)
+                return json.dumps({
+                    "predictions": [{"statement": p.statement, "confidence": p.confidence} for p in predictions],
+                    "count": len(predictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_predict_forgetting":
+                from ..memory.predictive_analytics import get_analytics
+                pa = get_analytics(self.config)
+                threshold = arguments.get("days_threshold", 30)
+                predictions = pa.predict_forgetting(drawers, threshold)
+                return json.dumps({
+                    "predictions": [{"statement": p.statement, "confidence": p.confidence} for p in predictions],
+                    "count": len(predictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_growth_trend":
+                from ..memory.predictive_analytics import get_analytics
+                pa = get_analytics(self.config)
+                trend = pa.analyze_growth_trend(drawers)
+                return json.dumps(trend, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_hot_topics":
+                from ..memory.predictive_analytics import get_analytics
+                pa = get_analytics(self.config)
+                top_k = arguments.get("top_k", 5)
+                predictions = pa.predict_hot_topics(drawers, top_k)
+                return json.dumps({
+                    "predictions": [{"statement": p.statement, "confidence": p.confidence} for p in predictions],
+                    "count": len(predictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_predictive_stats":
+                from ..memory.predictive_analytics import get_analytics
+                pa = get_analytics(self.config)
+                return json.dumps(pa.get_prediction_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_arch_analyze":
+                from ..memory.adaptive_architecture import get_architecture
+                aa = get_architecture(self.config)
+                return json.dumps(aa.analyze_architecture(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_arch_suggest":
+                from ..memory.adaptive_architecture import get_architecture
+                aa = get_architecture(self.config)
+                suggestions = aa.suggest_restructuring(drawers)
+                return json.dumps({
+                    "suggestions": [{"action": s.action, "reason": s.reason, "priority": s.priority} for s in suggestions],
+                    "count": len(suggestions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cold_hot":
+                from ..memory.adaptive_architecture import get_architecture
+                aa = get_architecture(self.config)
+                result = aa.suggest_cold_hot_separation(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_arch_stats":
+                from ..memory.adaptive_architecture import get_architecture
+                aa = get_architecture(self.config)
+                return json.dumps(aa.get_architecture_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
