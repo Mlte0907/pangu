@@ -479,6 +479,11 @@ class MCPServer:
             {"name": "pangu_cold_hot", "description": "冷热分离建议", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_arch_stats", "description": "架构统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 智能问答 (v3.0) ──
+            {"name": "pangu_qa", "description": "基于记忆的智能问答", "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "description": "用户问题"}}, "required": ["question"]}},
+            {"name": "pangu_qa_batch", "description": "批量智能问答", "inputSchema": {"type": "object", "properties": {"questions": {"type": "array", "items": {"type": "string"}, "description": "问题列表"}}, "required": ["questions"]}},
+            {"name": "pangu_qa_stats", "description": "问答统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2433,6 +2438,38 @@ class MCPServer:
                 from ..memory.adaptive_architecture import get_architecture
                 aa = get_architecture(self.config)
                 return json.dumps(aa.get_architecture_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_qa":
+                from ..memory.qa_engine import get_qa_engine
+                qa = get_qa_engine(self.config)
+                question = arguments.get("question", "")
+                result = qa.answer(question, drawers)
+                return json.dumps({
+                    "question": result.question,
+                    "answer": result.answer,
+                    "confidence": result.confidence,
+                    "sources": result.source_memories,
+                    "follow_up": result.follow_up_questions,
+                    "reasoning": result.reasoning_steps,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_qa_batch":
+                from ..memory.qa_engine import get_qa_engine
+                qa = get_qa_engine(self.config)
+                questions = arguments.get("questions", [])
+                results = qa.batch_answer(questions, drawers)
+                return json.dumps({
+                    "results": [
+                        {"question": r.question, "answer": r.answer, "confidence": r.confidence}
+                        for r in results
+                    ],
+                    "count": len(results),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_qa_stats":
+                from ..memory.qa_engine import get_qa_engine
+                qa = get_qa_engine(self.config)
+                return json.dumps(qa.get_qa_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
