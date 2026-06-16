@@ -16,7 +16,7 @@ from .retrieval import clear_recall_cache, recall, recall_by_ids, recall_context
 from .wikilink import WikilinkMatch, extract_entity_links, parse_wikilinks
 
 # 同步与社交化模块
-from .sync_manager import SyncManager, SyncStrategy, SyncState, MemoryRecord, SyncConflict
+from .sync_manager import SyncManager
 from .social_memory import SocialMemory, ShareLevel, VoteType, Comment, Vote, ExpertProfile
 
 __all__ = [
@@ -38,7 +38,7 @@ __all__ = [
     # 评估缓存
     "EvaluationCache", "VERDICTS", "get_evaluation_stats",
     # 同步管理
-    "SyncManager", "SyncStrategy", "SyncState", "MemoryRecord", "SyncConflict",
+    "SyncManager",
     # 社交记忆
     "SocialMemory", "ShareLevel", "VoteType", "Comment", "Vote", "ExpertProfile",
     # 神经记忆

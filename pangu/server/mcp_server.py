@@ -571,6 +571,14 @@ class MCPServer:
             {"name": "pangu_access_patterns", "description": "访问模式分析", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_security_summary", "description": "安全摘要", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 多端同步 (v3.0) ──
+            {"name": "pangu_sync_record", "description": "记录变更", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string"}, "operation": {"type": "string"}, "content": {"type": "string", "default": ""}}, "required": ["memory_id", "operation"]}},
+            {"name": "pangu_sync_pending", "description": "获取待同步变更", "inputSchema": {"type": "object", "properties": {"since": {"type": "string"}}}},
+            {"name": "pangu_sync_conflicts", "description": "检测冲突", "inputSchema": {"type": "object", "properties": {"remote_changes": {"type": "array", "items": {"type": "object"}, "default": []}}}},
+            {"name": "pangu_sync_resolve", "description": "解决冲突", "inputSchema": {"type": "object", "properties": {"change_id": {"type": "string"}, "resolution": {"type": "string", "default": "keep_latest"}}, "required": ["change_id"]}},
+            {"name": "pangu_sync_state", "description": "同步状态", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_sync_stats", "description": "同步统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3018,6 +3026,47 @@ class MCPServer:
                 from ..memory.audit_analytics import get_audit
                 audit = get_audit(self.config)
                 return json.dumps(audit.get_security_summary(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_record":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                entry = sm.record_change(
+                    arguments["memory_id"], arguments["operation"],
+                    arguments.get("content", ""),
+                )
+                return json.dumps({"change_id": entry.change_id, "timestamp": entry.timestamp}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_pending":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                pending = sm.get_pending_changes(arguments.get("since"))
+                return json.dumps({"pending": pending, "count": len(pending)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_conflicts":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                remote = arguments.get("remote_changes", [])
+                conflicts = sm.detect_conflicts(remote)
+                return json.dumps({"conflicts": conflicts, "count": len(conflicts)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_resolve":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                result = sm.resolve_conflict(
+                    arguments["change_id"],
+                    arguments.get("resolution", "keep_latest"),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_state":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                return json.dumps(sm.get_sync_state(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_stats":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                return json.dumps(sm.get_sync_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control

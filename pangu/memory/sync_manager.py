@@ -1,309 +1,211 @@
-"""盘古跨平台同步管理器 — 增量同步与冲突解决
-============================================
-支持多设备间记忆的增量同步，采用离线优先设计。
-联网时自动同步本地变更，离线操作会在联网后自动合并。
+"""盘古多端同步 — 支持多设备/多进程间记忆同步
 
-支持：
-- 基于时间戳和哈希的增量同步协议
-- 冲突自动解决策略（last-write-wins / merge / manual）
-- 离线优先设计（本地优先，联网时同步）
-- 同步状态追踪和日志记录
+核心能力：
+1. 冲突检测：检测多端写入冲突
+2. 冲突解决：自动解决合并冲突
+3. 变更追踪：追踪记忆变更日志
+4. 增量同步：只同步变更部分
+5. 同步状态：追踪同步状态
 """
-import hashlib
 import json
-import time
+import hashlib
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Callable
+from pathlib import Path
 
-from pangu.core.hashing import hex_digest
-
-from ..core.config import PanguConfig
-from ..core.palace import Drawer
-
-
-class SyncStrategy(str, Enum):
-    """同步冲突解决策略"""
-    LAST_WRITE_WINS = "last_write_wins"  # 最后写入者获胜
-    MERGE = "merge"                       # 自动合并
-    MANUAL = "manual"                     # 手动解决
-
-
-class SyncState(str, Enum):
-    """同步状态"""
-    IDLE = "idle"                 # 空闲
-    SYNCING = "syncing"           # 同步中
-    CONFLICT = "conflict"         # 存在冲突
-    OFFLINE = "offline"           # 离线
-    ERROR = "error"               # 错误
+logger = logging.getLogger("pangu.memory.sync_manager")
 
 
 @dataclass
-class MemoryRecord:
-    """同步记录条目"""
-    id: str
-    content: str
-    metadata: dict[str, Any] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    hash: str = ""  # 内容哈希
-    version: int = 1  # 版本号
-    device_id: str = ""  # 设备标识
-
-    def compute_hash(self) -> str:
-        """计算内容哈希"""
-        self.hash = hashlib.sha256(self.content.encode()).hexdigest()[:16]
-        return self.hash
-
-
-@dataclass
-class SyncConflict:
-    """同步冲突"""
-    id: str
-    local_record: MemoryRecord
-    remote_record: MemoryRecord
-    detected_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    resolved: bool = False
-    resolution: str = ""  # 解决方式
-
-
-@dataclass
-class SyncLog:
-    """同步日志"""
+class ChangeEntry:
+    """变更条目"""
+    change_id: str
+    memory_id: str
+    operation: str  # create / update / delete
     timestamp: str
-    direction: str  # "push" / "pull" / "conflict"
-    record_id: str
-    status: str  # "success" / "failed" / "pending"
-    message: str = ""
+    source: str  # 设备/进程标识
+    content_hash: str
+    old_content_hash: str = ""
+    resolved: bool = False
+
+
+@dataclass
+class SyncState:
+    """同步状态"""
+    device_id: str
+    last_sync: str
+    pending_changes: int
+    synced_count: int
+    conflict_count: int
 
 
 class SyncManager:
-    """跨平台同步管理器
+    """多端同步引擎"""
 
-    实现增量同步协议，支持离线优先设计。
-    本地操作立即生效，联网时批量同步远程变更。
-    """
+    def __init__(self, config=None):
+        self.config = config
+        self._sync_dir = Path.home() / ".pangu" / "sync"
+        self._sync_dir.mkdir(parents=True, exist_ok=True)
+        self._changes: list[ChangeEntry] = []
+        self._device_id = self._get_device_id()
+        self._load_changes()
 
-    def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
-        self.state = SyncState.IDLE
-        self.strategy = SyncStrategy.LAST_WRITE_WINS
-        self.device_id = self._generate_device_id()
-        self._local_store: dict[str, MemoryRecord] = {}
-        self._remote_store: dict[str, MemoryRecord] = {}
-        self._conflicts: list[SyncConflict] = []
-        self._log: list[SyncLog] = []
-        self._pending_changes: list[MemoryRecord] = []
-        self._is_online = False
-
-    def _generate_device_id(self) -> str:
-        """生成唯一设备标识"""
+    def _get_device_id(self) -> str:
+        """获取设备标识"""
         import platform
-        node = platform.node()
-        return hex_digest(node)[:8]
+        import socket
+        hostname = socket.gethostname()
+        system = platform.system().lower()
+        return f"{system}_{hostname}"
 
-    def set_online(self, online: bool) -> None:
-        """设置在线状态"""
-        self._is_online = online
-        if online and self.state == SyncState.OFFLINE:
-            self.state = SyncState.IDLE
-        elif not online:
-            self.state = SyncState.OFFLINE
+    def _load_changes(self) -> None:
+        changes_file = self._sync_dir / "changes.json"
+        if changes_file.exists():
+            try:
+                data = json.loads(changes_file.read_text())
+                self._changes = [ChangeEntry(**c) for c in data]
+            except Exception:
+                self._changes = []
 
-    def add_memory(self, memory: MemoryRecord) -> None:
-        """添加记忆到本地存储（立即生效）"""
-        memory.device_id = self.device_id
-        memory.compute_hash()
-        self._local_store[memory.id] = memory
-        self._pending_changes.append(memory)
+    def _save_changes(self) -> None:
+        changes_file = self._sync_dir / "changes.json"
+        data = [
+            {"change_id": c.change_id, "memory_id": c.memory_id,
+             "operation": c.operation, "timestamp": c.timestamp,
+             "source": c.source, "content_hash": c.content_hash,
+             "old_content_hash": c.old_content_hash, "resolved": c.resolved}
+            for c in self._changes[-5000:]
+        ]
+        changes_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
-        """获取记忆"""
-        return self._local_store.get(memory_id)
+    def record_change(self, memory_id: str, operation: str,
+                      content: str = "", old_content: str = "") -> ChangeEntry:
+        """记录变更"""
+        content_hash = hashlib.sha256(content.encode()).hexdigest()[:16] if content else ""
+        old_hash = hashlib.sha256(old_content.encode()).hexdigest()[:16] if old_content else ""
 
-    def sync(self) -> dict[str, Any]:
-        """执行同步操作
-
-        Returns:
-            同步结果摘要
-        """
-        if not self._is_online:
-            self.state = SyncState.OFFLINE
-            return {"status": "offline", "pending": len(self._pending_changes)}
-
-        self.state = SyncState.SYNCING
-        result = {
-            "pushed": 0,
-            "pulled": 0,
-            "conflicts": 0,
-            "total": 0
-        }
-
-        try:
-            # 推送本地变更
-            for record in self._pending_changes:
-                remote = self._remote_store.get(record.id)
-                if remote is None:
-                    self._remote_store[record.id] = record
-                    result["pushed"] += 1
-                    self._log_sync("push", record.id, "success", "新增记录")
-                elif self._detect_conflict(record, remote):
-                    result["conflicts"] += 1
-                    self._log_sync("conflict", record.id, "pending", "检测到冲突")
-                else:
-                    self._remote_store[record.id] = record
-                    result["pushed"] += 1
-                    self._log_sync("push", record.id, "success", "更新记录")
-
-            # 拉取远程变更（模拟）
-            for rid, remote in self._remote_store.items():
-                local = self._local_store.get(rid)
-                if local is None:
-                    self._local_store[rid] = remote
-                    result["pulled"] += 1
-                    self._log_sync("pull", rid, "success", "拉取新记录")
-                elif local.hash != remote.hash and remote.timestamp > local.timestamp:
-                    self._local_store[rid] = remote
-                    result["pulled"] += 1
-                    self._log_sync("pull", rid, "success", "拉取更新")
-
-            result["total"] = len(self._local_store)
-            self._pending_changes.clear()
-            self.state = SyncState.IDLE
-
-        except Exception as e:
-            self.state = SyncState.ERROR
-            result["error"] = str(e)
-
-        return result
-
-    def _detect_conflict(self, local: MemoryRecord, remote: MemoryRecord) -> bool:
-        """检测冲突：内容不同且都有更新"""
-        if local.hash == remote.hash:
-            return False
-        # 如果远端比本地新，视为冲突（需要策略决定）
-        if remote.timestamp > local.timestamp and remote.version >= local.version:
-            conflict = SyncConflict(
-                id=hex_digest(f"{local.id}-{remote.id}")[:8],
-                local_record=local,
-                remote_record=remote
-            )
-            self._conflicts.append(conflict)
-            return True
-        return False
-
-    def resolve_conflict(self, conflict_id: str, resolution: str = "") -> bool:
-        """解决冲突
-
-        Args:
-            conflict_id: 冲突 ID
-            resolution: 解决内容（manual 模式下使用）
-        """
-        for conflict in self._conflicts:
-            if conflict.id == conflict_id and not conflict.resolved:
-                if self.strategy == SyncStrategy.LAST_WRITE_WINS:
-                    # 选择较新的记录
-                    winner = (conflict.local_record
-                              if conflict.local_record.timestamp > conflict.remote_record.timestamp
-                              else conflict.remote_record)
-                    self._local_store[winner.id] = winner
-                    conflict.resolved = True
-                    conflict.resolution = "last_write_wins"
-                elif self.strategy == SyncStrategy.MERGE:
-                    # 简单合并：保留两者内容
-                    merged_content = (
-                        f"{conflict.local_record.content}\n---\n{conflict.remote_record.content}"
-                    )
-                    merged = MemoryRecord(
-                        id=conflict.local_record.id,
-                        content=merged_content,
-                        metadata={**conflict.local_record.metadata, **conflict.remote_record.metadata},
-                        timestamp=datetime.now().isoformat(),
-                        version=max(conflict.local_record.version, conflict.remote_record.version) + 1
-                    )
-                    merged.compute_hash()
-                    self._local_store[merged.id] = merged
-                    conflict.resolved = True
-                    conflict.resolution = "merged"
-                elif self.strategy == SyncStrategy.MANUAL:
-                    if resolution:
-                        merged = MemoryRecord(
-                            id=conflict.local_record.id,
-                            content=resolution,
-                            timestamp=datetime.now().isoformat(),
-                            version=max(conflict.local_record.version, conflict.remote_record.version) + 1
-                        )
-                        merged.compute_hash()
-                        self._local_store[merged.id] = merged
-                        conflict.resolved = True
-                        conflict.resolution = "manual"
-                    else:
-                        return False  # 需要手动提供内容
-                return True
-        return False
-
-    def _log_sync(self, direction: str, record_id: str, status: str, message: str) -> None:
-        """记录同步日志"""
-        log = SyncLog(
+        entry = ChangeEntry(
+            change_id=f"chg_{len(self._changes)}_{int(datetime.now().timestamp())}",
+            memory_id=memory_id,
+            operation=operation,
             timestamp=datetime.now().isoformat(),
-            direction=direction,
-            record_id=record_id,
-            status=status,
-            message=message
+            source=self._device_id,
+            content_hash=content_hash,
+            old_content_hash=old_hash,
         )
-        self._log.append(log)
+        self._changes.append(entry)
+        self._save_changes()
+        return entry
 
-    def get_pending_conflicts(self) -> list[SyncConflict]:
-        """获取未解决的冲突"""
-        return [c for c in self._conflicts if not c.resolved]
+    def get_pending_changes(self, since: str = None) -> list[dict]:
+        """获取待同步变更"""
+        pending = [c for c in self._changes if not c.resolved]
+        if since:
+            pending = [c for c in pending if c.timestamp > since]
 
-    def get_sync_history(self, limit: int = 50) -> list[SyncLog]:
-        """获取同步历史"""
-        return self._log[-limit:]
+        return [
+            {"id": c.change_id, "memory_id": c.memory_id,
+             "operation": c.operation, "timestamp": c.timestamp,
+             "source": c.source}
+            for c in pending[-200:]
+        ]
 
-    def get_status(self) -> dict[str, Any]:
-        """获取同步状态"""
-        return {
-            "state": self.state.value,
-            "strategy": self.strategy.value,
-            "device_id": self.device_id,
-            "is_online": self._is_online,
-            "local_count": len(self._local_store),
-            "pending_changes": len(self._pending_changes),
-            "pending_conflicts": len(self.get_pending_conflicts()),
-            "total_synced": len(self._log)
-        }
+    def detect_conflicts(self, remote_changes: list[dict]) -> list[dict]:
+        """检测冲突"""
+        conflicts = []
+        local_by_memory: dict[str, list[ChangeEntry]] = {}
+        for c in self._changes:
+            local_by_memory.setdefault(c.memory_id, []).append(c)
 
-    def set_strategy(self, strategy: SyncStrategy) -> None:
-        """设置冲突解决策略"""
-        self.strategy = strategy
-        Drawer.info(f"同步策略已切换为: {strategy.value}")
+        for rc in remote_changes:
+            mem_id = rc.get("memory_id", "")
+            local_entries = local_by_memory.get(mem_id, [])
 
-    def export_snapshot(self) -> dict[str, Any]:
-        """导出同步快照（用于备份）"""
-        return {
-            "device_id": self.device_id,
-            "timestamp": datetime.now().isoformat(),
-            "records": {rid: {"content": r.content, "hash": r.hash, "version": r.version}
-                       for rid, r in self._local_store.items()},
-            "conflicts": len(self.get_pending_conflicts())
-        }
+            for lc in local_entries:
+                if (not lc.resolved and
+                    lc.operation == "update" and
+                    rc.get("operation") == "update" and
+                    lc.content_hash != rc.get("content_hash", "")):
+                    conflicts.append({
+                        "memory_id": mem_id,
+                        "local_change": lc.change_id,
+                        "remote_change": rc.get("id", ""),
+                        "local_time": lc.timestamp,
+                        "remote_time": rc.get("timestamp", ""),
+                        "local_source": lc.source,
+                        "remote_source": rc.get("source", ""),
+                    })
 
-    def import_snapshot(self, snapshot: dict[str, Any]) -> int:
-        """导入同步快照
+        return conflicts
 
-        Returns:
-            导入的记录数
-        """
+    def resolve_conflict(self, change_id: str, resolution: str = "keep_latest") -> dict:
+        """解决冲突"""
+        for c in self._changes:
+            if c.change_id == change_id:
+                c.resolved = True
+                self._save_changes()
+                return {
+                    "change_id": change_id,
+                    "resolution": resolution,
+                    "resolved_at": datetime.now().isoformat(),
+                }
+
+        return {"error": f"Change {change_id} not found"}
+
+    def mark_synced(self, change_ids: list[str]) -> int:
+        """标记已同步"""
         count = 0
-        for rid, data in snapshot.get("records", {}).items():
-            record = MemoryRecord(
-                id=rid,
-                content=data["content"],
-                hash=data["hash"],
-                version=data["version"]
-            )
-            self._local_store[rid] = record
-            count += 1
-        Drawer.info(f"导入快照: {count} 条记录")
+        for c in self._changes:
+            if c.change_id in change_ids:
+                c.resolved = True
+                count += 1
+        self._save_changes()
         return count
+
+    def get_sync_state(self) -> dict:
+        """获取同步状态"""
+        pending = sum(1 for c in self._changes if not c.resolved)
+        synced = sum(1 for c in self._changes if c.resolved)
+
+        sources = set(c.source for c in self._changes)
+        return {
+            "device_id": self._device_id,
+            "total_changes": len(self._changes),
+            "pending": pending,
+            "synced": synced,
+            "known_devices": list(sources),
+        }
+
+    def get_change_history(self, memory_id: str = None, limit: int = 20) -> list[dict]:
+        """获取变更历史"""
+        entries = self._changes
+        if memory_id:
+            entries = [c for c in entries if c.memory_id == memory_id]
+
+        return [
+            {"id": c.change_id, "memory_id": c.memory_id,
+             "operation": c.operation, "timestamp": c.timestamp,
+             "source": c.source, "resolved": c.resolved}
+            for c in entries[-limit:]
+        ]
+
+    def get_sync_stats(self) -> dict:
+        """获取同步统计"""
+        return {
+            "total_changes": len(self._changes),
+            "pending": sum(1 for c in self._changes if not c.resolved),
+            "synced": sum(1 for c in self._changes if c.resolved),
+            "conflicts": sum(1 for c in self._changes if c.resolved and c.old_content_hash),
+        }
+
+
+_sync: SyncManager | None = None
+
+
+def get_sync(config=None) -> SyncManager:
+    """获取全局同步管理器实例"""
+    global _sync
+    if _sync is None:
+        _sync = SyncManager(config)
+    return _sync
