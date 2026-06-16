@@ -416,6 +416,7 @@ class MCPServer:
             {"name": "pangu_learning_stats", "description": "获取自适应学习统计", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_popular_queries", "description": "获取热门查询", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
             {"name": "pangu_frequent_memories", "description": "获取频繁访问的记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "返回数量", "default": 10}}}},
+            {"name": "pangu_benchmark", "description": "运行性能基准测试", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_auto_collect", "description": "从会话文件自动提取记忆", "inputSchema": {"type": "object", "properties": {"session_file": {"type": "string", "description": "会话文件路径"}, "min_importance": {"type": "number", "description": "最小重要性阈值", "default": 0.3}}, "required": ["session_file"]}},
 
             # ── 社交记忆 (v2.0) ──
@@ -1933,6 +1934,21 @@ class MCPServer:
                 al = get_adaptive_learning(self.config)
                 limit = arguments.get("limit", 10)
                 return json.dumps(al.get_frequent_memories(limit), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_benchmark":
+                from ..observability.performance_monitor import PerformanceMonitor
+                monitor = PerformanceMonitor(self.config)
+                result = monitor.run_benchmark()
+                return json.dumps({
+                    "timestamp": result.timestamp,
+                    "total_memories": result.total_memories,
+                    "vector_count": result.vector_count,
+                    "embed_latency_ms": result.embed_latency_ms,
+                    "search_latency_ms": result.search_latency_ms,
+                    "hybrid_latency_ms": result.hybrid_latency_ms,
+                    "token_count": result.token_count,
+                    "token_per_memory": result.token_per_memory,
+                }, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_auto_collect":
                 from ..memory.auto_collector import AutoCollector
