@@ -398,6 +398,8 @@ class MCPServer:
 
             # ── 预测性记忆 (v2.0) ──
             {"name": "pangu_proactive_predict", "description": "基于上下文预测相关记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前上下文"}, "limit": {"type": "integer", "description": "推荐数量", "default": 5}}, "required": ["context"]}},
+            {"name": "pangu_proactive_suggest", "description": "基于当前上下文主动推荐记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "推荐数量", "default": 5}}}},
+            {"name": "pangu_context_status", "description": "获取当前上下文状态", "inputSchema": {"type": "object", "properties": {}}},
 
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -1870,6 +1872,31 @@ class MCPServer:
                         for p in predictions
                     ],
                     "count": len(predictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_proactive_suggest":
+                from ..memory.proactive import get_proactive_engine
+                engine = get_proactive_engine(self.config)
+                context = engine.get_context()
+                limit = arguments.get("limit", 5)
+                predictions = engine.predict(context, drawers, limit)
+                return json.dumps({
+                    "context": context[:100] if context else "",
+                    "predictions": [
+                        {"id": p.memory_id, "content": p.content, "score": p.relevance_score, "reason": p.reason}
+                        for p in predictions
+                    ],
+                    "count": len(predictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_context_status":
+                from ..memory.proactive import get_proactive_engine
+                engine = get_proactive_engine(self.config)
+                context = engine.get_context()
+                return json.dumps({
+                    "context": context[:200] if context else "",
+                    "context_length": len(context),
+                    "history_size": len(engine._context_history),
                 }, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":

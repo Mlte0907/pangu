@@ -35,6 +35,27 @@ class ProactiveEngine:
         self.config = config or PanguConfig.load()
         self._context_history: list[str] = []  # 上下文历史
         self._prediction_stats: dict = {"hits": 0, "misses": 0}
+        self._context_window: int = 10  # 上下文窗口大小
+
+    def get_context(self) -> str:
+        """获取当前上下文（从 working_memory）"""
+        try:
+            from pangu.memory.working_memory import get_working_memory
+            wm = get_working_memory()
+            # 从工作记忆中提取上下文
+            context_items = []
+            for item in wm._buffer[-5:]:  # 最近 5 条
+                if hasattr(item, 'content'):
+                    context_items.append(item.content)
+            return " ".join(context_items)
+        except Exception:
+            return " ".join(self._context_history[-5:])
+
+    def update_context(self, text: str) -> None:
+        """更新上下文历史"""
+        self._context_history.append(text)
+        if len(self._context_history) > self._context_window:
+            self._context_history = self._context_history[-self._context_window:]
 
     def predict(self, context: str, drawers: list[Drawer], limit: int = 5) -> list[ProactiveMemory]:
         """基于上下文预测相关记忆
