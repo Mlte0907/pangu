@@ -496,6 +496,12 @@ class MCPServer:
             {"name": "pangu_get_archive", "description": "获取归档记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 20}}}},
             {"name": "pangu_forget_stats", "description": "遗忘统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 巩固智能 (v3.0) ──
+            {"name": "pangu_consolidate", "description": "执行智能记忆巩固", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_merge_candidates", "description": "查找可合并记忆", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_resolve_conflicts", "description": "发现并解决矛盾记忆", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_consolidation_stats", "description": "巩固统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2548,6 +2554,49 @@ class MCPServer:
                 from ..memory.adaptive_forgetting import get_forgetting
                 af = get_forgetting(self.config)
                 return json.dumps(af.get_forgetting_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_consolidate":
+                from ..memory.consolidation_intelligence import get_consolidation_intel
+                ci = get_consolidation_intel(self.config)
+                report = ci.run_consolidation(drawers)
+                return json.dumps({
+                    "total_actions": report.total_actions,
+                    "merges": report.merges,
+                    "promotions": report.promotions,
+                    "resolutions": report.resolutions,
+                    "compressions": report.compressions,
+                    "avg_info_preserved": report.avg_info_preserved,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_merge_candidates":
+                from ..memory.consolidation_intelligence import get_consolidation_intel
+                ci = get_consolidation_intel(self.config)
+                candidates = ci.find_merge_candidates(drawers)
+                return json.dumps({
+                    "candidates": [
+                        {"ids": [d.id for d in group], "count": len(group),
+                         "tags": list(set(t for d in group for t in d.tags))[:5]}
+                        for group in candidates
+                    ],
+                    "count": len(candidates),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_resolve_conflicts":
+                from ..memory.consolidation_intelligence import get_consolidation_intel
+                ci = get_consolidation_intel(self.config)
+                actions = ci.find_conflicts(drawers)
+                return json.dumps({
+                    "conflicts": [
+                        {"target": a.target_id, "description": a.description}
+                        for a in actions
+                    ],
+                    "count": len(actions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_consolidation_stats":
+                from ..memory.consolidation_intelligence import get_consolidation_intel
+                ci = get_consolidation_intel(self.config)
+                return json.dumps(ci.get_consolidation_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
