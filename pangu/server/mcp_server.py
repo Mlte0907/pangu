@@ -545,6 +545,13 @@ class MCPServer:
             {"name": "pangu_health_trend", "description": "健康趋势", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_health_stats", "description": "健康统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 备份恢复 (v3.0) ──
+            {"name": "pangu_backup", "description": "全量备份记忆", "inputSchema": {"type": "object", "properties": {"description": {"type": "string"}}}},
+            {"name": "pangu_list_backups", "description": "列出所有备份", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_verify_backup", "description": "验证备份完整性", "inputSchema": {"type": "object", "properties": {"backup_id": {"type": "string"}}, "required": ["backup_id"]}},
+            {"name": "pangu_restore_backup", "description": "恢复备份", "inputSchema": {"type": "object", "properties": {"backup_id": {"type": "string"}}, "required": ["backup_id"]}},
+            {"name": "pangu_backup_stats", "description": "备份统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2872,6 +2879,38 @@ class MCPServer:
                 from ..memory.health_monitor import get_monitor
                 hm = get_monitor(self.config)
                 return json.dumps(hm.get_health_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_backup":
+                from ..memory.backup_restore import get_backup_engine
+                be = get_backup_engine(self.config)
+                desc = arguments.get("description", "")
+                info = be.backup(drawers, desc)
+                return json.dumps({
+                    "backup_id": info.backup_id, "memories": info.memory_count,
+                    "size": info.size_bytes, "checksum": info.checksum,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_list_backups":
+                from ..memory.backup_restore import get_backup_engine
+                be = get_backup_engine(self.config)
+                return json.dumps({"backups": be.list_backups(), "count": len(be.list_backups())}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_verify_backup":
+                from ..memory.backup_restore import get_backup_engine
+                be = get_backup_engine(self.config)
+                return json.dumps(be.verify_backup(arguments["backup_id"]), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_restore_backup":
+                from ..memory.backup_restore import get_backup_engine
+                be = get_backup_engine(self.config)
+                result = be.restore(arguments["backup_id"])
+                result.pop("drawers", None)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_backup_stats":
+                from ..memory.backup_restore import get_backup_engine
+                be = get_backup_engine(self.config)
+                return json.dumps(be.get_backup_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
