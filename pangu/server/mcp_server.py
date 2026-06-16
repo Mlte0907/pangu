@@ -586,6 +586,13 @@ class MCPServer:
             {"name": "pangu_event_webhook_add", "description": "添加 Webhook", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "event_types": {"type": "array", "items": {"type": "string"}}}, "required": ["url", "event_types"]}},
             {"name": "pangu_event_save", "description": "持久化事件历史", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 智能索引 (v3.0) ──
+            {"name": "pangu_index_build", "description": "构建所有索引", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_index_search", "description": "通过索引搜索", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+            {"name": "pangu_index_recommend", "description": "索引推荐", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_index_health", "description": "索引健康检查", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_index_cleanup", "description": "清理无效索引", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3107,6 +3114,41 @@ class MCPServer:
                 es = get_event_stream(self.config)
                 saved = es.save_history()
                 return json.dumps({"saved": saved}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_index_build":
+                from ..memory.smart_indexing import get_smart_indexing
+                si = get_smart_indexing(self.config)
+                result = si.build_all_indexes(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_index_search":
+                from ..memory.smart_indexing import get_smart_indexing
+                si = get_smart_indexing(self.config)
+                results = si.search_index(arguments["query"])
+                return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_index_recommend":
+                from ..memory.smart_indexing import get_smart_indexing
+                si = get_smart_indexing(self.config)
+                recs = si.recommend_indexes(drawers)
+                return json.dumps({
+                    "recommendations": [
+                        {"type": r.index_type, "key": r.key, "reason": r.reason, "priority": r.priority}
+                        for r in recs
+                    ],
+                    "count": len(recs),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_index_health":
+                from ..memory.smart_indexing import get_smart_indexing
+                si = get_smart_indexing(self.config)
+                return json.dumps(si.get_index_health(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_index_cleanup":
+                from ..memory.smart_indexing import get_smart_indexing
+                si = get_smart_indexing(self.config)
+                cleaned = si.cleanup_indexes()
+                return json.dumps({"cleaned": cleaned, "remaining": len(si._indexes)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
