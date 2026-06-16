@@ -593,6 +593,11 @@ class MCPServer:
             {"name": "pangu_index_health", "description": "索引健康检查", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_index_cleanup", "description": "清理无效索引", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 智能缓存 (v3.0) ──
+            {"name": "pangu_cache_stats", "description": "缓存统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_cache_cleanup", "description": "清理过期缓存", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_cache_invalidate", "description": "失效缓存", "inputSchema": {"type": "object", "properties": {"pattern": {"type": "string"}}, "required": ["pattern"]}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3149,6 +3154,26 @@ class MCPServer:
                 si = get_smart_indexing(self.config)
                 cleaned = si.cleanup_indexes()
                 return json.dumps({"cleaned": cleaned, "remaining": len(si._indexes)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cache_stats":
+                from ..memory.smart_cache import get_cache_manager
+                cm = get_cache_manager(self.config)
+                return json.dumps(cm.get_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cache_cleanup":
+                from ..memory.smart_cache import get_cache_manager
+                cm = get_cache_manager(self.config)
+                c1 = cm._l1.cleanup_expired()
+                c2 = cm._l2.cleanup_expired()
+                return json.dumps({"l1_cleaned": c1, "l2_cleaned": c2, "total": c1 + c2}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cache_invalidate":
+                from ..memory.smart_cache import get_cache_manager
+                cm = get_cache_manager(self.config)
+                pattern = arguments.get("pattern", "")
+                c1 = cm._l1.invalidate_pattern(pattern)
+                c2 = cm._l2.invalidate_pattern(pattern)
+                return json.dumps({"pattern": pattern, "invalidated": c1 + c2}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
