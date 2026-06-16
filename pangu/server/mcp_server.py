@@ -502,6 +502,13 @@ class MCPServer:
             {"name": "pangu_resolve_conflicts", "description": "发现并解决矛盾记忆", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_consolidation_stats", "description": "巩固统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 记忆推荐 (v3.0) ──
+            {"name": "pangu_recommend", "description": "综合记忆推荐", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前上下文"}, "memory_id": {"type": "string", "description": "当前记忆ID"}, "top_k": {"type": "integer", "default": 5}}}},
+            {"name": "pangu_recommend_similar", "description": "推荐相似记忆", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string"}, "top_k": {"type": "integer", "default": 5}}, "required": ["memory_id"]}},
+            {"name": "pangu_recommend_timely", "description": "推荐时效性记忆", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 5}}}},
+            {"name": "pangu_recommend_feedback", "description": "记录推荐反馈", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string"}, "liked": {"type": "boolean"}}, "required": ["memory_id", "liked"]}},
+            {"name": "pangu_recommendation_stats", "description": "推荐统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2597,6 +2604,57 @@ class MCPServer:
                 from ..memory.consolidation_intelligence import get_consolidation_intel
                 ci = get_consolidation_intel(self.config)
                 return json.dumps(ci.get_consolidation_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_recommend":
+                from ..memory.recommendation import get_recommendation
+                rec = get_recommendation(self.config)
+                context = arguments.get("context", "")
+                memory_id = arguments.get("memory_id", "")
+                top_k = arguments.get("top_k", 5)
+                result = rec.get_full_recommendations(context, memory_id, drawers, top_k)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_recommend_similar":
+                from ..memory.recommendation import get_recommendation
+                rec = get_recommendation(self.config)
+                memory_id = arguments.get("memory_id", "")
+                top_k = arguments.get("top_k", 5)
+                results = rec.recommend_similar(memory_id, drawers, top_k)
+                return json.dumps({
+                    "recommendations": [
+                        {"id": r.memory_id, "preview": r.content_preview,
+                         "score": r.score, "reason": r.reason}
+                        for r in results
+                    ],
+                    "count": len(results),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_recommend_timely":
+                from ..memory.recommendation import get_recommendation
+                rec = get_recommendation(self.config)
+                top_k = arguments.get("top_k", 5)
+                results = rec.recommend_timely(drawers, top_k)
+                return json.dumps({
+                    "recommendations": [
+                        {"id": r.memory_id, "preview": r.content_preview,
+                         "wing": r.wing, "score": r.score, "reason": r.reason}
+                        for r in results
+                    ],
+                    "count": len(results),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_recommend_feedback":
+                from ..memory.recommendation import get_recommendation
+                rec = get_recommendation(self.config)
+                memory_id = arguments.get("memory_id", "")
+                liked = arguments.get("liked", True)
+                rec.record_feedback("default", memory_id, liked)
+                return json.dumps({"status": "recorded", "memory_id": memory_id, "liked": liked}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_recommendation_stats":
+                from ..memory.recommendation import get_recommendation
+                rec = get_recommendation(self.config)
+                return json.dumps(rec.get_recommendation_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
