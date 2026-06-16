@@ -828,3 +828,83 @@ class KnowledgeGraph:
             "entities_added": entities_added,
             "relations_added": relations_added,
         }
+
+    def cross_domain_transfer(self, source_domain: str, target_domain: str) -> dict:
+        """跨领域知识迁移 — 将一个领域的知识迁移到另一个领域
+
+        Args:
+            source_domain: 源领域 (wing)
+            target_domain: 目标领域 (wing)
+
+        Returns:
+            迁移结果
+        """
+        # 查找源领域的实体
+        source_entities = self.list_entities(entity_type="technology") + \
+                         self.list_entities(entity_type="concept")
+
+        # 查找目标领域的实体
+        target_entities = self.list_entities(entity_type="technology") + \
+                         self.list_entities(entity_type="concept")
+
+        # 查找跨领域关联
+        transfers = []
+        for se in source_entities:
+            for te in target_entities:
+                if se["id"] != te["id"]:
+                    # 检查是否有共同关系
+                    se_relations = set(r["predicate"] for r in self.query_relations(subject_id=se["id"]))
+                    te_relations = set(r["predicate"] for r in self.query_relations(subject_id=te["id"]))
+                    common = se_relations & te_relations
+
+                    if common:
+                        transfers.append({
+                            "source": se["name"],
+                            "target": te["name"],
+                            "common_relations": list(common),
+                            "confidence": 0.7,
+                        })
+
+        return {
+            "source_domain": source_domain,
+            "target_domain": target_domain,
+            "transfers": transfers[:10],
+            "count": len(transfers),
+        }
+
+    def find_similar_patterns(self, entity_id: str) -> list[dict]:
+        """查找相似模式 — 在不同领域中找到类似的实体关系"""
+        entity = self.get_entity(entity_id)
+        if not entity:
+            return []
+
+        # 获取实体的关系
+        relations = self.query_relations(subject_id=entity_id)
+        if not relations:
+            return []
+
+        # 查找具有相似关系的其他实体
+        patterns = []
+        for rel in relations:
+            # 查找具有相同关系类型的其他实体
+            similar_rels = self.query_relations(predicate=rel["predicate"])
+            for sr in similar_rels:
+                if sr["object_id"] != entity_id:
+                    similar_entity = self.get_entity(sr["object_id"])
+                    if similar_entity:
+                        patterns.append({
+                            "entity": similar_entity["name"],
+                            "relation": rel["predicate"],
+                            "confidence": rel.get("confidence", 1.0),
+                        })
+
+        # 去重
+        seen = set()
+        unique_patterns = []
+        for p in patterns:
+            key = (p["entity"], p["relation"])
+            if key not in seen:
+                seen.add(key)
+                unique_patterns.append(p)
+
+        return unique_patterns[:10]

@@ -377,6 +377,8 @@ class MCPServer:
 
             # ── 知识图谱增强 (v2.0) ──
             {"name": "pangu_kg_auto_extract", "description": "从记忆中自动提取实体和关系丰富KG", "inputSchema": {"type": "object", "properties": {"max_drawers": {"type": "integer", "description": "最多处理的记忆数", "default": 50}}, "required": []}},
+            {"name": "pangu_kg_cross_domain", "description": "跨领域知识迁移", "inputSchema": {"type": "object", "properties": {"source_domain": {"type": "string", "description": "源领域"}, "target_domain": {"type": "string", "description": "目标领域"}}, "required": ["source_domain", "target_domain"]}},
+            {"name": "pangu_kg_similar_patterns", "description": "查找相似模式", "inputSchema": {"type": "object", "properties": {"entity_id": {"type": "string", "description": "实体ID"}}, "required": ["entity_id"]}},
 
             # ── 混合检索 (v2.0) ──
             {"name": "pangu_hybrid_search", "description": "FTS+向量+KG三路召回 RRF融合检索", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 10}}, "required": ["query"]}},
@@ -1751,6 +1753,21 @@ class MCPServer:
                 max_d = arguments.get("max_drawers", 50)
                 result = kg.auto_extract_entities(drawers, max_d)
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_kg_cross_domain":
+                from ..memory.knowledge_graph import KnowledgeGraph
+                kg = KnowledgeGraph(self.config)
+                source = arguments.get("source_domain", "")
+                target = arguments.get("target_domain", "")
+                result = kg.cross_domain_transfer(source, target)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_kg_similar_patterns":
+                from ..memory.knowledge_graph import KnowledgeGraph
+                kg = KnowledgeGraph(self.config)
+                entity_id = arguments.get("entity_id", "")
+                patterns = kg.find_similar_patterns(entity_id)
+                return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_hybrid_search":
                 from ..memory.hybrid_search import hybrid_search
