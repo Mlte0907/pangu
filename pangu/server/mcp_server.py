@@ -515,6 +515,13 @@ class MCPServer:
             {"name": "pangu_auto_fix", "description": "自动修复质量问题", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_quality_stats", "description": "质量统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 元学习 (v3.0 里程碑) ──
+            {"name": "pangu_meta_observe", "description": "记录性能观察", "inputSchema": {"type": "object", "properties": {"module": {"type": "string"}, "metric": {"type": "string"}, "value": {"type": "number"}}, "required": ["module", "metric", "value"]}},
+            {"name": "pangu_meta_recommend", "description": "推荐最优策略", "inputSchema": {"type": "object", "properties": {"task_type": {"type": "string", "default": "search"}}}},
+            {"name": "pangu_meta_tune", "description": "自动调优参数", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_meta_insights", "description": "获取学习洞察", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_meta_stats", "description": "元学习统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2695,6 +2702,35 @@ class MCPServer:
                 from ..memory.quality_scorer import get_scorer
                 qs = get_scorer(self.config)
                 return json.dumps(qs.get_quality_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_meta_observe":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                ml.observe(arguments["module"], arguments["metric"], arguments["value"])
+                return json.dumps({"status": "recorded"}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_meta_recommend":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                task_type = arguments.get("task_type", "search")
+                result = ml.recommend_strategy(task_type)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_meta_tune":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                result = ml.auto_tune()
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_meta_insights":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                return json.dumps(ml.get_learning_insights(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_meta_stats":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                return json.dumps(ml.get_meta_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
