@@ -397,6 +397,7 @@ class MCPServer:
             {"name": "pangu_graph_causal_chain", "description": "因果链分析", "inputSchema": {"type": "object", "properties": {"entity_id": {"type": "string", "description": "实体ID"}, "max_depth": {"type": "integer", "description": "最大深度", "default": 5}}, "required": ["entity_id"]}},
             {"name": "pangu_graph_temporal", "description": "时序推理", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "查询文本"}}, "required": ["query"]}},
             {"name": "pangu_graph_analogy", "description": "类比检测", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "查询文本"}}, "required": ["query"]}},
+            {"name": "pangu_graph_visualize", "description": "推理过程可视化", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "推理查询"}}, "required": ["query"]}},
 
             # ── 预测性记忆 (v2.0) ──
             {"name": "pangu_proactive_predict", "description": "基于上下文预测相关记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前上下文"}, "limit": {"type": "integer", "description": "推荐数量", "default": 5}}, "required": ["context"]}},
@@ -1889,6 +1890,14 @@ class MCPServer:
                 query = arguments.get("query", "")
                 result = gr.analogy_detection(query)
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_visualize":
+                from ..memory.graph_reasoning import GraphReasoning
+                gr = GraphReasoning(self.config)
+                query = arguments.get("query", "")
+                result = gr.infer(query)
+                visualization = gr.visualize_reasoning(result)
+                return json.dumps(visualization, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_proactive_predict":
                 from ..memory.proactive import get_proactive_engine

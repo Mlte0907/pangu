@@ -358,3 +358,51 @@ class GraphReasoning:
                 lines.append(f"  {step}")
 
         return "\n".join(lines)
+
+    def visualize_reasoning(self, result: InferenceResult) -> dict:
+        """可视化推理过程 — 生成结构化的推理展示"""
+        visualization = {
+            "query": result.query,
+            "confidence": result.confidence,
+            "steps": [],
+            "entities": [],
+            "paths": [],
+            "conclusions": [],
+        }
+
+        # 实体可视化
+        for entity in result.entities:
+            visualization["entities"].append({
+                "id": entity.get("id", ""),
+                "name": entity.get("name", ""),
+                "type": entity.get("type", ""),
+            })
+
+        # 路径可视化
+        for path in result.paths:
+            path_viz = []
+            for rel in path:
+                path_viz.append({
+                    "from": rel.get("subject_id", ""),
+                    "relation": rel.get("predicate", ""),
+                    "to": rel.get("object_id", ""),
+                })
+            visualization["paths"].append(path_viz)
+
+        # 推理步骤
+        for i, step in enumerate(result.reasoning_chain):
+            visualization["steps"].append({
+                "step": i + 1,
+                "description": step,
+            })
+
+        # 结论
+        if result.inferences:
+            for inf in result.inferences:
+                visualization["conclusions"].append({
+                    "type": inf.get("type", ""),
+                    "statement": f"{inf.get('from_entity', '')} → {inf.get('to_entity', '')}",
+                    "confidence": inf.get("confidence", 0),
+                })
+
+        return visualization
