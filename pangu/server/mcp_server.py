@@ -509,6 +509,12 @@ class MCPServer:
             {"name": "pangu_recommend_feedback", "description": "记录推荐反馈", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string"}, "liked": {"type": "boolean"}}, "required": ["memory_id", "liked"]}},
             {"name": "pangu_recommendation_stats", "description": "推荐统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 质量评分 (v3.0) ──
+            {"name": "pangu_assess_quality", "description": "评估记忆质量", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string"}}}},
+            {"name": "pangu_batch_assess", "description": "批量质量评估", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_auto_fix", "description": "自动修复质量问题", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_quality_stats", "description": "质量统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2655,6 +2661,40 @@ class MCPServer:
                 from ..memory.recommendation import get_recommendation
                 rec = get_recommendation(self.config)
                 return json.dumps(rec.get_recommendation_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_assess_quality":
+                from ..memory.quality_scorer import get_scorer
+                qs = get_scorer(self.config)
+                memory_id = arguments.get("memory_id", "")
+                target = next((d for d in drawers if d.id == memory_id), None)
+                if not target:
+                    return json.dumps({"error": "memory not found"}, ensure_ascii=False, indent=2)
+                assessment = qs.assess(target, drawers)
+                return json.dumps({
+                    "id": assessment.memory_id,
+                    "score": assessment.overall_score,
+                    "grade": assessment.grade,
+                    "dimensions": [{"name": d.name, "score": d.score, "detail": d.detail} for d in assessment.dimensions],
+                    "issues": assessment.issues,
+                    "suggestions": assessment.suggestions,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_batch_assess":
+                from ..memory.quality_scorer import get_scorer
+                qs = get_scorer(self.config)
+                result = qs.batch_assess(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_auto_fix":
+                from ..memory.quality_scorer import get_scorer
+                qs = get_scorer(self.config)
+                result = qs.auto_fix(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_quality_stats":
+                from ..memory.quality_scorer import get_scorer
+                qs = get_scorer(self.config)
+                return json.dumps(qs.get_quality_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
