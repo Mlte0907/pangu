@@ -383,8 +383,7 @@ class MCPServer:
             {"name": "pangu_cluster_by_tags", "description": "按标签聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 20}}, "required": ["query"]}},
             {"name": "pangu_cluster_by_time", "description": "按时间聚类搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "buckets": {"type": "integer", "description": "时间段数", "default": 3}}, "required": ["query"]}},
             {"name": "pangu_hierarchical_cluster", "description": "层次聚类（基于向量相似度）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "max_clusters": {"type": "integer", "description": "最大聚类数", "default": 5}}, "required": ["query"]}},
-
-            # ── 多Agent协作记忆 (v2.0) ──
+            {"name": "pangu_dedup_results", "description": "去重搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "limit": {"type": "integer", "description": "返回数量", "default": 10}}, "required": ["query"]}},
             {"name": "pangu_multi_register", "description": "注册Agent到协作记忆空间", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID"}, "priority": {"type": "integer", "description": "优先级", "default": 5}}, "required": ["agent_id"]}},
             {"name": "pangu_multi_write", "description": "写入多Agent共享记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "写入者Agent ID"}, "content": {"type": "string", "description": "记忆内容"}, "scope": {"type": "string", "description": "权限范围: private/shared/public", "default": "public"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "标签列表"}}, "required": ["agent_id", "content"]}},
             {"name": "pangu_multi_read", "description": "读取Agent可见的记忆", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID"}, "tags": {"type": "array", "items": {"type": "string"}, "description": "过滤标签"}}, "required": ["agent_id"]}},
@@ -1769,6 +1768,14 @@ class MCPServer:
                 results = hybrid_search(query, drawers, self.config, limit=20)
                 clusters = hierarchical_cluster(results, max_clusters=max_clusters)
                 return json.dumps({"clusters": clusters, "total_clusters": len(clusters)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_dedup_results":
+                from ..memory.cluster import deduplicate_results
+                query = arguments.get("query", "")
+                limit = arguments.get("limit", 10)
+                results = hybrid_search(query, drawers, self.config, limit=limit)
+                deduped = deduplicate_results(results)
+                return json.dumps({"results": deduped, "total": len(deduped), "removed": len(results) - len(deduped)}, ensure_ascii=False, indent=2)
 
             # ── 多Agent协作记忆 ──
             elif tool_name == "pangu_multi_register":

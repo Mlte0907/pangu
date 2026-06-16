@@ -1,4 +1,4 @@
-"""盘古搜索结果聚类 — 标签/时间/层次聚类"""
+"""盘古搜索结果聚类 — 标签/时间/层次/去重聚类"""
 
 import logging
 import math
@@ -8,6 +8,25 @@ from datetime import datetime
 from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.cluster")
+
+
+def deduplicate_results(results: list[dict], threshold: float = 0.9) -> list[dict]:
+    """去重搜索结果（基于内容相似度）"""
+    if not results:
+        return []
+
+    unique = []
+    seen_content = set()
+
+    for r in results:
+        content = r.get("content", "")
+        # 简单的内容去重（完全相同或高度相似）
+        content_key = content[:100].lower().strip()
+        if content_key not in seen_content:
+            seen_content.add(content_key)
+            unique.append(r)
+
+    return unique
 
 
 # ── 基础聚类 ──
