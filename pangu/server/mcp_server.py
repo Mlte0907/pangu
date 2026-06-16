@@ -522,6 +522,12 @@ class MCPServer:
             {"name": "pangu_meta_insights", "description": "获取学习洞察", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_meta_stats", "description": "元学习统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 记忆蒸馏 (v3.0) ──
+            {"name": "pangu_distill", "description": "蒸馏所有记忆为精炼知识", "inputSchema": {"type": "object", "properties": {"min_group_size": {"type": "integer", "default": 2}}}},
+            {"name": "pangu_distill_by_wing", "description": "按领域蒸馏", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_extract_keywords", "description": "提取关键词", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "top_k": {"type": "integer", "default": 5}}, "required": ["text"]}},
+            {"name": "pangu_distillation_stats", "description": "蒸馏统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2731,6 +2737,42 @@ class MCPServer:
                 from ..memory.meta_learning import get_meta_engine
                 ml = get_meta_engine(self.config)
                 return json.dumps(ml.get_meta_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_distill":
+                from ..memory.distillation import get_distiller
+                d = get_distiller(self.config)
+                min_size = arguments.get("min_group_size", 2)
+                report = d.distill_all(drawers, min_size)
+                return json.dumps({
+                    "input": report.input_count,
+                    "output": report.output_count,
+                    "tokens_saved": report.tokens_saved,
+                    "avg_confidence": report.avg_confidence,
+                    "distilled": [
+                        {"summary": dk.summary[:100], "keywords": dk.keywords,
+                         "wing": dk.wing, "confidence": dk.confidence}
+                        for dk in report.distilled[:10]
+                    ],
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_distill_by_wing":
+                from ..memory.distillation import get_distiller
+                d = get_distiller(self.config)
+                result = d.distill_by_wing(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_extract_keywords":
+                from ..memory.distillation import get_distiller
+                d = get_distiller(self.config)
+                text = arguments.get("text", "")
+                top_k = arguments.get("top_k", 5)
+                keywords = d.extract_keywords(text, top_k)
+                return json.dumps({"keywords": keywords}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_distillation_stats":
+                from ..memory.distillation import get_distiller
+                d = get_distiller(self.config)
+                return json.dumps(d.get_distillation_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
