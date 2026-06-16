@@ -46,21 +46,21 @@ class MemoryCompressor:
         return self._llm_engine
 
     def _is_compressible(self, drawer: Drawer) -> bool:
-        """判断记忆是否可压缩"""
+        """判断记忆是否可压缩（使用配置参数）"""
         # 长度检查
-        if len(drawer.content) < 100:
+        if len(drawer.content) < self.config.compression_min_length:
             return False
 
-        # 时间检查：>30天
+        # 时间检查
         try:
             days_old = (datetime.now() - datetime.fromisoformat(drawer.created_at)).total_seconds() / 86400
-            if days_old < 30:
+            if days_old < self.config.compression_min_age_days:
                 return False
         except (ValueError, TypeError):
             return False
 
-        # 重要性检查：<0.3
-        if drawer.importance / 5.0 > 0.3:
+        # 重要性检查
+        if drawer.importance / 5.0 > self.config.compression_min_importance:
             return False
 
         return True
@@ -86,7 +86,7 @@ class MemoryCompressor:
             key_points = self._extract_key_points(drawer.content)
 
         # 生成压缩版本
-        compressed = f"关键点: {'; '.join(key_points[:3])}"
+        compressed = f"关键点: {'; '.join(key_points[:self.config.compression_max_key_points])}"
         if len(compressed) > 200:
             compressed = compressed[:197] + "..."
 
@@ -96,7 +96,7 @@ class MemoryCompressor:
             original=drawer.content,
             compressed=compressed,
             compression_ratio=round(compression_ratio, 3),
-            key_points=key_points[:3],
+            key_points=key_points[:self.config.compression_max_key_points],
             memory_id=drawer.id,
         )
 

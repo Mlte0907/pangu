@@ -149,6 +149,12 @@ class PanguConfig(BaseSettings):
     l3_default_results: int = 5
     default_context_budget: int = 1000
 
+    # ── 记忆压缩配置 ──
+    compression_min_age_days: int = 30      # 最小压缩天数
+    compression_min_importance: float = 0.3  # 最小压缩重要性
+    compression_min_length: int = 100        # 最小压缩长度
+    compression_max_key_points: int = 3      # 最大关键点数
+
     # ── 记忆巩固配置 ──
     consolidation_enabled: bool = True
     consolidation_interval_hours: float = 24.0
