@@ -401,6 +401,10 @@ class MCPServer:
             {"name": "pangu_proactive_suggest", "description": "基于当前上下文主动推荐记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "推荐数量", "default": 5}}}},
             {"name": "pangu_context_status", "description": "获取当前上下文状态", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 情感智能 (v2.0) ──
+            {"name": "pangu_analyze_emotion", "description": "分析文本情感", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "待分析文本"}}, "required": ["text"]}},
+            {"name": "pangu_emotion_stats", "description": "获取情感统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -1898,6 +1902,24 @@ class MCPServer:
                     "context_length": len(context),
                     "history_size": len(engine._context_history),
                 }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_analyze_emotion":
+                from ..memory.emotional_intelligence import get_emotional_intelligence
+                ei = get_emotional_intelligence(self.config)
+                text = arguments.get("text", "")
+                result = ei.analyze_emotion(text)
+                ei.record_emotion(text, result)
+                return json.dumps({
+                    "emotion": result.emotion.value,
+                    "intensity": result.intensity,
+                    "keywords": result.keywords,
+                    "confidence": result.confidence,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_emotion_stats":
+                from ..memory.emotional_intelligence import get_emotional_intelligence
+                ei = get_emotional_intelligence(self.config)
+                return json.dumps(ei.get_emotion_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
