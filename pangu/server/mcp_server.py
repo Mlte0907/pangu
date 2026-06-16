@@ -431,6 +431,18 @@ class MCPServer:
             {"name": "pangu_temporal_relations", "description": "发现时间关系", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_temporal_query", "description": "按时间范围查询", "inputSchema": {"type": "object", "properties": {"start": {"type": "string", "description": "开始日期 (YYYY-MM-DD)"}, "end": {"type": "string", "description": "结束日期 (YYYY-MM-DD)"}}, "required": []}},
             {"name": "pangu_temporal_stats", "description": "获取时间统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 语义压缩 (v3.0) ──
+            {"name": "pangu_compress_by_tags", "description": "按标签聚类压缩记忆", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_find_duplicates", "description": "发现语义重复记忆", "inputSchema": {"type": "object", "properties": {"threshold": {"type": "number", "description": "相似度阈值", "default": 0.8}}}},
+            {"name": "pangu_reassess_importance", "description": "基于记忆网络重新评估重要性", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_compression_stats", "description": "获取压缩统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 协作智能 (v3.0) ──
+            {"name": "pangu_agent_register", "description": "注册 Agent", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string"}, "name": {"type": "string"}, "specialties": {"type": "array", "items": {"type": "string"}}}, "required": ["agent_id", "name"]}},
+            {"name": "pangu_agent_share", "description": "Agent 间共享知识", "inputSchema": {"type": "object", "properties": {"from_agent": {"type": "string"}, "to_agent": {"type": "string"}, "knowledge_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["from_agent", "to_agent", "knowledge_ids"]}},
+            {"name": "pangu_collaborative_reason", "description": "协作推理", "inputSchema": {"type": "object", "properties": {"task": {"type": "string"}, "agent_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["task"]}},
+            {"name": "pangu_agent_stats", "description": "获取 Agent 统计", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
             # ── 记忆版本控制 (v2.0) ──
@@ -2121,6 +2133,72 @@ class MCPServer:
                 from ..memory.temporal_reasoning import get_temporal_engine
                 te = get_temporal_engine(self.config)
                 return json.dumps(te.get_temporal_stats(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_compress_by_tags":
+                from ..memory.semantic_compression import get_compressor
+                comp = get_compressor(self.config)
+                result = comp.compress_by_tags(drawers)
+                return json.dumps({
+                    "original_count": result.original_count,
+                    "compressed_count": result.compressed_count,
+                    "merged_groups": len(result.merged_groups),
+                    "information_loss": result.information_loss,
+                    "tokens_saved": result.tokens_saved,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_find_duplicates":
+                from ..memory.semantic_compression import get_compressor
+                comp = get_compressor(self.config)
+                threshold = arguments.get("threshold", 0.8)
+                dups = comp.find_semantic_duplicates(drawers, threshold)
+                return json.dumps({"duplicates": dups, "count": len(dups)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_reassess_importance":
+                from ..memory.semantic_compression import get_compressor
+                comp = get_compressor(self.config)
+                updates = comp.reassess_importance(drawers)
+                return json.dumps({"updates": updates, "count": len(updates)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_compression_stats":
+                from ..memory.semantic_compression import get_compressor
+                comp = get_compressor(self.config)
+                return json.dumps(comp.get_compression_stats(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_agent_register":
+                from ..memory.collaborative_intelligence import get_collaborative
+                ci = get_collaborative(self.config)
+                result = ci.register_agent(
+                    arguments["agent_id"], arguments["name"],
+                    arguments.get("specialties", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_agent_share":
+                from ..memory.collaborative_intelligence import get_collaborative
+                ci = get_collaborative(self.config)
+                result = ci.share_knowledge(
+                    arguments["from_agent"], arguments["to_agent"],
+                    arguments["knowledge_ids"],
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_collaborative_reason":
+                from ..memory.collaborative_intelligence import get_collaborative
+                ci = get_collaborative(self.config)
+                result = ci.collaborative_reasoning(
+                    arguments["task"], arguments.get("agent_ids"),
+                )
+                return json.dumps({
+                    "task": result.task,
+                    "participants": result.participants,
+                    "consensus": result.consensus,
+                    "confidence": result.confidence,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_agent_stats":
+                from ..memory.collaborative_intelligence import get_collaborative
+                ci = get_collaborative(self.config)
+                return json.dumps(ci.get_agent_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
