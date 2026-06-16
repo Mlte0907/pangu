@@ -490,6 +490,12 @@ class MCPServer:
             {"name": "pangu_current_context", "description": "获取当前上下文缓冲", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_injection_stats", "description": "上下文注入统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 自适应遗忘 (v3.0) ──
+            {"name": "pangu_evaluate_forgetting", "description": "评估所有记忆的遗忘价值", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_auto_forget", "description": "自动执行遗忘（归档+清理）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_get_archive", "description": "获取归档记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 20}}}},
+            {"name": "pangu_forget_stats", "description": "遗忘统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2511,6 +2517,37 @@ class MCPServer:
                 from ..memory.context_injection import get_injection_engine
                 ie = get_injection_engine(self.config)
                 return json.dumps(ie.get_injection_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_evaluate_forgetting":
+                from ..memory.adaptive_forgetting import get_forgetting
+                af = get_forgetting(self.config)
+                report = af.evaluate_all(drawers)
+                return json.dumps({
+                    "total": report.total_evaluated,
+                    "keep": report.keep_count,
+                    "archive": report.archive_count,
+                    "compress": report.compress_count,
+                    "forget": report.forget_count,
+                    "tokens_freed": report.estimated_tokens_freed,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_auto_forget":
+                from ..memory.adaptive_forgetting import get_forgetting
+                af = get_forgetting(self.config)
+                result = af.auto_forget(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_get_archive":
+                from ..memory.adaptive_forgetting import get_forgetting
+                af = get_forgetting(self.config)
+                limit = arguments.get("limit", 20)
+                archive = af.get_archive(limit)
+                return json.dumps({"archive": archive, "count": len(archive)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_forget_stats":
+                from ..memory.adaptive_forgetting import get_forgetting
+                af = get_forgetting(self.config)
+                return json.dumps(af.get_forgetting_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
