@@ -454,6 +454,16 @@ class MCPServer:
             # ── 可解释搜索 (v3.0) ──
             {"name": "pangu_explain_search", "description": "解释搜索结果", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "result_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["query"]}},
             {"name": "pangu_search_suggestions", "description": "搜索改进建议", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+
+            # ── 异常检测 (v3.0) ──
+            {"name": "pangu_anomaly_scan", "description": "全面异常扫描", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_anomaly_content", "description": "内容异常检测", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_anomaly_stats", "description": "异常检测统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 知识综合 (v3.0) ──
+            {"name": "pangu_synthesize", "description": "按主题综合知识", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 10}}}},
+            {"name": "pangu_find_contradictions", "description": "检测矛盾信息", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_core_insights", "description": "提取核心洞察", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 10}}}},
             {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
             # ── 记忆版本控制 (v2.0) ──
@@ -2289,6 +2299,61 @@ class MCPServer:
                 query = arguments.get("query", "")
                 suggestions = ee.suggest_improvement(query, [])
                 return json.dumps({"suggestions": suggestions}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_anomaly_scan":
+                from ..memory.anomaly_detection import get_detector
+                det = get_detector(self.config)
+                result = det.full_scan(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_anomaly_content":
+                from ..memory.anomaly_detection import get_detector
+                det = get_detector(self.config)
+                anomalies = det.detect_content_anomalies(drawers)
+                return json.dumps({
+                    "anomalies": [{"type": a.anomaly_type, "severity": a.severity,
+                                   "description": a.description} for a in anomalies],
+                    "count": len(anomalies),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_anomaly_stats":
+                from ..memory.anomaly_detection import get_detector
+                det = get_detector(self.config)
+                return json.dumps(det.get_anomaly_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_synthesize":
+                from ..memory.knowledge_synthesis import get_synthesizer
+                ks = get_synthesizer(self.config)
+                limit = arguments.get("limit", 10)
+                insights = ks.synthesize_by_topic(drawers)
+                return json.dumps({
+                    "insights": [
+                        {"topic": i.topic, "summary": i.summary, "sources": i.sources,
+                         "confidence": i.confidence}
+                        for i in insights[:limit]
+                    ],
+                    "count": len(insights),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_find_contradictions":
+                from ..memory.knowledge_synthesis import get_synthesizer
+                ks = get_synthesizer(self.config)
+                contradictions = ks.detect_contradictions(drawers)
+                return json.dumps({
+                    "contradictions": [
+                        {"topic": c.topic, "claim_a": c.claim_a[:50],
+                         "claim_b": c.claim_b[:50], "severity": c.severity}
+                        for c in contradictions
+                    ],
+                    "count": len(contradictions),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_core_insights":
+                from ..memory.knowledge_synthesis import get_synthesizer
+                ks = get_synthesizer(self.config)
+                top_k = arguments.get("top_k", 10)
+                insights = ks.extract_core_insights(drawers, top_k)
+                return json.dumps({"insights": insights, "count": len(insights)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
