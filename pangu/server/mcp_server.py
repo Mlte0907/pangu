@@ -540,6 +540,11 @@ class MCPServer:
             {"name": "pangu_graph_quality", "description": "评估图谱质量", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_graph_stats", "description": "图谱统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 健康监控 (v3.0) ──
+            {"name": "pangu_health_check", "description": "全面健康检查", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_health_trend", "description": "健康趋势", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_health_stats", "description": "健康统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2852,6 +2857,21 @@ class MCPServer:
                 from ..memory.graph_builder import get_builder
                 gb = get_builder(self.config)
                 return json.dumps(gb.get_graph_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_health_check":
+                from ..memory.health_monitor import get_monitor
+                hm = get_monitor(self.config)
+                return json.dumps(hm.full_check(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_health_trend":
+                from ..memory.health_monitor import get_monitor
+                hm = get_monitor(self.config)
+                return json.dumps(hm.get_trend(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_health_stats":
+                from ..memory.health_monitor import get_monitor
+                hm = get_monitor(self.config)
+                return json.dumps(hm.get_health_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
