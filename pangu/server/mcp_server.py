@@ -552,6 +552,18 @@ class MCPServer:
             {"name": "pangu_restore_backup", "description": "恢复备份", "inputSchema": {"type": "object", "properties": {"backup_id": {"type": "string"}}, "required": ["backup_id"]}},
             {"name": "pangu_backup_stats", "description": "备份统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 多项目支持 (v3.0) ──
+            {"name": "pangu_project_create", "description": "创建项目", "inputSchema": {"type": "object", "properties": {"project_id": {"type": "string"}, "name": {"type": "string"}, "description": {"type": "string", "default": ""}}, "required": ["project_id", "name"]}},
+            {"name": "pangu_project_switch", "description": "切换项目", "inputSchema": {"type": "object", "properties": {"project_id": {"type": "string"}}, "required": ["project_id"]}},
+            {"name": "pangu_project_list", "description": "列出所有项目", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_project_active", "description": "获取当前项目", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_project_save", "description": "保存记忆到当前项目", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_project_load", "description": "加载项目记忆", "inputSchema": {"type": "object", "properties": {"project_id": {"type": "string"}}}},
+            {"name": "pangu_project_search", "description": "跨项目搜索", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
+            {"name": "pangu_project_merge", "description": "合并项目", "inputSchema": {"type": "object", "properties": {"source_id": {"type": "string"}, "target_id": {"type": "string"}}, "required": ["source_id"]}},
+            {"name": "pangu_project_delete", "description": "删除项目", "inputSchema": {"type": "object", "properties": {"project_id": {"type": "string"}}, "required": ["project_id"]}},
+            {"name": "pangu_project_stats", "description": "项目统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -2911,6 +2923,64 @@ class MCPServer:
                 from ..memory.backup_restore import get_backup_engine
                 be = get_backup_engine(self.config)
                 return json.dumps(be.get_backup_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_create":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.create_project(
+                    arguments["project_id"], arguments["name"],
+                    arguments.get("description", ""),
+                ), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_switch":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.switch_project(arguments["project_id"]), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_list":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps({"projects": pm.list_projects()}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_active":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.get_active_project(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_save":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.save_memories(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_load":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                pid = arguments.get("project_id")
+                memories = pm.load_memories(pid)
+                return json.dumps({"memories": len(memories), "project": pid or pm._active_project}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_search":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                results = pm.search_cross_project(arguments["query"], arguments.get("limit", 10))
+                return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_merge":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.merge_project(
+                    arguments["source_id"], arguments.get("target_id"),
+                ), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_delete":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.delete_project(arguments["project_id"]), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_project_stats":
+                from ..memory.project_manager import get_project_manager
+                pm = get_project_manager(self.config)
+                return json.dumps(pm.get_project_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
