@@ -579,6 +579,13 @@ class MCPServer:
             {"name": "pangu_sync_state", "description": "同步状态", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_sync_stats", "description": "同步统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 记忆事件流 (v3.0) ──
+            {"name": "pangu_event_emit", "description": "发布记忆事件", "inputSchema": {"type": "object", "properties": {"event_type": {"type": "string"}, "memory_id": {"type": "string", "default": ""}, "data": {"type": "object", "default": {}}}, "required": ["event_type"]}},
+            {"name": "pangu_event_history", "description": "查询事件历史", "inputSchema": {"type": "object", "properties": {"event_type": {"type": "string"}, "limit": {"type": "integer", "default": 50}}}},
+            {"name": "pangu_event_stats", "description": "事件统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_event_webhook_add", "description": "添加 Webhook", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "event_types": {"type": "array", "items": {"type": "string"}}}, "required": ["url", "event_types"]}},
+            {"name": "pangu_event_save", "description": "持久化事件历史", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3067,6 +3074,39 @@ class MCPServer:
                 from ..memory.sync_manager import get_sync
                 sm = get_sync(self.config)
                 return json.dumps(sm.get_sync_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_event_emit":
+                from ..memory.memory_events import get_event_stream
+                es = get_event_stream(self.config)
+                event = es.emit(
+                    arguments["event_type"],
+                    arguments.get("memory_id", ""),
+                    arguments.get("data", {}),
+                )
+                return json.dumps({"event_id": event.event_id, "type": event.event_type, "timestamp": event.timestamp}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_event_history":
+                from ..memory.memory_events import get_event_stream
+                es = get_event_stream(self.config)
+                history = es.get_history(arguments.get("event_type"), arguments.get("limit", 50))
+                return json.dumps({"events": history, "count": len(history)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_event_stats":
+                from ..memory.memory_events import get_event_stream
+                es = get_event_stream(self.config)
+                return json.dumps(es.get_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_event_webhook_add":
+                from ..memory.memory_events import get_event_stream
+                es = get_event_stream(self.config)
+                result = es.add_webhook(arguments["url"], arguments["event_types"])
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_event_save":
+                from ..memory.memory_events import get_event_stream
+                es = get_event_stream(self.config)
+                saved = es.save_history()
+                return json.dumps({"saved": saved}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
