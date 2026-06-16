@@ -404,9 +404,11 @@ class MCPServer:
             {"name": "pangu_proactive_suggest", "description": "基于当前上下文主动推荐记忆", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "推荐数量", "default": 5}}}},
             {"name": "pangu_context_status", "description": "获取当前上下文状态", "inputSchema": {"type": "object", "properties": {}}},
 
-            # ── 情感智能 (v2.0) ──
-            {"name": "pangu_analyze_emotion", "description": "分析文本情感", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "待分析文本"}}, "required": ["text"]}},
+# ── 情感智能 (v2.0) ──
+            {"name": "pangu_analyze_emotion", "description": "分析文本情绪", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "待分析文本"}}, "required": ["text"]}},
             {"name": "pangu_emotion_stats", "description": "获取情感统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_predict_emotion", "description": "预测用户情绪", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "上下文文本"}}, "required": ["context"]}},
+            {"name": "pangu_recommend_interaction", "description": "推荐交互策略", "inputSchema": {"type": "object", "properties": {"emotion_state": {"type": "object", "description": "情绪状态"}}, "required": ["emotion_state"]}},
 
             # ── 创造性思维 (v2.0) ──
             {"name": "pangu_generate_ideas", "description": "基于记忆生成新想法", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "想法数量", "default": 5}}}},
@@ -1955,6 +1957,20 @@ class MCPServer:
                 from ..memory.emotional_intelligence import get_emotional_intelligence
                 ei = get_emotional_intelligence(self.config)
                 return json.dumps(ei.get_emotion_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_predict_emotion":
+                from ..memory.emotional_intelligence import get_emotional_intelligence
+                ei = get_emotional_intelligence(self.config)
+                context = arguments.get("context", "")
+                result = ei.predict_emotion(context)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_recommend_interaction":
+                from ..memory.emotional_intelligence import get_emotional_intelligence
+                ei = get_emotional_intelligence(self.config)
+                emotion_state = arguments.get("emotion_state", {})
+                result = ei.recommend_interaction(emotion_state)
+                return json.dumps({"recommendation": result}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_generate_ideas":
                 from ..memory.creative_thinking import get_creative_thinking

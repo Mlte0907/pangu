@@ -130,7 +130,7 @@ class EmotionalIntelligence:
             "distribution": emotion_counts,
         }
 
-    def record_emotion(self, text: str, emotion: EmotionResult) -> None:
+def record_emotion(self, text: str, emotion: EmotionResult) -> None:
         """记录情感"""
         self._emotion_history.append({
             "text": text[:50],
@@ -141,6 +141,66 @@ class EmotionalIntelligence:
         # 限制历史记录大小
         if len(self._emotion_history) > 100:
             self._emotion_history = self._emotion_history[-100:]
+
+    def predict_emotion(self, context: str) -> dict:
+        """情感预测 — 基于上下文预测用户情绪"""
+        if not self._emotion_history:
+            return {"prediction": "neutral", "confidence": 0.0, "reason": "no history"}
+
+        # 分析最近的情绪趋势
+        recent = self._emotion_history[-10:]
+        emotion_counts: dict[str, int] = {}
+        intensity_sum = 0.0
+
+        for entry in recent:
+            emotion_counts[entry["emotion"]] = emotion_counts.get(entry["emotion"], 0) + 1
+            intensity_sum += entry["intensity"]
+
+        avg_intensity = intensity_sum / len(recent) if recent else 0.5
+
+        # 预测
+        if not emotion_counts:
+            prediction = "neutral"
+            confidence = 0.3
+        else:
+            most_common = max(emotion_counts.items(), key=lambda x: x[1])
+            prediction = most_common[0]
+            confidence = min(most_common[1] / len(recent), 0.9)
+
+        # 上下文分析
+        context_lower = context.lower()
+        if any(word in context_lower for word in ["问题", "错误", "bug", "失败", "烦"]):
+            prediction = "negative"
+            confidence = min(confidence + 0.2, 0.95)
+        elif any(word in context_lower for word in ["成功", "完成", "好", "棒", "优秀"]):
+            prediction = "positive"
+            confidence = min(confidence + 0.2, 0.95)
+
+        return {
+            "prediction": prediction,
+            "confidence": confidence,
+            "avg_intensity": avg_intensity,
+            "recent_trend": emotion_counts,
+            "reason": f"based on {len(recent)} recent interactions",
+        }
+
+    def recommend_interaction(self, emotion_state: dict) -> str:
+        """交互建议 — 根据情绪状态推荐交互策略"""
+        prediction = emotion_state.get("prediction", "neutral")
+        confidence = emotion_state.get("confidence", 0.5)
+
+        if confidence < 0.5:
+            return "保持中性交互，避免过度热情或冷淡"
+
+        recommendations = {
+            "positive": "可以适当增加互动深度，用户情绪良好",
+            "negative": "建议保持简洁，避免增加用户负担",
+            "excited": "可以分享更多细节，用户兴趣浓厚",
+            "frustrated": "建议提供解决方案而非解释问题",
+            "neutral": "保持正常交互节奏",
+        }
+
+        return recommendations.get(prediction, recommendations["neutral"])
 
 
 # 全局单例
