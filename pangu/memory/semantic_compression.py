@@ -94,17 +94,7 @@ class SemanticCompressor:
 
         for tag_key, group in tag_sets.items():
             if len(group) >= 2:
-                for i in range(len(group)):
-                    for j in range(i + 1, len(group)):
-                        overlap = len(set(group[i].tags) & set(group[j].tags))
-                        total = len(set(group[i].tags) | set(group[j].tags))
-                        if total > 0 and overlap / total >= threshold:
-                            duplicates.append({
-                                "original": group[i].id,
-                                "duplicate": group[j].id,
-                                "similarity": overlap / total,
-                                "reason": f"标签重叠 {overlap}/{total}",
-                            })
+                self._check_tag_group_duplicates(group, threshold, duplicates)
 
         seen_pairs = set()
         unique = []
@@ -147,6 +137,19 @@ class SemanticCompressor:
                 })
 
         return updates
+
+    def _check_tag_group_duplicates(self, group, threshold, duplicates):
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                overlap = len(set(group[i].tags) & set(group[j].tags))
+                total = len(set(group[i].tags) | set(group[j].tags))
+                if total > 0 and overlap / total >= threshold:
+                    duplicates.append({
+                        "original": group[i].id,
+                        "duplicate": group[j].id,
+                        "similarity": overlap / total,
+                        "reason": f"标签重叠 {overlap}/{total}",
+                    })
 
     def _generate_summary(self, contents: list[str]) -> str:
         """生成摘要（无 LLM 版本：取最短+去重关键词）"""

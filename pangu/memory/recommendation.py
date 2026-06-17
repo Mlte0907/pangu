@@ -234,7 +234,7 @@ class RecommendationEngine:
             wings = set(d.wing for d in drawers)
             for wing in wings:
                 if wing not in context.lower():
-                    all_recs.extend(self.recommend_cross_domain(wing, drawers, 2))
+                    all_recs.extend(self._collect_cross_domain(wing, drawers))
 
         seen = set()
         unique = []
@@ -260,6 +260,26 @@ class RecommendationEngine:
             ],
             "count": min(len(unique), top_k * 3),
         }
+
+    def _collect_cross_domain(self, wing, drawers):
+        scored = []
+        for d in drawers:
+            if d.wing != wing:
+                imp = d.importance / 5.0
+                score = imp * 0.7 + 0.3
+                scored.append((d, score))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        results = []
+        for d, score in scored[:2]:
+            results.append(MemoryRecommendation(
+                memory_id=d.id,
+                content_preview=d.content[:80],
+                wing=d.wing,
+                score=round(score, 3),
+                reason=f"来自 {d.wing} 领域的新视角",
+                category="cross_domain",
+            ))
+        return results
 
     def record_feedback(self, user_id: str, memory_id: str, liked: bool) -> None:
         """记录用户反馈"""

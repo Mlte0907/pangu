@@ -279,6 +279,15 @@ class KnowledgeGraph:
         "custom": None,  # All edge types
     }
 
+    _RELATION_PATTERNS = [
+        (r"使用(\w+)", "uses"),
+        (r"部署了?(\w+)", "deploys"),
+        (r"集成了?(\w+)", "integrates"),
+        (r"修复了?(\w+)", "fixes"),
+        (r"基于(\w+)", "based_on"),
+        (r"依赖(\w+)", "depends_on"),
+    ]
+
     def bfs_traverse(
         self,
         start_id: str,
@@ -630,11 +639,7 @@ class KnowledgeGraph:
             else:
                 low += 1
                 if not dry_run:
-                    with self._conn() as c:
-                        c.execute(
-                            "UPDATE relations SET predicate='related_to', confidence=? WHERE id=?",
-                            (score, row["id"]),
-                        )
+                    self._downgrade_relation(row["id"], score)
                     downgraded += 1
 
         if dry_run:
@@ -650,6 +655,13 @@ class KnowledgeGraph:
             "low": low,
             "downgraded": downgraded if not dry_run else low,
         }
+
+    def _downgrade_relation(self, row_id, score):
+        with self._conn() as c:
+            c.execute(
+                "UPDATE relations SET predicate='related_to', confidence=? WHERE id=?",
+                (score, row_id),
+            )
 
     def get_graph_quality_stats(self) -> dict:
         """获取图谱质量统计（从伏羲移植）"""
@@ -787,23 +799,12 @@ class KnowledgeGraph:
             "protocol": ["MCP", "REST", "WebSocket", "HTTP", "gRPC"],
         }
 
-        # 关系提取模式
-        RELATION_PATTERNS = [
-            (r"使用(\w+)", "uses"),
-            (r"部署了?(\w+)", "deploys"),
-            (r"集成了?(\w+)", "integrates"),
-            (r"修复了?(\w+)", "fixes"),
-            (r"基于(\w+)", "based_on"),
-            (r"依赖(\w+)", "depends_on"),
-        ]
-
         entities_added = 0
         relations_added = 0
 
         for drawer in drawers[:max_drawers]:
             content = drawer.content
 
-            # 提取实体
             found_entities = []
             for etype, keywords in ENTITY_PATTERNS.items():
                 for kw in keywords:
@@ -813,21 +814,26 @@ class KnowledgeGraph:
                         found_entities.append((eid, kw))
                         entities_added += 1
 
-            # 提取关系（在发现的实体之间）
-            for i, (eid_a, name_a) in enumerate(found_entities):
-                for eid_b, name_b in found_entities[i+1:]:
-                    # 检查关系模式
-                    for pattern, predicate in RELATION_PATTERNS:
-                        if re.search(pattern.replace(r"(\w+)", f".*{re.escape(name_b)}.*"), content):
-                            rid = f"rel-{hex_digest(f'{eid_a}-{eid_b}-{predicate}')[:12]}"
-                            self.add_relation(rid, eid_a, predicate, eid_b, source=drawer.id[:8])
-                            relations_added += 1
-                            break
+            relations_added += self._find_and_create_relations(found_entities, content, drawer.id)
 
         return {
             "entities_added": entities_added,
             "relations_added": relations_added,
         }
+
+    def _find_and_create_relations(self, found_entities, content, drawer_id):
+        import re
+        from pangu.core.hashing import hex_digest
+        count = 0
+        for i, (eid_a, name_a) in enumerate(found_entities):
+            for eid_b, name_b in found_entities[i+1:]:
+                for pattern, predicate in self._RELATION_PATTERNS:
+                    if re.search(pattern.replace(r"(\w+)", f".*{re.escape(name_b)}.*"), content):
+                        rid = f"rel-{hex_digest(f'{eid_a}-{eid_b}-{predicate}')[:12]}"
+                        self.add_relation(rid, eid_a, predicate, eid_b, source=drawer_id[:8])
+                        count += 1
+                        break
+        return count
 
     def cross_domain_transfer(self, source_domain: str, target_domain: str) -> dict:
         """跨领域知识迁移 — 将一个领域的知识迁移到另一个领域
@@ -886,17 +892,8 @@ class KnowledgeGraph:
         # 查找具有相似关系的其他实体
         patterns = []
         for rel in relations:
-            # 查找具有相同关系类型的其他实体
             similar_rels = self.query_relations(predicate=rel["predicate"])
-            for sr in similar_rels:
-                if sr["object_id"] != entity_id:
-                    similar_entity = self.get_entity(sr["object_id"])
-                    if similar_entity:
-                        patterns.append({
-                            "entity": similar_entity["name"],
-                            "relation": rel["predicate"],
-                            "confidence": rel.get("confidence", 1.0),
-                        })
+            patterns.extend(self._find_similar_entities(similar_rels, entity_id, rel))
 
         # 去重
         seen = set()
@@ -908,3 +905,16 @@ class KnowledgeGraph:
                 unique_patterns.append(p)
 
         return unique_patterns[:10]
+
+    def _find_similar_entities(self, similar_rels, entity_id, rel):
+        results = []
+        for sr in similar_rels:
+            if sr["object_id"] != entity_id:
+                similar_entity = self.get_entity(sr["object_id"])
+                if similar_entity:
+                    results.append({
+                        "entity": similar_entity["name"],
+                        "relation": rel["predicate"],
+                        "confidence": rel.get("confidence", 1.0),
+                    })
+        return results

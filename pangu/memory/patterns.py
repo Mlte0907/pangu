@@ -120,20 +120,7 @@ class PatternEngine:
         # Wing 跨空间关联
         if len(set(d.wing for d in drawers)) > 1:
             import re
-            wing_pairs = Counter()
-            wing_evidence = defaultdict(list)
-            for i in range(len(drawers)):
-                for j in range(i + 1, len(drawers)):
-                    if drawers[i].wing != drawers[j].wing:
-                        words_i = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                                  drawers[i].content.lower()))
-                        words_j = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                                  drawers[j].content.lower()))
-                        overlap = len(words_i & words_j)
-                        if overlap >= 2:
-                            key = tuple(sorted([drawers[i].wing, drawers[j].wing]))
-                            wing_pairs[key] += 1
-                            wing_evidence[key].extend([drawers[i].id, drawers[j].id])
+            wing_pairs, wing_evidence = self._find_wing_cross_pairs(drawers)
 
             for (w1, w2), count in wing_pairs.most_common(5):
                 if count >= min_cooccurrence:
@@ -157,14 +144,7 @@ class PatternEngine:
         sorted_drawers = sorted(drawers, key=lambda d: d.created_at or "")
 
         # 统计相邻标签序列
-        tag_sequences = Counter()
-        for i in range(len(sorted_drawers) - 1):
-            tags_i = sorted_drawers[i].tags or []
-            tags_j = sorted_drawers[i + 1].tags or []
-            for t1 in tags_i:
-                for t2 in tags_j:
-                    if t1 != t2:
-                        tag_sequences[(t1, t2)] += 1
+        tag_sequences = self._count_tag_sequences(sorted_drawers)
 
         for (t1, t2), count in tag_sequences.most_common(10):
             if count >= min_sequence:
@@ -309,3 +289,36 @@ class PatternEngine:
             insights.append(f"发现 {len(anomaly_patterns)} 个异常模式")
 
         return insights
+
+    def _find_wing_cross_pairs(self, drawers):
+        import re
+        wing_pairs = Counter()
+        wing_evidence = defaultdict(list)
+        for i in range(len(drawers)):
+            for j in range(i + 1, len(drawers)):
+                if drawers[i].wing != drawers[j].wing:
+                    self._check_wing_pair(drawers, i, j, wing_pairs, wing_evidence)
+        return wing_pairs, wing_evidence
+
+    def _check_wing_pair(self, drawers, i, j, wing_pairs, wing_evidence):
+        import re
+        words_i = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
+                                  drawers[i].content.lower()))
+        words_j = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
+                                  drawers[j].content.lower()))
+        overlap = len(words_i & words_j)
+        if overlap >= 2:
+            key = tuple(sorted([drawers[i].wing, drawers[j].wing]))
+            wing_pairs[key] += 1
+            wing_evidence[key].extend([drawers[i].id, drawers[j].id])
+
+    def _count_tag_sequences(self, sorted_drawers):
+        tag_sequences = Counter()
+        for i in range(len(sorted_drawers) - 1):
+            tags_i = sorted_drawers[i].tags or []
+            tags_j = sorted_drawers[i + 1].tags or []
+            for t1 in tags_i:
+                for t2 in tags_j:
+                    if t1 != t2:
+                        tag_sequences[(t1, t2)] += 1
+        return tag_sequences

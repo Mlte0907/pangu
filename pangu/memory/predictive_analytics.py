@@ -63,23 +63,27 @@ class PredictiveAnalytics:
         now = datetime.now()
         for d in drawers:
             if not d.importance or d.importance / 5.0 < 0.3:
-                if hasattr(d, 'last_accessed') and d.last_accessed:
-                    try:
-                        last = datetime.fromisoformat(d.last_accessed)
-                        days_since = (now - last).days
-                        if days_since > days_threshold:
-                            predictions.append(Prediction(
-                                prediction_type="forgetting",
-                                statement=f"记忆 '{d.content[:40]}' 可能被遗忘 (已 {days_since} 天未访问)",
-                                confidence=min(0.9, days_since / 100),
-                                evidence=[f"重要性: {d.importance}", f"未访问: {days_since} 天"],
-                                timeframe=f"{days_threshold}+ days",
-                            ))
-                    except (ValueError, TypeError):
-                        pass
+                self._check_forgetting(d, now, days_threshold, predictions)
 
         predictions.sort(key=lambda p: p.confidence, reverse=True)
         return predictions[:20]
+
+    def _check_forgetting(self, d, now, days_threshold, predictions):
+        if not (hasattr(d, 'last_accessed') and d.last_accessed):
+            return
+        try:
+            last = datetime.fromisoformat(d.last_accessed)
+            days_since = (now - last).days
+            if days_since > days_threshold:
+                predictions.append(Prediction(
+                    prediction_type="forgetting",
+                    statement=f"记忆 '{d.content[:40]}' 可能被遗忘 (已 {days_since} 天未访问)",
+                    confidence=min(0.9, days_since / 100),
+                    evidence=[f"重要性: {d.importance}", f"未访问: {days_since} 天"],
+                    timeframe=f"{days_threshold}+ days",
+                ))
+        except (ValueError, TypeError):
+            pass
 
     def analyze_growth_trend(self, drawers: list) -> dict:
         """分析记忆增长趋势"""

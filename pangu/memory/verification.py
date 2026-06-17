@@ -64,7 +64,7 @@ class VerificationLoop:
                 text=True,
                 timeout=120,
             )
-            errors = len([line for line in result.stdout.split("\n") if ": error:" in line])
+            errors = self._count_type_errors(result.stdout)
             return VerificationResult(
                 phase="type_check", passed=result.returncode == 0,
                 output=result.stdout, errors=errors
@@ -74,6 +74,9 @@ class VerificationLoop:
                                        output="mypy not installed, skipping")
         except Exception as e:
             return VerificationResult(phase="type_check", passed=False, output=str(e))
+
+    def _count_type_errors(self, output: str) -> int:
+        return len([line for line in output.split("\n") if ": error:" in line])
 
     def run_lint(self) -> VerificationResult:
         """Phase 3: Lint 检查"""
@@ -168,6 +171,15 @@ class VerificationLoop:
         except Exception as e:
             return VerificationResult(phase="diff_review", passed=False, output=str(e))
 
+    def _execute_phase(self, phase_name: str, phase_func) -> dict:
+        result = phase_func()
+        return {
+            "passed": result.passed,
+            "output": result.output[:500],
+            "warnings": result.warnings,
+            "errors": result.errors,
+        }
+
     def run_full_verification(self) -> dict:
         """运行完整验证循环"""
         results = {}
@@ -182,14 +194,8 @@ class VerificationLoop:
 
         for phase_name, phase_func in phases:
             logger.info(f"Running {phase_name}...")
-            result = phase_func()
-            results[phase_name] = {
-                "passed": result.passed,
-                "output": result.output[:500],
-                "warnings": result.warnings,
-                "errors": result.errors,
-            }
-            logger.info(f"{phase_name}: {'PASS' if result.passed else 'FAIL'}")
+            results[phase_name] = self._execute_phase(phase_name, phase_func)
+            logger.info(f"{phase_name}: {'PASS' if results[phase_name]['passed'] else 'FAIL'}")
 
         results["timestamp"] = datetime.now().isoformat()
         results["all_passed"] = all(r["passed"] for r in results.values()

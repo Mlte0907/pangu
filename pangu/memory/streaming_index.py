@@ -93,14 +93,7 @@ class StreamingIndexer:
                         "created_at": item.created_at,
                         "indexed_at": now,
                     }
-                    # 可选：嵌入向量
-                    if embedder:
-                        try:
-                            emb = embedder.embed(item.content)
-                            if emb:
-                                entry["embedding"] = emb
-                        except Exception:
-                            pass
+                    self._try_embed_item(entry, item, embedder)
                     f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                     entries += 1
         except OSError as e:
@@ -138,17 +131,7 @@ class StreamingIndexer:
 
         restored = 0
         for path in paths:
-            try:
-                with open(path, encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            entry = json.loads(line)
-                            self._indexed_ids.add(entry["id"])
-                            restored += 1
-                        except json.JSONDecodeError:
-                            continue
-            except OSError:
-                continue
+            restored += self._restore_from_file(path)
 
         self._total_indexed = restored
         logger.info(f"Index rebuilt from WAL: {restored} entries")
@@ -181,6 +164,30 @@ class StreamingIndexer:
             logger.info(f"Checkpoint restored: {self._total_indexed} items indexed")
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Checkpoint restore error: {e}")
+
+    def _try_embed_item(self, entry, item, embedder):
+        if embedder:
+            try:
+                emb = embedder.embed(item.content)
+                if emb:
+                    entry["embedding"] = emb
+            except Exception:
+                pass
+
+    def _restore_from_file(self, path):
+        count = 0
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                        self._indexed_ids.add(entry["id"])
+                        count += 1
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+        return count
 
     def stats(self) -> dict:
         """索引统计"""

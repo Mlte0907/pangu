@@ -224,7 +224,7 @@ class MemoryRecommender:
             if days_ago <= 7:
                 return 1.0
             return max(0.1, 0.9 ** (days_ago - 7))
-        except:
+        except Exception:
             return 0.5
 
     def _cosine_similarity(self, a: list, b: list) -> float:

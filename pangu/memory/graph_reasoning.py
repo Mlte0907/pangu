@@ -281,29 +281,27 @@ class GraphReasoning:
         entity_types = set(e.get("type", "") for e in entities)
 
         if len(entity_types) >= 2:
-            # 有不同类型的实体，可能存在类比
             for e1 in entities:
                 for e2 in entities:
                     if e1.get("type") != e2.get("type"):
-                        # 查找两个实体间的关系
-                        rels1 = self.kg.query_relations(subject_id=e1["id"])
-                        rels2 = self.kg.query_relations(subject_id=e2["id"])
-
-                        # 检查是否有相似的关系模式
-                        pred1 = set(r.get("predicate", "") for r in rels1)
-                        pred2 = set(r.get("predicate", "") for r in rels2)
-                        common = pred1 & pred2
-
-                        if common:
-                            analogies.append({
-                                "entity1": e1.get("name", ""),
-                                "entity2": e2.get("name", ""),
-                                "common_relations": list(common),
-                                "type1": e1.get("type", ""),
-                                "type2": e2.get("type", ""),
-                            })
+                        self._find_analogy_pair(e1, e2, analogies)
 
         return {"analogies": analogies[:5], "count": len(analogies)}
+
+    def _find_analogy_pair(self, e1, e2, analogies):
+        rels1 = self.kg.query_relations(subject_id=e1["id"])
+        rels2 = self.kg.query_relations(subject_id=e2["id"])
+        pred1 = set(r.get("predicate", "") for r in rels1)
+        pred2 = set(r.get("predicate", "") for r in rels2)
+        common = pred1 & pred2
+        if common:
+            analogies.append({
+                "entity1": e1.get("name", ""),
+                "entity2": e2.get("name", ""),
+                "common_relations": list(common),
+                "type1": e1.get("type", ""),
+                "type2": e2.get("type", ""),
+            })
 
     def detect_contradictions(self) -> list[dict]:
         """检测图中的矛盾关系"""

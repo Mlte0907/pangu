@@ -105,6 +105,14 @@ class MemoryDeduplicator:
 
         return self._group_duplicates(drawers, similar_pairs, threshold)
 
+    @staticmethod
+    def _find_index_pairs(indices: list[int]) -> list[tuple]:
+        pairs = []
+        for a in range(len(indices)):
+            for b in range(a + 1, len(indices)):
+                pairs.append((indices[a], indices[b], 1.0))
+        return pairs
+
     def _hash_dedup(self, drawers: list[Drawer]) -> list[DuplicateGroup]:
         """基于内容哈希的精确去重"""
         hash_map: dict[str, list[int]] = {}
@@ -118,9 +126,7 @@ class MemoryDeduplicator:
         similar_pairs = []
         for _hash, indices in hash_map.items():
             if len(indices) > 1:
-                for a in range(len(indices)):
-                    for b in range(a + 1, len(indices)):
-                        similar_pairs.append((indices[a], indices[b], 1.0))
+                similar_pairs.extend(self._find_index_pairs(indices))
 
         return self._group_duplicates(drawers, similar_pairs, 0.99)
 
@@ -151,6 +157,22 @@ class MemoryDeduplicator:
                     similar_pairs.append((i, j, jaccard))
 
         return self._group_duplicates(drawers, similar_pairs, threshold)
+
+    def _build_similarity_matrix(self, indices: list[int],
+                                 drawers: list[Drawer],
+                                 similar_pairs: list[tuple],
+                                 threshold: float) -> tuple[dict, list]:
+        sim_matrix = {}
+        sims = []
+        for a in range(len(indices)):
+            for b in range(a + 1, len(indices)):
+                key = f"{drawers[indices[a]].id}_{drawers[indices[b]].id}"
+                sim = next((s for i, j, s in similar_pairs
+                            if (i == indices[a] and j == indices[b]) or
+                            (i == indices[b] and j == indices[a])), threshold)
+                sim_matrix[key] = round(sim, 4)
+                sims.append(sim)
+        return sim_matrix, sims
 
     def _group_duplicates(self, drawers: list[Drawer],
                           similar_pairs: list[tuple],
@@ -195,16 +217,9 @@ class MemoryDeduplicator:
             primary = max(group_drawers,
                           key=lambda d: (d.importance, len(d.content)))
 
-            sim_matrix = {}
-            sims = []
-            for a in range(len(indices)):
-                for b in range(a + 1, len(indices)):
-                    key = f"{drawers[indices[a]].id}_{drawers[indices[b]].id}"
-                    sim = next((s for i, j, s in similar_pairs
-                                if (i == indices[a] and j == indices[b]) or
-                                (i == indices[b] and j == indices[a])), threshold)
-                    sim_matrix[key] = round(sim, 4)
-                    sims.append(sim)
+            sim_matrix, sims = self._build_similarity_matrix(
+                indices, drawers, similar_pairs, threshold
+            )
 
             avg_sim = sum(sims) / len(sims) if sims else threshold
 

@@ -354,21 +354,21 @@ class FusionEngine:
 
         for d in drawers:
             content_lower = d.content.lower()
-
             if topic and topic.lower() not in content_lower:
                 continue
-
-            if any(kw in content_lower for kw in fact_keywords):
-                knowledge["facts"].append({"content": d.content[:200],
-                                           "importance": d.importance})
-            if any(kw in content_lower for kw in lesson_keywords):
-                knowledge["lessons"].append({"content": d.content[:200],
-                                             "importance": d.importance})
-            if any(kw in content_lower for kw in decision_keywords):
-                knowledge["decisions"].append({"content": d.content[:200],
-                                               "importance": d.importance})
-            if any(kw in content_lower for kw in pattern_keywords):
-                knowledge["patterns"].append({"content": d.content[:200],
-                                              "importance": d.importance})
+            self._classify_drawer(d, content_lower, fact_keywords, lesson_keywords,
+                                  decision_keywords, pattern_keywords, knowledge)
 
         return knowledge
+
+    def _classify_drawer(self, d, content_lower, fact_keywords, lesson_keywords,
+                         decision_keywords, pattern_keywords, knowledge):
+        entry = {"content": d.content[:200], "importance": d.importance}
+        if any(kw in content_lower for kw in fact_keywords):
+            knowledge["facts"].append(entry)
+        if any(kw in content_lower for kw in lesson_keywords):
+            knowledge["lessons"].append(entry)
+        if any(kw in content_lower for kw in decision_keywords):
+            knowledge["decisions"].append(entry)
+        if any(kw in content_lower for kw in pattern_keywords):
+            knowledge["patterns"].append(entry)

@@ -139,21 +139,9 @@ class ResonanceEngine:
         matches = []
         for i in range(len(candidates)):
             for j in range(i + 1, len(candidates)):
-                try:
-                    if embeddings[i] and embeddings[j]:
-                        sim = cosine_similarity(embeddings[i], embeddings[j])
-                        if sim >= sim_threshold:
-                            matches.append({
-                                "source_id": candidates[i].id,
-                                "target_id": candidates[j].id,
-                                "source_content": candidates[i].content[:100],
-                                "target_content": candidates[j].content[:100],
-                                "similarity": round(sim, 3),
-                                "source_wing": candidates[i].wing,
-                                "target_wing": candidates[j].wing,
-                            })
-                except Exception:
-                    continue
+                self._try_resonance_match(
+                    candidates, embeddings, i, j, sim_threshold, matches
+                )
 
         matches.sort(key=lambda x: x["similarity"], reverse=True)
         top_matches = matches[:10]
@@ -163,6 +151,69 @@ class ResonanceEngine:
 
         return top_matches
 
+    def _try_resonance_match(self, candidates, embeddings, i, j,
+                             sim_threshold: float, matches: list):
+        try:
+            if embeddings[i] and embeddings[j]:
+                from .fts_search import cosine_similarity
+                sim = cosine_similarity(embeddings[i], embeddings[j])
+                if sim >= sim_threshold:
+                    matches.append({
+                        "source_id": candidates[i].id,
+                        "target_id": candidates[j].id,
+                        "source_content": candidates[i].content[:100],
+                        "target_content": candidates[j].content[:100],
+                        "similarity": round(sim, 3),
+                        "source_wing": candidates[i].wing,
+                        "target_wing": candidates[j].wing,
+                    })
+        except Exception:
+            pass
+
+    def _find_cross_matches(self, wings: list, wing_groups: dict,
+                            sim_threshold: float) -> list[dict]:
+        cross_matches = []
+        for a_idx in range(len(wings)):
+            for b_idx in range(a_idx + 1, len(wings)):
+                wing_a = wings[a_idx]
+                wing_b = wings[b_idx]
+                self._match_wing_pair(
+                    wing_groups[wing_a][:5], wing_groups[wing_b][:5],
+                    wing_a, wing_b, sim_threshold, cross_matches
+                )
+        return cross_matches
+
+    def _match_wing_pair(self, drawables_a: list, drawables_b: list,
+                         wing_a: str, wing_b: str,
+                         sim_threshold: float, cross_matches: list):
+        for da in drawables_a:
+            for db in drawables_b:
+                self._try_cross_match(
+                    da, db, wing_a, wing_b, sim_threshold, cross_matches
+                )
+
+    def _try_cross_match(self, da, db, wing_a: str, wing_b: str,
+                         sim_threshold: float, cross_matches: list):
+        try:
+            emb_a = self.embedder.embed(da.content)
+            emb_b = self.embedder.embed(db.content)
+            if not (emb_a and emb_b):
+                return
+            from .fts_search import cosine_similarity
+            sim = cosine_similarity(emb_a, emb_b)
+            if sim >= sim_threshold:
+                cross_matches.append({
+                    "source_id": da.id,
+                    "target_id": db.id,
+                    "source_wing": wing_a,
+                    "target_wing": wing_b,
+                    "source_content": da.content[:100],
+                    "target_content": db.content[:100],
+                    "similarity": round(sim, 3),
+                })
+        except Exception:
+            pass
+
     def find_cross_wing_resonance(self, drawers: list, sim_threshold: float = 0.99) -> list[dict]:
         """发现跨 Wing 的共鸣关系 — 不同领域间的知识迁移
 
@@ -170,8 +221,6 @@ class ResonanceEngine:
         """
         if not self.embedder:
             return []
-
-        from .fts_search import cosine_similarity
 
         # 按 Wing 分组
         wing_groups: dict[str, list] = {}
@@ -182,31 +231,7 @@ class ResonanceEngine:
         if len(wings) < 2:
             return []
 
-        cross_matches = []
-        for a_idx in range(len(wings)):
-            for b_idx in range(a_idx + 1, len(wings)):
-                wing_a = wings[a_idx]
-                wing_b = wings[b_idx]
-                for da in wing_groups[wing_a][:5]:
-                    for db in wing_groups[wing_b][:5]:
-                        try:
-                            emb_a = self.embedder.embed(da.content)
-                            emb_b = self.embedder.embed(db.content)
-                            if emb_a and emb_b:
-                                sim = cosine_similarity(emb_a, emb_b)
-                                if sim >= sim_threshold:
-                                    cross_matches.append({
-                                        "source_id": da.id,
-                                        "target_id": db.id,
-                                        "source_wing": wing_a,
-                                        "target_wing": wing_b,
-                                        "source_content": da.content[:100],
-                                        "target_content": db.content[:100],
-                                        "similarity": round(sim, 3),
-                                    })
-                        except Exception:
-                            continue
-
+        cross_matches = self._find_cross_matches(wings, wing_groups, sim_threshold)
         cross_matches.sort(key=lambda x: x["similarity"], reverse=True)
         return cross_matches[:10]
 

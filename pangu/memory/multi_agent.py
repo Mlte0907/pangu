@@ -450,25 +450,7 @@ class MultiAgentMemory:
         for memory in source_memories:
             if memory.scope == MemoryScope.PRIVATE:
                 continue
-
-            for target in targets:
-                if memory.scope == MemoryScope.PUBLIC or target in memory.shared_with:
-                    event = SyncEvent(
-                        agent_id=source_agent,
-                        memory_id=memory.id,
-                        action="sync",
-                        timestamp=time.time(),
-                    )
-                    with self._lock:
-                        self._sync_events.append(event)
-
-                    # 如果是即时同步，调用回调
-                    if strategy == SyncStrategy.IMMEDIATE and target in self._sync_handlers:
-                        try:
-                            self._sync_handlers[target](memory)
-                        except Exception as e:
-                            logger.error(f"Sync handler error for {target}: {e}")
-                    synced += 1
+            synced += self._sync_memory_to_targets(memory, source_agent, targets, strategy)
 
         return synced
 
@@ -490,24 +472,7 @@ class MultiAgentMemory:
         if len(memories) < 2:
             return []
 
-        conflicts = []
-        for i in range(len(memories)):
-            for j in range(i + 1, len(memories)):
-                a, b = memories[i], memories[j]
-                if not self._texts_may_conflict(a.content, b.content):
-                    continue
-                conf = self._compute_conflict(a, b)
-                if conf["confidence"] > 0.3:
-                    conflicts.append({
-                        "memory_a": a.id,
-                        "memory_b": b.id,
-                        "agent_a": a.owner,
-                        "agent_b": b.owner,
-                        "description": conf["description"],
-                        "severity": conf["severity"],
-                        "confidence": conf["confidence"],
-                    })
-
+        conflicts = self._find_conflict_pairs(memories)
         conflicts.sort(key=lambda c: c["confidence"], reverse=True)
         return conflicts
 
@@ -628,7 +593,30 @@ class MultiAgentMemory:
         with self._lock:
             self._sync_events.append(event)
 
-        # 触发回调
+        self._trigger_sync_callbacks(agent_id, memory_id)
+
+    def _sync_memory_to_targets(self, memory, source_agent, targets, strategy):
+        synced = 0
+        for target in targets:
+            if memory.scope == MemoryScope.PUBLIC or target in memory.shared_with:
+                event = SyncEvent(
+                    agent_id=source_agent,
+                    memory_id=memory.id,
+                    action="sync",
+                    timestamp=time.time(),
+                )
+                with self._lock:
+                    self._sync_events.append(event)
+
+                if strategy == SyncStrategy.IMMEDIATE and target in self._sync_handlers:
+                    try:
+                        self._sync_handlers[target](memory)
+                    except Exception as e:
+                        logger.error(f"Sync handler error for {target}: {e}")
+                synced += 1
+        return synced
+
+    def _trigger_sync_callbacks(self, agent_id, memory_id):
         for target, handler in self._sync_handlers.items():
             if target != agent_id:
                 try:
@@ -637,6 +625,26 @@ class MultiAgentMemory:
                         handler(memory)
                 except Exception as e:
                     logger.error(f"Sync callback error for {target}: {e}")
+
+    def _find_conflict_pairs(self, memories):
+        conflicts = []
+        for i in range(len(memories)):
+            for j in range(i + 1, len(memories)):
+                a, b = memories[i], memories[j]
+                if not self._texts_may_conflict(a.content, b.content):
+                    continue
+                conf = self._compute_conflict(a, b)
+                if conf["confidence"] > 0.3:
+                    conflicts.append({
+                        "memory_a": a.id,
+                        "memory_b": b.id,
+                        "agent_a": a.owner,
+                        "agent_b": b.owner,
+                        "description": conf["description"],
+                        "severity": conf["severity"],
+                        "confidence": conf["confidence"],
+                    })
+        return conflicts
 
     def _detect_new_conflicts(self, new_memory: AgentMemory) -> list[dict[str, Any]]:
         """检测新记忆与已有记忆的冲突"""
