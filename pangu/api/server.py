@@ -756,5 +756,13 @@ def create_app() -> FastAPI:
     async def root():
         return RedirectResponse(url="/health")
 
+    @app.get("/dashboard", include_in_schema=False)
+    async def dashboard():
+        from fastapi.responses import HTMLResponse
+        dashboard_path = Path(__file__).parent.parent / "ui" / "templates" / "dashboard.html"
+        if dashboard_path.exists():
+            return HTMLResponse(content=dashboard_path.read_text(encoding="utf-8"))
+        return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
+
     logger.info("盘古 app created with all routes")
     return app
