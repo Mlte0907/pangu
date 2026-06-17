@@ -619,6 +619,10 @@ class MCPServer:
             {"name": "pangu_list_exports", "description": "列出所有导出文件", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_export_stats", "description": "导出导入统计", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 生产加固 (v3.0) ──
+            {"name": "pangu_env_check", "description": "运行环境检查", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_startup_validate", "description": "启动校验", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3291,6 +3295,16 @@ class MCPServer:
                 from ..memory.export_import import get_export_engine
                 ee = get_export_engine(self.config)
                 return json.dumps(ee.get_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_env_check":
+                from ..memory.production import check_environment
+                return json.dumps(check_environment(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_startup_validate":
+                from ..memory.production import default_startup_checks
+                validator = default_startup_checks()
+                ok, results = validator.validate()
+                return json.dumps({"ok": ok, "checks": results}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
