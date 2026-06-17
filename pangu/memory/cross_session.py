@@ -179,3 +179,96 @@ class CrossSessionIntegrator:
             "kg_links_added": kg_links,
             "top_links": links[:5],
         }
+
+    def generate_session_summary(self, session_memories: list[Drawer]) -> dict:
+        """生成会话摘要"""
+        if not session_memories:
+            return {"summary": "无记忆", "topics": [], "key_memories": []}
+
+        # 提取主题
+        all_tags = set()
+        for d in session_memories:
+            all_tags.update(d.tags)
+
+        # 按重要性排序
+        sorted_memories = sorted(session_memories, key=lambda d: d.importance, reverse=True)
+
+        # 生成摘要
+        top_memories = sorted_memories[:5]
+        topics = list(all_tags)[:10]
+        summary_parts = []
+        for m in top_memories:
+            summary_parts.append(m.content[:60])
+
+        return {
+            "summary": " | ".join(summary_parts)[:300],
+            "topics": topics,
+            "key_memories": [
+                {"id": m.id, "content": m.content[:80], "importance": m.importance, "wing": m.wing}
+                for m in top_memories
+            ],
+            "total_memories": len(session_memories),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def build_context_bridge(self, current_memories: list[Drawer],
+                              all_drawers: list[Drawer] = None) -> dict:
+        """构建上下文桥接 — 为新会话准备上下文"""
+        if not current_memories:
+            return {"bridge": [], "context_summary": "无上下文"}
+
+        # 加载历史记忆
+        if all_drawers is None:
+            drawers_file = Path(self.config.palace_path) / "drawers.json"
+            if drawers_file.exists():
+                with open(drawers_file, encoding="utf-8") as f:
+                    all_drawers = [Drawer.from_dict(d) for d in json.load(f)]
+            else:
+                all_drawers = []
+
+        # 发现关联
+        links = self.find_cross_session_links(current_memories, all_drawers, max_links=5)
+
+        # 提取上下文
+        current_topics = set()
+        for d in current_memories:
+            current_topics.update(d.tags)
+
+        related_memories = []
+        for link in links:
+            for d in all_drawers:
+                if d.id == link["target_id"]:
+                    related_memories.append({
+                        "id": d.id,
+                        "content": d.content[:80],
+                        "similarity": link["similarity"],
+                        "wing": d.wing,
+                    })
+                    break
+
+        context_summary = f"当前话题: {', '.join(list(current_topics)[:5])}; 关联历史记忆: {len(related_memories)} 条"
+
+        return {
+            "bridge": related_memories,
+            "context_summary": context_summary,
+            "current_topics": list(current_topics),
+            "link_count": len(links),
+        }
+
+    def get_session_stats(self, session_memories: list[Drawer]) -> dict:
+        """获取会话统计"""
+        if not session_memories:
+            return {"total": 0, "wings": {}, "avg_importance": 0}
+
+        wing_counts = {}
+        total_importance = 0
+        for d in session_memories:
+            wing_counts[d.wing] = wing_counts.get(d.wing, 0) + 1
+            total_importance += d.importance
+
+        return {
+            "total": len(session_memories),
+            "wings": wing_counts,
+            "avg_importance": round(total_importance / len(session_memories), 2),
+            "top_wing": max(wing_counts, key=wing_counts.get) if wing_counts else "none",
+        }

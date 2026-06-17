@@ -1,6 +1,6 @@
 [project]
 name = "pangu"
-version = "1.0.0"
+version = "3.0.0"
 description = "盘古 — LMM+Wiki 超智能记忆系统"
 requires-python = ">=3.10"
 license = { text = "MIT" }

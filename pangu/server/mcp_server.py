@@ -623,6 +623,11 @@ class MCPServer:
             {"name": "pangu_env_check", "description": "运行环境检查", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_startup_validate", "description": "启动校验", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 跨会话增强 (v3.0) ──
+            {"name": "pangu_session_summary", "description": "生成会话摘要", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_session_bridge", "description": "构建上下文桥接", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_session_stats", "description": "会话统计", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_version_compare", "description": "比较两个版本的差异", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "v1": {"type": "integer", "description": "版本1"}, "v2": {"type": "integer", "description": "版本2"}}, "required": ["memory_id", "v1", "v2"]}},
@@ -3305,6 +3310,24 @@ class MCPServer:
                 validator = default_startup_checks()
                 ok, results = validator.validate()
                 return json.dumps({"ok": ok, "checks": results}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_summary":
+                from ..memory.cross_session import CrossSessionIntegrator
+                cs = CrossSessionIntegrator(self.config)
+                summary = cs.generate_session_summary(drawers)
+                return json.dumps(summary, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_bridge":
+                from ..memory.cross_session import CrossSessionIntegrator
+                cs = CrossSessionIntegrator(self.config)
+                bridge = cs.build_context_bridge(drawers)
+                return json.dumps(bridge, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_stats":
+                from ..memory.cross_session import CrossSessionIntegrator
+                cs = CrossSessionIntegrator(self.config)
+                stats = cs.get_session_stats(drawers)
+                return json.dumps(stats, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control

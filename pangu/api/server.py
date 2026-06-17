@@ -437,7 +437,7 @@ def create_app() -> FastAPI:
             "message": "ok",
             "data": {
                 "name": "盘古",
-                "version": "0.1.0",
+                "version": "3.0.0",
                 "health": quick_health_check(),
                 "config": {
                     "host": config.host,
