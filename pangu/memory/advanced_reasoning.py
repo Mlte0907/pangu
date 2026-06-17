@@ -627,11 +627,7 @@ class AdvancedReasoning:
         gaps.sort(key=lambda g: g.priority, reverse=True)
         return gaps
 
-    def _detect_orphan_topics(self, drawers: list[Drawer]) -> list[KnowledgeGap]:
-        """检测孤立主题"""
-        gaps: list[KnowledgeGap] = []
-
-        # 构建标签共现图
+    def _build_tag_graph(self, drawers: list[Drawer]) -> tuple[dict[str, set[str]], Counter]:
         tag_connections: dict[str, set[str]] = defaultdict(set)
         tag_counts: Counter = Counter()
 
@@ -643,7 +639,13 @@ class AdvancedReasoning:
                 tag_connections[t1].add(t2)
                 tag_connections[t2].add(t1)
 
-        # 找出连接数少的主题
+        return tag_connections, tag_counts
+
+    def _detect_orphan_topics(self, drawers: list[Drawer]) -> list[KnowledgeGap]:
+        gaps: list[KnowledgeGap] = []
+
+        tag_connections, tag_counts = self._build_tag_graph(drawers)
+
         for tag, count in tag_counts.items():
             connections = tag_connections.get(tag, set())
             if count >= 3 and len(connections) <= 1:

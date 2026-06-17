@@ -38,19 +38,22 @@ class ConversationParser:
         try:
             with open(file_path, encoding="utf-8") as f:
                 for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                        msg = self._extract_message(data)
-                        if msg:
-                            messages.append(msg)
-                    except json.JSONDecodeError:
-                        continue
+                    msg = self._parse_line(line)
+                    if msg:
+                        messages.append(msg)
         except Exception as e:
             logger.error(f"Failed to parse session {file_path}: {e}")
         return messages
+
+    def _parse_line(self, line: str) -> Optional[dict]:
+        line = line.strip()
+        if not line:
+            return None
+        try:
+            data = json.loads(line)
+            return self._extract_message(data)
+        except json.JSONDecodeError:
+            return None
 
     def _extract_message(self, data: dict) -> Optional[dict]:
         """从 JSONL 行中提取消息"""

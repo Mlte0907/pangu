@@ -45,6 +45,47 @@ class ReplayEngine:
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
 
+    def _filter_drawer(self, d: Drawer, wing: str, room: str,
+                        start: str, end: str) -> bool:
+        """判断 drawer 是否通过过滤条件，返回 True 表示保留"""
+        if wing and d.wing != wing:
+            return False
+        if room and d.room != room:
+            return False
+        try:
+            ts = datetime.fromisoformat(d.created_at)
+        except (ValueError, TypeError):
+            ts = datetime.now()
+        if start:
+            try:
+                if ts < datetime.fromisoformat(start):
+                    return False
+            except (ValueError, TypeError):
+                pass
+        if end:
+            try:
+                if ts > datetime.fromisoformat(end):
+                    return False
+            except (ValueError, TypeError):
+                pass
+        return True
+
+    def _drawer_to_event(self, d: Drawer) -> dict:
+        """将 Drawer 转换为回放事件"""
+        try:
+            ts = datetime.fromisoformat(d.created_at)
+        except (ValueError, TypeError):
+            ts = datetime.now()
+        return {
+            "time": ts.isoformat(),
+            "content": d.content,
+            "wing": d.wing,
+            "room": d.room,
+            "importance": d.importance,
+            "tags": d.tags or [],
+            "id": d.id,
+        }
+
     def timeline_replay(self, drawers: list[Drawer],
                         start: str = None, end: str = None,
                         wing: str = None, room: str = None,
@@ -64,38 +105,9 @@ class ReplayEngine:
         """
         events = []
         for d in drawers:
-            if wing and d.wing != wing:
+            if not self._filter_drawer(d, wing, room, start, end):
                 continue
-            if room and d.room != room:
-                continue
-
-            try:
-                ts = datetime.fromisoformat(d.created_at)
-            except (ValueError, TypeError):
-                ts = datetime.now()
-
-            if start:
-                try:
-                    if ts < datetime.fromisoformat(start):
-                        continue
-                except (ValueError, TypeError):
-                    pass
-            if end:
-                try:
-                    if ts > datetime.fromisoformat(end):
-                        continue
-                except (ValueError, TypeError):
-                    pass
-
-            events.append({
-                "time": ts.isoformat(),
-                "content": d.content,
-                "wing": d.wing,
-                "room": d.room,
-                "importance": d.importance,
-                "tags": d.tags or [],
-                "id": d.id,
-            })
+            events.append(self._drawer_to_event(d))
 
         events.sort(key=lambda e: e["time"])
         events = events[:limit]

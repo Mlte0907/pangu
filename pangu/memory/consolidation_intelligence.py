@@ -96,25 +96,31 @@ class ConsolidationIntelligence:
         )
 
     def find_promotion_candidates(self, drawers: list[Drawer],
-                                  access_counts: dict[str, int] = None) -> list[ConsolidationAction]:
+                                   access_counts: dict[str, int] = None) -> list[ConsolidationAction]:
         """查找应提升重要性的记忆"""
         access_counts = access_counts or {}
         actions = []
 
         for d in drawers:
             count = access_counts.get(d.id, 0)
-            if count >= 5 and d.importance / 5.0 < 0.6:
-                boost = min(1.0, count * 0.1)
-                actions.append(ConsolidationAction(
-                    action_type="promote",
-                    source_ids=[d.id],
-                    target_id=d.id,
-                    description=f"频繁访问({count}次)提升重要性",
-                    info_preserved=1.0,
-                    importance_delta=boost,
-                ))
+            action = self._check_promotion_candidate(d, count)
+            if action:
+                actions.append(action)
 
         return actions[:10]
+
+    def _check_promotion_candidate(self, d: Drawer, count: int) -> ConsolidationAction | None:
+        if count >= 5 and d.importance / 5.0 < 0.6:
+            boost = min(1.0, count * 0.1)
+            return ConsolidationAction(
+                action_type="promote",
+                source_ids=[d.id],
+                target_id=d.id,
+                description=f"频繁访问({count}次)提升重要性",
+                info_preserved=1.0,
+                importance_delta=boost,
+            )
+        return None
 
     def find_conflicts(self, drawers: list[Drawer]) -> list[ConsolidationAction]:
         """发现并解决矛盾记忆"""

@@ -80,20 +80,9 @@ class CausalReasoningEngine:
                 is_effect = any(m in c2 for m in CAUSAL_MARKERS["effect"])
 
                 if is_effect:
-                    tags1 = set(d1.tags)
-                    tags2 = set(d2.tags)
-                    overlap = len(tags1 & tags2) / max(len(tags1 | tags2), 1)
-
-                    if overlap > 0.2:
-                        links.append(CausalLink(
-                            cause_id=d1.id,
-                            effect_id=d2.id,
-                            cause_text=d1.content[:80],
-                            effect_text=d2.content[:80],
-                            relation_type="direct" if overlap > 0.5 else "indirect",
-                            confidence=min(0.9, 0.4 + overlap),
-                            evidence=[d1.id, d2.id],
-                        ))
+                    link = self._try_create_causal_link(d1, d2)
+                    if link:
+                        links.append(link)
 
         seen = set()
         unique = []
@@ -105,6 +94,22 @@ class CausalReasoningEngine:
 
         self._causal_links = unique
         return unique
+
+    def _try_create_causal_link(self, d1, d2) -> CausalLink | None:
+        tags1 = set(d1.tags)
+        tags2 = set(d2.tags)
+        overlap = len(tags1 & tags2) / max(len(tags1 | tags2), 1)
+        if overlap > 0.2:
+            return CausalLink(
+                cause_id=d1.id,
+                effect_id=d2.id,
+                cause_text=d1.content[:80],
+                effect_text=d2.content[:80],
+                relation_type="direct" if overlap > 0.5 else "indirect",
+                confidence=min(0.9, 0.4 + overlap),
+                evidence=[d1.id, d2.id],
+            )
+        return None
 
     def build_causal_chains(self, links: list[CausalLink] = None) -> list[CausalChain]:
         """构建因果链"""

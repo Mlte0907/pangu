@@ -342,6 +342,18 @@ class Neocortex:
         self._association_graph[id_a][id_b] = strength
         self._association_graph[id_b][id_a] = strength
 
+    def _spread_to_neighbors(self, current: str, current_activation: float,
+                              depth: int, max_depth: int, decay_factor: float,
+                              activations: dict[str, float],
+                              queue: list[tuple[str, float, int]]) -> None:
+        """将激活信号扩散到当前节点的邻居"""
+        neighbors = self._association_graph.get(current, {})
+        for neighbor_id, edge_strength in neighbors.items():
+            spread_activation = current_activation * edge_strength * decay_factor
+            if neighbor_id not in activations or activations[neighbor_id] < spread_activation:
+                activations[neighbor_id] = spread_activation
+                queue.append((neighbor_id, spread_activation, depth + 1))
+
     def activate_spreading(self, seed_ids: list[str], decay_factor: float = 0.6,
                            max_depth: int = 3) -> list[tuple[str, float]]:
         """激活扩散 — 模拟神经网络中的信号传播
@@ -359,7 +371,6 @@ class Neocortex:
         """
         activations: dict[str, float] = {}
         visited: set[str] = set()
-        # BFS 队列：(memory_id, activation, depth)
         queue: list[tuple[str, float, int]] = []
 
         for mid in seed_ids:
@@ -372,16 +383,8 @@ class Neocortex:
             if current in visited or depth >= max_depth:
                 continue
             visited.add(current)
+            self._spread_to_neighbors(current, current_activation, depth, max_depth, decay_factor, activations, queue)
 
-            neighbors = self._association_graph.get(current, {})
-            for neighbor_id, edge_strength in neighbors.items():
-                # 扩散激活 = 当前激活 × 边权重 × 衰减系数
-                spread_activation = current_activation * edge_strength * decay_factor
-                if neighbor_id not in activations or activations[neighbor_id] < spread_activation:
-                    activations[neighbor_id] = spread_activation
-                    queue.append((neighbor_id, spread_activation, depth + 1))
-
-        # 按激活强度降序排序
         result = sorted(activations.items(), key=lambda x: x[1], reverse=True)
         return result
 

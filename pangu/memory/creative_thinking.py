@@ -34,11 +34,16 @@ class CreativeThinking:
         self.config = config or PanguConfig.load()
         self._idea_history: list[Idea] = []
 
+    def _collect_wing_topics(self, wing_drawers: list[Drawer]) -> set[str]:
+        topics = set()
+        for d in wing_drawers:
+            for tag in d.tags:
+                topics.add(tag)
+        return topics
+
     def discover_patterns(self, drawers: list[Drawer]) -> list[dict]:
-        """从记忆中发现模式"""
         patterns = []
 
-        # 按 wing 分组
         by_wing = {}
         for d in drawers:
             wing = d.wing
@@ -46,15 +51,9 @@ class CreativeThinking:
                 by_wing[wing] = []
             by_wing[wing].append(d)
 
-        # 发现重复模式
         for wing, wing_drawers in by_wing.items():
             if len(wing_drawers) >= 3:
-                # 检查是否有相似主题
-                topics = set()
-                for d in wing_drawers:
-                    for tag in d.tags:
-                        topics.add(tag)
-
+                topics = self._collect_wing_topics(wing_drawers)
                 if len(topics) >= 2:
                     patterns.append({
                         "type": "recurring_theme",

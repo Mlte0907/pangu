@@ -266,19 +266,22 @@ class LifecycleManager:
                 drawers = json.load(f)
             if not self._last_consolidation:
                 return len(drawers)
-            new_count = 0
-            for d in drawers:
-                created = d.get("created_at", "")
-                if created:
-                    try:
-                        ts = datetime.fromisoformat(created).timestamp()
-                        if ts > self._last_consolidation:
-                            new_count += 1
-                    except (ValueError, TypeError):
-                        pass
-            return new_count
+            return self._count_memories_after(drawers, self._last_consolidation)
         except Exception:
             return 0
+
+    def _count_memories_after(self, drawers: list, after_timestamp: float) -> int:
+        new_count = 0
+        for d in drawers:
+            created = d.get("created_at", "")
+            if created:
+                try:
+                    ts = datetime.fromisoformat(created).timestamp()
+                    if ts > after_timestamp:
+                        new_count += 1
+                except (ValueError, TypeError):
+                    pass
+        return new_count
 
     def on_memory_added(self) -> dict:
         """新记忆写入后检查是否触发 lifecycle 任务

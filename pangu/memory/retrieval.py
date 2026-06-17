@@ -116,6 +116,126 @@ def _cosine_similarity(a: list, b: list) -> float:
     return float(np.dot(a_trunc, b_trunc) / (norm_a * norm_b))
 
 
+def _try_onnx_embed(query: str) -> list[float] | None:
+    """尝试 ONNX 嵌入"""
+    try:
+        from pangu.memory.onnx_embedder import get_onnx_embedder
+        onnx = get_onnx_embedder()
+        if onnx.is_available:
+            return onnx.embed(query)
+    except Exception:
+        pass
+    return None
+
+
+def _try_service_embed(query: str) -> list[float] | None:
+    """尝试 embedding service 嵌入"""
+    try:
+        embed_svc = get_embedding_service()
+        return embed_svc.embed(query)
+    except Exception:
+        return None
+
+
+def _embed_query_vec(query: str) -> list[float] | None:
+    """获取查询向量（ONNX 优先，降级到 embedding service）"""
+    query_vec = None
+    cache_key = f"vec_{query}"
+    now = time.time()
+    if cache_key in _vector_cache:
+        cached_vec, cached_ts = _vector_cache[cache_key]
+        if now - cached_ts < _vector_cache_ttl:
+            query_vec = cached_vec
+        else:
+            del _vector_cache[cache_key]
+    if query_vec is None:
+        query_vec = _try_onnx_embed(query)
+    if query_vec is None:
+        query_vec = _try_service_embed(query)
+    if query_vec:
+        _vector_cache[cache_key] = (query_vec, now)
+        if len(_vector_cache) > _vector_cache_max:
+            oldest_key = min(_vector_cache, key=lambda k: _vector_cache[k][1])
+            del _vector_cache[oldest_key]
+    return query_vec
+
+
+def _search_vectors_bruteforce(query_vec: list[float], drawers: list[Drawer]) -> dict[str, float]:
+    """降级：逐条遍历向量搜索"""
+    vec_results = {}
+    for d in drawers:
+        stored_vec = d.metadata.get("embedding")
+        if not stored_vec:
+            continue
+        try:
+            sim = _cosine_similarity(query_vec, stored_vec)
+        except Exception:
+            sim = 0.0
+        if sim >= 0.65:
+            vec_results[d.id] = sim
+    return vec_results
+
+
+def _vector_search_with_index(query_vec: list[float], drawers: list[Drawer]) -> dict[str, float]:
+    """使用 VectorIndex 加速搜索，降级到 brute-force"""
+    vec_results = {}
+    try:
+        from pangu.memory.vector_index import get_vector_index
+        idx = get_vector_index()
+        if idx.is_built and idx.size > 0:
+            search_results = idx.search(query_vec, top_k=min(len(drawers), 100))
+            valid_ids = {d.id for d in drawers}
+            for did, sim in search_results:
+                if did in valid_ids and sim >= 0.65:
+                    vec_results[did] = sim
+        else:
+            vec_results = _search_vectors_bruteforce(query_vec, drawers)
+    except Exception:
+        vec_results = _search_vectors_bruteforce(query_vec, drawers)
+    return vec_results
+
+
+def _fts_search_task(query: str, drawers: list[Drawer]) -> dict[str, float]:
+    """FTS 搜索任务"""
+    try:
+        from pangu.memory.fts_search import FTS5SearchEngine
+        fts = FTS5SearchEngine()
+        fts.build_index(drawers)
+        return fts._fts_search(query, drawers)
+    except Exception:
+        return {}
+
+
+def _expand_with_neural_spreading(results: list[dict], limit: int) -> None:
+    """通过神经激活扩散扩展搜索结果"""
+    if not results or len(results) >= limit:
+        return
+    try:
+        from pangu.memory.neural_memory import get_neural_engine
+        engine = get_neural_engine()
+        seed_ids = [r["id"] for r in results[:5]]
+        activations = engine.neocortex.activate_spreading(
+            seed_ids,
+            decay_factor=engine.config.neural_spreading_decay,
+            max_depth=engine.config.neural_spreading_depth,
+        )
+        existing_ids = {r["id"] for r in results}
+        for mid, activation in activations:
+            if mid not in existing_ids and activation > 0.1:
+                mem = engine.neocortex.get(mid)
+                if mem:
+                    results.append({
+                        "id": mid,
+                        "content": mem.content,
+                        "search_score": round(activation * 0.5, 4),
+                        "source": "neural_spreading",
+                    })
+                    if len(results) >= limit:
+                        break
+    except Exception:
+        pass
+
+
 def recall(
     query: str | None = None,
     wing: str | None = None,
@@ -187,91 +307,10 @@ def recall(
         RRF_K = 60
         rrf_scores: dict[str, float] = {}
 
-        def _vector_search_task() -> dict[str, float]:
-            """向量搜索任务"""
-            # 向量搜索（带缓存 + TTL）
-            query_vec = None
-            cache_key = f"vec_{query}"
-            now = time.time()
-            if cache_key in _vector_cache:
-                cached_vec, cached_ts = _vector_cache[cache_key]
-                if now - cached_ts < _vector_cache_ttl:
-                    query_vec = cached_vec
-                else:
-                    del _vector_cache[cache_key]
-            if query_vec is None:
-                try:
-                    from pangu.memory.onnx_embedder import get_onnx_embedder
-                    onnx = get_onnx_embedder()
-                    if onnx.is_available:
-                        query_vec = onnx.embed(query)
-                except Exception:
-                    pass
-                if query_vec is None:
-                    try:
-                        embed_svc = get_embedding_service()
-                        query_vec = embed_svc.embed(query)
-                    except Exception:
-                        pass
-                if query_vec:
-                    _vector_cache[cache_key] = (query_vec, now)
-                    if len(_vector_cache) > _vector_cache_max:
-                        oldest_key = min(_vector_cache, key=lambda k: _vector_cache[k][1])
-                        del _vector_cache[oldest_key]
-
-            if not query_vec:
-                return {}
-
-            # 使用 VectorIndex 加速搜索（FAISS/hnswlib）
-            vec_results = {}
-            try:
-                from pangu.memory.vector_index import get_vector_index
-                idx = get_vector_index()
-                if idx.is_built and idx.size > 0:
-                    # 使用 VectorIndex 搜索
-                    search_results = idx.search(query_vec, top_k=min(len(filtered), 100))
-                    for did, sim in search_results:
-                        if did in {d.id for d in filtered} and sim >= 0.65:
-                            vec_results[did] = sim
-                else:
-                    # 降级：逐条遍历
-                    for d in filtered:
-                        stored_vec = d.metadata.get("embedding")
-                        if not stored_vec:
-                            continue
-                        try:
-                            sim = _cosine_similarity(query_vec, stored_vec)
-                        except Exception:
-                            sim = 0.0
-                        if sim >= 0.65:
-                            vec_results[d.id] = sim
-            except Exception:
-                # 降级：逐条遍历
-                for d in filtered:
-                    stored_vec = d.metadata.get("embedding")
-                    if not stored_vec:
-                        continue
-                    try:
-                        sim = _cosine_similarity(query_vec, stored_vec)
-                    except Exception:
-                        sim = 0.0
-                    if sim >= 0.65:
-                        vec_results[d.id] = sim
-            return vec_results
-
-        def _fts_search_task() -> dict[str, float]:
-            """FTS 搜索任务"""
-            try:
-                from pangu.memory.fts_search import FTS5SearchEngine
-                fts = FTS5SearchEngine()
-                fts.build_index(filtered)
-                return fts._fts_search(expanded_query, filtered)
-            except Exception:
-                return {}
-
         # 顺序执行（优化后）
-        vec_results = _vector_search_task()
-        fts_results = _fts_search_task()
+        query_vec = _embed_query_vec(query)
+        vec_results = _vector_search_with_index(query_vec, filtered) if query_vec else {}
+        fts_results = _fts_search_task(expanded_query, filtered)
 
         # 向量搜索 RRF
         sorted_vec = sorted(vec_results.items(), key=lambda x: -x[1])
@@ -344,31 +383,7 @@ def recall(
         results = [_drawer_to_dict(d) for d in filtered[offset : offset + limit]]
 
     # 神经激活扩散：基于命中结果扩散找到关联记忆
-    if results and len(results) < limit:
-        try:
-            from pangu.memory.neural_memory import get_neural_engine
-            engine = get_neural_engine()
-            seed_ids = [r["id"] for r in results[:5]]
-            activations = engine.neocortex.activate_spreading(
-                seed_ids,
-                decay_factor=engine.config.neural_spreading_decay,
-                max_depth=engine.config.neural_spreading_depth,
-            )
-            existing_ids = {r["id"] for r in results}
-            for mid, activation in activations:
-                if mid not in existing_ids and activation > 0.1:
-                    mem = engine.neocortex.get(mid)
-                    if mem:
-                        results.append({
-                            "id": mid,
-                            "content": mem.content,
-                            "search_score": round(activation * 0.5, 4),
-                            "source": "neural_spreading",
-                        })
-                        if len(results) >= limit:
-                            break
-        except Exception:
-            pass
+    _expand_with_neural_spreading(results, limit)
 
     if cache_key and results:
         with _cache_lock:

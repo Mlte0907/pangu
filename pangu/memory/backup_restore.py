@@ -168,21 +168,24 @@ class BackupRestoreEngine:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def _apply_filters(self, data: list, wing: str = None,
+                       min_importance: float = None) -> list:
+        filtered = data
+        if wing:
+            filtered = [d for d in filtered if d.get("wing") == wing]
+        if min_importance is not None:
+            filtered = [d for d in filtered if d.get("importance", 0) >= min_importance]
+        return filtered
+
     def restore_by_filter(self, backup_id: str, wing: str = None,
                           min_importance: float = None) -> dict:
-        """选择性恢复"""
         backup_file = self._backup_dir / f"{backup_id}.json"
         if not backup_file.exists():
             return {"success": False, "error": "备份文件不存在"}
 
         try:
             data = json.loads(backup_file.read_text())
-            filtered = data
-
-            if wing:
-                filtered = [d for d in filtered if d.get("wing") == wing]
-            if min_importance is not None:
-                filtered = [d for d in filtered if d.get("importance", 0) >= min_importance]
+            filtered = self._apply_filters(data, wing, min_importance)
 
             return {
                 "success": True,

@@ -57,13 +57,7 @@ class VerificationLoop:
     def run_type_check(self) -> VerificationResult:
         """Phase 2: 类型检查"""
         try:
-            result = subprocess.run(
-                ["python3", "-m", "mypy", "pangu/", "--ignore-missing-imports"],
-                cwd=self.project_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
+            result = self._execute_type_check()
             errors = self._count_type_errors(result.stdout)
             return VerificationResult(
                 phase="type_check", passed=result.returncode == 0,
@@ -74,6 +68,15 @@ class VerificationLoop:
                                        output="mypy not installed, skipping")
         except Exception as e:
             return VerificationResult(phase="type_check", passed=False, output=str(e))
+
+    def _execute_type_check(self) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["python3", "-m", "mypy", "pangu/", "--ignore-missing-imports"],
+            cwd=self.project_path,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
 
     def _count_type_errors(self, output: str) -> int:
         return len([line for line in output.split("\n") if ": error:" in line])

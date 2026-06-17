@@ -208,22 +208,7 @@ class PatternEngine:
         importances = [d.importance for d in drawers]
         avg_imp = sum(importances) / len(importances)
         std_imp = (sum((i - avg_imp) ** 2 for i in importances) / len(importances)) ** 0.5
-
-        if std_imp > 0:
-            for d in drawers:
-                z_score = (d.importance - avg_imp) / std_imp
-                if abs(z_score) > 2.5:
-                    direction = "高" if z_score > 0 else "低"
-                    patterns.append(DiscoveredPattern(
-                        id=f"anomaly_imp_{d.id}",
-                        pattern_type="anomaly",
-                        description=f"记忆 '{d.id}' 重要性异常偏{direction}"
-                                    f"（{d.importance}，平均 {avg_imp:.1f}±{std_imp:.1f}）",
-                        evidence=[d.id],
-                        confidence=0.5,
-                        metadata={"memory_id": d.id, "importance": d.importance,
-                                  "z_score": round(z_score, 2)},
-                    ))
+        patterns.extend(self._detect_importance_anomalies(drawers, avg_imp, std_imp))
 
         # 时间分布异常
         try:
@@ -249,6 +234,27 @@ class PatternEngine:
         except (ValueError, TypeError):
             pass
 
+        return patterns
+
+    def _detect_importance_anomalies(self, drawers: list[Drawer], avg_imp: float,
+                                     std_imp: float) -> list[DiscoveredPattern]:
+        patterns = []
+        if std_imp <= 0:
+            return patterns
+        for d in drawers:
+            z_score = (d.importance - avg_imp) / std_imp
+            if abs(z_score) > 2.5:
+                direction = "高" if z_score > 0 else "低"
+                patterns.append(DiscoveredPattern(
+                    id=f"anomaly_imp_{d.id}",
+                    pattern_type="anomaly",
+                    description=f"记忆 '{d.id}' 重要性异常偏{direction}"
+                                f"（{d.importance}，平均 {avg_imp:.1f}±{std_imp:.1f}）",
+                    evidence=[d.id],
+                    confidence=0.5,
+                    metadata={"memory_id": d.id, "importance": d.importance,
+                              "z_score": round(z_score, 2)},
+                ))
         return patterns
 
     def pattern_stats(self, patterns: list[DiscoveredPattern]) -> dict:

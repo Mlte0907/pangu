@@ -161,14 +161,8 @@ class DomainKnowledge:
                 ON knowledge_entries(status)
             """)
 
-    def _seed_defaults(self) -> None:
-        """填充默认知识条目"""
-        existing = self.list_entries(limit=1)
-        if existing:
-            return
-
-        defaults = [
-            # 软件工程 - 设计模式
+    def _default_entries(self) -> list[KnowledgeEntry]:
+        return [
             KnowledgeEntry(
                 id="se_pattern_singleton",
                 domain=DomainType.SOFTWARE_ENGINEERING,
@@ -203,7 +197,6 @@ class DomainKnowledge:
                 tags=["设计模式", "行为型"],
                 importance=0.7,
             ),
-            # 软件工程 - 架构决策
             KnowledgeEntry(
                 id="se_arch_clean",
                 domain=DomainType.SOFTWARE_ENGINEERING,
@@ -224,7 +217,6 @@ class DomainKnowledge:
                 tags=["架构", "六边形"],
                 importance=0.8,
             ),
-            # 软件工程 - 最佳实践
             KnowledgeEntry(
                 id="se_practice_code_review",
                 domain=DomainType.SOFTWARE_ENGINEERING,
@@ -237,7 +229,6 @@ class DomainKnowledge:
                 tags=["代码审查", "团队规范"],
                 importance=0.8,
             ),
-            # 项目管理 - 风险
             KnowledgeEntry(
                 id="pm_risk_scope_creep",
                 domain=DomainType.PROJECT_MANAGEMENT,
@@ -258,7 +249,6 @@ class DomainKnowledge:
                 tags=["风险管理", "人员"],
                 importance=0.85,
             ),
-            # 团队协作 - 沟通
             KnowledgeEntry(
                 id="tc_comm_async",
                 domain=DomainType.TEAM_COLLABORATION,
@@ -284,7 +274,12 @@ class DomainKnowledge:
             ),
         ]
 
-        for entry in defaults:
+    def _seed_defaults(self) -> None:
+        existing = self.list_entries(limit=1)
+        if existing:
+            return
+
+        for entry in self._default_entries():
             self.create_entry(entry)
 
     # ── CRUD 操作 ──────────────────────────────────────────────

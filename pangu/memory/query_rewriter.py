@@ -149,13 +149,18 @@ class QueryRewriter:
             suggestions.append(f"{partial} {tag}")
 
         if not suggestions:
-            for word, synonyms in self.SYNONYM_MAP.items():
-                if word in partial or any(syn in partial for syn in synonyms):
-                    for syn in synonyms[:2]:
-                        if syn not in partial:
-                            suggestions.append(f"{partial} {syn}")
+            suggestions = self._suggest_synonyms(partial)[:top_k]
 
         return suggestions[:top_k]
+
+    def _suggest_synonyms(self, partial: str) -> list[str]:
+        suggestions = []
+        for word, synonyms in self.SYNONYM_MAP.items():
+            if word in partial or any(syn in partial for syn in synonyms):
+                for syn in synonyms[:2]:
+                    if syn not in partial:
+                        suggestions.append(f"{partial} {syn}")
+        return suggestions
 
     def batch_rewrite(self, queries: list[str]) -> list[RewrittenQuery]:
         """批量重写"""

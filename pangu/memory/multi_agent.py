@@ -633,18 +633,24 @@ class MultiAgentMemory:
                 a, b = memories[i], memories[j]
                 if not self._texts_may_conflict(a.content, b.content):
                     continue
-                conf = self._compute_conflict(a, b)
-                if conf["confidence"] > 0.3:
-                    conflicts.append({
-                        "memory_a": a.id,
-                        "memory_b": b.id,
-                        "agent_a": a.owner,
-                        "agent_b": b.owner,
-                        "description": conf["description"],
-                        "severity": conf["severity"],
-                        "confidence": conf["confidence"],
-                    })
+                conflict = self._try_compute_conflict(a, b)
+                if conflict:
+                    conflicts.append(conflict)
         return conflicts
+
+    def _try_compute_conflict(self, a, b) -> dict | None:
+        conf = self._compute_conflict(a, b)
+        if conf["confidence"] > 0.3:
+            return {
+                "memory_a": a.id,
+                "memory_b": b.id,
+                "agent_a": a.owner,
+                "agent_b": b.owner,
+                "description": conf["description"],
+                "severity": conf["severity"],
+                "confidence": conf["confidence"],
+            }
+        return None
 
     def _detect_new_conflicts(self, new_memory: AgentMemory) -> list[dict[str, Any]]:
         """检测新记忆与已有记忆的冲突"""

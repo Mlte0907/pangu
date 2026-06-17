@@ -102,6 +102,15 @@ class WorkingMemory:
             return 0.0
         return len(self._buffer) / self.capacity
 
+    def _evict_to_token_budget(self) -> WMItem | None:
+        """Token 预算驱逐，返回第一个被驱逐的项"""
+        first_evicted = None
+        while self._total_tokens > self.token_budget:
+            token_evicted = self._evict_by_token()
+            if first_evicted is None:
+                first_evicted = token_evicted
+        return first_evicted
+
     def push(self, item: WMItem) -> WMItem | None:
         """推入一个工作记忆项，返回被驱逐的项（如果有）"""
         with self._lock:
@@ -113,14 +122,11 @@ class WorkingMemory:
             if item.id in self._buffer:
                 self._buffer.move_to_end(item.id)
             else:
-                # 容量驱逐
                 while len(self._buffer) >= self.capacity:
                     evicted = self._evict()
-                # Token 预算驱逐
-                while self._total_tokens > self.token_budget:
-                    token_evicted = self._evict_by_token()
-                    if evicted is None:
-                        evicted = token_evicted
+                token_evicted = self._evict_to_token_budget()
+                if evicted is None:
+                    evicted = token_evicted
 
             self._buffer[item.id] = item
 

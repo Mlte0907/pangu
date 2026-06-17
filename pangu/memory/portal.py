@@ -58,6 +58,22 @@ class MemoryPortal:
 
         return actions
 
+    def _score_drawer(self, d, query: str, index_results: set) -> int:
+        """计算单个 drawer 的搜索得分"""
+        score = 0
+        q_lower = query.lower()
+        d_lower = d.content.lower()
+        for word in q_lower.split():
+            if len(word) >= 2 and word in d_lower:
+                score += 2
+        for tag in d.tags:
+            for word in q_lower.split():
+                if word in tag.lower():
+                    score += 3
+        if d.id in index_results:
+            score += 5
+        return score
+
     def smart_search(self, drawers: list, query: str, limit: int = 5) -> dict:
         """智能搜索 — 自动触发查询重写+索引搜索+结果排序"""
         from ..memory.query_rewriter import get_rewriter
@@ -70,18 +86,7 @@ class MemoryPortal:
 
         scored = []
         for d in drawers:
-            score = 0
-            q_lower = query.lower()
-            d_lower = d.content.lower()
-            for word in q_lower.split():
-                if len(word) >= 2 and word in d_lower:
-                    score += 2
-            for tag in d.tags:
-                for word in q_lower.split():
-                    if word in tag.lower():
-                        score += 3
-            if d.id in index_results:
-                score += 5
+            score = self._score_drawer(d, query, index_results)
             if score > 0:
                 scored.append((d, score))
 

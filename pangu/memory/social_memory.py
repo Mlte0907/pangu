@@ -129,40 +129,47 @@ class SocialMemory:
         finally:
             conn.close()
 
+    def _load_comments_from_db(self, conn) -> None:
+        """从数据库加载评论"""
+        rows = conn.execute("SELECT * FROM comments").fetchall()
+        for row in rows:
+            comment = Comment(
+                id=row[0], memory_id=row[1], author_id=row[2],
+                content=row[3], parent_id=row[4], created_at=row[5],
+                likes=row[6], replies=json.loads(row[7])
+            )
+            self._comments[comment.id] = comment
+
+    def _load_votes_from_db(self, conn) -> None:
+        """从数据库加载投票"""
+        rows = conn.execute("SELECT * FROM votes").fetchall()
+        for row in rows:
+            vote = Vote(
+                user_id=row[2], memory_id=row[1],
+                vote_type=VoteType(row[3]), timestamp=row[4], weight=row[5]
+            )
+            self._votes.setdefault(vote.memory_id, []).append(vote)
+
+    def _load_experts_from_db(self, conn) -> None:
+        """从数据库加载专家"""
+        rows = conn.execute("SELECT * FROM experts").fetchall()
+        for row in rows:
+            expert = ExpertProfile(
+                user_id=row[0], name=row[1],
+                expertise_tags=json.loads(row[2]),
+                total_votes=row[3], helpful_votes=row[4],
+                accuracy=row[5], memories_used=json.loads(row[6])
+            )
+            self._experts[expert.user_id] = expert
+
     def _load_from_db(self) -> None:
         """从数据库加载数据"""
         try:
             conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
             try:
-                # 加载评论
-                rows = conn.execute("SELECT * FROM comments").fetchall()
-                for row in rows:
-                    comment = Comment(
-                        id=row[0], memory_id=row[1], author_id=row[2],
-                        content=row[3], parent_id=row[4], created_at=row[5],
-                        likes=row[6], replies=json.loads(row[7])
-                    )
-                    self._comments[comment.id] = comment
-
-                # 加载投票
-                rows = conn.execute("SELECT * FROM votes").fetchall()
-                for row in rows:
-                    vote = Vote(
-                        user_id=row[2], memory_id=row[1],
-                        vote_type=VoteType(row[3]), timestamp=row[4], weight=row[5]
-                    )
-                    self._votes.setdefault(vote.memory_id, []).append(vote)
-
-                # 加载专家
-                rows = conn.execute("SELECT * FROM experts").fetchall()
-                for row in rows:
-                    expert = ExpertProfile(
-                        user_id=row[0], name=row[1],
-                        expertise_tags=json.loads(row[2]),
-                        total_votes=row[3], helpful_votes=row[4],
-                        accuracy=row[5], memories_used=json.loads(row[6])
-                    )
-                    self._experts[expert.user_id] = expert
+                self._load_comments_from_db(conn)
+                self._load_votes_from_db(conn)
+                self._load_experts_from_db(conn)
             finally:
                 conn.close()
         except Exception:

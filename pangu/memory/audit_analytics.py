@@ -129,17 +129,20 @@ class AuditAnalytics:
             "user_activity": user_ops,
         }
 
-    def detect_anomalies(self) -> list[dict]:
-        """检测异常操作"""
-        anomalies = []
-
+    def _accumulate_fail_rates(self, entries: list) -> dict[str, dict]:
         user_fail_rates: dict[str, dict] = {}
-        for e in self._entries:
+        for e in entries:
             if e.user_id not in user_fail_rates:
                 user_fail_rates[e.user_id] = {"total": 0, "failed": 0}
             user_fail_rates[e.user_id]["total"] += 1
             if not e.success:
                 user_fail_rates[e.user_id]["failed"] += 1
+        return user_fail_rates
+
+    def detect_anomalies(self) -> list[dict]:
+        anomalies = []
+
+        user_fail_rates = self._accumulate_fail_rates(self._entries)
 
         for user, stats in user_fail_rates.items():
             if stats["total"] >= 5:

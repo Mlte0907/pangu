@@ -106,9 +106,33 @@ class ContextInjectionEngine:
                 pass
         return 0.5
 
+    def _inject_single(self, d, final, relevance, importance, recency,
+                       tokens_used: int, token_budget: int,
+                       injected: list) -> int:
+        est_tokens = int(len(d.content) * 1.5)
+        if tokens_used + est_tokens > token_budget:
+            remaining = token_budget - tokens_used
+            truncated_len = int(remaining / 1.5)
+            if truncated_len > 20:
+                content = d.content[:truncated_len] + "..."
+                injected.append(InjectedContext(
+                    memory_id=d.id, content=content, wing=d.wing,
+                    relevance_score=relevance, importance_score=importance,
+                    recency_score=recency, final_score=final,
+                    injection_position="prefix",
+                ))
+                return remaining
+            return 0
+        injected.append(InjectedContext(
+            memory_id=d.id, content=d.content, wing=d.wing,
+            relevance_score=relevance, importance_score=importance,
+            recency_score=recency, final_score=final,
+            injection_position="prefix",
+        ))
+        return est_tokens
+
     def inject_context(self, text: str, drawers: list,
                        token_budget: int = 500, max_memories: int = 5) -> InjectionResult:
-        """为文本注入上下文"""
         topics = self.detect_context_topics(text)
 
         scored = []
@@ -127,27 +151,11 @@ class ContextInjectionEngine:
         injected = []
         tokens_used = 0
         for d, final, relevance, importance, recency in top:
-            est_tokens = int(len(d.content) * 1.5)
-            if tokens_used + est_tokens > token_budget:
-                remaining = token_budget - tokens_used
-                truncated_len = int(remaining / 1.5)
-                if truncated_len > 20:
-                    content = d.content[:truncated_len] + "..."
-                    injected.append(InjectedContext(
-                        memory_id=d.id, content=content, wing=d.wing,
-                        relevance_score=relevance, importance_score=importance,
-                        recency_score=recency, final_score=final,
-                        injection_position="prefix",
-                    ))
-                    tokens_used += remaining
+            used = self._inject_single(d, final, relevance, importance, recency,
+                                       tokens_used, token_budget, injected)
+            if used == 0:
                 break
-            injected.append(InjectedContext(
-                memory_id=d.id, content=d.content, wing=d.wing,
-                relevance_score=relevance, importance_score=importance,
-                recency_score=recency, final_score=final,
-                injection_position="prefix",
-            ))
-            tokens_used += est_tokens
+            tokens_used += used
 
         if injected:
             context_block = "[相关记忆上下文]\n"

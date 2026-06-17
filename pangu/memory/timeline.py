@@ -178,16 +178,8 @@ class TimelineEngine:
                     time_factor = 1.0 if delta_hours <= 24 else max(0.3, 1.0 - delta_hours / 720)
                     confidence *= time_factor
 
-                # 2. 语义相似度（相似话题更可能有因果）
                 if confidence == 0 and self.embedder:
-                    try:
-                        emb_a = self.embedder.embed(a.content)
-                        emb_b = self.embedder.embed(b.content)
-                        sim = self._cosine_sim(emb_a, emb_b)
-                        if sim > 0.5:
-                            confidence = min(0.4, sim * 0.5)
-                    except Exception:
-                        pass
+                    confidence = self._check_semantic_similarity(a.content, b.content, confidence)
 
                 if confidence >= min_confidence:
                     links.append(CausalLink(
@@ -224,6 +216,17 @@ class TimelineEngine:
             return f"可能因果：'{a.content[:30]}...' 与 '{b.content[:30]}...' 存在时序关联"
         else:
             return f"潜在关联：'{a.content[:30]}...' 和 '{b.content[:30]}...' 话题相关"
+
+    def _check_semantic_similarity(self, content_a: str, content_b: str, current_confidence: float) -> float:
+        try:
+            emb_a = self.embedder.embed(content_a)
+            emb_b = self.embedder.embed(content_b)
+            sim = self._cosine_sim(emb_a, emb_b)
+            if sim > 0.5:
+                return min(0.4, sim * 0.5)
+        except Exception:
+            pass
+        return current_confidence
 
     def build_event_chain(self, events: list[TimelineEvent],
                           max_gap_hours: float = 72) -> list[EventChain]:

@@ -62,27 +62,7 @@ class QAEngine:
 
         q_lower = question.lower()
         for d in drawers:
-            score = 0
-            d_lower = d.content.lower()
-
-            # 关键词匹配
-            for kw in q_keywords:
-                if kw in d_lower:
-                    score += 2
-
-            # 标签匹配
-            if d.tags:
-                for tag in d.tags:
-                    tag_l = tag.lower()
-                    for kw in q_keywords:
-                        if kw in tag_l or tag_l in kw:
-                            score += 3
-
-            # 内容片段匹配（连续2字）
-            for i in range(len(q_lower) - 1):
-                bigram = q_lower[i:i+2]
-                if bigram in d_lower:
-                    score += 0.5
+            score = self._score_memory(d, q_keywords, q_lower)
 
             if score > 0:
                 relevant.append((d, score))
@@ -158,6 +138,24 @@ class QAEngine:
                 follow_ups.append(f"想了解更多关于 {'/'.join(tag_list)} 的内容吗？")
 
         return follow_ups
+
+    def _score_memory(self, d, q_keywords: set, q_lower: str) -> float:
+        score = 0
+        d_lower = d.content.lower()
+        for kw in q_keywords:
+            if kw in d_lower:
+                score += 2
+        if d.tags:
+            for tag in d.tags:
+                tag_l = tag.lower()
+                for kw in q_keywords:
+                    if kw in tag_l or tag_l in kw:
+                        score += 3
+        for i in range(len(q_lower) - 1):
+            bigram = q_lower[i:i+2]
+            if bigram in d_lower:
+                score += 0.5
+        return score
 
     def batch_answer(self, questions: list[str], drawers: list) -> list[QAResult]:
         """批量问答"""

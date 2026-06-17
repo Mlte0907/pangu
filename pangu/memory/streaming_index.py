@@ -75,25 +75,30 @@ class StreamingIndexer:
             "timestamp": datetime.now().isoformat(),
         }
 
+    def _build_wal_entry(self, item, embedder=None) -> dict:
+        """构建单条 WAL 条目"""
+        now = datetime.now().isoformat()
+        entry = {
+            "id": item.id,
+            "content": item.content[:500],
+            "wing": item.wing,
+            "room": item.room,
+            "importance": item.importance,
+            "tags": item.tags,
+            "created_at": item.created_at,
+            "indexed_at": now,
+        }
+        self._try_embed_item(entry, item, embedder)
+        return entry
+
     def _write_wal(self, items: list, embedder=None) -> int:
         """写入 WAL 日志"""
         entries = 0
-        now = datetime.now().isoformat()
 
         try:
             with open(self._wal_path, "a", encoding="utf-8") as f:
                 for item in items:
-                    entry = {
-                        "id": item.id,
-                        "content": item.content[:500],
-                        "wing": item.wing,
-                        "room": item.room,
-                        "importance": item.importance,
-                        "tags": item.tags,
-                        "created_at": item.created_at,
-                        "indexed_at": now,
-                    }
-                    self._try_embed_item(entry, item, embedder)
+                    entry = self._build_wal_entry(item, embedder)
                     f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                     entries += 1
         except OSError as e:

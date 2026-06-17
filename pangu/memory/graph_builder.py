@@ -75,17 +75,20 @@ class GraphBuilder:
         entities = []
         for etype, patterns in self.ENTITY_PATTERNS.items():
             for pattern in patterns:
-                matches = re.findall(pattern, text)
-                for match in matches:
-                    name = match.strip()
-                    if len(name) >= 2 and name not in [e.name for e in entities]:
-                        entities.append(ExtractedEntity(
-                            name=name,
-                            entity_type=etype,
-                            confidence=0.8,
-                            context=text[:80],
-                        ))
+                self._extract_matches(pattern, text, etype, entities)
         return entities
+
+    def _extract_matches(self, pattern: str, text: str, etype: str, entities: list):
+        matches = re.findall(pattern, text)
+        for match in matches:
+            name = match.strip()
+            if len(name) >= 2 and name not in [e.name for e in entities]:
+                entities.append(ExtractedEntity(
+                    name=name,
+                    entity_type=etype,
+                    confidence=0.8,
+                    context=text[:80],
+                ))
 
     def extract_relations(self, text: str, memory_id: str) -> list[ExtractedRelation]:
         """从文本中抽取关系"""

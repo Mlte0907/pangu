@@ -186,18 +186,10 @@ class HNSWVectorIndex:
             self._max_node_layer = level
             self._entry_point = item_id
 
-    def _connect_node(self, node_id: str, candidates: list[str], layer: int) -> None:
-        """连接节点到候选邻居"""
+    def _connect_reverse(self, node_id: str, neighbors: list[str], layer: int) -> None:
+        """建立反向连接"""
         node = self._nodes[node_id]
-        # 按相似度排序，取 top-M
         vec = node.vector
-        scored = [(cid, self._cosine_sim(vec, self._nodes[cid].vector))
-                  for cid in candidates if cid != node_id and cid in self._nodes]
-        scored.sort(key=lambda x: x[1], reverse=True)
-        neighbors = [cid for cid, _ in scored[:self.M]]
-        node.neighbors[layer] = neighbors
-
-        # 反向连接
         for nid in neighbors:
             n = self._nodes[nid]
             if layer not in n.neighbors:
@@ -206,12 +198,23 @@ class HNSWVectorIndex:
                 if len(n.neighbors[layer]) < self.M * 2:
                     n.neighbors[layer].append(node_id)
                 else:
-                    # 替换最远的邻居
                     worst_idx = min(
                         range(len(n.neighbors[layer])),
                         key=lambda i: self._cosine_sim(vec, self._nodes[n.neighbors[layer][i]].vector),
                     )
                     n.neighbors[layer][worst_idx] = node_id
+
+    def _connect_node(self, node_id: str, candidates: list[str], layer: int) -> None:
+        """连接节点到候选邻居"""
+        node = self._nodes[node_id]
+        vec = node.vector
+        scored = [(cid, self._cosine_sim(vec, self._nodes[cid].vector))
+                  for cid in candidates if cid != node_id and cid in self._nodes]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        neighbors = [cid for cid, _ in scored[:self.M]]
+        node.neighbors[layer] = neighbors
+
+        self._connect_reverse(node_id, neighbors, layer)
 
     def add_batch(self, ids: list[str], vectors: list[list[float]]) -> int:
         """批量添加向量"""

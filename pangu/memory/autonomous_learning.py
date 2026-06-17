@@ -37,30 +37,33 @@ class AutonomousLearning:
         self._hypotheses: list[Hypothesis] = []
         self._learning_history: list[dict] = []
 
+    def _detect_wing_pattern(self, wing: str, wing_drawers: list[Drawer]) -> dict | None:
+        all_tags = set()
+        for d in wing_drawers:
+            all_tags.update(d.tags)
+
+        if len(all_tags) >= 2:
+            return {
+                "type": "pattern",
+                "wing": wing,
+                "tags": list(all_tags)[:5],
+                "count": len(wing_drawers),
+                "description": f"在 {wing} 领域发现 {len(all_tags)} 个相关主题",
+            }
+        return None
+
     def discover_knowledge(self, drawers: list[Drawer]) -> list[dict]:
-        """从记忆中发现新知识"""
         discoveries = []
 
-        # 发现重复模式
         by_wing = {}
         for d in drawers:
             by_wing.setdefault(d.wing, []).append(d)
 
         for wing, wing_drawers in by_wing.items():
             if len(wing_drawers) >= 3:
-                # 检查是否有共同主题
-                all_tags = set()
-                for d in wing_drawers:
-                    all_tags.update(d.tags)
-
-                if len(all_tags) >= 2:
-                    discoveries.append({
-                        "type": "pattern",
-                        "wing": wing,
-                        "tags": list(all_tags)[:5],
-                        "count": len(wing_drawers),
-                        "description": f"在 {wing} 领域发现 {len(all_tags)} 个相关主题",
-                    })
+                pattern = self._detect_wing_pattern(wing, wing_drawers)
+                if pattern:
+                    discoveries.append(pattern)
 
         return discoveries
 

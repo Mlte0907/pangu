@@ -146,17 +146,18 @@ class MemoryDeduplicator:
         similar_pairs = []
         for i in range(n):
             for j in range(i + 1, n):
-                if not token_sets[i] or not token_sets[j]:
-                    continue
-                # Jaccard 相似度
-                intersection = len(token_sets[i] & token_sets[j])
-                union = len(token_sets[i] | token_sets[j])
-                jaccard = intersection / union if union > 0 else 0
-
-                if jaccard >= threshold:
+                jaccard = self._compute_jaccard(token_sets, i, j)
+                if jaccard is not None and jaccard >= threshold:
                     similar_pairs.append((i, j, jaccard))
 
         return self._group_duplicates(drawers, similar_pairs, threshold)
+
+    def _compute_jaccard(self, token_sets: list[set], i: int, j: int) -> float | None:
+        if not token_sets[i] or not token_sets[j]:
+            return None
+        intersection = len(token_sets[i] & token_sets[j])
+        union = len(token_sets[i] | token_sets[j])
+        return intersection / union if union > 0 else 0
 
     def _build_similarity_matrix(self, indices: list[int],
                                  drawers: list[Drawer],

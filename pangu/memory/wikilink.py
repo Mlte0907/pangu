@@ -71,6 +71,19 @@ def resolve_wikilink_to_item(target: str, existing_drawers: list[Drawer]) -> str
     return best_id
 
 
+def _resolve_link_to_edge(link: WikilinkMatch, source_item_id: str,
+                           existing_drawers: list[Drawer]) -> dict | None:
+    """解析单个 wikilink 为边字典，无法解析返回 None"""
+    target_id = resolve_wikilink_to_item(link.target, existing_drawers)
+    if not target_id or target_id == source_item_id:
+        return None
+    return {
+        "target_id": target_id,
+        "edge_type": "mentions",
+        "metadata": {"wikilink": True, "display": link.display, "target": link.target},
+    }
+
+
 def extract_entity_links(text: str, source_item_id: str, existing_drawers: list[Drawer]) -> list[dict]:
     """从文本中提取实体链接，返回边列表
 
@@ -81,15 +94,9 @@ def extract_entity_links(text: str, source_item_id: str, existing_drawers: list[
     edges = []
 
     for link in links:
-        target_id = resolve_wikilink_to_item(link.target, existing_drawers)
-        if target_id and target_id != source_item_id:
-            edges.append(
-                {
-                    "target_id": target_id,
-                    "edge_type": "mentions",
-                    "metadata": {"wikilink": True, "display": link.display, "target": link.target},
-                }
-            )
+        edge = _resolve_link_to_edge(link, source_item_id, existing_drawers)
+        if edge:
+            edges.append(edge)
 
     return edges
 

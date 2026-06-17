@@ -224,28 +224,36 @@ def remember(
     return item_id, drawer
 
 
+def _decrypt_content(drawer: Drawer) -> Drawer | None:
+    """解密 drawer 内容，返回新 Drawer 或 None（不需要解密时）"""
+    from pangu.memory.encryption import is_enabled, decrypt
+    if not is_enabled() or not drawer.content:
+        return None
+    decrypted = decrypt(drawer.content)
+    if decrypted == drawer.content:
+        return None
+    return Drawer(
+        id=drawer.id,
+        content=decrypted,
+        wing=drawer.wing,
+        room=drawer.room,
+        hall=drawer.hall,
+        importance=drawer.importance,
+        emotional_weight=drawer.emotional_weight,
+        source_file=drawer.source_file,
+        tags=drawer.tags,
+        author=drawer.author,
+        created_at=drawer.created_at,
+        metadata=drawer.metadata,
+    )
+
+
 def maybe_decrypt(drawer: Drawer) -> Drawer:
     """如果启用了加密，解密 drawer 内容（不修改原始对象）"""
     try:
-        from pangu.memory.encryption import is_enabled, decrypt
-        if is_enabled() and drawer.content:
-            decrypted = decrypt(drawer.content)
-            if decrypted != drawer.content:
-                new_drawer = Drawer(
-                    id=drawer.id,
-                    content=decrypted,
-                    wing=drawer.wing,
-                    room=drawer.room,
-                    hall=drawer.hall,
-                    importance=drawer.importance,
-                    emotional_weight=drawer.emotional_weight,
-                    source_file=drawer.source_file,
-                    tags=drawer.tags,
-                    author=drawer.author,
-                    created_at=drawer.created_at,
-                    metadata=drawer.metadata,
-                )
-                return new_drawer
+        result = _decrypt_content(drawer)
+        if result is not None:
+            return result
     except Exception:
         pass
     return drawer

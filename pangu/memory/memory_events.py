@@ -86,6 +86,19 @@ class MemoryEventStream:
         self._sub_counter += 1
         return f"sub_{self._sub_counter}_{int(time.time())}"
 
+    def _dispatch_to_subscriber(self, sub: EventSubscription, event: MemoryEvent) -> None:
+        """将事件分发给单个订阅者"""
+        if not sub.active:
+            return
+        if sub.event_type != event.event_type and sub.event_type != "*":
+            return
+        if sub.filter_fn is not None and not sub.filter_fn(event):
+            return
+        try:
+            sub.callback(event)
+        except Exception as e:
+            logger.error(f"Event handler error: {e}")
+
     def emit(self, event_type: str, memory_id: str = "",
              data: dict = None, source: str = "pangu") -> MemoryEvent:
         """发布记忆事件"""
@@ -105,14 +118,7 @@ class MemoryEventStream:
             self._event_history = self._event_history[-self._max_history:]
 
         for sub in self._subscriptions.values():
-            if not sub.active:
-                continue
-            if sub.event_type == event_type or sub.event_type == "*":
-                if sub.filter_fn is None or sub.filter_fn(event):
-                    try:
-                        sub.callback(event)
-                    except Exception as e:
-                        logger.error(f"Event handler error: {e}")
+            self._dispatch_to_subscriber(sub, event)
 
         return event
 

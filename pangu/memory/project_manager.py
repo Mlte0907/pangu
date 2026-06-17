@@ -163,16 +163,7 @@ class ProjectManager:
         for pid in self._projects:
             memories = self.load_memories(pid)
             for m in memories:
-                score = 0
-                q_lower = query.lower()
-                c_lower = m.get("content", "").lower()
-                for word in q_lower.split():
-                    if len(word) >= 2 and word in c_lower:
-                        score += 2
-                for tag in m.get("tags", []):
-                    for word in q_lower.split():
-                        if word in tag.lower():
-                            score += 3
+                score = self._score_memory_cross_project(m, query)
 
                 if score > 0:
                     results.append({
@@ -184,6 +175,19 @@ class ProjectManager:
 
         results.sort(key=lambda x: -x["score"])
         return results[:limit]
+
+    def _score_memory_cross_project(self, m: dict, query: str) -> int:
+        score = 0
+        q_lower = query.lower()
+        c_lower = m.get("content", "").lower()
+        for word in q_lower.split():
+            if len(word) >= 2 and word in c_lower:
+                score += 2
+        for tag in m.get("tags", []):
+            for word in q_lower.split():
+                if word in tag.lower():
+                    score += 3
+        return score
 
     def merge_project(self, source_id: str, target_id: str = None) -> dict:
         """合并项目"""

@@ -316,23 +316,26 @@ class GraphReasoning:
         # 检查矛盾对
         for i, rel_a in enumerate(all_relations):
             for rel_b in all_relations[i + 1:]:
-                pred_a = rel_a.get("predicate", "")
-                pred_b = rel_b.get("predicate", "")
-
-                # 检查是否是矛盾关系对
-                for p1, p2 in self.CONTRADICTION_PAIRS:
-                    if (pred_a == p1 and pred_b == p2) or (pred_a == p2 and pred_b == p1):
-                        # 检查是否涉及相同实体
-                        if (rel_a.get("subject_id") == rel_b.get("subject_id") or
-                            rel_a.get("object_id") == rel_b.get("object_id")):
-                            contradictions.append({
-                                "relation_a": rel_a,
-                                "relation_b": rel_b,
-                                "type": f"{pred_a} vs {pred_b}",
-                                "severity": "major",
-                            })
+                result = self._check_relation_contradiction(rel_a, rel_b)
+                if result:
+                    contradictions.append(result)
 
         return contradictions
+
+    def _check_relation_contradiction(self, rel_a: dict, rel_b: dict) -> dict | None:
+        pred_a = rel_a.get("predicate", "")
+        pred_b = rel_b.get("predicate", "")
+        for p1, p2 in self.CONTRADICTION_PAIRS:
+            if (pred_a == p1 and pred_b == p2) or (pred_a == p2 and pred_b == p1):
+                if (rel_a.get("subject_id") == rel_b.get("subject_id") or
+                    rel_a.get("object_id") == rel_b.get("object_id")):
+                    return {
+                        "relation_a": rel_a,
+                        "relation_b": rel_b,
+                        "type": f"{pred_a} vs {pred_b}",
+                        "severity": "major",
+                    }
+        return None
 
     def get_reasoning_summary(self, result: InferenceResult) -> str:
         """生成推理摘要"""

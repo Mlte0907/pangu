@@ -128,15 +128,7 @@ class FusionEngine:
         """从记忆中提取关键要点"""
         import re
 
-        # 提取所有句子
-        all_sentences = []
-        for d in drawers:
-            # 按句号/分号/换行分句
-            sentences = re.split(r'[。；;！!？?\n]+', d.content)
-            for s in sentences:
-                s = s.strip()
-                if len(s) > 10 and len(s) < 200:
-                    all_sentences.append((s, d.importance))
+        all_sentences = self._collect_sentences(drawers)
 
         if not all_sentences:
             return [d.content[:100] for d in drawers[:3]]
@@ -158,6 +150,17 @@ class FusionEngine:
                 break
 
         return key_points
+
+    def _collect_sentences(self, drawers: list[Drawer]) -> list[tuple[str, int]]:
+        import re
+        all_sentences = []
+        for d in drawers:
+            sentences = re.split(r'[。；;！!？?\n]+', d.content)
+            for s in sentences:
+                s = s.strip()
+                if len(s) > 10 and len(s) < 200:
+                    all_sentences.append((s, d.importance))
+        return all_sentences
 
     def _generate_summary(self, topic: str, drawers: list[Drawer]) -> str:
         """生成主题摘要"""

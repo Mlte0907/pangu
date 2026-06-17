@@ -35,8 +35,30 @@ class AnomalyDetector:
         self._baseline: dict[str, dict] = {}
         self._anomaly_history: list[dict] = []
 
+    def _check_wing_distribution(self, wing_counts: dict[str, int]) -> list[Anomaly]:
+        anomalies = []
+        counts = list(wing_counts.values())
+        if len(counts) < 3:
+            return anomalies
+
+        mean = statistics.mean(counts)
+        stdev = statistics.stdev(counts) if len(counts) > 1 else 0
+
+        for wing, count in wing_counts.items():
+            if stdev > 0 and abs(count - mean) > 2 * stdev:
+                anomalies.append(Anomaly(
+                    anomaly_type="wing_distribution",
+                    severity="warning",
+                    description=f"Wing '{wing}' 记忆数量异常: {count} (均值 {mean:.1f})",
+                    affected_items=[wing],
+                    metric_name=f"wing_{wing}",
+                    metric_value=count,
+                    expected_range=(max(0, mean - stdev), mean + stdev),
+                    suggestion="平衡各领域记忆收集",
+                ))
+        return anomalies
+
     def detect_distribution_anomalies(self, drawers: list) -> list[Anomaly]:
-        """检测分布异常"""
         anomalies = []
 
         if not drawers:
@@ -46,23 +68,7 @@ class AnomalyDetector:
         for d in drawers:
             wing_counts[d.wing] = wing_counts.get(d.wing, 0) + 1
 
-        counts = list(wing_counts.values())
-        if len(counts) >= 3:
-            mean = statistics.mean(counts)
-            stdev = statistics.stdev(counts) if len(counts) > 1 else 0
-
-            for wing, count in wing_counts.items():
-                if stdev > 0 and abs(count - mean) > 2 * stdev:
-                    anomalies.append(Anomaly(
-                        anomaly_type="wing_distribution",
-                        severity="warning",
-                        description=f"Wing '{wing}' 记忆数量异常: {count} (均值 {mean:.1f})",
-                        affected_items=[wing],
-                        metric_name=f"wing_{wing}",
-                        metric_value=count,
-                        expected_range=(max(0, mean - stdev), mean + stdev),
-                        suggestion="平衡各领域记忆收集",
-                    ))
+        anomalies.extend(self._check_wing_distribution(wing_counts))
 
         importances = [d.importance for d in drawers]
         if len(importances) >= 5:

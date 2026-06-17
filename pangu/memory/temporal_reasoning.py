@@ -87,26 +87,30 @@ class TemporalReasoning:
                 c1 = d1.content.lower()
                 c2 = d2.content.lower()
 
-                for cause_word in self.TEMPORAL_WORDS["cause"]:
-                    if cause_word in c1 and any(w in c2 for w in ["所以", "因此", "导致"]):
-                        relations.append(TemporalRelation(
-                            before_id=d1.id,
-                            after_id=d2.id,
-                            relation="caused_by",
-                            confidence=0.7,
-                        ))
-
-                # 检查先后关系
-                for before_word in self.TEMPORAL_WORDS["before"]:
-                    if before_word in c2 and d1.content[:20] in c2:
-                        relations.append(TemporalRelation(
-                            before_id=d1.id,
-                            after_id=d2.id,
-                            relation="before",
-                            confidence=0.6,
-                        ))
+                self._check_cause_relations(d1, d2, c1, c2, relations)
+                self._check_before_relations(d1, d2, c2, relations)
 
         return relations
+
+    def _check_cause_relations(self, d1, d2, c1: str, c2: str, relations: list):
+        for cause_word in self.TEMPORAL_WORDS["cause"]:
+            if cause_word in c1 and any(w in c2 for w in ["所以", "因此", "导致"]):
+                relations.append(TemporalRelation(
+                    before_id=d1.id,
+                    after_id=d2.id,
+                    relation="caused_by",
+                    confidence=0.7,
+                ))
+
+    def _check_before_relations(self, d1, d2, c2: str, relations: list):
+        for before_word in self.TEMPORAL_WORDS["before"]:
+            if before_word in c2 and d1.content[:20] in c2:
+                relations.append(TemporalRelation(
+                    before_id=d1.id,
+                    after_id=d2.id,
+                    relation="before",
+                    confidence=0.6,
+                ))
 
     def query_by_time_range(self, drawers: list, start: str = None,
                             end: str = None) -> list:

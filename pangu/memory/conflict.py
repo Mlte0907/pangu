@@ -150,27 +150,33 @@ class ConflictDetector:
         conflicts = []
         for a in range(len(candidates)):
             for b in range(a + 1, len(candidates)):
-                sim = self._cosine_sim(embeddings[a], embeddings[b])
-                if sim < min_similarity:
-                    continue
-
-                # 检查是否有矛盾词
-                conf = self._contradiction_score(
-                    candidates[a][1].content, candidates[b][1].content, sim)
-
-                if conf["confidence"] >= min_confidence:
-                    conflicts.append(MemoryConflict(
-                        id=f"conflict_{hex_digest(candidates[a][1].id + candidates[b][1].id)[:12]}",
-                        memory_a=candidates[a][1].id,
-                        memory_b=candidates[b][1].id,
-                        content_a=candidates[a][1].content[:200],
-                        content_b=candidates[b][1].content[:200],
-                        description=conf["description"],
-                        severity=conf["severity"],
-                        confidence=round(conf["confidence"], 4),
-                    ))
+                conflict = self._check_vector_conflict_pair(
+                    candidates, a, b, embeddings, min_similarity, min_confidence)
+                if conflict:
+                    conflicts.append(conflict)
 
         return conflicts
+
+    def _check_vector_conflict_pair(self, candidates: list, a: int, b: int,
+                                    embeddings: list, min_similarity: float,
+                                    min_confidence: float) -> MemoryConflict | None:
+        sim = self._cosine_sim(embeddings[a], embeddings[b])
+        if sim < min_similarity:
+            return None
+        conf = self._contradiction_score(
+            candidates[a][1].content, candidates[b][1].content, sim)
+        if conf["confidence"] >= min_confidence:
+            return MemoryConflict(
+                id=f"conflict_{hex_digest(candidates[a][1].id + candidates[b][1].id)[:12]}",
+                memory_a=candidates[a][1].id,
+                memory_b=candidates[b][1].id,
+                content_a=candidates[a][1].content[:200],
+                content_b=candidates[b][1].content[:200],
+                description=conf["description"],
+                severity=conf["severity"],
+                confidence=round(conf["confidence"], 4),
+            )
+        return None
 
     def _keyword_conflict_detect(self, drawers: list[Drawer],
                                  min_confidence: float) -> list[MemoryConflict]:

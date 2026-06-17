@@ -141,14 +141,18 @@ class MemoryImporter:
 
         return stats
 
+    def _load_json_from_zip(self, file_path: str) -> dict:
+        """从 ZIP 文件中加载 JSON"""
+        with zipfile.ZipFile(file_path, "r") as zf:
+            for name in zf.namelist():
+                if name.endswith(".json"):
+                    return json.loads(zf.read(name).decode("utf-8"))
+        return {}
+
     def _load_file(self, file_path: str) -> dict:
         """加载导入文件"""
         if file_path.endswith(".zip"):
-            with zipfile.ZipFile(file_path, "r") as zf:
-                for name in zf.namelist():
-                    if name.endswith(".json"):
-                        return json.loads(zf.read(name).decode("utf-8"))
-                return {}
+            return self._load_json_from_zip(file_path)
         else:
             with open(file_path, encoding="utf-8") as f:
                 return json.load(f)

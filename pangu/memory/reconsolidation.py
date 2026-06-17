@@ -155,20 +155,27 @@ class ResonanceEngine:
                              sim_threshold: float, matches: list):
         try:
             if embeddings[i] and embeddings[j]:
-                from .fts_search import cosine_similarity
-                sim = cosine_similarity(embeddings[i], embeddings[j])
-                if sim >= sim_threshold:
-                    matches.append({
-                        "source_id": candidates[i].id,
-                        "target_id": candidates[j].id,
-                        "source_content": candidates[i].content[:100],
-                        "target_content": candidates[j].content[:100],
-                        "similarity": round(sim, 3),
-                        "source_wing": candidates[i].wing,
-                        "target_wing": candidates[j].wing,
-                    })
+                self._compute_and_append_match(
+                    candidates[i], candidates[j], embeddings[i], embeddings[j],
+                    sim_threshold, matches
+                )
         except Exception:
             pass
+
+    def _compute_and_append_match(self, cand_a, cand_b, emb_a, emb_b,
+                                  sim_threshold: float, matches: list):
+        from .fts_search import cosine_similarity
+        sim = cosine_similarity(emb_a, emb_b)
+        if sim >= sim_threshold:
+            matches.append({
+                "source_id": cand_a.id,
+                "target_id": cand_b.id,
+                "source_content": cand_a.content[:100],
+                "target_content": cand_b.content[:100],
+                "similarity": round(sim, 3),
+                "source_wing": cand_a.wing,
+                "target_wing": cand_b.wing,
+            })
 
     def _find_cross_matches(self, wings: list, wing_groups: dict,
                             sim_threshold: float) -> list[dict]:

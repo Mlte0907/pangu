@@ -33,9 +33,7 @@ class EvaluationCache:
         self.cache_path = Path(cache_path).expanduser()
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def get(self, prompt_hash: str) -> dict | None:
-        if not self.cache_path.exists():
-            return None
+    def _scan_cache_file(self, prompt_hash: str) -> dict | None:
         try:
             with open(self.cache_path) as f:
                 for line in f:
@@ -45,6 +43,11 @@ class EvaluationCache:
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Cache read error: {e}")
         return None
+
+    def get(self, prompt_hash: str) -> dict | None:
+        if not self.cache_path.exists():
+            return None
+        return self._scan_cache_file(prompt_hash)
 
     def put(self, prompt_hash: str, verdict: str, confidence: float) -> None:
         try:

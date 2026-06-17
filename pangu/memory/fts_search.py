@@ -180,13 +180,16 @@ class FTS5SearchEngine:
         if not scores:
             for kw in keywords:
                 if len(kw) >= 2:
-                    for did, content in self._fts_content_map.items():
-                        if kw in content:
-                            scores[did] = scores.get(did, 0) + 0.5
+                    self._fallback_keyword_search(kw, scores)
 
         # 按重要性排序，取 top-k
         sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
         return dict(sorted_items)
+
+    def _fallback_keyword_search(self, kw: str, scores: dict[str, float]):
+        for did, content in self._fts_content_map.items():
+            if kw in content:
+                scores[did] = scores.get(did, 0) + 0.5
 
     def _vector_search(self, query: str, drawers: list[Drawer], limit: int = 50) -> dict[str, float]:
         """向量语义搜索，返回 {drawer_id: similarity}"""

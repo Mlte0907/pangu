@@ -231,10 +231,7 @@ class RecommendationEngine:
         all_recs.extend(self.recommend_timely(drawers, top_k))
 
         if context and drawers:
-            wings = set(d.wing for d in drawers)
-            for wing in wings:
-                if wing not in context.lower():
-                    all_recs.extend(self._collect_cross_domain(wing, drawers))
+            all_recs.extend(self._gather_cross_domain_recs(context, drawers))
 
         seen = set()
         unique = []
@@ -260,6 +257,14 @@ class RecommendationEngine:
             ],
             "count": min(len(unique), top_k * 3),
         }
+
+    def _gather_cross_domain_recs(self, context: str, drawers: list) -> list[MemoryRecommendation]:
+        recs = []
+        wings = set(d.wing for d in drawers)
+        for wing in wings:
+            if wing not in context.lower():
+                recs.extend(self._collect_cross_domain(wing, drawers))
+        return recs
 
     def _collect_cross_domain(self, wing, drawers):
         scored = []

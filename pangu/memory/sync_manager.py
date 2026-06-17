@@ -111,6 +111,26 @@ class SyncManager:
             for c in pending[-200:]
         ]
 
+    def _check_single_remote_conflict(self, rc: dict,
+                                       local_entries: list[ChangeEntry]) -> dict | None:
+        """检查单个远程变更是否与本地存在冲突"""
+        mem_id = rc.get("memory_id", "")
+        for lc in local_entries:
+            if (not lc.resolved and
+                lc.operation == "update" and
+                rc.get("operation") == "update" and
+                lc.content_hash != rc.get("content_hash", "")):
+                return {
+                    "memory_id": mem_id,
+                    "local_change": lc.change_id,
+                    "remote_change": rc.get("id", ""),
+                    "local_time": lc.timestamp,
+                    "remote_time": rc.get("timestamp", ""),
+                    "local_source": lc.source,
+                    "remote_source": rc.get("source", ""),
+                }
+        return None
+
     def detect_conflicts(self, remote_changes: list[dict]) -> list[dict]:
         """检测冲突"""
         conflicts = []
@@ -121,21 +141,9 @@ class SyncManager:
         for rc in remote_changes:
             mem_id = rc.get("memory_id", "")
             local_entries = local_by_memory.get(mem_id, [])
-
-            for lc in local_entries:
-                if (not lc.resolved and
-                    lc.operation == "update" and
-                    rc.get("operation") == "update" and
-                    lc.content_hash != rc.get("content_hash", "")):
-                    conflicts.append({
-                        "memory_id": mem_id,
-                        "local_change": lc.change_id,
-                        "remote_change": rc.get("id", ""),
-                        "local_time": lc.timestamp,
-                        "remote_time": rc.get("timestamp", ""),
-                        "local_source": lc.source,
-                        "remote_source": rc.get("source", ""),
-                    })
+            conflict = self._check_single_remote_conflict(rc, local_entries)
+            if conflict:
+                conflicts.append(conflict)
 
         return conflicts
 

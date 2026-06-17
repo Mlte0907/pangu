@@ -858,18 +858,9 @@ class KnowledgeGraph:
         for se in source_entities:
             for te in target_entities:
                 if se["id"] != te["id"]:
-                    # 检查是否有共同关系
-                    se_relations = set(r["predicate"] for r in self.query_relations(subject_id=se["id"]))
-                    te_relations = set(r["predicate"] for r in self.query_relations(subject_id=te["id"]))
-                    common = se_relations & te_relations
-
-                    if common:
-                        transfers.append({
-                            "source": se["name"],
-                            "target": te["name"],
-                            "common_relations": list(common),
-                            "confidence": 0.7,
-                        })
+                    transfer = self._check_transfer_candidate(se, te)
+                    if transfer:
+                        transfers.append(transfer)
 
         return {
             "source_domain": source_domain,
@@ -877,6 +868,19 @@ class KnowledgeGraph:
             "transfers": transfers[:10],
             "count": len(transfers),
         }
+
+    def _check_transfer_candidate(self, source: dict, target: dict) -> dict | None:
+        se_relations = set(r["predicate"] for r in self.query_relations(subject_id=source["id"]))
+        te_relations = set(r["predicate"] for r in self.query_relations(subject_id=target["id"]))
+        common = se_relations & te_relations
+        if common:
+            return {
+                "source": source["name"],
+                "target": target["name"],
+                "common_relations": list(common),
+                "confidence": 0.7,
+            }
+        return None
 
     def find_similar_patterns(self, entity_id: str) -> list[dict]:
         """查找相似模式 — 在不同领域中找到类似的实体关系"""

@@ -45,16 +45,23 @@ class AdaptiveForgetting:
         self._forgetting_history: list[dict] = []
         self._archive: list[dict] = []
 
+    def _compute_decision(self, forget_score: float, content_len: int) -> tuple[str, str]:
+        if forget_score > 0.8:
+            return "forget", f"极低价值(得分{forget_score:.2f})"
+        elif forget_score > 0.6:
+            return "archive", f"低活跃(得分{forget_score:.2f})"
+        elif forget_score > 0.4 and content_len > 500:
+            return "compress", f"可压缩(得分{forget_score:.2f}, {content_len}字)"
+        else:
+            return "keep", f"有价值(得分{forget_score:.2f})"
+
     def evaluate_memory(self, drawer, access_count: int = 0,
                         days_since_access: int = 0) -> ForgettingDecision:
-        """评估单条记忆的遗忘价值"""
         imp_norm = drawer.importance / 5.0
         content_len = len(drawer.content)
 
-        # 访问频率因子
         freq_score = min(1.0, access_count / 20.0)
 
-        # 新鲜度因子
         if days_since_access < 7:
             recency = 1.0
         elif days_since_access < 30:
@@ -64,18 +71,9 @@ class AdaptiveForgetting:
         else:
             recency = 0.1
 
-        # 综合遗忘分数（越高越应该遗忘）
         forget_score = (1 - imp_norm) * 0.4 + (1 - freq_score) * 0.3 + (1 - recency) * 0.3
 
-        # 决策
-        if forget_score > 0.8:
-            action, reason = "forget", f"极低价值(得分{forget_score:.2f})"
-        elif forget_score > 0.6:
-            action, reason = "archive", f"低活跃(得分{forget_score:.2f})"
-        elif forget_score > 0.4 and content_len > 500:
-            action, reason = "compress", f"可压缩(得分{forget_score:.2f}, {content_len}字)"
-        else:
-            action, reason = "keep", f"有价值(得分{forget_score:.2f})"
+        action, reason = self._compute_decision(forget_score, content_len)
 
         return ForgettingDecision(
             memory_id=drawer.id,

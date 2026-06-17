@@ -66,44 +66,7 @@ class MemoryAnalyzer:
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
 
-    def analyze(self, drawers: list[Drawer],
-                wiki_page_count: int = 0,
-                access_data: dict[str, int] = None) -> MemoryAnalytics:
-        """全面分析记忆系统
-
-        Args:
-            drawers: 所有记忆
-            wiki_page_count: Wiki 页面数
-            access_data: 访问数据 {memory_id: access_count}
-
-        Returns:
-            MemoryAnalytics 分析报告
-        """
-        now = datetime.now()
-
-        # 基本统计
-        wings = set(d.wing for d in drawers)
-        rooms = set((d.wing, d.room) for d in drawers)
-        all_tags = set()
-        for d in drawers:
-            all_tags.update(d.tags or [])
-
-        # 分布
-        wing_dist = dict(Counter(d.wing for d in drawers))
-        room_dist = dict(Counter(f"{d.wing}/{d.room}" for d in drawers))
-        hall_dist = dict(Counter(d.hall for d in drawers))
-        tag_dist = dict(Counter(
-            tag for d in drawers for tag in (d.tags or [])
-        ))
-
-        # 重要性分布
-        high = sum(1 for d in drawers if d.importance >= 4.0)
-        medium = sum(1 for d in drawers if 2.0 <= d.importance < 4.0)
-        low = sum(1 for d in drawers if d.importance < 2.0)
-        avg_imp = (sum(d.importance for d in drawers) / len(drawers)
-                   if drawers else 0.0)
-
-        # 时间分析
+    def _analyze_time_ranges(self, drawers: list, now: datetime) -> tuple[int, int, int, int, float]:
         counts_24h = 0
         counts_7d = 0
         counts_30d = 0
@@ -131,8 +94,36 @@ class MemoryAnalyzer:
 
         oldest_days = (now - oldest).days if drawers else 0
         newest_hours = (now - newest).total_seconds() / 3600 if drawers else 0
+        return counts_24h, counts_7d, counts_30d, oldest_days, newest_hours
 
-        # 内容分析
+    def analyze(self, drawers: list[Drawer],
+                wiki_page_count: int = 0,
+                access_data: dict[str, int] = None) -> MemoryAnalytics:
+        now = datetime.now()
+
+        wings = set(d.wing for d in drawers)
+        rooms = set((d.wing, d.room) for d in drawers)
+        all_tags = set()
+        for d in drawers:
+            all_tags.update(d.tags or [])
+
+        wing_dist = dict(Counter(d.wing for d in drawers))
+        room_dist = dict(Counter(f"{d.wing}/{d.room}" for d in drawers))
+        hall_dist = dict(Counter(d.hall for d in drawers))
+        tag_dist = dict(Counter(
+            tag for d in drawers for tag in (d.tags or [])
+        ))
+
+        high = sum(1 for d in drawers if d.importance >= 4.0)
+        medium = sum(1 for d in drawers if 2.0 <= d.importance < 4.0)
+        low = sum(1 for d in drawers if d.importance < 2.0)
+        avg_imp = (sum(d.importance for d in drawers) / len(drawers)
+                   if drawers else 0.0)
+
+        counts_24h, counts_7d, counts_30d, oldest_days, newest_hours = (
+            self._analyze_time_ranges(drawers, now)
+        )
+
         content_lengths = [len(d.content) for d in drawers]
         avg_content_len = (sum(content_lengths) // len(content_lengths)
                            if content_lengths else 0)
@@ -142,7 +133,6 @@ class MemoryAnalyzer:
         top_tags = sorted(tag_dist.items(), key=lambda x: x[1], reverse=True)[:10]
         top_wings = sorted(wing_dist.items(), key=lambda x: x[1], reverse=True)[:5]
 
-        # 健康评分
         health = self._health_assessment(
             drawers, wing_dist, access_data, avg_imp,
             oldest_days, newest_hours, avg_tags)

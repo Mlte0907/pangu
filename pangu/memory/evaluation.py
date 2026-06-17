@@ -31,6 +31,9 @@ class EvaluationCache:
                 return self._memory_cache[prompt_hash]
 
         # 再查文件缓存
+        return self._search_file_cache(prompt_hash)
+
+    def _search_file_cache(self, prompt_hash: str) -> dict | None:
         if not self.cache_path.exists():
             return None
         try:

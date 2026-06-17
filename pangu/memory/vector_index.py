@@ -266,6 +266,31 @@ class VectorIndex:
 
         self._save()
 
+    def _add_to_backend(self, batch: np.ndarray, ids: list[str]) -> None:
+        """将批次添加到当前后端索引"""
+        if self._use_hnsw and self._hnsw_index is not None:
+            self._hnsw_index.add_items(batch, list(range(self._size, self._size + len(ids))))
+            self._ids.extend(ids)
+        elif self._use_faiss and self._faiss_index is not None:
+            self._faiss_index.add(batch.astype(np.float32))
+            self._ids.extend(ids)
+        elif self._is_built and self._index is not None:
+            self._index = np.vstack([self._index, batch])
+            self._ids.extend(ids)
+        else:
+            self._index = batch
+            self._ids = list(ids)
+            self._is_built = True
+
+    def _maybe_rebuild_index(self) -> None:
+        """跨越阈值时尝试重建索引"""
+        if not self._use_faiss and not self._use_hnsw and self._size >= FAISS_THRESHOLD:
+            try:
+                import hnswlib
+                self._build_hnsw(self._index)
+            except ImportError:
+                self._build_faiss(self._index)
+
     def add_batch(self, vectors: list[list[float]], ids: list[str]) -> int:
         """批量添加向量（线程安全）"""
         if len(vectors) != len(ids):
@@ -276,27 +301,9 @@ class VectorIndex:
                 batch = np.array(vectors, dtype=np.float32)
                 batch = self._normalize(batch)
 
-                if self._use_hnsw and self._hnsw_index is not None:
-                    self._hnsw_index.add_items(batch, list(range(self._size, self._size + len(ids))))
-                    self._ids.extend(ids)
-                elif self._use_faiss and self._faiss_index is not None:
-                    self._faiss_index.add(batch.astype(np.float32))
-                    self._ids.extend(ids)
-                elif self._is_built and self._index is not None:
-                    self._index = np.vstack([self._index, batch])
-                    self._ids.extend(ids)
-                else:
-                    self._index = batch
-                    self._ids = list(ids)
-                    self._is_built = True
-
+                self._add_to_backend(batch, ids)
                 self._size += len(ids)
-                if not self._use_faiss and not self._use_hnsw and self._size >= FAISS_THRESHOLD:
-                    try:
-                        import hnswlib
-                        self._build_hnsw(self._index)
-                    except ImportError:
-                        self._build_faiss(self._index)
+                self._maybe_rebuild_index()
                 self._save()
                 return len(ids)
             except Exception as e:

@@ -181,17 +181,19 @@ class EmbeddingService:
             vecs = self._call_api_batch(uncached_texts)
             for j, vec in enumerate(vecs):
                 idx = uncached_indices[j]
-                if vec is None:
-                    vec = self._local_embed(uncached_texts[j])
-                results[idx] = vec
-                if vec:
-                    with self._cache_lock:
-                        if len(self._cache) >= 10000:
-                            oldest = next(iter(self._cache))
-                            del self._cache[oldest]
-                        self._cache[cache_keys[idx]] = vec
+                resolved_vec = vec if vec else self._local_embed(uncached_texts[j])
+                results[idx] = resolved_vec
+                self._cache_embedding(cache_keys[idx], resolved_vec)
 
         return results
+
+    def _cache_embedding(self, key: str, vec: list[float] | None):
+        if vec:
+            with self._cache_lock:
+                if len(self._cache) >= 10000:
+                    oldest = next(iter(self._cache))
+                    del self._cache[oldest]
+                self._cache[key] = vec
 
     def _call_api_batch(self, texts: list[str]) -> list[list[float] | None]:
         """调用批量API"""

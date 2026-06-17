@@ -240,6 +240,15 @@ class HolographicEncoder:
                 self._embedder = None
         return self._embedder
 
+    def _encode_semantic(self, raw_text: str) -> np.ndarray | None:
+        try:
+            semantic_vec = self.embedder.embed(raw_text)
+            if semantic_vec:
+                return np.array(semantic_vec, dtype=np.float32)
+        except Exception as e:
+            logger.debug(f"Semantic encoding failed: {e}")
+        return None
+
     def encode(
         self,
         item_id: str,
@@ -256,30 +265,18 @@ class HolographicEncoder:
         agent_id: str = "",
         session_id: str = "",
     ) -> Hologram:
-        """编码一条记忆为全息投影"""
         projections = {}
 
-        # 语义维度
         if self.embedder and raw_text:
-            try:
-                semantic_vec = self.embedder.embed(raw_text)
-                if semantic_vec:
-                    projections["semantic"] = np.array(semantic_vec, dtype=np.float32)
-            except Exception as e:
-                logger.debug(f"Semantic encoding failed: {e}")
+            semantic = self._encode_semantic(raw_text)
+            if semantic is not None:
+                projections["semantic"] = semantic
 
-        # 时空维度
         projections["temporal"] = self.temporal.encode(
             created_at, wing, room, sequence_position
         )
-
-        # 情感维度
         projections["emotional"] = self.emotional.encode(valence, arousal, dominance)
-
-        # 因果维度
         projections["causal"] = self.causal.encode(causal_summary)
-
-        # 来源维度
         projections["source"] = self.source.encode(source_type, agent_id, session_id)
 
         return Hologram(item_id=item_id, projections=projections)

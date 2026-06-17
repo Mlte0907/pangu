@@ -121,6 +121,11 @@ class MemoryDiffEngine:
         results.sort(key=lambda x: -x["similarity"])
         return results
 
+    def _compare_pair(self, a, b) -> float:
+        """比较两条记忆的相似度"""
+        diff = self.diff_content(a.content, b.content, a.id, b.id)
+        return diff.similarity
+
     def similarity_matrix(self, drawers: list) -> dict:
         """计算相似度矩阵"""
         ids = [d.id for d in drawers[:20]]
@@ -132,11 +137,7 @@ class MemoryDiffEngine:
                 if i == j:
                     row[drawers[j].id] = 1.0
                 else:
-                    diff = self.diff_content(
-                        drawers[i].content, drawers[j].content,
-                        drawers[i].id, drawers[j].id,
-                    )
-                    row[drawers[j].id] = diff.similarity
+                    row[drawers[j].id] = self._compare_pair(drawers[i], drawers[j])
             matrix[drawers[i].id] = row
 
         return {

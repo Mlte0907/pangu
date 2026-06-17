@@ -151,21 +151,13 @@ class MemoryClusterer:
     def _keyword_cluster(self, drawers: list[Drawer],
                          n_clusters: int = 0) -> list[MemoryCluster]:
         """基于关键词共现的聚类"""
-        # 提取关键词
         all_keywords = []
         for d in drawers:
             words = self._extract_keywords(d.content)
             all_keywords.append(words)
 
-        # 构建关键词共现矩阵
-        keyword_docs = {}
-        for i, keywords in enumerate(all_keywords):
-            for kw in keywords:
-                if kw not in keyword_docs:
-                    keyword_docs[kw] = set()
-                keyword_docs[kw].add(i)
+        keyword_docs = self._build_keyword_docs(all_keywords)
 
-        # 分组
         assigned = set()
         clusters = []
 
@@ -194,6 +186,15 @@ class MemoryClusterer:
 
         clusters.sort(key=lambda c: c.size, reverse=True)
         return clusters
+
+    def _build_keyword_docs(self, all_keywords: list[list[str]]) -> dict[str, set[int]]:
+        keyword_docs = {}
+        for i, keywords in enumerate(all_keywords):
+            for kw in keywords:
+                if kw not in keyword_docs:
+                    keyword_docs[kw] = set()
+                keyword_docs[kw].add(i)
+        return keyword_docs
 
     def _build_cluster(self, drawers: list[Drawer], indices: list[int],
                        embeddings: np.ndarray = None) -> MemoryCluster:
