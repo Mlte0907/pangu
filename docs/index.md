@@ -24,13 +24,13 @@ pip install pangu
 ### 启动服务
 
 ```bash
-pangu serve --host 0.0.0.0 --port 19528
+pangu serve --host 0.0.0.0 --port 19529
 ```
 
 ### 写入第一条记忆
 
 ```bash
-curl -X POST http://localhost:19528/api/v2/memories \
+curl -X POST http://localhost:19529/api/v3/memories \
   -H "Content-Type: application/json" \
   -d '{
     "text": "盘古是专业的记忆系统",
@@ -42,7 +42,7 @@ curl -X POST http://localhost:19528/api/v2/memories \
 ### 检索记忆
 
 ```bash
-curl "http://localhost:19528/api/v2/memories/search?q=记忆"
+curl "http://localhost:19529/api/v3/memories/search?q=记忆"
 ```
 
 ## 架构图

@@ -5,7 +5,7 @@
 ### 快速
 
 ```bash
-curl http://127.0.0.1:19528/health
+curl http://127.0.0.1:19529/health
 ```
 
 返回：
@@ -29,7 +29,7 @@ curl http://127.0.0.1:19528/health
 ### 深度
 
 ```bash
-curl http://127.0.0.1:19528/health/deep
+curl http://127.0.0.1:19529/health/deep
 ```
 
 会探测：ChromaDB 连通 / SQLite 写权限 / 嵌入器可推理 / 知识图谱完整性。
@@ -62,7 +62,7 @@ scrape_configs:
   - job_name: pangu
     metrics_path: /metrics
     static_configs:
-      - targets: ['127.0.0.1:19528']
+      - targets: ['127.0.0.1:19529']
     scrape_interval: 15s
 ```
 

@@ -50,7 +50,7 @@ services:
   pangu:
     image: pangu/pangu:0.1.0
     ports:
-      - "127.0.0.1:19528:19528"  # 仅本机
+      - "127.0.0.1:19529:19529"  # 仅本机
     volumes:
       - pangu-data:/var/lib/pangu
     environment:
@@ -64,7 +64,7 @@ services:
         limits:
           memory: 2G
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:19528/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:19529/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -79,7 +79,7 @@ volumes:
 
 ```nginx
 upstream pangu_backend {
-  server 127.0.0.1:19528;
+  server 127.0.0.1:19529;
   keepalive 16;
 }
 

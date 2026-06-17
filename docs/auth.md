@@ -31,22 +31,22 @@
 
 ```bash
 # 1. 登录换取 token 对
-curl -X POST http://localhost:19528/api/v2/auth/login \
+curl -X POST http://localhost:19529/api/v3/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"pangu-admin"}'
 # → { "access_token": "...", "refresh_token": "...", "expires_in": 3600 }
 
 # 2. 携带 access token 访问受保护接口
-curl http://localhost:19528/api/v2/auth/me \
+curl http://localhost:19529/api/v3/auth/me \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 
 # 3. access 过期前用 refresh 续期
-curl -X POST http://localhost:19528/api/v2/auth/refresh \
+curl -X POST http://localhost:19529/api/v3/auth/refresh \
   -H 'Content-Type: application/json' \
   -d "{\"refresh_token\":\"$REFRESH_TOKEN\"}"
 
 # 4. 主动登出（撤销 token）
-curl -X POST http://localhost:19528/api/v2/auth/logout \
+curl -X POST http://localhost:19529/api/v3/auth/logout \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "{\"refresh_token\":\"$REFRESH_TOKEN\"}"
@@ -56,17 +56,17 @@ curl -X POST http://localhost:19528/api/v2/auth/logout \
 
 | 路径 | 鉴权要求 | 说明 |
 |:--|:--|:--|
-| `POST /api/v2/auth/login` | 公开 | 账号密码登录 |
-| `POST /api/v2/auth/refresh` | 公开 | refresh token 换新对 |
-| `GET  /api/v2/auth/me` | JWT | 当前用户信息 |
-| `POST /api/v2/auth/logout` | JWT | 撤销 token |
-| 其它 `/api/v2/*` | API Key 或 JWT | 业务接口 |
+| `POST /api/v3/auth/login` | 公开 | 账号密码登录 |
+| `POST /api/v3/auth/refresh` | 公开 | refresh token 换新对 |
+| `GET  /api/v3/auth/me` | JWT | 当前用户信息 |
+| `POST /api/v3/auth/logout` | JWT | 撤销 token |
+| 其它 `/api/v3/*` | API Key 或 JWT | 业务接口 |
 
 ## 公开端点（始终豁免）
 
 - `/`、`/health`、`/health/deep`、`/metrics`
 - `/docs`、`/redoc`、`/openapi.json`
-- `/api/v2/auth/login`、`/api/v2/auth/refresh`
+- `/api/v3/auth/login`、`/api/v3/auth/refresh`
 
 ## 安全设计
 
@@ -117,7 +117,7 @@ export PANGU_JWT_DEFAULT_ROLE="operator"
 from pangu.api.rbac import require_scope, Principal
 from fastapi import Depends
 
-@app.delete("/api/v2/memories/{mid}")
+@app.delete("/api/v3/memories/{mid}")
 async def delete_memory(
     mid: str,
     principal: Principal = Depends(require_scope("memories:delete")),
@@ -125,7 +125,7 @@ async def delete_memory(
     # principal.user_id / principal.role / principal.scopes 可用
     ...
 
-@app.get("/api/v2/admin/users")
+@app.get("/api/v3/admin/users")
 async def list_users(
     _admin: Principal = Depends(require_scope("admin:*")),
 ):
@@ -241,13 +241,13 @@ export PANGU_ABAC_USER_ATTRS='{
 **2. 创建租户隔离资源**
 ```bash
 # alice 创建记忆 → 自动写入 tenant_id="acme"
-curl -X POST http://localhost:19528/api/v2/memories \
+curl -X POST http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(alice_token)" \
   -H "Content-Type: application/json" \
   -d '{"text": "alice 的笔记", "visibility": "tenant"}'
 
 # bob 创建记忆 → 自动写入 tenant_id="globex"
-curl -X POST http://localhost:19528/api/v2/memories \
+curl -X POST http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(bob_token)" \
   -H "Content-Type: application/json" \
   -d '{"text": "bob 的笔记", "visibility": "tenant"}'
@@ -256,12 +256,12 @@ curl -X POST http://localhost:19528/api/v2/memories \
 **3. 租户隔离验证**
 ```bash
 # bob 列出记忆 → 只能看到 globex 的
-curl http://localhost:19528/api/v2/memories \
+curl http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(bob_token)"
 # → items 全是 tenant_id="globex"
 
 # bob 尝试读 alice 的记忆 → 403
-curl http://localhost:19528/api/v2/memories/{alice_memory_id} \
+curl http://localhost:19529/api/v3/memories/{alice_memory_id} \
   -H "Authorization: Bearer $(bob_token)"
 # → {"code": 403, "message": "ABAC deny: ..."}
 ```
@@ -269,13 +269,13 @@ curl http://localhost:19528/api/v2/memories/{alice_memory_id} \
 **4. 跨租户资源共享**
 ```bash
 # alice 创建公开资源 → 任意租户可读
-curl -X POST http://localhost:19528/api/v2/memories \
+curl -X POST http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(alice_token)" \
   -H "Content-Type: application/json" \
   -d '{"text": "公告", "visibility": "public"}'
 
 # bob（globex）也能读到
-curl http://localhost:19528/api/v2/memories/{public_id} \
+curl http://localhost:19529/api/v3/memories/{public_id} \
   -H "Authorization: Bearer $(bob_token)"
 # → 200
 ```
@@ -283,14 +283,14 @@ curl http://localhost:19528/api/v2/memories/{public_id} \
 **5. 密级控制**
 ```bash
 # alice clearance=1 无法写 classification=3(top_secret)
-curl -X POST http://localhost:19528/api/v2/memories \
+curl -X POST http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(alice_token)" \
   -H "Content-Type: application/json" \
   -d '{"text": "机密文档", "classification": 3, "visibility": "tenant"}'
 # → {"code": 403, "message": "ABAC deny: 策略 'classification_based' 命中"}
 
 # admin clearance=3 可以写
-curl -X POST http://localhost:19528/api/v2/memories \
+curl -X POST http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(admin_token)" \
   -H "Content-Type: application/json" \
   -d '{"text": "机密文档", "classification": 3, "visibility": "tenant"}'
@@ -300,12 +300,12 @@ curl -X POST http://localhost:19528/api/v2/memories \
 **6. Header 切换租户**（管理员跨租户操作）
 ```bash
 # admin 以 acme 租户身份操作
-curl http://localhost:19528/api/v2/memories \
+curl http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(admin_token)" \
   -H "x-tenant-id: acme"
 
 # admin 切换到 globex 查看
-curl http://localhost:19528/api/v2/memories \
+curl http://localhost:19529/api/v3/memories \
   -H "Authorization: Bearer $(admin_token)" \
   -H "x-tenant-id: globex"
 ```

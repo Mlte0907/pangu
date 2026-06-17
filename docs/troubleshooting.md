@@ -2,12 +2,12 @@
 
 ## 启动失败
 
-### `port 19528 already in use`
+### `port 19529 already in use`
 
 ```bash
-lsof -i :19528
+lsof -i :19529
 # 或
-fuser -k 19528/tcp
+fuser -k 19529/tcp
 ```
 
 ### `Permission denied` 写入 `~/.pangu/`

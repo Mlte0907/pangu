@@ -16,10 +16,36 @@
 | 变量 | 默认 | 说明 |
 |:---|:---|:---|
 | `PANGU_HOST` | `0.0.0.0` | 监听地址（生产建议 `127.0.0.1` + 反代）|
-| `PANGU_PORT` | `19528` | 端口 |
+| `PANGU_PORT` | `19529` | 端口 |
 | `PANGU_WEB_HOST` | `127.0.0.1` | 仪表盘 |
 | `PANGU_WEB_PORT` | `8866` |  |
 | **`PANGU_API_KEY`** | `""` | **空 = 禁用鉴权；设置后强制 X-API-Key 头**|
+
+## 嵌入 API
+
+| 变量 | 默认 | 说明 |
+|:---|:---|:---|
+| **`PANGU_EMBED_API_URL`** | `""` | **外部嵌入 API 地址**（Ollama/vLLM） |
+
+## 项目管理
+
+| 变量 | 默认 | 说明 |
+|:---|:---|:---|
+| `PANGU_PROJECT_MANAGER` | `true` | 启用项目管理模块 |
+
+## 审计分析
+
+| 变量 | 默认 | 说明 |
+|:---|:---|:---|
+| `PANGU_AUDIT_ANALYTICS` | `true` | 启用审计与分析模块 |
+
+## 同步
+
+| 变量 | 默认 | 说明 |
+|:---|:---|:---|
+| `PANGU_SYNC_ENABLED` | `false` | 启用跨节点同步 |
+| `PANGU_SYNC_INTERVAL` | `60` | 同步间隔（秒） |
+| `PANGU_SYNC_REMOTE_URL` | `""` | 远端同步地址 |
 
 ## LLM
 
@@ -51,7 +77,6 @@
 | `PANGU_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | |
 | `PANGU_EMBEDDING_DIM` | `384` | |
 | `PANGU_EMBED_CACHE_MAX` | `256` | LRU |
-| **`PANGU_EMBED_API_URL`** | `""` | **外部嵌入 API**（Ollama/vLLM） |
 | `PANGU_EMBED_API_MODEL` | `""` | API 端的模型名 |
 | `PANGU_EMBED_FAIL_THRESHOLD` | `3` | 切到 ONNX 的失败次数 |
 
@@ -92,7 +117,7 @@
 PANGU_API_KEY=4f8c2e91-6d3a-4a7f-b9e1-2c5d8e0a3b6f
 PANGU_LLM_PROVIDER=fuxi
 PANGU_LLM_API_KEY=jinlange-fuxi-2026
-PANGU_LLM_BASE_URL=http://localhost:19528/anthropic
+PANGU_LLM_BASE_URL=http://localhost:19529/anthropic
 PANGU_LLM_MODEL=glm-5.1
 PANGU_ONNX_ENABLED=true
 PANGU_LLM_CACHE_WARMUP_ON_START=true

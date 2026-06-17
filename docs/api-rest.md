@@ -1,6 +1,7 @@
 # REST API 参考
 
-> Base URL: `http://<host>:<port>`
+> 版本：v3.0
+> Base URL: `http://<host>:<port>`（默认端口 19529）
 > 鉴权：当 `PANGU_API_KEY` 设置时，**所有非公开端点**需要 `X-API-Key` 头（或 `Authorization: Bearer <key>`）
 > 公开端点：`/`, `/health`, `/health/deep`, `/metrics`, `/docs`, `/openapi.json`
 
@@ -20,31 +21,42 @@
 | GET | `/health` | 快速健康检查 |
 | GET | `/health/deep` | 深度健康（依赖项） |
 | GET | `/metrics` | Prometheus 文本 |
-| GET | `/api/v2/system/info` | 服务信息 |
-| GET | `/api/v2/memories` | 列表 |
-| GET | `/api/v2/memories/{id}` | 详情 |
-| POST | `/api/v2/memories` | 写入 |
-| DELETE | `/api/v2/memories/{id}` | 删除 |
-| POST | `/api/v2/memories/search` | 检索 |
-| GET | `/api/v2/memories/context` | 上下文注入 |
-| POST | `/api/v2/memories/decay` | 触发衰减 |
-| POST | `/api/v2/memories/export` | 导出 |
-| POST | `/api/v2/memories/purge` | 清空（危险） |
-| GET | `/api/v2/memories/stats` | 统计（含搜索/健康/token） |
-| POST | `/api/v2/tasks` | 创建任务 |
-| GET | `/api/v2/tasks` | 列出任务 |
-| GET | `/api/v2/tasks/{id}` | 任务详情 |
-| PUT | `/api/v2/tasks/{id}` | 更新任务 |
-| DELETE | `/api/v2/tasks/{id}` | 删除任务 |
-| GET | `/api/v2/tags` | 列出标签 |
-| POST | `/api/v2/tags` | 创建标签 |
-| POST | `/api/v2/tags/merge` | 合并标签 |
-| GET | `/api/v2/tags/suggest` | 推荐标签 |
+| GET | `/api/v3/system/info` | 服务信息 |
+| GET | `/api/v3/memories` | 列表 |
+| GET | `/api/v3/memories/{id}` | 详情 |
+| POST | `/api/v3/memories` | 写入 |
+| DELETE | `/api/v3/memories/{id}` | 删除 |
+| POST | `/api/v3/memories/search` | 检索 |
+| GET | `/api/v3/memories/context` | 上下文注入 |
+| POST | `/api/v3/memories/decay` | 触发衰减 |
+| POST | `/api/v3/memories/export` | 导出 |
+| POST | `/api/v3/memories/purge` | 清空（危险） |
+| GET | `/api/v3/memories/stats` | 统计（含搜索/健康/token） |
+| POST | `/api/v3/tasks` | 创建任务 |
+| GET | `/api/v3/tasks` | 列出任务 |
+| GET | `/api/v3/tasks/{id}` | 任务详情 |
+| PUT | `/api/v3/tasks/{id}` | 更新任务 |
+| DELETE | `/api/v3/tasks/{id}` | 删除任务 |
+| GET | `/api/v3/tags` | 列出标签 |
+| POST | `/api/v3/tags` | 创建标签 |
+| POST | `/api/v3/tags/merge` | 合并标签 |
+| GET | `/api/v3/tags/suggest` | 推荐标签 |
+| GET | `/api/v3/projects` | 列出项目 |
+| POST | `/api/v3/projects` | 创建项目 |
+| GET | `/api/v3/projects/{id}` | 项目详情 |
+| PUT | `/api/v3/projects/{id}` | 更新项目 |
+| DELETE | `/api/v3/projects/{id}` | 删除项目 |
+| POST | `/api/v3/export` | 全量导出 |
+| POST | `/api/v3/backup` | 创建备份 |
+| GET | `/api/v3/backups` | 列出备份 |
+| POST | `/api/v3/backup/restore` | 恢复备份 |
+| GET | `/api/v3/quality/assess` | 记忆质量评估 |
+| GET | `/api/v3/analytics/overview` | 分析概览 |
 
 ## 写入记忆
 
 ```http
-POST /api/v2/memories
+POST /api/v3/memories
 Content-Type: application/json
 X-Agent-ID: agent-001
 X-API-Key: <your-key>
@@ -61,7 +73,7 @@ X-API-Key: <your-key>
 ## 检索记忆
 
 ```http
-POST /api/v2/memories/search
+POST /api/v3/memories/search
 Content-Type: application/json
 X-API-Key: <your-key>
 
@@ -72,12 +84,55 @@ X-API-Key: <your-key>
 }
 ```
 
-## v2.0 新增端点
+## v3.0 新增端点
+
+### 健康检查
+
+```http
+GET /health/deep
+```
+
+### 导出与备份
+
+```http
+POST /api/v3/export
+X-API-Key: <your-key>
+
+{
+  "format": "jsonl",
+  "include_embeddings": true
+}
+```
+
+```http
+POST /api/v3/backup
+X-API-Key: <your-key>
+
+{
+  "label": "pre-upgrade"
+}
+```
+
+### 记忆质量评估
+
+```http
+GET /api/v3/quality/assess
+X-API-Key: <your-key>
+```
+
+### 分析概览
+
+```http
+GET /api/v3/analytics/overview
+X-API-Key: <your-key>
+```
+
+## v3.0 端点
 
 ### 统计（含搜索/健康/token）
 
 ```http
-GET /api/v2/memories/stats
+GET /api/v3/memories/stats
 X-API-Key: <your-key>
 ```
 
@@ -108,7 +163,7 @@ X-API-Key: <your-key>
 ### 任务管理
 
 ```http
-POST /api/v2/tasks
+POST /api/v3/tasks
 Content-Type: application/json
 X-API-Key: <your-key>
 
@@ -123,7 +178,7 @@ X-API-Key: <your-key>
 ### 标签管理
 
 ```http
-POST /api/v2/tags
+POST /api/v3/tags
 Content-Type: application/json
 X-API-Key: <your-key>
 

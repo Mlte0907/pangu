@@ -1,6 +1,6 @@
 # 架构总览
 
-盘古是一个面向「智能体大脑」设计的 **4 层记忆系统**，使用「宫殿」结构组织记忆。
+盘古是一个面向「智能体大脑」设计的 **4 层记忆系统**，使用「宫殿」结构组织记忆，共 **94 个模块**。
 
 ## 1. 4 层记忆栈（Memory Stack）
 
@@ -66,15 +66,26 @@ LLM 调用
 - 三元组存储：`(subject, predicate, object, confidence, evidence)`
 - 双向游走：从任意实体出发可 2 跳内抵达 80% 关系
 
-## 6. 三个暴露面
+## 6. v3.0 智能层（Intelligence Layer）
+
+v3.0 新增智能层，提供以下能力：
+
+- **项目管理** — 多项目隔离、项目级记忆与任务管理
+- **审计分析** — 操作日志、访问统计、异常检测
+- **记忆质量评估** — 自动检测重复/过时/低质量记忆
+- **全量导出/备份** — 支持 JSONL 格式导出与一键备份恢复
+- **跨节点同步** — 支持多实例间记忆同步
+
+## 7. 四个暴露面
 
 | 面 | 协议 | 用途 |
 |:---|:---|:---|
 | **MCP** | JSON-RPC over stdio/HTTP | 智能体（Claude Desktop / 自研）|
 | **REST** | FastAPI / uvicorn | Web / 监控 / 第三方 |
 | **CLI** | typer | 运维 / 调试 / 一次性任务 |
+| **Sync** | gRPC / WebSocket | 跨节点同步 |
 
-## 7. 数据流
+## 8. 数据流
 
 ```mermaid
 graph LR
@@ -89,10 +100,11 @@ graph LR
   Core --> Store[(ChromaDB + SQLite)]
   Core --> Wiki[Wiki Engine]
   Core --> KG[Knowledge Graph]
+  Core --> Intelligence[Intelligence Layer v3.0]
   Store --> Backup[Export/Import]
 ```
 
-## 8. 关键不变量
+## 9. 关键不变量
 
 - **因果一致性**：写入顺序与意图一致
 - **幂等**：Drawer 有 `(id, version)` 唯一键，重复写入被去重

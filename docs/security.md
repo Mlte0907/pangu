@@ -4,7 +4,7 @@
 
 - **生产端口**：只绑 `127.0.0.1` + 反代（nginx / traefik / Caddy）
 - **TLS**：必须 ≥ TLS 1.2；推荐 1.3；禁用弱 cipher
-- **防火墙**：限制 19528 端口源 IP
+- **防火墙**：限制 19529 端口源 IP
 - **CORS**：默认 `*`；生产请在 `pangu.core.config.cors_origins` 配置白名单
 
 ## 鉴权

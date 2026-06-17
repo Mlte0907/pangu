@@ -12,13 +12,13 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 
 # 方式 B：使用 Docker
-docker run -p 19528:19528 pangu/pangu:0.1.0
+docker run -p 19529:19529 pangu/pangu:3.0.0
 ```
 
 ## 2. 启动服务
 
 ```bash
-# 默认 0.0.0.0:19528
+# 默认 0.0.0.0:19529
 pangu-server
 
 # 或前台
@@ -26,14 +26,14 @@ python -m pangu.api.server
 ```
 
 启动成功后：
-- REST 文档（仅本机访问）：<http://127.0.0.1:19528/docs>
-- 健康检查：<http://127.0.0.1:19528/health>
-- Prometheus 指标：<http://127.0.0.1:19528/metrics>
+- REST 文档（仅本机访问）：<http://127.0.0.1:19529/docs>
+- 健康检查：<http://127.0.0.1:19529/health>
+- Prometheus 指标：<http://127.0.0.1:19529/metrics>
 
 ## 3. 写入第一条记忆
 
 ```bash
-curl -X POST http://127.0.0.1:19528/api/v2/memories \
+curl -X POST http://127.0.0.1:19529/api/v3/memories \
   -H "Content-Type: application/json" \
   -H "X-Agent-ID: demo" \
   -d '{
@@ -55,7 +55,7 @@ curl -X POST http://127.0.0.1:19528/api/v2/memories \
 ## 4. 检索
 
 ```bash
-curl "http://127.0.0.1:19528/api/v2/memories/search?q=记忆系统&top_k=5" \
+curl "http://127.0.0.1:19529/api/v3/memories/search?q=记忆系统&top_k=5" \
   -H "X-Agent-ID: demo"
 ```
 
@@ -72,6 +72,37 @@ curl "http://127.0.0.1:19528/api/v2/memories/search?q=记忆系统&top_k=5" \
     }
   }
 }
+```
+
+## 6. v3.0 新功能速览
+
+### 健康检查
+
+```bash
+curl http://127.0.0.1:19529/health/deep
+```
+
+### 备份
+
+```bash
+curl -X POST http://127.0.0.1:19529/api/v3/backup \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"label": "daily-backup"}'
+```
+
+### 记忆质量评估
+
+```bash
+curl http://127.0.0.1:19529/api/v3/quality/assess \
+  -H "X-API-Key: <your-key>"
+```
+
+### 分析概览
+
+```bash
+curl http://127.0.0.1:19529/api/v3/analytics/overview \
+  -H "X-API-Key: <your-key>"
 ```
 
 下一步：
