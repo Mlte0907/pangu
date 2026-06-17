@@ -196,6 +196,95 @@ class MetaLearningEngine:
             "active_strategy": self._active_strategy,
         }
 
+    def monitor_system_health(self) -> dict:
+        """系统级长期监测 — 分析记忆系统运行状态并生成健康报告"""
+        now = datetime.now()
+        health_report: dict = {
+            "timestamp": now.isoformat(),
+            "strategies": {},
+            "observations": {},
+            "recommendations": [],
+        }
+
+        total_uses = sum(s.total_uses for s in self._strategies.values())
+        total_success = sum(s.successful_uses for s in self._strategies.values())
+        overall_rate = round(total_success / max(total_uses, 1), 3)
+
+        health_report["strategies"] = {
+            "total": len(self._strategies),
+            "total_uses": total_uses,
+            "overall_success_rate": overall_rate,
+            "active": self._active_strategy,
+        }
+
+        recent_obs = self._observations[-50:] if self._observations else []
+        module_counts: dict[str, int] = {}
+        for obs in recent_obs:
+            module_counts[obs.module] = module_counts.get(obs.module, 0) + 1
+
+        health_report["observations"] = {
+            "total": len(self._observations),
+            "recent": len(recent_obs),
+            "modules_tracked": len(module_counts),
+            "top_modules": sorted(module_counts.items(), key=lambda x: x[1], reverse=True)[:5],
+        }
+
+        if overall_rate < 0.3 and total_uses > 10:
+            health_report["recommendations"].append("整体成功率过低，建议重置策略参数")
+        if len(self._observations) == 0:
+            health_report["recommendations"].append("无性能观察数据，建议开始记录")
+        if total_uses == 0:
+            health_report["recommendations"].append("策略未被使用，建议主动调优")
+
+        best = max(self._strategies.values(), key=lambda s: s.success_rate) if self._strategies else None
+        worst = min(self._strategies.values(), key=lambda s: s.success_rate) if self._strategies else None
+        if best and worst and best.success_rate - worst.success_rate > 0.5:
+            health_report["recommendations"].append(
+                f"策略效果差异大: {best.name}({best.success_rate:.2f}) vs {worst.name}({worst.success_rate:.2f})"
+            )
+
+        return health_report
+
+    def detect_self_reconfig(self) -> dict:
+        """自重构检测 — 基于策略表现判断是否需要调整配置"""
+        actions = []
+
+        low_perf = [
+            (name, s) for name, s in self._strategies.items()
+            if s.total_uses >= 5 and s.success_rate < 0.3
+        ]
+        for name, s in low_perf:
+            actions.append({
+                "strategy": name,
+                "action": "reduce_frequency",
+                "reason": f"low_success_rate({s.success_rate:.3f}, uses={s.total_uses})",
+            })
+
+        unused = [name for name, s in self._strategies.items() if s.total_uses == 0]
+        if len(unused) > 2:
+            actions.append({
+                "action": "review_unused_strategies",
+                "strategies": unused,
+                "reason": f"{len(unused)} strategies never used",
+            })
+
+        recent = self._observations[-20:] if self._observations else []
+        if recent:
+            module_failures: dict[str, int] = {}
+            for obs in recent:
+                if obs.value < 0.3:
+                    module_failures[obs.module] = module_failures.get(obs.module, 0) + 1
+            for module, count in module_failures.items():
+                if count >= 3:
+                    actions.append({
+                        "module": module,
+                        "action": "investigate",
+                        "reason": f"{count} low-value observations",
+                    })
+
+        status = "reconfig_needed" if actions else "stable"
+        return {"status": status, "actions": actions}
+
 
 _meta_engine: MetaLearningEngine | None = None
 

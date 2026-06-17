@@ -259,7 +259,35 @@ class MCPServer:
             {"name": "pangu_topic_replay", "description": "围绕主题回放相关记忆"},
             {"name": "pangu_highlight_reel", "description": "提取最重要的记忆时刻（精彩集锦）"},
 
+            # ── 深度情绪智能 (移植自伏羲) ──
+            {"name": "pangu_deep_emotion_trajectory", "description": "情绪轨迹追踪（速度/加速度/趋势）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_deep_emotion_decompose", "description": "混合情绪解耦（识别复杂情绪中的多个成分）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_deep_emotion_stats", "description": "获取深度情绪统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 多策略辩论 (移植自伏羲) ──
+            {"name": "pangu_debate_run", "description": "运行多策略辩论（分析/创意/保守三策略评分选优）", "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "description": "待辩论的问题"}, "strategies_count": {"type": "integer", "description": "策略数量(2-3)", "default": 2}, "context": {"type": "string", "description": "上下文信息", "default": ""}}, "required": ["question"]}},
+            {"name": "pangu_debate_stats", "description": "获取辩论统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 叙事引擎 (移植自伏羲) ──
+            {"name": "pangu_narrative_generate", "description": "生成记忆叙事（按Wing聚合为连贯叙事线）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_narrative_themes", "description": "提取记忆主题", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_narrative_identity", "description": "生成身份连续性叙事", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 伏羲移植 ──
+
+            # 认知循环
+            {"name": "pangu_cognitive_loop", "description": "运行一次认知循环（observe→think→evaluate→act）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_cognitive_stats", "description": "获取认知循环统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # 元认知
+            {"name": "pangu_metacognition_monitor", "description": "系统级健康监测（策略表现、观察数据、建议）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_metacognition_reconfig", "description": "自重构检测（低效策略、未使用策略、异常模块）", "inputSchema": {"type": "object", "properties": {}}},
+
+            # 世界模型
+            {"name": "pangu_worldmodel_forecast", "description": "基于当前状态预测未来情景", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_worldmodel_plan", "description": "为指定情景生成应对计划", "inputSchema": {"type": "object", "properties": {"scenario_id": {"type": "string", "description": "情景ID"}}, "required": ["scenario_id"]}},
+            {"name": "pangu_worldmodel_match", "description": "将事件与预测情景匹配", "inputSchema": {"type": "object", "properties": {"event_type": {"type": "string"}, "event_data": {"type": "object", "default": {}}}, "required": ["event_type"]}},
+            {"name": "pangu_worldmodel_stats", "description": "获取世界模型统计", "inputSchema": {"type": "object", "properties": {}}},
 
             # FTS5 混合搜索
             {"name": "pangu_fts_search", "description": "FTS5全文+向量混合搜索(RRF融合)"},
@@ -466,6 +494,20 @@ class MCPServer:
             {"name": "pangu_core_insights", "description": "提取核心洞察", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 10}}}},
             {"name": "pangu_auto_learn", "description": "执行自主学习循环", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 共鸣匹配 (伏羲移植) ──
+            {"name": "pangu_resonance_find", "description": "发现情感/语义共鸣的记忆对并构建图谱边", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "扫描数量上限", "default": 30}, "sim_threshold": {"type": "number", "description": "相似度阈值", "default": 0.7}}, "required": []}},
+            {"name": "pangu_resonance_edges", "description": "为共鸣匹配建立图谱边", "inputSchema": {"type": "object", "properties": {"matches": {"type": "array", "description": "共鸣匹配列表（来自 pangu_resonance_find）", "default": []}, "max_edges": {"type": "integer", "description": "最多建立边数", "default": 5}}, "required": []}},
+            {"name": "pangu_resonance_stats", "description": "获取共鸣匹配统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 意图预测 (伏羲移植) ──
+            {"name": "pangu_intent_predict", "description": "从记忆行为序列推断当前用户意图", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "额外上下文文本", "default": ""}}, "required": []}},
+            {"name": "pangu_intent_tasks", "description": "任务链追踪 — 跟踪多步骤任务进度", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_intent_stats", "description": "获取意图预测统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 知识综合增强 (伏羲移植) ──
+            {"name": "pangu_synthesis_cross_cluster", "description": "跨集群联想 — 发现不同Wing间的知识关联", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_synthesis_gaps", "description": "知识缺口识别 — 找出缺少深度分析的主题", "inputSchema": {"type": "object", "properties": {}}},
+
             # ── 预测分析 (v3.0) ──
             {"name": "pangu_predict_queries", "description": "预测用户下一步查询", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 5}}}},
             {"name": "pangu_predict_forgetting", "description": "预测即将遗忘的记忆", "inputSchema": {"type": "object", "properties": {"days_threshold": {"type": "integer", "default": 30}}}},
@@ -654,6 +696,19 @@ class MCPServer:
             {"name": "pangu_vote", "description": "对记忆投票", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}, "user_id": {"type": "string", "description": "用户ID"}, "vote_type": {"type": "string", "description": "投票类型: up/down/bookmark"}}, "required": ["memory_id", "user_id", "vote_type"]}},
             {"name": "pangu_vote_stats", "description": "获取记忆投票统计", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
             {"name": "pangu_search_stats", "description": "获取搜索命中率统计"},
+
+            # ── 梦境巩固 (v3.0) ──
+            {"name": "pangu_dream_cycle", "description": "运行一次梦境巩固周期（fetch→dedup→link→decay→distill）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_dream_stats", "description": "获取梦境巩固统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 好奇心探索 (v3.0) ──
+            {"name": "pangu_curiosity_explore", "description": "运行好奇心探索（发现知识空白）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_curiosity_gaps", "description": "发现知识空白并生成探索建议", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 人格引擎 (v3.0) ──
+            {"name": "pangu_persona_identity", "description": "获取系统身份和人格特质", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_persona_values", "description": "获取系统价值观和原则", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_persona_health", "description": "系统综合健康度检查", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -1300,6 +1355,57 @@ class MCPServer:
                     "port": port,
                     "health_url": f"http://{host}:{port}/health",
                 }, ensure_ascii=False)
+
+            # ── 深度情绪智能 (移植自伏羲) ──
+
+            elif tool_name == "pangu_deep_emotion_trajectory":
+                from ..memory.deep_emotion import get_deep_emotion_engine
+                engine = get_deep_emotion_engine(self.config)
+                return json.dumps(engine.analyze_trajectory(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_deep_emotion_decompose":
+                from ..memory.deep_emotion import get_deep_emotion_engine
+                engine = get_deep_emotion_engine(self.config)
+                return json.dumps(engine.decompose_emotions(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_deep_emotion_stats":
+                from ..memory.deep_emotion import get_deep_emotion_engine
+                engine = get_deep_emotion_engine(self.config)
+                return json.dumps(engine.get_stats(drawers), ensure_ascii=False, indent=2)
+
+            # ── 多策略辩论 (移植自伏羲) ──
+
+            elif tool_name == "pangu_debate_run":
+                from ..memory.debate import get_debate_engine
+                engine = get_debate_engine(self.config)
+                result = engine.run_debate(
+                    question=arguments.get("question", ""),
+                    strategies_count=arguments.get("strategies_count", 2),
+                    context=arguments.get("context", ""),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_debate_stats":
+                from ..memory.debate import get_debate_engine
+                engine = get_debate_engine(self.config)
+                return json.dumps(engine.get_stats(), ensure_ascii=False, indent=2)
+
+            # ── 叙事引擎 (移植自伏羲) ──
+
+            elif tool_name == "pangu_narrative_generate":
+                from ..memory.narrative import get_narrative_engine
+                engine = get_narrative_engine(self.config)
+                return json.dumps(engine.generate_narrative(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_narrative_themes":
+                from ..memory.narrative import get_narrative_engine
+                engine = get_narrative_engine(self.config)
+                return json.dumps(engine.extract_themes(drawers), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_narrative_identity":
+                from ..memory.narrative import get_narrative_engine
+                engine = get_narrative_engine(self.config)
+                return json.dumps(engine.identity_statement(drawers), ensure_ascii=False, indent=2)
 
             # ── 伏羲移植：FTS5 混合搜索 ──
 
@@ -2517,6 +2623,77 @@ class MCPServer:
                 insights = ks.extract_core_insights(drawers, top_k)
                 return json.dumps({"insights": insights, "count": len(insights)}, ensure_ascii=False, indent=2)
 
+            # ── 共鸣匹配 ──
+
+            elif tool_name == "pangu_resonance_find":
+                from ..memory.resonance import get_resonance_engine
+                engine = get_resonance_engine(self.config)
+                matches = engine.find_resonance(
+                    drawers,
+                    limit=arguments.get("limit", 30),
+                    sim_threshold=arguments.get("sim_threshold", 0.7),
+                )
+                edges = engine.build_edges(matches, drawers)
+                return json.dumps({
+                    "matches": matches,
+                    "edges_created": len(edges),
+                    "total_matches": len(matches),
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_resonance_edges":
+                from ..memory.resonance import get_resonance_engine
+                engine = get_resonance_engine(self.config)
+                matches = arguments.get("matches", [])
+                edges = engine.build_edges(
+                    matches, drawers,
+                    max_edges=arguments.get("max_edges", 5),
+                )
+                return json.dumps({"edges": edges, "count": len(edges)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_resonance_stats":
+                from ..memory.resonance import get_resonance_engine
+                engine = get_resonance_engine(self.config)
+                return json.dumps(engine.stats(), ensure_ascii=False, indent=2)
+
+            # ── 意图预测 ──
+
+            elif tool_name == "pangu_intent_predict":
+                from ..memory.intent_prediction import get_intent_predictor
+                predictor = get_intent_predictor(self.config)
+                intent = predictor.predict_intent(drawers, arguments.get("context", ""))
+                task_chain = predictor.track_task_chain(drawers)
+                suggestions = predictor.suggest_next(drawers, intent, task_chain)
+                return json.dumps({
+                    "intent": intent,
+                    "task_chain": task_chain,
+                    "suggestions": suggestions,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_intent_tasks":
+                from ..memory.intent_prediction import get_intent_predictor
+                predictor = get_intent_predictor(self.config)
+                task_chain = predictor.track_task_chain(drawers)
+                return json.dumps(task_chain, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_intent_stats":
+                from ..memory.intent_prediction import get_intent_predictor
+                predictor = get_intent_predictor(self.config)
+                return json.dumps(predictor.stats(), ensure_ascii=False, indent=2)
+
+            # ── 知识综合增强 ──
+
+            elif tool_name == "pangu_synthesis_cross_cluster":
+                from ..memory.knowledge_synthesis import get_synthesizer
+                ks = get_synthesizer(self.config)
+                insights = ks.cross_cluster_association(drawers)
+                return json.dumps({"insights": insights, "count": len(insights)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_synthesis_gaps":
+                from ..memory.knowledge_synthesis import get_synthesizer
+                ks = get_synthesizer(self.config)
+                gaps = ks.knowledge_gap_detection(drawers)
+                return json.dumps({"gaps": gaps, "count": len(gaps)}, ensure_ascii=False, indent=2)
+
             elif tool_name == "pangu_predict_queries":
                 from ..memory.predictive_analytics import get_analytics
                 pa = get_analytics(self.config)
@@ -2837,6 +3014,91 @@ class MCPServer:
                 from ..memory.meta_learning import get_meta_engine
                 ml = get_meta_engine(self.config)
                 return json.dumps(ml.get_meta_stats(), ensure_ascii=False, indent=2)
+
+            # ── 认知循环 ──
+
+            elif tool_name == "pangu_cognitive_loop":
+                from ..memory.cognitive_loop import get_cognitive_loop
+                loop = get_cognitive_loop(self.config)
+                result = loop.run_cycle()
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cognitive_stats":
+                from ..memory.cognitive_loop import get_cognitive_loop
+                loop = get_cognitive_loop(self.config)
+                return json.dumps(loop.get_stats(), ensure_ascii=False, indent=2)
+
+            # ── 元认知 ──
+
+            elif tool_name == "pangu_metacognition_monitor":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                return json.dumps(ml.monitor_system_health(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_metacognition_reconfig":
+                from ..memory.meta_learning import get_meta_engine
+                ml = get_meta_engine(self.config)
+                return json.dumps(ml.detect_self_reconfig(), ensure_ascii=False, indent=2)
+
+            # ── 世界模型 ──
+
+            elif tool_name == "pangu_worldmodel_forecast":
+                from ..memory.world_model import get_world_model, TOP_SCENARIOS
+                wm_model = get_world_model(self.config)
+                scenarios = wm_model.forecast()
+                return json.dumps({
+                    "scenarios_count": len(scenarios),
+                    "scenarios": [
+                        {
+                            "id": s.id,
+                            "trigger": s.trigger,
+                            "description": s.description,
+                            "probability": round(s.probability, 3),
+                            "severity": round(s.severity, 3),
+                            "causal_depth": len(s.causal_path),
+                            "impact": s.estimated_impact,
+                            "actions": s.suggested_actions,
+                        }
+                        for s in scenarios[:TOP_SCENARIOS]
+                    ],
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_worldmodel_plan":
+                from ..memory.world_model import get_world_model
+                wm_model = get_world_model(self.config)
+                scenario_id = arguments.get("scenario_id", "")
+                scenarios = wm_model.forecast()
+                target = next((s for s in scenarios if s.id == scenario_id), None)
+                if not target:
+                    return json.dumps({"error": f"scenario not found: {scenario_id}"})
+                plan = wm_model.generate_plan(target)
+                return json.dumps({
+                    "scenario_id": plan.scenario_id,
+                    "description": plan.description,
+                    "actions": plan.suggested_actions,
+                    "estimated_effect": plan.estimated_effect,
+                }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_worldmodel_match":
+                from ..memory.world_model import get_world_model
+                wm_model = get_world_model(self.config)
+                event_type = arguments.get("event_type", "")
+                event_data = arguments.get("event_data", {})
+                matched = wm_model.match_event(event_type, event_data)
+                if matched:
+                    return json.dumps({
+                        "matched": True,
+                        "scenario_id": matched.id,
+                        "trigger": matched.trigger,
+                        "probability": round(matched.probability, 3),
+                        "actions": matched.suggested_actions,
+                    }, ensure_ascii=False, indent=2)
+                return json.dumps({"matched": False})
+
+            elif tool_name == "pangu_worldmodel_stats":
+                from ..memory.world_model import get_world_model
+                wm_model = get_world_model(self.config)
+                return json.dumps(wm_model.get_stats(), ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_distill":
                 from ..memory.distillation import get_distiller
@@ -3466,6 +3728,51 @@ class MCPServer:
             elif tool_name == "pangu_search_stats":
                 from ..memory.retrieval import get_search_stats
                 return json.dumps(get_search_stats(), ensure_ascii=False, indent=2)
+
+            # ── 梦境巩固 ──
+
+            elif tool_name == "pangu_dream_cycle":
+                from ..memory.dream_memory import get_dream_engine
+                engine = get_dream_engine(self.config)
+                result = engine.run_dream_cycle(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_dream_stats":
+                from ..memory.dream_memory import get_dream_engine
+                engine = get_dream_engine(self.config)
+                return json.dumps(engine.dream_stats(), ensure_ascii=False, indent=2)
+
+            # ── 好奇心探索 ──
+
+            elif tool_name == "pangu_curiosity_explore":
+                from ..memory.curiosity import get_curiosity_engine
+                engine = get_curiosity_engine(self.config)
+                result = engine.explore(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_curiosity_gaps":
+                from ..memory.curiosity import get_curiosity_engine
+                engine = get_curiosity_engine(self.config)
+                result = engine.find_gaps(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── 人格引擎 ──
+
+            elif tool_name == "pangu_persona_identity":
+                from ..memory.persona import get_persona_engine
+                engine = get_persona_engine(self.config)
+                return json.dumps(engine.get_identity(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_persona_values":
+                from ..memory.persona import get_persona_engine
+                engine = get_persona_engine(self.config)
+                return json.dumps(engine.get_values(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_persona_health":
+                from ..memory.persona import get_persona_engine
+                engine = get_persona_engine(self.config)
+                result = engine.health_check(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"error": f"未知工具: {tool_name}"})
