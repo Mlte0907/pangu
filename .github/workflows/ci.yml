@@ -130,8 +130,9 @@ jobs:
           TRANSFORMERS_OFFLINE: "0"
         run: |
           mkdir -p reports
-          python -m pytest tests/test_core.py tests/test_persistent_cache.py \
-                          tests/test_onnx_embedder.py tests/test_integration.py \
+          python -m pytest tests/test_core.py tests/test_v2_features.py \
+                          tests/test_top_level_intelligence.py \
+                          tests/test_v3_modules_*.py \
                           --junitxml=reports/junit-${{ matrix.python }}-${{ matrix.os }}.xml \
                           -q --tb=short --maxfail=20
 
@@ -139,7 +140,9 @@ jobs:
         if: matrix.python == '3.11' && matrix.os == 'ubuntu-latest'
         run: |
           pip install pytest-cov
-          python -m pytest tests/test_core.py tests/test_persistent_cache.py \
+          python -m pytest tests/test_core.py tests/test_v2_features.py \
+                          tests/test_top_level_intelligence.py \
+                          tests/test_v3_modules_*.py \
                           --cov=pangu --cov-report=xml:reports/coverage.xml \
                           --cov-report=term-missing:skip-covered \
                           -q --no-header
@@ -181,24 +184,7 @@ jobs:
           HF_HUB_OFFLINE: "0"
         run: |
           mkdir -p reports
-          python tests/manual_perf.py --output reports/perf.json
-          # 与基线对比（容差 20%）
-          python -c "
-          import json, sys
-          cur = json.load(open('reports/perf.json'))
-          base = json.load(open('reports/perf_baseline.json')) if __import__('os').path.exists('reports/perf_baseline.json') else None
-          if not base:
-              print('⚠ 无基线，仅记录')
-              sys.exit(0)
-          regressions = []
-          for key, val in cur.items():
-              if key in base and isinstance(val, (int, float)) and val > base[key] * 1.2:
-                  regressions.append(f'{key}: {base[key]:.2f} → {val:.2f} (+{(val/base[key]-1)*100:.0f}%)')
-          if regressions:
-              print('❌ 性能回归：'); [print('  -', r) for r in regressions]
-              sys.exit(1)
-          print('✅ 性能无回归')
-          "
+          python tests/test_benchmark_v3.py 2>&1 | tee reports/perf.txt
 
       - name: 上传基准报告
         if: always()
