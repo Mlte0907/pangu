@@ -156,34 +156,37 @@ class AnomalyDetector:
 
         return anomalies
 
+    def _detect_repeated_queries(self, recent: list[dict]) -> list[Anomaly]:
+        """检测重复查询异常"""
+        anomalies = []
+        queries = [s.get("query", "") for s in recent]
+        query_counts: dict[str, int] = {}
+        for q in queries:
+            query_counts[q] = query_counts.get(q, 0) + 1
+
+        for q, count in query_counts.items():
+            if count > 20:
+                anomalies.append(Anomaly(
+                    anomaly_type="repeated_query",
+                    severity="warning",
+                    description=f"查询 '{q[:30]}' 重复 {count} 次",
+                    affected_items=[],
+                    metric_name="query_repeat",
+                    metric_value=count,
+                    expected_range=(1, 10),
+                    suggestion="考虑缓存高频查询结果",
+                ))
+        return anomalies
+
     def detect_behavior_anomalies(self, search_log: list[dict] = None) -> list[Anomaly]:
         """检测行为异常"""
-        anomalies = []
-
         if not search_log:
-            return anomalies
+            return []
 
         if len(search_log) > 100:
-            recent = search_log[-100:]
-            queries = [s.get("query", "") for s in recent]
-            query_counts: dict[str, int] = {}
-            for q in queries:
-                query_counts[q] = query_counts.get(q, 0) + 1
+            return self._detect_repeated_queries(search_log[-100:])
 
-            for q, count in query_counts.items():
-                if count > 20:
-                    anomalies.append(Anomaly(
-                        anomaly_type="repeated_query",
-                        severity="warning",
-                        description=f"查询 '{q[:30]}' 重复 {count} 次",
-                        affected_items=[],
-                        metric_name="query_repeat",
-                        metric_value=count,
-                        expected_range=(1, 10),
-                        suggestion="考虑缓存高频查询结果",
-                    ))
-
-        return anomalies
+        return []
 
     def full_scan(self, drawers: list, search_log: list[dict] = None) -> dict:
         """完整扫描"""

@@ -171,23 +171,26 @@ class WorkingMemory:
         logger.debug(f"WM evicted: {victim_id[:8]} (reason={reason}, activation={evicted.activation:.4f})")
         return evicted
 
+    def _select_eviction_candidate(self, candidates: list) -> tuple:
+        """从候选列表中选择驱逐目标"""
+        low_act_low_val = [(k, v) for k, v in candidates
+                           if v.activation < 0.3 and v.emotional_valence < 0.3]
+        if low_act_low_val:
+            return min(low_act_low_val, key=lambda x: x[1].activation + x[1].emotional_valence)
+
+        low_act = [(k, v) for k, v in candidates if v.activation < 0.5]
+        if low_act:
+            return min(low_act, key=lambda x: x[1].activation)
+
+        return min(candidates, key=lambda x: x[1].activation)
+
     def _evict_by_token(self) -> WMItem | None:
         """Token 预算驱逐"""
         if not self._buffer:
             return None
 
         candidates = list(self._buffer.items())
-
-        low_act_low_val = [(k, v) for k, v in candidates
-                           if v.activation < 0.3 and v.emotional_valence < 0.3]
-        if low_act_low_val:
-            victim_id, victim = min(low_act_low_val, key=lambda x: x[1].activation + x[1].emotional_valence)
-        else:
-            low_act = [(k, v) for k, v in candidates if v.activation < 0.5]
-            if low_act:
-                victim_id, victim = min(low_act, key=lambda x: x[1].activation)
-            else:
-                victim_id, victim = min(candidates, key=lambda x: x[1].activation)
+        victim_id, victim = self._select_eviction_candidate(candidates)
 
         evicted = self._buffer.pop(victim_id)
         self._evictions += 1

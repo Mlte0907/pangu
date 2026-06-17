@@ -90,24 +90,30 @@ class GraphBuilder:
                     context=text[:80],
                 ))
 
+    def _process_relation_match(self, m, predicate: str, memory_id: str) -> ExtractedRelation | None:
+        groups = m.groups()
+        if len(groups) < 2:
+            return None
+        subj = groups[0].strip()[:20]
+        obj = groups[1].strip()[:20]
+        if len(subj) < 2 or len(obj) < 2 or subj == obj:
+            return None
+        return ExtractedRelation(
+            subject=subj,
+            predicate=predicate,
+            object=obj,
+            confidence=0.6,
+            source_memory_id=memory_id,
+        )
+
     def extract_relations(self, text: str, memory_id: str) -> list[ExtractedRelation]:
         """从文本中抽取关系"""
         relations = []
         for pattern, predicate in self.RELATION_PATTERNS:
-            matches = re.finditer(pattern, text)
-            for m in matches:
-                groups = m.groups()
-                if len(groups) >= 2:
-                    subj = groups[0].strip()[:20]
-                    obj = groups[1].strip()[:20]
-                    if len(subj) >= 2 and len(obj) >= 2 and subj != obj:
-                        relations.append(ExtractedRelation(
-                            subject=subj,
-                            predicate=predicate,
-                            object=obj,
-                            confidence=0.6,
-                            source_memory_id=memory_id,
-                        ))
+            for m in re.finditer(pattern, text):
+                rel = self._process_relation_match(m, predicate, memory_id)
+                if rel:
+                    relations.append(rel)
         return relations
 
     def build_from_drawers(self, drawers: list, max_drawers: int = 100) -> dict:

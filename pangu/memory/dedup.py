@@ -130,17 +130,16 @@ class MemoryDeduplicator:
 
         return self._group_duplicates(drawers, similar_pairs, 0.99)
 
+    @staticmethod
+    def _tokenize_text(text: str) -> set[str]:
+        import re
+        return set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
+                               text.lower()))
+
     def _keyword_dedup(self, drawers: list[Drawer],
                        threshold: float) -> list[DuplicateGroup]:
         """基于关键词重叠的去重"""
-        import re
-
-        def tokenize(text: str) -> set[str]:
-            words = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                    text.lower()))
-            return words
-
-        token_sets = [tokenize(d.content) for d in drawers]
+        token_sets = [self._tokenize_text(d.content) for d in drawers]
         n = len(drawers)
 
         similar_pairs = []
@@ -308,14 +307,8 @@ class MemoryDeduplicator:
                 pass
 
         # 关键词回退
-        import re
-
-        def tokenize(text: str) -> set[str]:
-            return set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                   text.lower()))
-
-        tokens_a = tokenize(drawer_a.content)
-        tokens_b = tokenize(drawer_b.content)
+        tokens_a = self._tokenize_text(drawer_a.content)
+        tokens_b = self._tokenize_text(drawer_b.content)
         if not tokens_a or not tokens_b:
             return {"similarity": 0.0, "method": "keyword"}
 

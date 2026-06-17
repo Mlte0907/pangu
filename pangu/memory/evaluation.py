@@ -33,17 +33,23 @@ class EvaluationCache:
         # 再查文件缓存
         return self._search_file_cache(prompt_hash)
 
+    def _scan_cache_file(self, prompt_hash: str) -> dict | None:
+        with open(self.cache_path) as f:
+            for line in f:
+                entry = json.loads(line)
+                if entry.get("hash") == prompt_hash:
+                    return entry
+        return None
+
     def _search_file_cache(self, prompt_hash: str) -> dict | None:
         if not self.cache_path.exists():
             return None
         try:
-            with open(self.cache_path) as f:
-                for line in f:
-                    entry = json.loads(line)
-                    if entry.get("hash") == prompt_hash:
-                        with self._lock:
-                            self._memory_cache[prompt_hash] = entry
-                        return entry
+            entry = self._scan_cache_file(prompt_hash)
+            if entry:
+                with self._lock:
+                    self._memory_cache[prompt_hash] = entry
+                return entry
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Cache read error: {e}")
         return None

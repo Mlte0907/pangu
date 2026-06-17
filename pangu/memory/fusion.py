@@ -140,16 +140,23 @@ class FusionEngine:
         seen_keywords = set()
         key_points = []
         for sentence, _imp in all_sentences:
-            words = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                    sentence.lower()))
-            overlap = len(words & seen_keywords) / max(len(words), 1)
-            if overlap < 0.5 and words:
-                key_points.append(sentence)
-                seen_keywords.update(words)
-            if len(key_points) >= 10:
+            key_points, done = self._try_add_key_point(
+                sentence, seen_keywords, key_points)
+            if done:
                 break
 
         return key_points
+
+    def _try_add_key_point(self, sentence: str, seen_keywords: set,
+                           key_points: list) -> tuple[list, bool]:
+        import re
+        words = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
+                                sentence.lower()))
+        overlap = len(words & seen_keywords) / max(len(words), 1)
+        if overlap < 0.5 and words:
+            key_points.append(sentence)
+            seen_keywords.update(words)
+        return key_points, len(key_points) >= 10
 
     def _collect_sentences(self, drawers: list[Drawer]) -> list[tuple[str, int]]:
         import re
@@ -286,24 +293,27 @@ class FusionEngine:
 
         # 层级 3: 高度抽象
         if len(drawers) >= 3:
-            all_keywords = Counter()
-            for d in drawers:
-                import re
-                words = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                    d.content.lower())
-                all_keywords.update(words)
-            top_abstract = [w for w, _ in all_keywords.most_common(15)]
-            level3 = {
-                "total_memories": len(drawers),
-                "date_range": self._get_date_range(drawers),
-                "primary_topics": top_abstract[:8],
-                "avg_importance": round(
-                    sum(d.importance for d in drawers) / len(drawers), 2),
-                "dominant_wing": Counter(d.wing for d in drawers).most_common(1)[0][0],
-            }
+            level3 = self._build_high_level_abstraction(drawers)
             result.append({"level": 3, "label": "高度抽象", "items": level3})
 
         return result
+
+    def _build_high_level_abstraction(self, drawers: list[Drawer]) -> dict:
+        all_keywords = Counter()
+        for d in drawers:
+            import re
+            words = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
+                                d.content.lower())
+            all_keywords.update(words)
+        top_abstract = [w for w, _ in all_keywords.most_common(15)]
+        return {
+            "total_memories": len(drawers),
+            "date_range": self._get_date_range(drawers),
+            "primary_topics": top_abstract[:8],
+            "avg_importance": round(
+                sum(d.importance for d in drawers) / len(drawers), 2),
+            "dominant_wing": Counter(d.wing for d in drawers).most_common(1)[0][0],
+        }
 
     def _group_by_keywords(self, drawers: list[Drawer]) -> dict[str, list[Drawer]]:
         """按关键词分组"""

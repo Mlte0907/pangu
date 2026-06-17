@@ -161,7 +161,8 @@ class DomainKnowledge:
                 ON knowledge_entries(status)
             """)
 
-    def _default_entries(self) -> list[KnowledgeEntry]:
+    def _default_se_entries(self) -> list[KnowledgeEntry]:
+        """软件工程默认条目"""
         return [
             KnowledgeEntry(
                 id="se_pattern_singleton",
@@ -229,6 +230,11 @@ class DomainKnowledge:
                 tags=["代码审查", "团队规范"],
                 importance=0.8,
             ),
+        ]
+
+    def _default_pm_entries(self) -> list[KnowledgeEntry]:
+        """项目管理默认条目"""
+        return [
             KnowledgeEntry(
                 id="pm_risk_scope_creep",
                 domain=DomainType.PROJECT_MANAGEMENT,
@@ -249,6 +255,11 @@ class DomainKnowledge:
                 tags=["风险管理", "人员"],
                 importance=0.85,
             ),
+        ]
+
+    def _default_tc_entries(self) -> list[KnowledgeEntry]:
+        """团队协作默认条目"""
+        return [
             KnowledgeEntry(
                 id="tc_comm_async",
                 domain=DomainType.TEAM_COLLABORATION,
@@ -273,6 +284,13 @@ class DomainKnowledge:
                 importance=0.75,
             ),
         ]
+
+    def _default_entries(self) -> list[KnowledgeEntry]:
+        entries = []
+        entries.extend(self._default_se_entries())
+        entries.extend(self._default_pm_entries())
+        entries.extend(self._default_tc_entries())
+        return entries
 
     def _seed_defaults(self) -> None:
         existing = self.list_entries(limit=1)

@@ -33,9 +33,7 @@ class HealthMonitor:
         self._check_history: list[dict] = []
         self._alerts: list[dict] = []
 
-    def check_memory_volume(self, drawers: list) -> HealthCheck:
-        """检查记忆量"""
-        total = len(drawers)
+    def _evaluate_volume(self, total: int) -> HealthCheck:
         if total == 0:
             return HealthCheck("memory_volume", "critical", 0.0,
                                "无记忆", "开始收集记忆")
@@ -48,6 +46,10 @@ class HealthMonitor:
         else:
             return HealthCheck("memory_volume", "healthy", 1.0,
                                f"记忆量正常: {total}", "")
+
+    def check_memory_volume(self, drawers: list) -> HealthCheck:
+        """检查记忆量"""
+        return self._evaluate_volume(len(drawers))
 
     def check_importance_distribution(self, drawers: list) -> HealthCheck:
         """检查重要性分布"""

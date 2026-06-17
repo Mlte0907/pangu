@@ -96,6 +96,16 @@ class MemoryAnalyzer:
         newest_hours = (now - newest).total_seconds() / 3600 if drawers else 0
         return counts_24h, counts_7d, counts_30d, oldest_days, newest_hours
 
+    def _compute_distributions(self, drawers: list[Drawer]) -> tuple:
+        """计算各类分布数据"""
+        wing_dist = dict(Counter(d.wing for d in drawers))
+        room_dist = dict(Counter(f"{d.wing}/{d.room}" for d in drawers))
+        hall_dist = dict(Counter(d.hall for d in drawers))
+        tag_dist = dict(Counter(
+            tag for d in drawers for tag in (d.tags or [])
+        ))
+        return wing_dist, room_dist, hall_dist, tag_dist
+
     def analyze(self, drawers: list[Drawer],
                 wiki_page_count: int = 0,
                 access_data: dict[str, int] = None) -> MemoryAnalytics:
@@ -107,12 +117,7 @@ class MemoryAnalyzer:
         for d in drawers:
             all_tags.update(d.tags or [])
 
-        wing_dist = dict(Counter(d.wing for d in drawers))
-        room_dist = dict(Counter(f"{d.wing}/{d.room}" for d in drawers))
-        hall_dist = dict(Counter(d.hall for d in drawers))
-        tag_dist = dict(Counter(
-            tag for d in drawers for tag in (d.tags or [])
-        ))
+        wing_dist, room_dist, hall_dist, tag_dist = self._compute_distributions(drawers)
 
         high = sum(1 for d in drawers if d.importance >= 4.0)
         medium = sum(1 for d in drawers if 2.0 <= d.importance < 4.0)

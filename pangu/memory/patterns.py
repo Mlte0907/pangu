@@ -215,25 +215,30 @@ class PatternEngine:
             dates = [datetime.fromisoformat(d.created_at)
                      for d in drawers if d.created_at]
             if dates:
-                day_counts = defaultdict(int)
-                for dt in dates:
-                    day_counts[dt.strftime("%Y-%m-%d")] += 1
-
-                avg_per_day = sum(day_counts.values()) / len(day_counts)
-                for day, count in day_counts.items():
-                    if count >= avg_per_day * 3 and count >= 3:
-                        patterns.append(DiscoveredPattern(
-                            id=f"anomaly_burst_{day}",
-                            pattern_type="anomaly",
-                            description=f"日期 {day} 出现记忆爆发（{count} 条，日均 {avg_per_day:.1f}）",
-                            evidence=[],
-                            confidence=0.7,
-                            metadata={"date": day, "count": count,
-                                      "avg": round(avg_per_day, 1)},
-                        ))
+                patterns.extend(self._detect_time_bursts(dates))
         except (ValueError, TypeError):
             pass
 
+        return patterns
+
+    def _detect_time_bursts(self, dates: list) -> list[DiscoveredPattern]:
+        patterns = []
+        day_counts = defaultdict(int)
+        for dt in dates:
+            day_counts[dt.strftime("%Y-%m-%d")] += 1
+
+        avg_per_day = sum(day_counts.values()) / len(day_counts)
+        for day, count in day_counts.items():
+            if count >= avg_per_day * 3 and count >= 3:
+                patterns.append(DiscoveredPattern(
+                    id=f"anomaly_burst_{day}",
+                    pattern_type="anomaly",
+                    description=f"日期 {day} 出现记忆爆发（{count} 条，日均 {avg_per_day:.1f}）",
+                    evidence=[],
+                    confidence=0.7,
+                    metadata={"date": day, "count": count,
+                              "avg": round(avg_per_day, 1)},
+                ))
         return patterns
 
     def _detect_importance_anomalies(self, drawers: list[Drawer], avg_imp: float,

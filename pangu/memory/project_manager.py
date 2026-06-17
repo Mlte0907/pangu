@@ -157,21 +157,26 @@ class ProjectManager:
         except Exception:
             return []
 
+    def _search_project_memories(self, pid: str, memories: list, query: str) -> list[dict]:
+        """在单个项目记忆中搜索"""
+        results = []
+        for m in memories:
+            score = self._score_memory_cross_project(m, query)
+            if score > 0:
+                results.append({
+                    "project": pid,
+                    "id": m.get("id", ""),
+                    "content": m.get("content", "")[:80],
+                    "score": score,
+                })
+        return results
+
     def search_cross_project(self, query: str, limit: int = 10) -> list[dict]:
         """跨项目搜索"""
         results = []
         for pid in self._projects:
             memories = self.load_memories(pid)
-            for m in memories:
-                score = self._score_memory_cross_project(m, query)
-
-                if score > 0:
-                    results.append({
-                        "project": pid,
-                        "id": m.get("id", ""),
-                        "content": m.get("content", "")[:80],
-                        "score": score,
-                    })
+            results.extend(self._search_project_memories(pid, memories, query))
 
         results.sort(key=lambda x: -x["score"])
         return results[:limit]

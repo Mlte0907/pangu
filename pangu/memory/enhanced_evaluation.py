@@ -33,14 +33,24 @@ class EvaluationCache:
         self.cache_path = Path(cache_path).expanduser()
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def _match_cache_line(self, line: str, prompt_hash: str) -> dict | None:
+        """匹配单行缓存条目"""
+        try:
+            entry = json.loads(line)
+            if entry.get("hash") == prompt_hash:
+                return entry
+        except json.JSONDecodeError:
+            pass
+        return None
+
     def _scan_cache_file(self, prompt_hash: str) -> dict | None:
         try:
             with open(self.cache_path) as f:
                 for line in f:
-                    entry = json.loads(line)
-                    if entry.get("hash") == prompt_hash:
-                        return entry
-        except (json.JSONDecodeError, OSError) as e:
+                    match = self._match_cache_line(line, prompt_hash)
+                    if match:
+                        return match
+        except OSError as e:
             logger.warning(f"Cache read error: {e}")
         return None
 

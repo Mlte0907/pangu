@@ -112,24 +112,22 @@ class TemporalReasoning:
                     confidence=0.6,
                 ))
 
+    def _is_in_time_range(self, drawer, start_dt, end_dt) -> bool:
+        ts = self._parse_time(drawer.content)
+        if ts is None:
+            return False
+        if start_dt and ts < start_dt:
+            return False
+        if end_dt and ts > end_dt:
+            return False
+        return True
+
     def query_by_time_range(self, drawers: list, start: str = None,
                             end: str = None) -> list:
         """按时间范围查询记忆"""
         start_dt = self._parse_time_string(start) if start else None
         end_dt = self._parse_time_string(end) if end else None
-
-        results = []
-        for d in drawers:
-            ts = self._parse_time(d.content)
-            if ts is None:
-                continue
-            if start_dt and ts < start_dt:
-                continue
-            if end_dt and ts > end_dt:
-                continue
-            results.append(d)
-
-        return results
+        return [d for d in drawers if self._is_in_time_range(d, start_dt, end_dt)]
 
     def evaluate_freshness(self, drawer) -> dict:
         """评估记忆时效性"""

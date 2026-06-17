@@ -626,19 +626,9 @@ class MultiAgentMemory:
                 except Exception as e:
                     logger.error(f"Sync callback error for {target}: {e}")
 
-    def _find_conflict_pairs(self, memories):
-        conflicts = []
-        for i in range(len(memories)):
-            for j in range(i + 1, len(memories)):
-                a, b = memories[i], memories[j]
-                if not self._texts_may_conflict(a.content, b.content):
-                    continue
-                conflict = self._try_compute_conflict(a, b)
-                if conflict:
-                    conflicts.append(conflict)
-        return conflicts
-
-    def _try_compute_conflict(self, a, b) -> dict | None:
+    def _try_find_conflict(self, a: AgentMemory, b: AgentMemory) -> dict | None:
+        if not self._texts_may_conflict(a.content, b.content):
+            return None
         conf = self._compute_conflict(a, b)
         if conf["confidence"] > 0.3:
             return {
@@ -651,6 +641,15 @@ class MultiAgentMemory:
                 "confidence": conf["confidence"],
             }
         return None
+
+    def _find_conflict_pairs(self, memories):
+        conflicts = []
+        for i in range(len(memories)):
+            for j in range(i + 1, len(memories)):
+                conflict = self._try_find_conflict(memories[i], memories[j])
+                if conflict:
+                    conflicts.append(conflict)
+        return conflicts
 
     def _detect_new_conflicts(self, new_memory: AgentMemory) -> list[dict[str, Any]]:
         """检测新记忆与已有记忆的冲突"""

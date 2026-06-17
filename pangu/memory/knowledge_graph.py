@@ -152,9 +152,9 @@ class KnowledgeGraph:
             row = conn.execute("SELECT * FROM relations WHERE id = ?", (id,)).fetchone()
             return dict(row) if row else None
 
-    def query_relations(self, subject_id: str = None, object_id: str = None,
-                        predicate: str = None, at_time: str = None) -> list[dict]:
-        """查询关系"""
+    def _build_relation_conditions(self, subject_id: str = None, object_id: str = None,
+                                    predicate: str = None, at_time: str = None) -> list:
+        """构建关系查询条件"""
         conditions = []
         params = []
 
@@ -168,11 +168,22 @@ class KnowledgeGraph:
             conditions.append("predicate = ?")
             params.append(predicate)
         if at_time:
-            conditions.append("(valid_from IS NULL OR valid_from <= ?)")
-            params.append(at_time)
-            conditions.append("(valid_until IS NULL OR valid_until >= ?)")
-            params.append(at_time)
+            self._add_time_conditions(conditions, params, at_time)
 
+        return conditions, params
+
+    def _add_time_conditions(self, conditions: list, params: list, at_time: str) -> None:
+        conditions.append("(valid_from IS NULL OR valid_from <= ?)")
+        params.append(at_time)
+        conditions.append("(valid_until IS NULL OR valid_until >= ?)")
+        params.append(at_time)
+
+    def query_relations(self, subject_id: str = None, object_id: str = None,
+                        predicate: str = None, at_time: str = None) -> list[dict]:
+        """查询关系"""
+        conditions, params = self._build_relation_conditions(
+            subject_id, object_id, predicate, at_time
+        )
         where = " AND ".join(conditions) if conditions else "1=1"
 
         with self._conn() as conn:

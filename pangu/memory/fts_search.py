@@ -191,6 +191,32 @@ class FTS5SearchEngine:
             if kw in content:
                 scores[did] = scores.get(did, 0) + 0.5
 
+    def _try_batch_embed(self, query_vec: list, items: list[dict]) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        ids = [item["id"] for item in items]
+        texts = [item["content"] for item in items]
+        embeddings = self.embedder.embed_batch(texts)
+        if embeddings:
+            for i, emb in enumerate(embeddings):
+                if emb:
+                    sim = cosine_similarity(query_vec, emb)
+                    if sim >= self.similarity_threshold:
+                        scores[ids[i]] = sim
+        return scores
+
+    def _fallback_embed(self, query_vec: list, items: list[dict]) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for item in items:
+            try:
+                emb = self.embedder.embed(item["content"])
+                if emb:
+                    sim = cosine_similarity(query_vec, emb)
+                    if sim >= self.similarity_threshold:
+                        scores[item["id"]] = sim
+            except Exception:
+                continue
+        return scores
+
     def _vector_search(self, query: str, drawers: list[Drawer], limit: int = 50) -> dict[str, float]:
         """向量语义搜索，返回 {drawer_id: similarity}"""
         if not self.embedder:
@@ -203,34 +229,15 @@ class FTS5SearchEngine:
         except Exception:
             return {}
 
-        scores: dict[str, float] = {}
         items = [{
             "id": d.id,
             "content": d.content,
         } for d in drawers]
 
-        # 批量编码并计算相似度
         try:
-            ids = [item["id"] for item in items]
-            texts = [item["content"] for item in items]
-            embeddings = self.embedder.embed_batch(texts)
-            if embeddings:
-                for i, emb in enumerate(embeddings):
-                    if emb:
-                        sim = cosine_similarity(query_vec, emb)
-                        if sim >= self.similarity_threshold:
-                            scores[ids[i]] = sim
+            scores = self._try_batch_embed(query_vec, items)
         except Exception:
-            # 降级到逐个计算
-            for item in items:
-                try:
-                    emb = self.embedder.embed(item["content"])
-                    if emb:
-                        sim = cosine_similarity(query_vec, emb)
-                        if sim >= self.similarity_threshold:
-                            scores[item["id"]] = sim
-                except Exception:
-                    continue
+            scores = self._fallback_embed(query_vec, items)
 
         sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
         return dict(sorted_items)

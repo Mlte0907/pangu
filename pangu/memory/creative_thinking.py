@@ -41,6 +41,21 @@ class CreativeThinking:
                 topics.add(tag)
         return topics
 
+    def _detect_wing_pattern(self, wing: str, wing_drawers: list[Drawer]) -> dict | None:
+        """检测单个 Wing 中的重复主题模式"""
+        if len(wing_drawers) < 3:
+            return None
+        topics = self._collect_wing_topics(wing_drawers)
+        if len(topics) < 2:
+            return None
+        return {
+            "type": "recurring_theme",
+            "wing": wing,
+            "topics": list(topics)[:5],
+            "count": len(wing_drawers),
+            "suggestion": f"在 {wing} 领域发现 {len(topics)} 个相关主题",
+        }
+
     def discover_patterns(self, drawers: list[Drawer]) -> list[dict]:
         patterns = []
 
@@ -52,16 +67,9 @@ class CreativeThinking:
             by_wing[wing].append(d)
 
         for wing, wing_drawers in by_wing.items():
-            if len(wing_drawers) >= 3:
-                topics = self._collect_wing_topics(wing_drawers)
-                if len(topics) >= 2:
-                    patterns.append({
-                        "type": "recurring_theme",
-                        "wing": wing,
-                        "topics": list(topics)[:5],
-                        "count": len(wing_drawers),
-                        "suggestion": f"在 {wing} 领域发现 {len(topics)} 个相关主题",
-                    })
+            pattern = self._detect_wing_pattern(wing, wing_drawers)
+            if pattern:
+                patterns.append(pattern)
 
         return patterns
 

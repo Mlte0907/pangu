@@ -186,23 +186,27 @@ class HNSWVectorIndex:
             self._max_node_layer = level
             self._entry_point = item_id
 
+    def _add_reverse_edge(self, node_id: str, vec: np.ndarray, n: _HNSWNode, layer: int) -> None:
+        """为单个邻居添加反向连接"""
+        if layer not in n.neighbors:
+            n.neighbors[layer] = []
+        if node_id not in n.neighbors[layer]:
+            if len(n.neighbors[layer]) < self.M * 2:
+                n.neighbors[layer].append(node_id)
+            else:
+                worst_idx = min(
+                    range(len(n.neighbors[layer])),
+                    key=lambda i: self._cosine_sim(vec, self._nodes[n.neighbors[layer][i]].vector),
+                )
+                n.neighbors[layer][worst_idx] = node_id
+
     def _connect_reverse(self, node_id: str, neighbors: list[str], layer: int) -> None:
         """建立反向连接"""
         node = self._nodes[node_id]
         vec = node.vector
         for nid in neighbors:
             n = self._nodes[nid]
-            if layer not in n.neighbors:
-                n.neighbors[layer] = []
-            if node_id not in n.neighbors[layer]:
-                if len(n.neighbors[layer]) < self.M * 2:
-                    n.neighbors[layer].append(node_id)
-                else:
-                    worst_idx = min(
-                        range(len(n.neighbors[layer])),
-                        key=lambda i: self._cosine_sim(vec, self._nodes[n.neighbors[layer][i]].vector),
-                    )
-                    n.neighbors[layer][worst_idx] = node_id
+            self._add_reverse_edge(node_id, vec, n, layer)
 
     def _connect_node(self, node_id: str, candidates: list[str], layer: int) -> None:
         """连接节点到候选邻居"""

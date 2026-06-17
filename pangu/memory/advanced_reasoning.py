@@ -641,6 +641,24 @@ class AdvancedReasoning:
 
         return tag_connections, tag_counts
 
+    def _check_orphan_tag(self, tag: str, count: int,
+                           connections: set) -> KnowledgeGap | None:
+        """检查单个标签是否为孤立主题"""
+        if count < 3 or len(connections) > 1:
+            return None
+        return KnowledgeGap(
+            id=f"gap_orphan_{tag}",
+            topic=tag,
+            description=f"主题 '{tag}' 有 {count} 条记忆但仅与 {len(connections)} 个其他主题关联，知识较孤立",
+            related_knowledge=list(connections),
+            missing_links=["更多跨主题连接"],
+            priority=0.6,
+            suggested_actions=[
+                f"探索 '{tag}' 与其他主题的关系",
+                f"补充 '{tag}' 的应用场景或案例",
+            ],
+        )
+
     def _detect_orphan_topics(self, drawers: list[Drawer]) -> list[KnowledgeGap]:
         gaps: list[KnowledgeGap] = []
 
@@ -648,19 +666,9 @@ class AdvancedReasoning:
 
         for tag, count in tag_counts.items():
             connections = tag_connections.get(tag, set())
-            if count >= 3 and len(connections) <= 1:
-                gaps.append(KnowledgeGap(
-                    id=f"gap_orphan_{tag}",
-                    topic=tag,
-                    description=f"主题 '{tag}' 有 {count} 条记忆但仅与 {len(connections)} 个其他主题关联，知识较孤立",
-                    related_knowledge=list(connections),
-                    missing_links=["更多跨主题连接"],
-                    priority=0.6,
-                    suggested_actions=[
-                        f"探索 '{tag}' 与其他主题的关系",
-                        f"补充 '{tag}' 的应用场景或案例",
-                    ],
-                ))
+            gap = self._check_orphan_tag(tag, count, connections)
+            if gap:
+                gaps.append(gap)
 
         return gaps
 

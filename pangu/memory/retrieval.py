@@ -206,6 +206,21 @@ def _fts_search_task(query: str, drawers: list[Drawer]) -> dict[str, float]:
         return {}
 
 
+def _collect_spreading_results(activations, existing_ids, engine, results, limit) -> None:
+    for mid, activation in activations:
+        if mid not in existing_ids and activation > 0.1:
+            mem = engine.neocortex.get(mid)
+            if mem:
+                results.append({
+                    "id": mid,
+                    "content": mem.content,
+                    "search_score": round(activation * 0.5, 4),
+                    "source": "neural_spreading",
+                })
+                if len(results) >= limit:
+                    break
+
+
 def _expand_with_neural_spreading(results: list[dict], limit: int) -> None:
     """通过神经激活扩散扩展搜索结果"""
     if not results or len(results) >= limit:
@@ -220,18 +235,7 @@ def _expand_with_neural_spreading(results: list[dict], limit: int) -> None:
             max_depth=engine.config.neural_spreading_depth,
         )
         existing_ids = {r["id"] for r in results}
-        for mid, activation in activations:
-            if mid not in existing_ids and activation > 0.1:
-                mem = engine.neocortex.get(mid)
-                if mem:
-                    results.append({
-                        "id": mid,
-                        "content": mem.content,
-                        "search_score": round(activation * 0.5, 4),
-                        "source": "neural_spreading",
-                    })
-                    if len(results) >= limit:
-                        break
+        _collect_spreading_results(activations, existing_ids, engine, results, limit)
     except Exception:
         pass
 

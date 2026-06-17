@@ -429,8 +429,48 @@ class LifecycleManager:
 
         return results
 
+    def _fuse_tag_in_wing(self, tag: str, count: int, wing: str, wing_drawers: list,
+                          engine, drawers: list) -> int:
+        if count < 3:
+            return 0
+        result = engine.fuse_topic(tag, wing_drawers, min_similarity=0.25)
+        if not (result and len(result.key_points) >= 2):
+            return 0
+        fused_drawer = Drawer(
+            id=f"fused-{wing}-{tag}",
+            content=f"[融合] {result.topic}: {'; '.join(result.key_points[:3])}",
+            wing=wing,
+            room="fused",
+            importance=min(4.0, 2.0 + len(result.source_memories) * 0.3),
+            tags=[tag, "fused"],
+            author="lifecycle-fusion",
+            created_at=datetime.now().isoformat(),
+            metadata={
+                "source": "auto_fusion",
+                "fused_from": result.source_memories[:10],
+                "confidence": result.confidence,
+            },
+        )
+        existing_ids = {d.id for d in drawers}
+        if fused_drawer.id not in existing_ids:
+            drawers.append(fused_drawer)
+            return 1
+        return 0
+
+    def _process_wing_fusion(self, wing: str, wing_drawers: list, engine,
+                             drawers: list) -> int:
+        if len(wing_drawers) < 3:
+            return 0
+        tag_freq: dict[str, int] = {}
+        for d in wing_drawers:
+            for t in d.tags:
+                tag_freq[t] = tag_freq.get(t, 0) + 1
+        fused_count = 0
+        for tag, count in sorted(tag_freq.items(), key=lambda x: -x[1]):
+            fused_count += self._fuse_tag_in_wing(tag, count, wing, wing_drawers, engine, drawers)
+        return fused_count
+
     def run_auto_fusion(self) -> dict:
-        """自动融合碎片记忆 — 同主题 >=3 条时触发融合"""
         try:
             from pangu.memory.fusion import FusionEngine
         except ImportError:
@@ -455,39 +495,7 @@ class LifecycleManager:
             by_wing.setdefault(d.wing, []).append(d)
 
         for wing, wing_drawers in by_wing.items():
-            if len(wing_drawers) < 3:
-                continue
-            # 用高频标签作为主题候选
-            tag_freq: dict[str, int] = {}
-            for d in wing_drawers:
-                for t in d.tags:
-                    tag_freq[t] = tag_freq.get(t, 0) + 1
-            for tag, count in sorted(tag_freq.items(), key=lambda x: -x[1]):
-                if count < 3:
-                    continue
-                result = engine.fuse_topic(tag, wing_drawers, min_similarity=0.25)
-                if result and len(result.key_points) >= 2:
-                    # 创建融合记忆
-                    fused_drawer = Drawer(
-                        id=f"fused-{wing}-{tag}",
-                        content=f"[融合] {result.topic}: {'; '.join(result.key_points[:3])}",
-                        wing=wing,
-                        room="fused",
-                        importance=min(4.0, 2.0 + len(result.source_memories) * 0.3),
-                        tags=[tag, "fused"],
-                        author="lifecycle-fusion",
-                        created_at=datetime.now().isoformat(),
-                        metadata={
-                            "source": "auto_fusion",
-                            "fused_from": result.source_memories[:10],
-                            "confidence": result.confidence,
-                        },
-                    )
-                    # 写入 drawers.json（去重检查）
-                    existing_ids = {d.id for d in drawers}
-                    if fused_drawer.id not in existing_ids:
-                        drawers.append(fused_drawer)
-                        fused_count += 1
+            fused_count += self._process_wing_fusion(wing, wing_drawers, engine, drawers)
 
         if fused_count > 0:
             with open(drawers_file, "w", encoding="utf-8") as f:

@@ -139,6 +139,16 @@ class QAEngine:
 
         return follow_ups
 
+    def _score_tags(self, tags: list, q_keywords: set) -> int:
+        """对标签进行关键词匹配评分"""
+        score = 0
+        for tag in tags:
+            tag_l = tag.lower()
+            for kw in q_keywords:
+                if kw in tag_l or tag_l in kw:
+                    score += 3
+        return score
+
     def _score_memory(self, d, q_keywords: set, q_lower: str) -> float:
         score = 0
         d_lower = d.content.lower()
@@ -146,11 +156,7 @@ class QAEngine:
             if kw in d_lower:
                 score += 2
         if d.tags:
-            for tag in d.tags:
-                tag_l = tag.lower()
-                for kw in q_keywords:
-                    if kw in tag_l or tag_l in kw:
-                        score += 3
+            score += self._score_tags(d.tags, q_keywords)
         for i in range(len(q_lower) - 1):
             bigram = q_lower[i:i+2]
             if bigram in d_lower:

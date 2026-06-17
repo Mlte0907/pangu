@@ -197,6 +197,18 @@ class MemoryEventStream:
         history_file.write_text(json.dumps(existing[-5000:], ensure_ascii=False, indent=2))
         return len(new_events)
 
+    def _replay_to_subscriber(self, event: MemoryEvent, sub: EventSubscription) -> bool:
+        """向单个订阅者回放事件，成功返回 True"""
+        if not sub.active:
+            return False
+        if sub.event_type != event.event_type and sub.event_type != "*":
+            return False
+        try:
+            sub.callback(event)
+            return True
+        except Exception:
+            return False
+
     def replay_events(self, since: str = None, event_type: str = None) -> int:
         """回放事件"""
         events = self._event_history
@@ -208,14 +220,8 @@ class MemoryEventStream:
         replayed = 0
         for event in events:
             for sub in self._subscriptions.values():
-                if not sub.active:
-                    continue
-                if sub.event_type == event.event_type or sub.event_type == "*":
-                    try:
-                        sub.callback(event)
-                        replayed += 1
-                    except Exception:
-                        pass
+                if self._replay_to_subscriber(event, sub):
+                    replayed += 1
 
         return replayed
 

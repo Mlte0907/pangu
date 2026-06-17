@@ -57,14 +57,18 @@ class QueryRewriter:
         self.config = config
         self._rewrite_history: list[dict] = []
 
+    def _match_word_synonyms(self, word: str, synonyms: list[str],
+                              query: str, top_k: int) -> list[str]:
+        """为单个词匹配同义词"""
+        if word not in query:
+            return []
+        return [syn for syn in synonyms[:top_k] if syn not in query]
+
     def expand_synonyms(self, query: str, top_k: int = 3) -> list[str]:
         """扩展同义词"""
         expanded = []
         for word, synonyms in self.SYNONYM_MAP.items():
-            if word in query:
-                for syn in synonyms[:top_k]:
-                    if syn not in query:
-                        expanded.append(syn)
+            expanded.extend(self._match_word_synonyms(word, synonyms, query, top_k))
         return expanded[:top_k * 2]
 
     def detect_intent(self, query: str) -> str:

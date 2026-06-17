@@ -213,6 +213,26 @@ class RecommendationEngine:
 
         return results
 
+    def _deduplicate_recommendations(self, all_recs: list) -> list:
+        seen = set()
+        unique = []
+        for r in all_recs:
+            if r.memory_id not in seen:
+                seen.add(r.memory_id)
+                unique.append(r)
+        return unique
+
+    def _format_results(self, unique: list, top_k: int) -> dict:
+        return {
+            "recommendations": [
+                {"id": r.memory_id, "preview": r.content_preview,
+                 "wing": r.wing, "score": r.score, "reason": r.reason,
+                 "category": r.category}
+                for r in unique[:top_k * 3]
+            ],
+            "count": min(len(unique), top_k * 3),
+        }
+
     def get_full_recommendations(self, context: str = "", memory_id: str = "",
                                  drawers: list = None, top_k: int = 3) -> dict:
         """获取综合推荐"""
@@ -233,13 +253,7 @@ class RecommendationEngine:
         if context and drawers:
             all_recs.extend(self._gather_cross_domain_recs(context, drawers))
 
-        seen = set()
-        unique = []
-        for r in all_recs:
-            if r.memory_id not in seen:
-                seen.add(r.memory_id)
-                unique.append(r)
-
+        unique = self._deduplicate_recommendations(all_recs)
         unique.sort(key=lambda r: r.score, reverse=True)
 
         self._recommendation_history.append({
@@ -248,15 +262,7 @@ class RecommendationEngine:
             "recommended": len(unique[:top_k * 3]),
         })
 
-        return {
-            "recommendations": [
-                {"id": r.memory_id, "preview": r.content_preview,
-                 "wing": r.wing, "score": r.score, "reason": r.reason,
-                 "category": r.category}
-                for r in unique[:top_k * 3]
-            ],
-            "count": min(len(unique), top_k * 3),
-        }
+        return self._format_results(unique, top_k)
 
     def _gather_cross_domain_recs(self, context: str, drawers: list) -> list[MemoryRecommendation]:
         recs = []

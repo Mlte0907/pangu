@@ -55,21 +55,23 @@ class AdaptiveForgetting:
         else:
             return "keep", f"有价值(得分{forget_score:.2f})"
 
+    def _compute_recency_score(self, days_since_access: int) -> float:
+        """根据访问距今天数计算时效分数"""
+        if days_since_access < 7:
+            return 1.0
+        elif days_since_access < 30:
+            return 0.7
+        elif days_since_access < 90:
+            return 0.4
+        return 0.1
+
     def evaluate_memory(self, drawer, access_count: int = 0,
                         days_since_access: int = 0) -> ForgettingDecision:
         imp_norm = drawer.importance / 5.0
         content_len = len(drawer.content)
 
         freq_score = min(1.0, access_count / 20.0)
-
-        if days_since_access < 7:
-            recency = 1.0
-        elif days_since_access < 30:
-            recency = 0.7
-        elif days_since_access < 90:
-            recency = 0.4
-        else:
-            recency = 0.1
+        recency = self._compute_recency_score(days_since_access)
 
         forget_score = (1 - imp_norm) * 0.4 + (1 - freq_score) * 0.3 + (1 - recency) * 0.3
 

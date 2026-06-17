@@ -45,17 +45,8 @@ class ReplayEngine:
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
 
-    def _filter_drawer(self, d: Drawer, wing: str, room: str,
-                        start: str, end: str) -> bool:
-        """判断 drawer 是否通过过滤条件，返回 True 表示保留"""
-        if wing and d.wing != wing:
-            return False
-        if room and d.room != room:
-            return False
-        try:
-            ts = datetime.fromisoformat(d.created_at)
-        except (ValueError, TypeError):
-            ts = datetime.now()
+    def _check_time_range(self, ts: datetime, start: str, end: str) -> bool:
+        """检查时间戳是否在指定范围内，返回 True 表示通过"""
         if start:
             try:
                 if ts < datetime.fromisoformat(start):
@@ -69,6 +60,19 @@ class ReplayEngine:
             except (ValueError, TypeError):
                 pass
         return True
+
+    def _filter_drawer(self, d: Drawer, wing: str, room: str,
+                        start: str, end: str) -> bool:
+        """判断 drawer 是否通过过滤条件，返回 True 表示保留"""
+        if wing and d.wing != wing:
+            return False
+        if room and d.room != room:
+            return False
+        try:
+            ts = datetime.fromisoformat(d.created_at)
+        except (ValueError, TypeError):
+            ts = datetime.now()
+        return self._check_time_range(ts, start, end)
 
     def _drawer_to_event(self, d: Drawer) -> dict:
         """将 Drawer 转换为回放事件"""

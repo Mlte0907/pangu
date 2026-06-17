@@ -249,6 +249,15 @@ class HolographicEncoder:
             logger.debug(f"Semantic encoding failed: {e}")
         return None
 
+    def _encode_semantic_projection(self, raw_text: str) -> dict[str, np.ndarray]:
+        """编码语义投影"""
+        projections = {}
+        if self.embedder and raw_text:
+            semantic = self._encode_semantic(raw_text)
+            if semantic is not None:
+                projections["semantic"] = semantic
+        return projections
+
     def encode(
         self,
         item_id: str,
@@ -265,12 +274,7 @@ class HolographicEncoder:
         agent_id: str = "",
         session_id: str = "",
     ) -> Hologram:
-        projections = {}
-
-        if self.embedder and raw_text:
-            semantic = self._encode_semantic(raw_text)
-            if semantic is not None:
-                projections["semantic"] = semantic
+        projections = self._encode_semantic_projection(raw_text)
 
         projections["temporal"] = self.temporal.encode(
             created_at, wing, room, sequence_position

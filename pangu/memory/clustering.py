@@ -148,6 +148,22 @@ class MemoryClusterer:
                 return gid
         return -1
 
+    def _assign_keyword_cluster(self, doc_ids: set[int], assigned: set,
+                                 clusters: list, drawers: list,
+                                 n_clusters: int) -> bool:
+        """为一组文档分配聚类，返回 True 表示应停止分配"""
+        unassigned = doc_ids - assigned
+        if len(unassigned) < 2:
+            return False
+        if len(clusters) >= n_clusters:
+            return True
+        group_drawers = [drawers[i] for i in unassigned]
+        group_indices = list(unassigned)
+        cluster = self._build_cluster(group_drawers, group_indices)
+        clusters.append(cluster)
+        assigned.update(unassigned)
+        return False
+
     def _keyword_cluster(self, drawers: list[Drawer],
                          n_clusters: int = 0) -> list[MemoryCluster]:
         """基于关键词共现的聚类"""
@@ -165,18 +181,9 @@ class MemoryClusterer:
             n_clusters = max(2, min(len(drawers) // 3, 10))
 
         for _kw, doc_ids in sorted(keyword_docs.items(),
-                                  key=lambda x: len(x[1]), reverse=True):
-            unassigned = doc_ids - assigned
-            if len(unassigned) < 2:
-                continue
-            if len(clusters) >= n_clusters:
+                                   key=lambda x: len(x[1]), reverse=True):
+            if self._assign_keyword_cluster(doc_ids, assigned, clusters, drawers, n_clusters):
                 break
-
-            group_drawers = [drawers[i] for i in unassigned]
-            group_indices = list(unassigned)
-            cluster = self._build_cluster(group_drawers, group_indices)
-            clusters.append(cluster)
-            assigned.update(unassigned)
 
         # 剩余未分配的
         unassigned = [i for i in range(len(drawers)) if i not in assigned]

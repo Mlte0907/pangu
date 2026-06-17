@@ -131,38 +131,34 @@ class ContextInjectionEngine:
         ))
         return est_tokens
 
+    def _score_drawers(self, d, topics: list[str]):
+        relevance = self.score_relevance(d, topics)
+        importance = d.importance / 5.0
+        recency = self.score_recency(d)
+
+        final = 0.5 * relevance + 0.3 * importance + 0.2 * recency
+        if final > 0.2:
+            return (d, final, relevance, importance, recency)
+        return None
+
     def inject_context(self, text: str, drawers: list,
                        token_budget: int = 500, max_memories: int = 5) -> InjectionResult:
         topics = self.detect_context_topics(text)
 
         scored = []
         for d in drawers:
-            relevance = self.score_relevance(d, topics)
-            importance = d.importance / 5.0
-            recency = self.score_recency(d)
-
-            final = 0.5 * relevance + 0.3 * importance + 0.2 * recency
-            if final > 0.2:
-                scored.append((d, final, relevance, importance, recency))
+            entry = self._score_drawers(d, topics)
+            if entry:
+                scored.append(entry)
 
         scored.sort(key=lambda x: x[1], reverse=True)
         top = scored[:max_memories]
 
-        injected = []
-        tokens_used = 0
-        for d, final, relevance, importance, recency in top:
-            used = self._inject_single(d, final, relevance, importance, recency,
-                                       tokens_used, token_budget, injected)
-            if used == 0:
-                break
-            tokens_used += used
+        injected, tokens_used = self._fill_injection_buffer(
+            top, token_budget)
 
         if injected:
-            context_block = "[相关记忆上下文]\n"
-            for ctx in injected:
-                context_block += f"- [{ctx.wing}] {ctx.content[:150]}\n"
-            context_block += "[/相关记忆上下文]\n\n"
-            injected_text = context_block + text
+            injected_text = self._format_context_block(injected) + text
         else:
             injected_text = text
 
@@ -185,6 +181,25 @@ class ContextInjectionEngine:
                 for c in injected
             ],
         )
+
+    def _fill_injection_buffer(self, top: list, token_budget: int) -> tuple[list, int]:
+        injected = []
+        tokens_used = 0
+        for d, final, relevance, importance, recency in top:
+            used = self._inject_single(d, final, relevance, importance, recency,
+                                       tokens_used, token_budget, injected)
+            if used == 0:
+                break
+            tokens_used += used
+        return injected, tokens_used
+
+    @staticmethod
+    def _format_context_block(injected: list) -> str:
+        context_block = "[相关记忆上下文]\n"
+        for ctx in injected:
+            context_block += f"- [{ctx.wing}] {ctx.content[:150]}\n"
+        context_block += "[/相关记忆上下文]\n\n"
+        return context_block
 
     def get_current_context(self) -> list[dict]:
         """获取当前上下文缓冲"""

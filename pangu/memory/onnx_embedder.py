@@ -118,6 +118,20 @@ class ONNXEmbedder:
             return "onnx/model_quantized.onnx"
         return "onnx/model.onnx"
 
+    def _stream_download(self, resp, tmp_path: Path) -> None:
+        total = int(resp.headers.get("Content-Length", 0))
+        downloaded = 0
+        chunk_size = 64 * 1024
+        with open(tmp_path, "wb") as f:
+            for chunk in resp.iter_bytes(chunk_size=chunk_size):
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total > 0 and downloaded % (512 * 1024) < chunk_size:
+                    pct = 100 * downloaded / total
+                    logger.debug(f"  {pct:.1f}% ({downloaded // 1024}KB / {total // 1024}KB)")
+
     def _download_file(self, url: str, dest: Path) -> bool:
         """下载文件到本地（带进度日志）"""
         if dest.exists() and dest.stat().st_size > 1024:
@@ -135,18 +149,7 @@ class ONNXEmbedder:
                 timeout=60.0,
                 follow_redirects=True,
             ) as resp:
-                total = int(resp.headers.get("Content-Length", 0))
-                downloaded = 0
-                chunk_size = 64 * 1024
-                with open(tmp, "wb") as f:
-                    for chunk in resp.iter_bytes(chunk_size=chunk_size):
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total > 0 and downloaded % (512 * 1024) < chunk_size:
-                            pct = 100 * downloaded / total
-                            logger.debug(f"  {pct:.1f}% ({downloaded // 1024}KB / {total // 1024}KB)")
+                self._stream_download(resp, tmp)
             tmp.rename(dest)
             self._stats["download_bytes"] += dest.stat().st_size
             logger.info(f"✓ Downloaded {dest.name} ({dest.stat().st_size // 1024}KB)")

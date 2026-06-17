@@ -179,17 +179,22 @@ class StreamingIndexer:
             except Exception:
                 pass
 
+    def _restore_line(self, line: str) -> bool:
+        """恢复单行 WAL 条目，成功返回 True"""
+        try:
+            entry = json.loads(line)
+            self._indexed_ids.add(entry["id"])
+            return True
+        except json.JSONDecodeError:
+            return False
+
     def _restore_from_file(self, path):
         count = 0
         try:
             with open(path, encoding="utf-8") as f:
                 for line in f:
-                    try:
-                        entry = json.loads(line)
-                        self._indexed_ids.add(entry["id"])
+                    if self._restore_line(line):
                         count += 1
-                    except json.JSONDecodeError:
-                        continue
         except OSError:
             pass
         return count

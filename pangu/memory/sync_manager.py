@@ -116,20 +116,28 @@ class SyncManager:
         """检查单个远程变更是否与本地存在冲突"""
         mem_id = rc.get("memory_id", "")
         for lc in local_entries:
-            if (not lc.resolved and
+            if self._is_update_conflict(lc, rc):
+                return self._build_conflict_dict(mem_id, lc, rc)
+        return None
+
+    @staticmethod
+    def _is_update_conflict(lc: ChangeEntry, rc: dict) -> bool:
+        return (not lc.resolved and
                 lc.operation == "update" and
                 rc.get("operation") == "update" and
-                lc.content_hash != rc.get("content_hash", "")):
-                return {
-                    "memory_id": mem_id,
-                    "local_change": lc.change_id,
-                    "remote_change": rc.get("id", ""),
-                    "local_time": lc.timestamp,
-                    "remote_time": rc.get("timestamp", ""),
-                    "local_source": lc.source,
-                    "remote_source": rc.get("source", ""),
-                }
-        return None
+                lc.content_hash != rc.get("content_hash", ""))
+
+    @staticmethod
+    def _build_conflict_dict(mem_id: str, lc: ChangeEntry, rc: dict) -> dict:
+        return {
+            "memory_id": mem_id,
+            "local_change": lc.change_id,
+            "remote_change": rc.get("id", ""),
+            "local_time": lc.timestamp,
+            "remote_time": rc.get("timestamp", ""),
+            "local_source": lc.source,
+            "remote_source": rc.get("source", ""),
+        }
 
     def detect_conflicts(self, remote_changes: list[dict]) -> list[dict]:
         """检测冲突"""

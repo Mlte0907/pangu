@@ -195,6 +195,16 @@ class MultimodalExtractor:
 
         return memory
 
+    def _extract_single_file(self, file_path: Path, wing: str, tags: list[str]) -> MultimodalMemory | None:
+        try:
+            return self.extract_from_file(
+                str(file_path), wing=wing,
+                room=file_path.parent.name,
+                tags=tags,
+            )
+        except Exception:
+            return None
+
     def extract_from_directory(self, dir_path: str, wing: str = "default",
                                recursive: bool = True, tags: list[str] = None) -> list[MultimodalMemory]:
         """从目录批量提取多模态记忆"""
@@ -208,15 +218,9 @@ class MultimodalExtractor:
 
         for file_path in path.glob(pattern):
             if file_path.is_file() and file_path.suffix.lower() in supported_exts:
-                try:
-                    memory = self.extract_from_file(
-                        str(file_path), wing=wing,
-                        room=file_path.parent.name,
-                        tags=tags,
-                    )
+                memory = self._extract_single_file(file_path, wing, tags)
+                if memory:
                     memories.append(memory)
-                except Exception:
-                    continue
 
         return memories
 

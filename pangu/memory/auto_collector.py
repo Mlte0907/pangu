@@ -55,6 +55,18 @@ class ConversationParser:
         except json.JSONDecodeError:
             return None
 
+    def _extract_text_from_list(self, content: list) -> str:
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    text_parts.append(item.get("text", ""))
+                elif item.get("type") == "toolCall":
+                    tool_name = item.get("name", "")
+                    if tool_name:
+                        text_parts.append(f"[工具调用: {tool_name}]")
+        return " ".join(text_parts)
+
     def _extract_message(self, data: dict) -> Optional[dict]:
         """从 JSONL 行中提取消息"""
         if data.get("type") != "message":
@@ -64,20 +76,8 @@ class ConversationParser:
         role = msg.get("role", "")
         content = msg.get("content", "")
 
-        # 处理列表格式的内容
         if isinstance(content, list):
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict):
-                    if item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                    elif item.get("type") == "toolCall":
-                        # 记录工具调用
-                        tool_name = item.get("name", "")
-                        tool_args = item.get("arguments", {})
-                        if tool_name:
-                            text_parts.append(f"[工具调用: {tool_name}]")
-            content = " ".join(text_parts)
+            content = self._extract_text_from_list(content)
 
         if not content or not isinstance(content, str):
             return None

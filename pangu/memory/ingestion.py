@@ -411,6 +411,14 @@ def get_fusion_stats() -> dict:
     return dict(_fusion_stats)
 
 
+def _fill_missing_embeddings(results: list, texts: list[str]) -> list:
+    """补齐批量嵌入结果中的 None 值"""
+    for i, r in enumerate(results):
+        if r is None:
+            results[i] = _embed_text(texts[i])
+    return results
+
+
 def _embed_batch(texts: list[str]) -> list[list[float] | None]:
     """ONNX 批量嵌入，降级到逐条"""
     try:
@@ -418,11 +426,7 @@ def _embed_batch(texts: list[str]) -> list[list[float] | None]:
         onnx = get_onnx_embedder()
         if onnx.is_available:
             results = onnx.embed_batch(texts)
-            # 补齐 None
-            for i, r in enumerate(results):
-                if r is None:
-                    results[i] = _embed_text(texts[i])
-            return results
+            return _fill_missing_embeddings(results, texts)
     except Exception as e:
         logger.debug(f"ONNX batch embed failed: {e}")
 

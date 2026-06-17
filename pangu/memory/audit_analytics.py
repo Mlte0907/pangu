@@ -139,11 +139,9 @@ class AuditAnalytics:
                 user_fail_rates[e.user_id]["failed"] += 1
         return user_fail_rates
 
-    def detect_anomalies(self) -> list[dict]:
+    def _detect_high_fail_rate_users(self, user_fail_rates: dict) -> list[dict]:
+        """检测高失败率用户"""
         anomalies = []
-
-        user_fail_rates = self._accumulate_fail_rates(self._entries)
-
         for user, stats in user_fail_rates.items():
             if stats["total"] >= 5:
                 fail_rate = stats["failed"] / stats["total"]
@@ -154,8 +152,11 @@ class AuditAnalytics:
                         "fail_rate": round(fail_rate, 3),
                         "detail": f"失败率 {fail_rate:.0%} ({stats['failed']}/{stats['total']})",
                     })
+        return anomalies
 
-        recent = self._entries[-20:]
+    def _detect_recent_anomalies(self, recent: list) -> list[dict]:
+        """检测近期操作异常"""
+        anomalies = []
         delete_count = sum(1 for e in recent if e.operation == "delete")
         if delete_count > 5:
             anomalies.append({
@@ -171,6 +172,16 @@ class AuditAnalytics:
                 "detail": f"最近有 {len(slow_ops)} 个慢操作 (>1000ms)",
                 "count": len(slow_ops),
             })
+        return anomalies
+
+    def detect_anomalies(self) -> list[dict]:
+        anomalies = []
+
+        user_fail_rates = self._accumulate_fail_rates(self._entries)
+        anomalies.extend(self._detect_high_fail_rate_users(user_fail_rates))
+
+        recent = self._entries[-20:]
+        anomalies.extend(self._detect_recent_anomalies(recent))
 
         return anomalies
 

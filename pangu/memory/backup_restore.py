@@ -177,6 +177,21 @@ class BackupRestoreEngine:
             filtered = [d for d in filtered if d.get("importance", 0) >= min_importance]
         return filtered
 
+    def _load_and_filter_backup(self, backup_id: str, wing: str = None,
+                                 min_importance: float = None) -> dict:
+        """加载并过滤备份数据"""
+        data = json.loads(
+            (self._backup_dir / f"{backup_id}.json").read_text()
+        )
+        filtered = self._apply_filters(data, wing, min_importance)
+        return {
+            "success": True,
+            "backup_id": backup_id,
+            "total_in_backup": len(data),
+            "restored_count": len(filtered),
+            "filter": {"wing": wing, "min_importance": min_importance},
+        }
+
     def restore_by_filter(self, backup_id: str, wing: str = None,
                           min_importance: float = None) -> dict:
         backup_file = self._backup_dir / f"{backup_id}.json"
@@ -184,16 +199,7 @@ class BackupRestoreEngine:
             return {"success": False, "error": "备份文件不存在"}
 
         try:
-            data = json.loads(backup_file.read_text())
-            filtered = self._apply_filters(data, wing, min_importance)
-
-            return {
-                "success": True,
-                "backup_id": backup_id,
-                "total_in_backup": len(data),
-                "restored_count": len(filtered),
-                "filter": {"wing": wing, "min_importance": min_importance},
-            }
+            return self._load_and_filter_backup(backup_id, wing, min_importance)
         except json.JSONDecodeError:
             return {"success": False, "error": "JSON 解析失败"}
 

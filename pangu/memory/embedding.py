@@ -33,6 +33,24 @@ class EmbeddingService:
 
     CIRCUIT_COOLDOWN = 600  # 电路断路器冷却时间（秒）
 
+    def _init_onnx_embedder(self):
+        """初始化 ONNX 嵌入器"""
+        if not getattr(self.config, "onnx_enabled", True):
+            return
+        try:
+            from pangu.memory.onnx_embedder import get_onnx_embedder
+            if get_onnx_embedder.__module__:
+                self._onnx = get_onnx_embedder(
+                    model_id=self.config.onnx_model_id,
+                    quantized=self.config.onnx_quantized,
+                    max_length=self.config.onnx_max_length,
+                    cache_dir=self.config.onnx_cache_dir or None,
+                    mirror_base=self.config.onnx_mirror_base,
+                    embedding_dim=self.config.embedding_dim,
+                )
+        except Exception as e:
+            logger.debug(f"ONNX embedder init deferred: {e}")
+
     def __init__(self, config: PanguConfig | None = None):
         self.config = config or PanguConfig()
         self._cache: dict = {}
@@ -42,23 +60,8 @@ class EmbeddingService:
         self._circuit_open = False
         self._half_open_until = 0.0  # timestamp until which half-open probe is allowed
         self._embed_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="embed_async")
-        # ONNX 嵌入器（懒加载）
         self._onnx = None
-        if getattr(self.config, "onnx_enabled", True):
-            try:
-                from pangu.memory.onnx_embedder import get_onnx_embedder
-
-                if get_onnx_embedder.__module__ and True:  # 检测可用性
-                    self._onnx = get_onnx_embedder(
-                        model_id=self.config.onnx_model_id,
-                        quantized=self.config.onnx_quantized,
-                        max_length=self.config.onnx_max_length,
-                        cache_dir=self.config.onnx_cache_dir or None,
-                        mirror_base=self.config.onnx_mirror_base,
-                        embedding_dim=self.config.embedding_dim,
-                    )
-            except Exception as e:
-                logger.debug(f"ONNX embedder init deferred: {e}")
+        self._init_onnx_embedder()
 
     def reset_circuit(self):
         """手动重置电路断路器"""

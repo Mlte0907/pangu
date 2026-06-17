@@ -146,6 +146,35 @@ class TimelineEngine:
         events.sort(key=lambda e: e.timestamp)
         return events
 
+    def _check_event_pair_causal(self, a: TimelineEvent, b: TimelineEvent,
+                                  min_confidence: float) -> CausalLink | None:
+        """检查两个事件对之间的因果关系"""
+        try:
+            ta = datetime.fromisoformat(a.timestamp)
+            tb = datetime.fromisoformat(b.timestamp)
+            delta_hours = (tb - ta).total_seconds() / 3600
+        except (ValueError, TypeError):
+            delta_hours = 0
+
+        confidence = self._check_causal_pattern(a.content, b.content)
+        if confidence > 0:
+            time_factor = 1.0 if delta_hours <= 24 else max(0.3, 1.0 - delta_hours / 720)
+            confidence *= time_factor
+
+        if confidence == 0 and self.embedder:
+            confidence = self._check_semantic_similarity(a.content, b.content, confidence)
+
+        if confidence >= min_confidence:
+            return CausalLink(
+                source_id=a.drawer_id,
+                target_id=b.drawer_id,
+                confidence=round(confidence, 4),
+                reason=self._describe_causal(a, b, confidence),
+                source_content=a.content[:100],
+                target_content=b.content[:100],
+            )
+        return None
+
     def find_causal_links(self, events: list[TimelineEvent],
                           min_confidence: float = 0.5) -> list[CausalLink]:
         """发现事件间的因果关系
@@ -161,35 +190,9 @@ class TimelineEngine:
 
         for i in range(len(events)):
             for j in range(i + 1, min(i + 10, len(events))):
-                a = events[i]
-                b = events[j]
-
-                # 时间差检查
-                try:
-                    ta = datetime.fromisoformat(a.timestamp)
-                    tb = datetime.fromisoformat(b.timestamp)
-                    delta_hours = (tb - ta).total_seconds() / 3600
-                except (ValueError, TypeError):
-                    delta_hours = 0
-
-                # 1. 检查内容中的因果模式
-                confidence = self._check_causal_pattern(a.content, b.content)
-                if confidence > 0:
-                    time_factor = 1.0 if delta_hours <= 24 else max(0.3, 1.0 - delta_hours / 720)
-                    confidence *= time_factor
-
-                if confidence == 0 and self.embedder:
-                    confidence = self._check_semantic_similarity(a.content, b.content, confidence)
-
-                if confidence >= min_confidence:
-                    links.append(CausalLink(
-                        source_id=a.drawer_id,
-                        target_id=b.drawer_id,
-                        confidence=round(confidence, 4),
-                        reason=self._describe_causal(a, b, confidence),
-                        source_content=a.content[:100],
-                        target_content=b.content[:100],
-                    ))
+                link = self._check_event_pair_causal(events[i], events[j], min_confidence)
+                if link:
+                    links.append(link)
 
         links.sort(key=lambda link: link.confidence, reverse=True)
         return links

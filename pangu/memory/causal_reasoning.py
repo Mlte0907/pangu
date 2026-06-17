@@ -61,28 +61,30 @@ class CausalReasoningEngine:
         self._causal_links: list[CausalLink] = []
         self._causal_chains: list[CausalChain] = []
 
+    def _check_effect_match(self, d1, drawers: list) -> list[CausalLink]:
+        """检查 d1 作为原因时与所有潜在效果的匹配"""
+        links = []
+        for j, d2 in enumerate(drawers):
+            if d1.id == d2.id:
+                continue
+            c2 = d2.content.lower()
+            is_effect = any(m in c2 for m in CAUSAL_MARKERS["effect"])
+            if is_effect:
+                link = self._try_create_causal_link(d1, d2)
+                if link:
+                    links.append(link)
+        return links
+
     def discover_causal_links(self, drawers: list) -> list[CausalLink]:
         """从记忆中发现因果链接"""
         links = []
 
-        for i, d1 in enumerate(drawers):
+        for d1 in drawers:
             c1 = d1.content.lower()
             is_cause = any(m in c1 for m in CAUSAL_MARKERS["cause"])
-
             if not is_cause:
                 continue
-
-            for j, d2 in enumerate(drawers):
-                if i == j:
-                    continue
-
-                c2 = d2.content.lower()
-                is_effect = any(m in c2 for m in CAUSAL_MARKERS["effect"])
-
-                if is_effect:
-                    link = self._try_create_causal_link(d1, d2)
-                    if link:
-                        links.append(link)
+            links.extend(self._check_effect_match(d1, drawers))
 
         seen = set()
         unique = []

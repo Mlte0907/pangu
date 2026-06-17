@@ -55,6 +55,23 @@ class GraphReasoning:
         self.config = config or PanguConfig.load()
         self.kg = KnowledgeGraph(config)
 
+    def _find_entity_paths(self, entities: list[dict]) -> tuple[list[list[dict]], list[str]]:
+        paths = []
+        reasoning_parts = []
+        for i in range(len(entities)):
+            for j in range(i + 1, len(entities)):
+                path = self.kg.find_path(
+                    entities[i]["id"],
+                    entities[j]["id"],
+                    max_depth=3
+                )
+                if path:
+                    paths.extend(path)
+                    reasoning_parts.append(
+                        f"找到路径: {entities[i].get('name', '')} → {entities[j].get('name', '')}"
+                    )
+        return paths, reasoning_parts
+
     def infer(self, query: str) -> InferenceResult:
         """基于图谱推理回答问题
 
@@ -73,18 +90,8 @@ class GraphReasoning:
         # 2. 路径查找
         paths = []
         if len(entities) >= 2:
-            for i in range(len(entities)):
-                for j in range(i + 1, len(entities)):
-                    path = self.kg.find_path(
-                        entities[i]["id"],
-                        entities[j]["id"],
-                        max_depth=3
-                    )
-                    if path:
-                        paths.extend(path)
-                        reasoning_chain.append(
-                            f"找到路径: {entities[i].get('name', '')} → {entities[j].get('name', '')}"
-                        )
+            paths, path_reasons = self._find_entity_paths(entities)
+            reasoning_chain.extend(path_reasons)
 
         # 3. 规则推理
         inferences = self._apply_rules(entities, paths)

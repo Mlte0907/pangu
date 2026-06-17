@@ -95,19 +95,21 @@ class ConsolidationIntelligence:
             importance_delta=max_importance * 0.1,
         )
 
-    def find_promotion_candidates(self, drawers: list[Drawer],
-                                   access_counts: dict[str, int] = None) -> list[ConsolidationAction]:
-        """查找应提升重要性的记忆"""
-        access_counts = access_counts or {}
+    def _collect_promotions(self, drawers: list[Drawer],
+                             access_counts: dict[str, int]) -> list[ConsolidationAction]:
         actions = []
-
         for d in drawers:
             count = access_counts.get(d.id, 0)
             action = self._check_promotion_candidate(d, count)
             if action:
                 actions.append(action)
+        return actions
 
-        return actions[:10]
+    def find_promotion_candidates(self, drawers: list[Drawer],
+                                   access_counts: dict[str, int] = None) -> list[ConsolidationAction]:
+        """查找应提升重要性的记忆"""
+        access_counts = access_counts or {}
+        return self._collect_promotions(drawers, access_counts)[:10]
 
     def _check_promotion_candidate(self, d: Drawer, count: int) -> ConsolidationAction | None:
         if count >= 5 and d.importance / 5.0 < 0.6:
