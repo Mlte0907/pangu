@@ -46,7 +46,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # 启动
-        logger.info(f"盘古 v1.0.0 starting on {config.host}:{config.port}")
+        logger.info(f"盘古 v3.0 starting on {config.host}:{config.port}")
         init_db()
         config.ensure_dirs()
 
@@ -59,15 +59,23 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Working memory init failed: {e}")
 
+        # 预热组件（消除冷查询延迟）
+        try:
+            from pangu.memory.warmup import warmup_all
+            warmup = warmup_all()
+            logger.info(f"Warmup complete: {warmup['total']:.0f}ms (jieba={warmup['jieba']:.0f}ms, onnx={warmup['onnx']:.0f}ms, fts={warmup['fts_index']:.0f}ms)")
+        except Exception as e:
+            logger.warning(f"Warmup failed: {e}")
+
         logger.info("盘古 server started")
         yield
         # 关闭
         logger.info("盘古 server stopped")
 
     app = FastAPI(
-        title="盘古 v1.0.0",
+        title="盘古 v3.0",
         description="盘古 — LMM+Wiki 超智能记忆系统 (伏羲增强版)",
-        version="1.0.0",
+        version="3.0.0",
         lifespan=lifespan,
     )
 
