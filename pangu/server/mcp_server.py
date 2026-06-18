@@ -665,6 +665,13 @@ class MCPServer:
             {"name": "pangu_env_check", "description": "运行环境检查", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_startup_validate", "description": "启动校验", "inputSchema": {"type": "object", "properties": {}}},
 
+            # ── 插件管理 ──
+            {"name": "pangu_plugin_list", "description": "列出所有插件", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_plugin_enable", "description": "启用插件", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+            {"name": "pangu_plugin_disable", "description": "禁用插件", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+            {"name": "pangu_plugin_config", "description": "获取插件配置", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+            {"name": "pangu_plugin_discover", "description": "发现并加载自定义插件", "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "插件目录路径"}}}},
+
             # ── 跨会话增强 (v3.0) ──
             {"name": "pangu_session_summary", "description": "生成会话摘要", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_session_bridge", "description": "构建上下文桥接", "inputSchema": {"type": "object", "properties": {}}},
@@ -3573,6 +3580,36 @@ class MCPServer:
                 validator = default_startup_checks()
                 ok, results = validator.validate()
                 return json.dumps({"ok": ok, "checks": results}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_plugin_list":
+                from ..plugins import get_plugin_manager
+                pm = get_plugin_manager()
+                return json.dumps({"plugins": pm.list_plugins(), "count": pm.plugin_count}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_plugin_enable":
+                from ..plugins import get_plugin_manager
+                pm = get_plugin_manager()
+                ok = pm.enable(arguments["name"])
+                return json.dumps({"status": "enabled" if ok else "not_found"}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_plugin_disable":
+                from ..plugins import get_plugin_manager
+                pm = get_plugin_manager()
+                ok = pm.disable(arguments["name"])
+                return json.dumps({"status": "disabled" if ok else "not_found"}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_plugin_config":
+                from ..plugins import get_plugin_manager
+                pm = get_plugin_manager()
+                config = pm.get_config(arguments["name"])
+                return json.dumps({"name": arguments["name"], "config": config}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_plugin_discover":
+                from ..plugins import get_plugin_manager
+                pm = get_plugin_manager()
+                path = arguments.get("path")
+                count = pm.discover_plugins(path)
+                return json.dumps({"discovered": count}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_session_summary":
                 from ..memory.cross_session import CrossSessionIntegrator
