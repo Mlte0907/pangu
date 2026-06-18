@@ -22,10 +22,10 @@ services:
     container_name: pangu
     restart: unless-stopped
     ports:
-      - "19528:19528"
+      - "19529:19529"
     environment:
       PANGU_HOST: 0.0.0.0
-      PANGU_PORT: 19528
+      PANGU_PORT: 19529
       PANGU_API_KEY: ${PANGU_API_KEY:-}    # 留空则不启用鉴权
       PANGU_BASE_DIR: /data
       PANGU_LLM_PROVIDER: ${PANGU_LLM_PROVIDER:-ollama}
@@ -39,7 +39,7 @@ services:
       ollama:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:19528/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:19529/health"]
       interval: 30s
       timeout: 10s
       start_period: 30s
