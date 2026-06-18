@@ -26,12 +26,14 @@ services:
     environment:
       PANGU_HOST: 0.0.0.0
       PANGU_PORT: 19529
-      PANGU_API_KEY: ${PANGU_API_KEY:-}    # 留空则不启用鉴权
+      PANGU_API_KEY: ${PANGU_API_KEY:-}
       PANGU_BASE_DIR: /data
+      PANGU_LOG_LEVEL: ${PANGU_LOG_LEVEL:-INFO}
       PANGU_LLM_PROVIDER: ${PANGU_LLM_PROVIDER:-ollama}
       PANGU_LLM_MODEL: ${PANGU_LLM_MODEL:-qwen2.5:7b}
       PANGU_EMBED_API_URL: ${PANGU_EMBED_API_URL:-http://ollama:11434/api/embed}
-      PANGU_LOG_LEVEL: ${PANGU_LOG_LEVEL:-INFO}
+      PANGU_ONNX_ENABLED: ${PANGU_ONNX_ENABLED:-true}
+      PANGU_CONSOLIDATION_ENABLED: ${PANGU_CONSOLIDATION_ENABLED:-true}
     volumes:
       - pangu-data:/data
       - pangu-logs:/data/logs
