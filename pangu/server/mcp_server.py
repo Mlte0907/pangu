@@ -616,8 +616,9 @@ class MCPServer:
             # ── 多端同步 (v3.0) ──
             {"name": "pangu_sync_record", "description": "记录变更", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string"}, "operation": {"type": "string"}, "content": {"type": "string", "default": ""}}, "required": ["memory_id", "operation"]}},
             {"name": "pangu_sync_pending", "description": "获取待同步变更", "inputSchema": {"type": "object", "properties": {"since": {"type": "string"}}}},
-            {"name": "pangu_sync_conflicts", "description": "检测冲突", "inputSchema": {"type": "object", "properties": {"remote_changes": {"type": "array", "items": {"type": "object"}, "default": []}}}},
-            {"name": "pangu_sync_resolve", "description": "解决冲突", "inputSchema": {"type": "object", "properties": {"change_id": {"type": "string"}, "resolution": {"type": "string", "default": "keep_latest"}}, "required": ["change_id"]}},
+            {"name": "pangu_sync_incremental", "description": "增量同步", "inputSchema": {"type": "object", "properties": {"since_timestamp": {"type": "string"}, "source": {"type": "string"}}}},
+            {"name": "pangu_sync_apply", "description": "应用增量变更", "inputSchema": {"type": "object", "properties": {"remote_changes": {"type": "array", "items": {"type": "object"}, "default": []}}}},
+            {"name": "pangu_sync_auto_resolve", "description": "自动解决冲突", "inputSchema": {"type": "object", "properties": {"strategy": {"type": "string", "default": "keep_latest"}}}},
             {"name": "pangu_sync_state", "description": "同步状态", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_sync_stats", "description": "同步统计", "inputSchema": {"type": "object", "properties": {}}},
 
@@ -3406,6 +3407,27 @@ class MCPServer:
                 from ..memory.sync_manager import get_sync
                 sm = get_sync(self.config)
                 return json.dumps(sm.get_sync_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_incremental":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                changes = sm.get_incremental_changes(
+                    arguments.get("since_timestamp"),
+                    arguments.get("source"),
+                )
+                return json.dumps({"changes": changes, "count": len(changes)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_apply":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                result = sm.apply_incremental(arguments.get("remote_changes", []))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_sync_auto_resolve":
+                from ..memory.sync_manager import get_sync
+                sm = get_sync(self.config)
+                result = sm.auto_resolve_conflicts(arguments.get("strategy", "keep_latest"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_event_emit":
                 from ..memory.memory_events import get_event_stream

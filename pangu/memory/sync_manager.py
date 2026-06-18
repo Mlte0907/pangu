@@ -215,6 +215,68 @@ class SyncManager:
             "conflicts": sum(1 for c in self._changes if c.resolved and c.old_content_hash),
         }
 
+    # ── 增量同步 ──
+
+    def get_incremental_changes(self, since_timestamp: str = None, source: str = None) -> list[dict]:
+        """获取增量变更 — 只返回指定时间后的未同步变更"""
+        changes = [c for c in self._changes if not c.resolved]
+
+        if since_timestamp:
+            changes = [c for c in changes if c.timestamp > since_timestamp]
+
+        if source:
+            changes = [c for c in changes if c.source != source]
+
+        return [
+            {"id": c.change_id, "memory_id": c.memory_id,
+             "operation": c.operation, "content_hash": c.content_hash,
+             "timestamp": c.timestamp, "source": c.source}
+            for c in changes
+        ]
+
+    def apply_incremental(self, remote_changes: list[dict]) -> dict:
+        """应用增量变更 — 从远程设备接收变更"""
+        applied = 0
+        conflicts = 0
+        skipped = 0
+
+        for rc in remote_changes:
+            mem_id = rc.get("memory_id", "")
+            op = rc.get("operation", "")
+            content_hash = rc.get("content_hash", "")
+
+            existing = [c for c in self._changes if c.memory_id == mem_id and not c.resolved]
+
+            if existing:
+                latest = existing[-1]
+                if latest.content_hash != content_hash:
+                    conflicts += 1
+                    continue
+
+            entry = self.record_change(mem_id, op, content=rc.get("content", ""))
+            applied += 1
+
+        self._save_changes()
+        return {"applied": applied, "conflicts": conflicts, "skipped": skipped}
+
+    def auto_resolve_conflicts(self, strategy: str = "keep_latest") -> dict:
+        """自动解决冲突"""
+        unresolved = [c for c in self._changes if not c.resolved and c.old_content_hash]
+        resolved = 0
+
+        for c in unresolved:
+            conflicts = [x for x in self._changes if x.memory_id == c.memory_id and x != c]
+            if conflicts:
+                latest = max(conflicts + [c], key=lambda x: x.timestamp)
+                for other in conflicts:
+                    if other != latest:
+                        other.resolved = True
+                latest.resolved = True
+                resolved += 1
+
+        self._save_changes()
+        return {"resolved": resolved, "total_unresolved": len(unresolved)}
+
 
 _sync: SyncManager | None = None
 
