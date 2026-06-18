@@ -327,6 +327,59 @@ async def search_memories(
         return ApiResponse.error(500, str(e))
 
 
+@router.get("/memories/stats")
+async def get_stats():
+    """获取记忆统计（含搜索、健康、token）"""
+    try:
+        palace = Palace(config.palace_path)
+        stats = palace.stats()
+
+        # 搜索统计
+        try:
+            from pangu.memory.retrieval import get_search_stats, get_search_history
+            stats["search"] = get_search_stats()
+            stats["search"]["recent_history"] = get_search_history(limit=5)
+        except Exception:
+            pass
+
+        # 健康检查
+        try:
+            from pangu.memory.layers import MemoryStack
+            stack = MemoryStack(config)
+            stats["health"] = stack.health_check()
+        except Exception:
+            pass
+
+        # Token 统计
+        try:
+            from pangu.memory.layers import MemoryStack, _estimate_tokens
+            stack = MemoryStack(config)
+            drawers_file = Path(config.palace_path) / "drawers.json"
+            if drawers_file.exists():
+                import json
+                with open(drawers_file) as f:
+                    drawers = json.load(f)
+                total_tokens = sum(_estimate_tokens(d.get("content", "")) for d in drawers)
+                stats["tokens"] = {"total": total_tokens, "avg_per_memory": round(total_tokens / max(len(drawers), 1))}
+        except Exception:
+            pass
+
+        # 生命周期状态（last_consolidation）
+        try:
+            from pangu.memory.lifecycle import LifecycleManager
+            lifecycle = LifecycleManager(config)
+            stats["consolidation"] = {
+                "last_consolidation": lifecycle._last_consolidation if lifecycle._last_consolidation else None,
+                "last_index_rebuild": lifecycle._last_index_rebuild if lifecycle._last_index_rebuild else None,
+            }
+        except Exception:
+            pass
+
+        return ApiResponse.ok(stats)
+    except Exception as e:
+        return ApiResponse.error(500, str(e))
+
+
 @router.get("/memories/{memory_id}")
 async def get_memory(memory_id: str, request: Request):
     """获取单条记忆（ABAC：按 mid 加载资源，authorize 后返回）。"""
@@ -417,48 +470,6 @@ async def get_context(
             "budget": budget,
             "item_count": len(context) if context else 0,
         })
-    except Exception as e:
-        return ApiResponse.error(500, str(e))
-
-
-@router.get("/memories/stats")
-async def get_stats():
-    """获取记忆统计（含搜索、健康、token）"""
-    try:
-        palace = Palace(config.palace_path)
-        stats = palace.stats()
-
-        # 搜索统计
-        try:
-            from pangu.memory.retrieval import get_search_stats, get_search_history
-            stats["search"] = get_search_stats()
-            stats["search"]["recent_history"] = get_search_history(limit=5)
-        except Exception:
-            pass
-
-        # 健康检查
-        try:
-            from pangu.memory.layers import MemoryStack
-            stack = MemoryStack(config)
-            stats["health"] = stack.health_check()
-        except Exception:
-            pass
-
-        # Token 统计
-        try:
-            from pangu.memory.layers import MemoryStack, _estimate_tokens
-            stack = MemoryStack(config)
-            drawers_file = Path(config.palace_path) / "drawers.json"
-            if drawers_file.exists():
-                import json
-                with open(drawers_file) as f:
-                    drawers = json.load(f)
-                total_tokens = sum(_estimate_tokens(d.get("content", "")) for d in drawers)
-                stats["tokens"] = {"total": total_tokens, "avg_per_memory": round(total_tokens / max(len(drawers), 1))}
-        except Exception:
-            pass
-
-        return ApiResponse.ok(stats)
     except Exception as e:
         return ApiResponse.error(500, str(e))
 

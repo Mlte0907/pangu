@@ -95,6 +95,72 @@ class ExportImportEngine:
         self._record_export("csv", len(drawers), filepath)
         return {"format": "csv", "count": len(drawers), "filepath": filepath}
 
+    def export_yaml(self, drawers: list, filepath: str = None) -> dict:
+        """YAML 格式导出"""
+        if not filepath:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = str(self._export_dir / f"export_{ts}.yaml")
+
+        data = []
+        for d in drawers:
+            data.append({
+                "id": d.id,
+                "content": d.content,
+                "wing": d.wing,
+                "importance": d.importance,
+                "tags": d.tags,
+                "created_at": getattr(d, "created_at", ""),
+            })
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(f"# 盘古记忆导出 - {datetime.now().isoformat()}\n")
+            f.write(f"# 总计 {len(drawers)} 条记忆\n\n")
+            f.write("memories:\n")
+            for item in data:
+                f.write(f"  - id: {item['id']}\n")
+                f.write(f"    content: \"{item['content'][:200]}\"\n")
+                f.write(f"    wing: {item['wing']}\n")
+                f.write(f"    importance: {item['importance']}\n")
+                f.write(f"    tags: {json.dumps(item['tags'], ensure_ascii=False)}\n")
+                if item['created_at']:
+                    f.write(f"    created_at: {item['created_at']}\n")
+                f.write("\n")
+
+        self._record_export("yaml", len(drawers), filepath)
+        return {"format": "yaml", "count": len(drawers), "filepath": filepath}
+
+    def export_obsidian(self, drawers: list, filepath: str = None) -> dict:
+        """Obsidian 格式导出（单文件，带 WikiLink）"""
+        if not filepath:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = str(self._export_dir / f"export_{ts}_obsidian.md")
+
+        lines = ["# 盘古记忆导出\n"]
+        lines.append(f"导出时间: {datetime.now().isoformat()}\n")
+        lines.append(f"总计: {len(drawers)} 条记忆\n\n")
+
+        by_wing = {}
+        for d in drawers:
+            by_wing.setdefault(d.wing, []).append(d)
+
+        for wing, wing_drawers in by_wing.items():
+            lines.append(f"## {wing}\n")
+            for d in wing_drawers:
+                tags_str = " ".join(f"#{t}" for t in d.tags)
+                lines.append(f"### [{d.id[:8]}]\n")
+                lines.append(f"{d.content[:300]}\n")
+                lines.append(f"重要性: {'⭐' * int(d.importance)} | 标签: {', '.join(d.tags)}\n")
+                if d.tags:
+                    links = " ".join(f"[[{t}]]" for t in d.tags[:3])
+                    lines.append(f"相关: {links}\n")
+                lines.append("\n---\n\n")
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+        self._record_export("obsidian", len(drawers), filepath)
+        return {"format": "obsidian", "count": len(drawers), "filepath": filepath}
+
     def import_json(self, filepath: str) -> dict:
         """JSON 格式导入"""
         content = Path(filepath).read_text()
@@ -119,20 +185,14 @@ class ExportImportEngine:
         ext = path.suffix.lower()
         if ext == ".json":
             return "json"
+        elif ext == ".yaml" or ext == ".yml":
+            return "yaml"
         elif ext == ".md":
             return "markdown"
         elif ext == ".csv":
             return "csv"
-
-        try:
-            content = path.read_text()[:100]
-            if content.strip().startswith("{") or content.strip().startswith("["):
-                return "json"
-            elif content.startswith("#"):
-                return "markdown"
-        except Exception:
-            pass
-
+        elif "obsidian" in path.name:
+            return "obsidian"
         return "unknown"
 
     def smart_import(self, filepath: str) -> dict:
@@ -161,7 +221,7 @@ class ExportImportEngine:
         """列出所有导出文件"""
         exports = []
         for f in self._export_dir.iterdir():
-            if f.suffix in (".json", ".md", ".csv"):
+            if f.suffix in (".json", ".md", ".csv", ".yaml", ".yml") or "obsidian" in f.name:
                 exports.append({
                     "name": f.name,
                     "format": f.suffix[1:],

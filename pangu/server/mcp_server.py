@@ -657,6 +657,8 @@ class MCPServer:
             {"name": "pangu_export_json", "description": "JSON格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
             {"name": "pangu_export_markdown", "description": "Markdown格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
             {"name": "pangu_export_csv", "description": "CSV格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
+            {"name": "pangu_export_yaml", "description": "YAML格式导出", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
+            {"name": "pangu_export_obsidian", "description": "Obsidian格式导出（带WikiLink）", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}}},
             {"name": "pangu_import_smart", "description": "智能导入（自动检测格式）", "inputSchema": {"type": "object", "properties": {"filepath": {"type": "string"}}, "required": ["filepath"]}},
             {"name": "pangu_list_exports", "description": "列出所有导出文件", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_export_stats", "description": "导出导入统计", "inputSchema": {"type": "object", "properties": {}}},
@@ -2872,8 +2874,13 @@ class MCPServer:
 
             elif tool_name == "pangu_consolidate":
                 from ..memory.consolidation_intelligence import get_consolidation_intel
+                from ..memory.lifecycle import LifecycleManager
                 ci = get_consolidation_intel(self.config)
                 report = ci.run_consolidation(drawers)
+                # 同时更新 lifecycle 状态中的 last_consolidation 时间戳
+                lifecycle = LifecycleManager(self.config)
+                lifecycle._last_consolidation = time.time()
+                lifecycle._save_state()
                 return json.dumps({
                     "total_actions": report.total_actions,
                     "merges": report.merges,
@@ -2910,8 +2917,13 @@ class MCPServer:
 
             elif tool_name == "pangu_consolidation_stats":
                 from ..memory.consolidation_intelligence import get_consolidation_intel
+                from ..memory.lifecycle import LifecycleManager
                 ci = get_consolidation_intel(self.config)
-                return json.dumps(ci.get_consolidation_stats(), ensure_ascii=False, indent=2)
+                stats = ci.get_consolidation_stats()
+                # 同时从 LifecycleManager 读取 last_consolidation
+                lifecycle = LifecycleManager(self.config)
+                stats["last_consolidation"] = lifecycle._last_consolidation if lifecycle._last_consolidation else None
+                return json.dumps(stats, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_recommend":
                 from ..memory.recommendation import get_recommendation
@@ -3556,6 +3568,18 @@ class MCPServer:
                 from ..memory.export_import import get_export_engine
                 ee = get_export_engine(self.config)
                 result = ee.export_csv(drawers, arguments.get("filepath"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_export_yaml":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                result = ee.export_yaml(drawers, arguments.get("filepath"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_export_obsidian":
+                from ..memory.export_import import get_export_engine
+                ee = get_export_engine(self.config)
+                result = ee.export_obsidian(drawers, arguments.get("filepath"))
                 return json.dumps(result, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_import_smart":
