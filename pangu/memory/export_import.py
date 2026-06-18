@@ -179,6 +179,50 @@ class ExportImportEngine:
         self._record_import("json", len(imported), filepath)
         return {"format": "json", "imported": len(imported), "data": imported}
 
+    def import_markdown(self, filepath: str) -> dict:
+        """Markdown 格式导入"""
+        content = Path(filepath).read_text(encoding="utf-8")
+        imported = []
+        current_wing = "imported"
+        current_content = ""
+
+        for line in content.split("\n"):
+            if line.startswith("## "):
+                if current_content:
+                    imported.append({
+                        "id": "",
+                        "content": current_content.strip(),
+                        "wing": current_wing,
+                        "importance": 3.0,
+                        "tags": [],
+                    })
+                current_wing = line[3:].strip()
+                current_content = ""
+            elif line.startswith("### "):
+                if current_content:
+                    imported.append({
+                        "id": "",
+                        "content": current_content.strip(),
+                        "wing": current_wing,
+                        "importance": 3.0,
+                        "tags": [],
+                    })
+                current_content = ""
+            elif line.strip() and not line.startswith("#") and not line.startswith("---"):
+                current_content += line + "\n"
+
+        if current_content.strip():
+            imported.append({
+                "id": "",
+                "content": current_content.strip(),
+                "wing": current_wing,
+                "importance": 3.0,
+                "tags": [],
+            })
+
+        self._record_import("markdown", len(imported), filepath)
+        return {"format": "markdown", "imported": len(imported), "data": imported}
+
     def detect_format(self, filepath: str) -> str:
         """检测文件格式"""
         path = Path(filepath)
@@ -200,6 +244,8 @@ class ExportImportEngine:
         fmt = self.detect_format(filepath)
         if fmt == "json":
             return self.import_json(filepath)
+        elif fmt == "markdown":
+            return self.import_markdown(filepath)
         else:
             return {"error": f"不支持的导入格式: {fmt}", "detected": fmt}
 
