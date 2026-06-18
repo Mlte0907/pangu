@@ -240,6 +240,45 @@ class ExportImportEngine:
         self._record_import("csv", len(imported), filepath)
         return {"format": "csv", "imported": len(imported), "data": imported}
 
+    def import_yaml(self, filepath: str) -> dict:
+        """YAML 格式导入"""
+        content = Path(filepath).read_text(encoding="utf-8")
+        imported = []
+        current_id = ""
+        current_content = ""
+        current_wing = "imported"
+        current_importance = 3.0
+        current_tags = []
+
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("- id:"):
+                if current_content:
+                    imported.append({"id": current_id, "content": current_content, "wing": current_wing, "importance": current_importance, "tags": current_tags})
+                current_id = stripped.split(":", 1)[1].strip().strip('"')
+                current_content = ""
+                current_tags = []
+            elif stripped.startswith("content:"):
+                current_content = stripped.split(":", 1)[1].strip().strip('"')
+            elif stripped.startswith("wing:"):
+                current_wing = stripped.split(":", 1)[1].strip()
+            elif stripped.startswith("importance:"):
+                try: current_importance = float(stripped.split(":", 1)[1].strip())
+                except: pass
+            elif stripped.startswith("tags:"):
+                tag_str = stripped.split(":", 1)[1].strip()
+                if tag_str.startswith("["):
+                    try: current_tags = json.loads(tag_str)
+                    except: current_tags = []
+                elif tag_str:
+                    current_tags = [tag_str]
+
+        if current_content:
+            imported.append({"id": current_id, "content": current_content, "wing": current_wing, "importance": current_importance, "tags": current_tags})
+
+        self._record_import("yaml", len(imported), filepath)
+        return {"format": "yaml", "imported": len(imported), "data": imported}
+
     def detect_format(self, filepath: str) -> str:
         """检测文件格式"""
         path = Path(filepath)
@@ -265,6 +304,8 @@ class ExportImportEngine:
             return self.import_markdown(filepath)
         elif fmt == "csv":
             return self.import_csv(filepath)
+        elif fmt == "yaml":
+            return self.import_yaml(filepath)
         else:
             return {"error": f"不支持的导入格式: {fmt}", "detected": fmt}
 
