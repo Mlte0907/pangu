@@ -7,10 +7,11 @@
 | 指标 | 值 | 指标 | 值 |
 |:---|:---|:---|:---|
 | 版本 | v3.0 | 端口 | 19529 |
-| Git 提交 | 114 | 技术栈 | Python 3.12, ONNX, FAISS, SQLite |
-| 测试用例 | 790 | 运行时数据 | `~/.pangu/` |
-| MCP 工具 | 349 | 功能模块 | 105 |
+| Git 提交 | 132 | 技术栈 | Python 3.12, ONNX, FAISS, SQLite |
+| 测试用例 | 859 | 运行时数据 | `~/.pangu/` |
+| MCP 工具 | 368 | 功能模块 | 108 |
 | 代码行数 | 30K+ | 许可证 | MIT |
+| Docker | ✅ 一键部署 | 导出格式 | JSON/MD/CSV/YAML/Obsidian |
 
 ## 架构
 
@@ -292,7 +293,7 @@ curl http://127.0.0.1:19529/health/deep  # 深度健康
 
 WebSocket: `ws://127.0.0.1:8866/ws`，支持 MEMORY/WIKI/KG 事件订阅。
 
-## MCP 工具 (349 个)
+## MCP 工具 (368 个)
 
 ### 记忆核心
 
