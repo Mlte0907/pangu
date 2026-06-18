@@ -772,5 +772,38 @@ def create_app() -> FastAPI:
             return HTMLResponse(content=perf_path.read_text(encoding="utf-8"))
         return HTMLResponse(content="<h1>Performance page not found</h1>", status_code=404)
 
+    # ── WebSocket 实时通知 ──
+
+    from fastapi import WebSocket
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        await websocket.accept()
+        from ..memory.realtime import get_connection_manager
+        mgr = get_connection_manager()
+        client_id = f"client_{id(websocket)}"
+        mgr.connect(client_id, websocket)
+
+        try:
+            while True:
+                data = await websocket.receive_text()
+                msg = json.loads(data) if data.startswith("{") else {"action": data}
+
+                action = msg.get("action", "")
+                if action == "subscribe":
+                    topic = msg.get("topic", "*")
+                    mgr.subscribe(client_id, topic)
+                    await websocket.send_text(json.dumps({"type": "subscribed", "topic": topic}))
+                elif action == "unsubscribe":
+                    topic = msg.get("topic")
+                    mgr.unsubscribe(client_id, topic)
+                    await websocket.send_text(json.dumps({"type": "unsubscribed", "topic": topic}))
+                elif action == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+        except Exception:
+            pass
+        finally:
+            mgr.disconnect(client_id)
+
     logger.info("盘古 app created with all routes")
     return app

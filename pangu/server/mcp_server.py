@@ -672,6 +672,10 @@ class MCPServer:
             {"name": "pangu_plugin_config", "description": "获取插件配置", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
             {"name": "pangu_plugin_discover", "description": "发现并加载自定义插件", "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "插件目录路径"}}}},
 
+            # ── 实时通知 ──
+            {"name": "pangu_realtime_stats", "description": "实时通知统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_realtime_history", "description": "事件历史", "inputSchema": {"type": "object", "properties": {"event_type": {"type": "string"}, "limit": {"type": "integer", "default": 50}}}},
+
             # ── 跨会话增强 (v3.0) ──
             {"name": "pangu_session_summary", "description": "生成会话摘要", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_session_bridge", "description": "构建上下文桥接", "inputSchema": {"type": "object", "properties": {}}},
@@ -3610,6 +3614,17 @@ class MCPServer:
                 path = arguments.get("path")
                 count = pm.discover_plugins(path)
                 return json.dumps({"discovered": count}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_realtime_stats":
+                from ..memory.realtime import get_connection_manager
+                mgr = get_connection_manager()
+                return json.dumps(mgr.get_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_realtime_history":
+                from ..memory.realtime import get_connection_manager
+                mgr = get_connection_manager()
+                history = mgr.get_history(arguments.get("event_type"), arguments.get("limit", 50))
+                return json.dumps({"history": history, "count": len(history)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_session_summary":
                 from ..memory.cross_session import CrossSessionIntegrator
