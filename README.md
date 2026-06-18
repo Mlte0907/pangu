@@ -7,9 +7,9 @@
 | 指标 | 值 | 指标 | 值 |
 |:---|:---|:---|:---|
 | 版本 | v3.0 | 端口 | 19529 |
-| Git 提交 | 104 | 技术栈 | Python 3.12, ONNX, FAISS, SQLite |
-| 测试用例 | 428 | 运行时数据 | `~/.pangu/` |
-| MCP 工具 | 315 | 功能模块 | 94 |
+| Git 提交 | 113 | 技术栈 | Python 3.12, ONNX, FAISS, SQLite |
+| 测试用例 | 790 | 运行时数据 | `~/.pangu/` |
+| MCP 工具 | 349 | 功能模块 | 105 |
 | 代码行数 | 30K+ | 许可证 | MIT |
 
 ## 架构
@@ -64,7 +64,9 @@
 | **知识结晶** | LLM 驱动 Wiki 自动生成，智能关联 |
 | **安全加固** | Bandit HIGH: 22→0，参数化查询，blake2b 哈希 |
 
-## v3.0 新增模块 (31 个)
+## v3.0 新增模块 (43 个)
+
+### 智能记忆引擎 (31 个)
 
 | 模块 | 说明 | 工具数 | 模块 | 说明 | 工具数 |
 |:---|:---|:---|:---|:---|:---|
@@ -84,6 +86,17 @@
 | 智能索引 | 索引构建/搜索/推荐 | 5 | 智能缓存 | 缓存统计/清理/失效 | 3 |
 | 统一门户 | 写入/搜索/全景视图 | 5 | 记忆差异 | 差异/相似度/统计 | 4 |
 | 生产加固 | 环境检查、启动验证 | 2 | | | |
+
+### 伏羲认知引擎移植 (12 个)
+
+| 模块 | 说明 | 工具数 | 模块 | 说明 | 工具数 |
+|:---|:---|:---|:---|:---|:---|
+| 认知循环 | 观察→思考→评估→行动 | 2 | 深度情感 | 轨迹分析、混合情感分解 | 3 |
+| 世界模型 | 情景预测、预案生成 | 4 | 辩论引擎 | 多视角论证、4维评分 | 2 |
+| 梦境记忆 | 5步睡眠巩固 | 2 | 叙事引擎 | 故事生成、主题提取 | 3 |
+| 好奇心 | 知识空白发现 | 2 | 共振引擎 | 情感共振匹配 | 3 |
+| 人格引擎 | 身份/价值观/健康 | 3 | 意图预测 | 行为模式、任务链 | 3 |
+| 元认知增强 | 系统监测、自重构 | 2 | 知识综合增强 | 跨聚类关联、空白检测 | 2 |
 
 ## 快速开始
 
@@ -279,7 +292,7 @@ curl http://127.0.0.1:19529/health/deep  # 深度健康
 
 WebSocket: `ws://127.0.0.1:8866/ws`，支持 MEMORY/WIKI/KG 事件订阅。
 
-## MCP 工具 (315 个)
+## MCP 工具 (349 个)
 
 ### 记忆核心
 
@@ -379,6 +392,57 @@ WebSocket: `ws://127.0.0.1:8866/ws`，支持 MEMORY/WIKI/KG 事件订阅。
 | LLM 缓存 | `pangu_llm_cache_stats/top/clear/metrics/warmup/warmup_log/vacuum/config` |
 | 服务器 | `pangu_system_health/metrics/config_get/config_set/config_reload/schema_version/schema_migrations` |
 | 自然语言 | `pangu_natural_query/conversational_search/memory_insights` |
+
+## 系统优势
+
+### 对比同类方案
+
+| 维度 | 普通向量数据库 | 盘古记忆系统 |
+|:---|:---|:---|
+| 存储 | 向量 + 元数据 | **4 层记忆栈 + 知识图谱** |
+| 搜索 | 纯向量相似度 | **FTS + Vector RRF 混合检索** |
+| 管理 | 手动 | **自动巩固/遗忘/压缩** |
+| 智能 | 无 | **⭐⭐⭐⭐⭐ 顶级智能** |
+| 协议 | 自定义 API | **标准 MCP 协议** |
+| 自进化 | 无 | **元学习 + 自动调优** |
+| 多项目 | 不支持 | **完整项目隔离** |
+| 离线 | 部分支持 | **完全离线 (ONNX)** |
+| 监控 | 无 | **实时 Dashboard** |
+| 认知引擎 | 无 | **12 个伏羲移植引擎** |
+
+### 顶级智能能力
+
+| 能力 | 说明 | 模块 |
+|:---|:---|:---|
+| **情感感知** | 5 种情绪识别、重要性调整、交互建议 | `emotional_intelligence` + `deep_emotion` |
+| **创造性思维** | 模式发现、跨领域链接、原创想法生成 | `creative_thinking` |
+| **自主学习** | 知识发现、假设生成/验证、自动学习循环 | `autonomous_learning` |
+| **跨域迁移** | 知识图谱跨域推理、相似模式查找 | `knowledge_graph` |
+| **推理可视化** | 结构化推理展示（实体/路径/步骤/结论） | `graph_reasoning` |
+| **元学习** | 学习如何学习、系统监测、自重构 | `meta_learning` + `metacognition` |
+| **因果推理** | 因果链发现、反事实推理、根因分析 | `causal_reasoning` |
+| **世界模型** | 情景预测、预案生成、事件匹配 | `world_model` |
+| **认知循环** | 观察→思考→评估→行动的完整认知闭环 | `cognitive_loop` |
+| **人格系统** | 身份维护、价值观、健康度监控 | `persona` |
+
+### 伏羲融合优势
+
+盘古融合了伏羲 77 个认知引擎中的 12 个高价值模块：
+
+| 引擎 | 原始行数 | 盘古适配 | 核心能力 |
+|:---|:---|:---|:---|
+| cognitive_loop | 480 | `cognitive_loop.py` | 认知循环调度 |
+| metacognition | 617 | 增强 `meta_learning.py` | 元认知 + 自重构 |
+| world_model | 490 | `world_model.py` | 预测世界模型 |
+| dream | 211 | `dream_memory.py` | 梦境记忆巩固 |
+| curiosity | 113 | `curiosity.py` | 好奇心探索 |
+| soul + persona | 182 | `persona.py` | 人格核心 |
+| deep_emotion | 198 | `deep_emotion.py` | 深度情感分析 |
+| debate | 385 | `debate.py` | 多视角辩论 |
+| narrative | 152 | `narrative.py` | 叙事生成 |
+| resonance | 93 | `resonance.py` | 情感共振 |
+| intent_prediction | 162 | `intent_prediction.py` | 意图预测 |
+| synthesis | 242 | 增强 `knowledge_synthesis.py` | 知识综合 |
 
 ## 安全
 
