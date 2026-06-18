@@ -11,6 +11,7 @@
 import hashlib
 import json
 import logging
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -156,7 +157,7 @@ class EnhancedContradictionDetector:
 - temporal_evolution: 合法的时间演变
 - negation_artifact: LLM 误读否定词
 - no_contradiction: 兼容"""
-                resp = self.llm_engine.chat([{"role": "user", "content": prompt}])
+                resp = asyncio.run(self.llm_engine.chat([{"role": "user", "content": prompt}]))
                 if resp and resp.content:
                     data = json.loads(resp.content)
                     return data.get("verdict", "no_contradiction"), float(data.get("confidence", 0.5))

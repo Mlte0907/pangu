@@ -8,6 +8,7 @@
 
 import json
 import logging
+import asyncio
 import re
 from datetime import datetime
 from typing import Any
@@ -69,7 +70,7 @@ class DistillationTower:
 
         try:
             if self.llm_engine:
-                resp = self.llm_engine.chat([{"role": "user", "content": prompt}])
+                resp = asyncio.run(self.llm_engine.chat([{"role": "user", "content": prompt}]))
                 if resp and resp.content:
                     return self._parse_response(resp.content, source_ids, texts)
         except Exception as e:
