@@ -8,6 +8,7 @@
 """
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -271,4 +272,53 @@ class CrossSessionIntegrator:
             "wings": wing_counts,
             "avg_importance": round(total_importance / len(session_memories), 2),
             "top_wing": max(wing_counts, key=wing_counts.get) if wing_counts else "none",
+        }
+
+    def inject_session_context(self, query: str, drawers: list[Drawer] = None) -> dict:
+        """跨会话上下文注入 — 根据查询自动注入相关历史记忆"""
+        if not query:
+            return {"injected_text": "", "context_count": 0}
+
+        if drawers is None:
+            drawers_file = Path(self.config.palace_path) / "drawers.json"
+            if drawers_file.exists():
+                with open(drawers_file, encoding="utf-8") as f:
+                    drawers = [Drawer.from_dict(d) for d in json.load(f)]
+            else:
+                drawers = []
+
+        # 基于查询匹配相关记忆
+        q_words = set()
+        for word in re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', query.lower()):
+            q_words.add(word)
+
+        scored = []
+        for d in drawers:
+            score = 0
+            d_lower = d.content.lower()
+            for w in q_words:
+                if w in d_lower:
+                    score += 2
+            for tag in d.tags:
+                for w in q_words:
+                    if w in tag.lower():
+                        score += 3
+            if score > 0:
+                scored.append((d, score))
+
+        scored.sort(key=lambda x: -x[1])
+        top = scored[:5]
+
+        # 构建注入文本
+        context_parts = []
+        for d, score in top:
+            context_parts.append(f"[{d.wing}] {d.content[:120]}")
+
+        injected = "[历史上下文]\n" + "\n".join(context_parts) + "\n[/历史上下文]\n\n" + query
+
+        return {
+            "injected_text": injected,
+            "context_count": len(top),
+            "topics": list(q_words)[:5],
+            "sources": [{"id": d.id, "wing": d.wing, "score": score} for d, score in top],
         }

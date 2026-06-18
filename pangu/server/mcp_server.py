@@ -669,6 +669,7 @@ class MCPServer:
             {"name": "pangu_session_summary", "description": "生成会话摘要", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_session_bridge", "description": "构建上下文桥接", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_session_stats", "description": "会话统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_session_inject", "description": "跨会话上下文注入", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "当前查询/文本"}}, "required": ["query"]}},
 
             # ── 记忆版本控制 (v2.0) ──
             {"name": "pangu_version_history", "description": "获取记忆变更历史", "inputSchema": {"type": "object", "properties": {"memory_id": {"type": "string", "description": "记忆ID"}}, "required": ["memory_id"]}},
@@ -3590,6 +3591,12 @@ class MCPServer:
                 cs = CrossSessionIntegrator(self.config)
                 stats = cs.get_session_stats(drawers)
                 return json.dumps(stats, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_inject":
+                from ..memory.cross_session import CrossSessionIntegrator
+                cs = CrossSessionIntegrator(self.config)
+                result = cs.inject_session_context(arguments.get("query", ""), drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_version_history":
                 from ..memory.versioning import get_version_control
