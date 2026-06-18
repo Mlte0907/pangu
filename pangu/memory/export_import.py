@@ -223,6 +223,23 @@ class ExportImportEngine:
         self._record_import("markdown", len(imported), filepath)
         return {"format": "markdown", "imported": len(imported), "data": imported}
 
+    def import_csv(self, filepath: str) -> dict:
+        """CSV 格式导入"""
+        imported = []
+        with open(filepath, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                imported.append({
+                    "id": row.get("id", ""),
+                    "content": row.get("content", ""),
+                    "wing": row.get("wing", "imported"),
+                    "importance": float(row.get("importance", 3.0)),
+                    "tags": row.get("tags", "").split("|") if row.get("tags") else [],
+                })
+
+        self._record_import("csv", len(imported), filepath)
+        return {"format": "csv", "imported": len(imported), "data": imported}
+
     def detect_format(self, filepath: str) -> str:
         """检测文件格式"""
         path = Path(filepath)
@@ -246,6 +263,8 @@ class ExportImportEngine:
             return self.import_json(filepath)
         elif fmt == "markdown":
             return self.import_markdown(filepath)
+        elif fmt == "csv":
+            return self.import_csv(filepath)
         else:
             return {"error": f"不支持的导入格式: {fmt}", "detected": fmt}
 
