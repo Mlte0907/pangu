@@ -764,5 +764,13 @@ def create_app() -> FastAPI:
             return HTMLResponse(content=dashboard_path.read_text(encoding="utf-8"))
         return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
 
+    @app.get("/performance", include_in_schema=False)
+    async def performance():
+        from fastapi.responses import HTMLResponse
+        perf_path = Path(__file__).parent.parent / "ui" / "templates" / "performance.html"
+        if perf_path.exists():
+            return HTMLResponse(content=perf_path.read_text(encoding="utf-8"))
+        return HTMLResponse(content="<h1>Performance page not found</h1>", status_code=404)
+
     logger.info("盘古 app created with all routes")
     return app
