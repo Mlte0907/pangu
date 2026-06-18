@@ -674,7 +674,11 @@ class MCPServer:
             {"name": "pangu_plugin_config", "description": "获取插件配置", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
             {"name": "pangu_plugin_discover", "description": "发现并加载自定义插件", "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "插件目录路径"}}}},
 
-            # ── 实时通知 ──
+            # ── 搜索分析 ──
+            {"name": "pangu_search_analytics_summary", "description": "搜索分析摘要", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_search_analytics_top", "description": "热门查询", "inputSchema": {"type": "object", "properties": {"top_k": {"type": "integer", "default": 10}}}},
+            {"name": "pangu_search_analytics_empty", "description": "无结果搜索", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_search_analytics_slow", "description": "慢搜索", "inputSchema": {"type": "object", "properties": {"threshold_ms": {"type": "number", "default": 1000}}}},
             {"name": "pangu_realtime_stats", "description": "实时通知统计", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_realtime_history", "description": "事件历史", "inputSchema": {"type": "object", "properties": {"event_type": {"type": "string"}, "limit": {"type": "integer", "default": 50}}}},
 
@@ -3649,6 +3653,29 @@ class MCPServer:
                 mgr = get_connection_manager()
                 history = mgr.get_history(arguments.get("event_type"), arguments.get("limit", 50))
                 return json.dumps({"history": history, "count": len(history)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_search_analytics_summary":
+                from ..memory.search_analytics import get_search_analytics
+                sa = get_search_analytics(self.config)
+                return json.dumps(sa.get_summary(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_search_analytics_top":
+                from ..memory.search_analytics import get_search_analytics
+                sa = get_search_analytics(self.config)
+                top = sa.get_top_queries(arguments.get("top_k", 10))
+                return json.dumps({"queries": top, "count": len(top)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_search_analytics_empty":
+                from ..memory.search_analytics import get_search_analytics
+                sa = get_search_analytics(self.config)
+                empty = sa.get_empty_searches()
+                return json.dumps({"searches": empty, "count": len(empty)}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_search_analytics_slow":
+                from ..memory.search_analytics import get_search_analytics
+                sa = get_search_analytics(self.config)
+                slow = sa.get_slow_searches(arguments.get("threshold_ms", 1000))
+                return json.dumps({"searches": slow, "count": len(slow)}, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_session_summary":
                 from ..memory.cross_session import CrossSessionIntegrator
