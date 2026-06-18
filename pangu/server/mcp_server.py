@@ -798,7 +798,7 @@ class MCPServer:
                 page = self.wiki.get_page(page_id)
                 if page:
                     return json.dumps(page.to_dict(), ensure_ascii=False, indent=2)
-                return json.dumps({"error": "页面不存在"})
+                return json.dumps({"code": 1002, "error": "页面不存在"})
 
             elif tool_name == "pangu_create_wiki_page":
                 from ..core.palace import WikiPage
@@ -1019,7 +1019,7 @@ class MCPServer:
                 drawer_id = arguments.get("drawer_id", "")
                 target = self.memory.get_drawer_by_id(drawer_id)
                 if not target:
-                    return json.dumps({"error": "记忆不存在"})
+                    return json.dumps({"code": 2001, "error": "记忆不存在"})
                 related = clusterer.find_related(target, drawers)
                 return json.dumps(related, ensure_ascii=False, indent=2)
 
@@ -1047,7 +1047,7 @@ class MCPServer:
                 drawer_a = self.memory.get_drawer_by_id(id_a)
                 drawer_b = self.memory.get_drawer_by_id(id_b)
                 if not drawer_a or not drawer_b:
-                    return json.dumps({"error": "记忆不存在"})
+                    return json.dumps({"code": 2001, "error": "记忆不存在"})
                 result = detector.check_pair(drawer_a, drawer_b)
                 return json.dumps(result, ensure_ascii=False)
 
@@ -1089,7 +1089,7 @@ class MCPServer:
                     self.memory.add_drawer(merged)
                     return json.dumps({"status": "merged", "merged_id": merged.id,
                                        "removed": group.duplicate_ids}, ensure_ascii=False)
-                return json.dumps({"error": "合并失败"})
+                return json.dumps({"code": 2003, "error": "合并失败"})
 
             elif tool_name == "pangu_similarity_check":
                 from ..memory.dedup import MemoryDeduplicator
@@ -1099,7 +1099,7 @@ class MCPServer:
                 drawer_a = self.memory.get_drawer_by_id(id_a)
                 drawer_b = self.memory.get_drawer_by_id(id_b)
                 if not drawer_a or not drawer_b:
-                    return json.dumps({"error": "记忆不存在"})
+                    return json.dumps({"code": 2001, "error": "记忆不存在"})
                 result = deduper.similarity_check(drawer_a, drawer_b)
                 return json.dumps(result, ensure_ascii=False)
 
@@ -3858,7 +3858,7 @@ class MCPServer:
                 return json.dumps(result, ensure_ascii=False, indent=2)
 
             else:
-                return json.dumps({"error": f"未知工具: {tool_name}"})
+                return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
 
         except Exception as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
