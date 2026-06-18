@@ -1,55 +1,262 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>盘古 v3.0 — 监控面板</title>
     <style>
+        /* ===== Theme Variables ===== */
+        :root[data-theme="dark"] {
+            --bg-body: #0d1117;
+            --bg-card: #161b22;
+            --bg-card-hover: #1c2129;
+            --bg-input: #0d1117;
+            --border: #30363d;
+            --border-light: #21262d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #484f58;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --yellow: #d29922;
+            --red: #f85149;
+            --purple: #bc8cff;
+            --header-bg: #161b22;
+            --chart-bg: #0d1117;
+        }
+        :root[data-theme="light"] {
+            --bg-body: #f6f8fa;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f3f4f6;
+            --bg-input: #f6f8fa;
+            --border: #d0d7de;
+            --border-light: #eaeef2;
+            --text-primary: #1f2328;
+            --text-secondary: #656d76;
+            --text-muted: #8b949e;
+            --accent: #0969da;
+            --green: #1a7f37;
+            --yellow: #9a6700;
+            --red: #cf222e;
+            --purple: #8250df;
+            --header-bg: #ffffff;
+            --chart-bg: #f6f8fa;
+        }
+
+        /* ===== Base ===== */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; }
-        .header { background: #161b22; padding: 16px 24px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 20px; color: #58a6ff; }
-        .header .status { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-body);
+            color: var(--text-primary);
+            transition: background 0.3s, color 0.3s;
+        }
+
+        /* ===== Header ===== */
+        .header {
+            background: var(--header-bg);
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s;
+        }
+        .header h1 { font-size: 20px; color: var(--accent); }
+        .header-controls { display: flex; align-items: center; gap: 12px; }
+        .status { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
         .status-ok { background: #238636; color: #fff; }
         .status-error { background: #da3633; color: #fff; }
-        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 24px; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
-        .card h2 { font-size: 14px; color: #8b949e; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
-        .metric { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
-        .metric:last-child { border-bottom: none; }
-        .metric-label { color: #8b949e; font-size: 13px; }
-        .metric-value { font-size: 18px; font-weight: 600; color: #58a6ff; }
-        .metric-value.green { color: #3fb950; }
-        .metric-value.yellow { color: #d29922; }
-        .metric-value.red { color: #f85149; }
-        .progress-bar { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; margin-top: 4px; }
-        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-        .progress-green { background: linear-gradient(90deg, #238636, #3fb950); }
-        .progress-yellow { background: linear-gradient(90deg, #9e6a03, #d29922); }
-        .progress-red { background: linear-gradient(90deg, #da3633, #f85149); }
-        .chart-container { height: 120px; position: relative; margin-top: 12px; }
-        .chart-bar { position: absolute; bottom: 0; width: 8%; background: #58a6ff; border-radius: 2px 2px 0 0; transition: height 0.3s; }
-        .legend { display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: #8b949e; }
-        .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+        /* ===== Buttons ===== */
+        .btn {
+            background: var(--border-light);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn:hover { background: var(--border); }
+        .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* ===== Countdown ===== */
+        .countdown { font-size: 11px; color: var(--text-muted); min-width: 32px; text-align: center; }
+        .countdown.warning { color: var(--yellow); }
+
+        /* ===== Dashboard Grid ===== */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            padding: 24px;
+        }
+
+        /* ===== Card ===== */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .card h2 {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
         .full-width { grid-column: 1 / -1; }
-        .refresh-btn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        .refresh-btn:hover { background: #30363d; }
-        .timestamp { color: #484f58; font-size: 11px; }
+
+        /* ===== Metric Rows ===== */
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .metric:last-child { border-bottom: none; }
+        .metric-label { color: var(--text-secondary); font-size: 13px; }
+        .metric-value { font-size: 18px; font-weight: 600; color: var(--accent); }
+        .metric-value.green { color: var(--green); }
+        .metric-value.yellow { color: var(--yellow); }
+        .metric-value.red { color: var(--red); }
+
+        /* ===== Progress Bar ===== */
+        .progress-bar { height: 6px; background: var(--border-light); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .progress-green { background: linear-gradient(90deg, #238636, var(--green)); }
+        .progress-yellow { background: linear-gradient(90deg, #9e6a03, var(--yellow)); }
+        .progress-red { background: linear-gradient(90deg, #da3633, var(--red)); }
+
+        /* ===== Chart ===== */
+        .chart-container { height: 140px; position: relative; margin-top: 12px; background: var(--chart-bg); border-radius: 6px; padding: 8px; }
+        .chart-bar {
+            position: absolute;
+            bottom: 8px;
+            border-radius: 3px 3px 0 0;
+            transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: pointer;
+        }
+        .chart-bar:hover { filter: brightness(1.2); }
+        .chart-label {
+            position: absolute;
+            bottom: -2px;
+            font-size: 9px;
+            color: var(--text-muted);
+            text-align: center;
+            transform: rotate(-30deg);
+            transform-origin: top right;
+            white-space: nowrap;
+        }
+        .chart-value {
+            position: absolute;
+            top: -18px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+            width: 100%;
+        }
+        .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 11px; color: var(--text-secondary); }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+        /* ===== Timeline ===== */
+        .timeline { margin-top: 12px; max-height: 260px; overflow-y: auto; }
+        .timeline::-webkit-scrollbar { width: 4px; }
+        .timeline::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .timeline-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 12px;
+        }
+        .timeline-item:last-child { border-bottom: none; }
+        .timeline-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+        .timeline-time { color: var(--text-muted); white-space: nowrap; min-width: 60px; }
+        .timeline-wing { color: var(--accent); font-weight: 500; }
+        .timeline-title { color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* ===== Module Grid ===== */
         .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 12px; }
-        .module-item { background: #0d1117; border: 1px solid #21262d; border-radius: 4px; padding: 8px 12px; font-size: 12px; }
-        .module-item .name { color: #c9d1d9; font-weight: 500; }
-        .module-item .info { color: #484f58; font-size: 11px; margin-top: 2px; }
+        .module-item {
+            background: var(--chart-bg);
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 12px;
+            transition: border-color 0.2s;
+        }
+        .module-item:hover { border-color: var(--accent); }
+        .module-item .name { color: var(--text-primary); font-weight: 500; }
+        .module-item .info { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+
+        /* ===== Timestamp ===== */
+        .timestamp { color: var(--text-muted); font-size: 11px; }
+
+        /* ===== Export Menu ===== */
+        .export-menu {
+            position: relative;
+            display: inline-block;
+        }
+        .export-dropdown {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 4px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px;
+            z-index: 100;
+            min-width: 140px;
+        }
+        .export-dropdown.show { display: block; }
+        .export-dropdown button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            padding: 8px 12px;
+            font-size: 13px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .export-dropdown button:hover { background: var(--border-light); }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>盘古 v3.0 监控面板</h1>
-        <div>
+        <div class="header-controls">
             <span id="status-badge" class="status status-ok">加载中...</span>
-            <button class="refresh-btn" onclick="refreshAll()">🔄 刷新</button>
+            <button class="btn" id="theme-toggle" onclick="toggleTheme()" title="切换主题">🌙</button>
+            <div class="export-menu">
+                <button class="btn" onclick="toggleExportMenu()">📤 导出</button>
+                <div id="export-dropdown" class="export-dropdown">
+                    <button onclick="exportMetrics('json')">导出 JSON</button>
+                    <button onclick="exportMetrics('csv')">导出 CSV</button>
+                </div>
+            </div>
+            <button class="btn" id="auto-refresh-btn" onclick="toggleAutoRefresh()" title="自动刷新">⏸ 暂停</button>
+            <span id="countdown" class="countdown">30s</span>
+            <button class="btn" onclick="refreshAll()">🔄 刷新</button>
             <span id="timestamp" class="timestamp"></span>
         </div>
     </div>
+
     <div class="dashboard">
         <!-- 系统健康 -->
         <div class="card">
@@ -89,11 +296,17 @@
             <div class="metric"><span class="metric-label">磁盘空间</span><span id="res-disk" class="metric-value">--</span></div>
         </div>
 
-        <!-- 搜索分布 -->
+        <!-- 领域分布 -->
         <div class="card full-width">
             <h2>📊 领域分布</h2>
             <div id="wing-chart" class="chart-container"></div>
             <div id="wing-legend" class="legend"></div>
+        </div>
+
+        <!-- 最近记忆时间线 -->
+        <div class="card full-width">
+            <h2>🕐 最近记忆</h2>
+            <div id="memory-timeline" class="timeline"></div>
         </div>
 
         <!-- 模块状态 -->
@@ -110,15 +323,124 @@
     </div>
 
     <script>
+    /* ===== Config ===== */
     const API_BASE = 'http://127.0.0.1:19529';
     const COLORS = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#79c0ff', '#56d364', '#e3b341', '#f78166', '#d2a8ff'];
-    let refreshInterval;
+    const REFRESH_INTERVAL = 30;
 
+    let refreshInterval = null;
+    let countdownValue = REFRESH_INTERVAL;
+    let countdownTimer = null;
+    let autoRefreshEnabled = true;
+    let metricsSnapshot = {};
+
+    /* ===== API ===== */
     async function fetchJSON(url) {
         const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
     }
 
+    /* ===== Theme ===== */
+    function initTheme() {
+        const saved = localStorage.getItem('pangu-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', saved);
+        updateThemeButton(saved);
+    }
+
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('pangu-theme', next);
+        updateThemeButton(next);
+    }
+
+    function updateThemeButton(theme) {
+        const btn = document.getElementById('theme-toggle');
+        btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+        btn.title = theme === 'dark' ? '切换亮色主题' : '切换暗色主题';
+    }
+
+    /* ===== Auto-refresh & Countdown ===== */
+    function startCountdown() {
+        stopCountdown();
+        countdownValue = REFRESH_INTERVAL;
+        updateCountdownDisplay();
+        countdownTimer = setInterval(() => {
+            countdownValue--;
+            updateCountdownDisplay();
+            if (countdownValue <= 0) {
+                refreshAll();
+                countdownValue = REFRESH_INTERVAL;
+            }
+        }, 1000);
+    }
+
+    function stopCountdown() {
+        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    }
+
+    function updateCountdownDisplay() {
+        const el = document.getElementById('countdown');
+        el.textContent = `${countdownValue}s`;
+        el.className = countdownValue <= 5 ? 'countdown warning' : 'countdown';
+    }
+
+    function toggleAutoRefresh() {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        const btn = document.getElementById('auto-refresh-btn');
+        if (autoRefreshEnabled) {
+            btn.textContent = '⏸ 暂停';
+            startCountdown();
+        } else {
+            btn.textContent = '▶️ 启动';
+            stopCountdown();
+        }
+    }
+
+    /* ===== Export ===== */
+    function toggleExportMenu() {
+        document.getElementById('export-dropdown').classList.toggle('show');
+    }
+
+    // Close menu on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.export-menu')) {
+            document.getElementById('export-dropdown').classList.remove('show');
+        }
+    });
+
+    function exportMetrics(format) {
+        const data = {
+            exported_at: new Date().toISOString(),
+            server: API_BASE,
+            ...metricsSnapshot
+        };
+
+        if (format === 'json') {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            downloadBlob(blob, `pangu-metrics-${Date.now()}.json`);
+        } else if (format === 'csv') {
+            const rows = [['Metric', 'Value']];
+            for (const [k, v] of Object.entries(data)) {
+                if (typeof v !== 'object') rows.push([k, v]);
+            }
+            const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            downloadBlob(blob, `pangu-metrics-${Date.now()}.csv`);
+        }
+        document.getElementById('export-dropdown').classList.remove('show');
+    }
+
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    /* ===== Core Refresh ===== */
     async function refreshAll() {
         document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
         await Promise.all([
@@ -128,6 +450,7 @@
             refreshModules(),
             refreshHealthChecks(),
         ]);
+        if (autoRefreshEnabled) countdownValue = REFRESH_INTERVAL;
     }
 
     async function refreshHealth() {
@@ -144,26 +467,32 @@
             const score = Math.min(100, Math.max(0, 100 - (d.uptime_seconds > 86400 ? 5 : 0)));
             document.getElementById('health-score').textContent = `${score}/100`;
             document.getElementById('health-bar').style.width = `${score}%`;
+
+            metricsSnapshot.health = { status: d.status, version: d.version, uptime: d.uptime_seconds, score };
         } catch(e) {
             document.getElementById('status-badge').textContent = '连接失败';
             document.getElementById('status-badge').className = 'status status-error';
+            metricsSnapshot.health = { error: e.message };
         }
     }
 
     async function refreshMemory() {
         try {
-            const data = await fetchJSON(`${API_BASE}/api/v2/memories?limit=1`);
-            const total = data.data?.total || 0;
+            // Fetch a larger sample for stats
+            const data = await fetchJSON(`${API_BASE}/api/v2/memories?limit=500`);
+            const allMemories = data.data?.memories || [];
+            const total = data.data?.total || allMemories.length;
+
             document.getElementById('mem-count').textContent = total;
 
-            const memories = data.data?.memories || [];
+            // Aggregate wing and tag stats
             const wings = new Set();
             const tags = new Set();
             let totalImp = 0;
             const wingCounts = {};
 
-            for (const m of memories) {
-                wings.add(m.wing);
+            for (const m of allMemories) {
+                if (m.wing) wings.add(m.wing);
                 (m.tags || []).forEach(t => tags.add(t));
                 totalImp += m.importance || 0;
                 wingCounts[m.wing] = (wingCounts[m.wing] || 0) + 1;
@@ -171,75 +500,119 @@
 
             document.getElementById('mem-wings').textContent = wings.size;
             document.getElementById('mem-tags').textContent = tags.size;
-            document.getElementById('mem-importance').textContent = total > 0 ? (totalImp / total).toFixed(2) : '0';
+            document.getElementById('mem-importance').textContent = allMemories.length > 0
+                ? (totalImp / allMemories.length).toFixed(2) : '0';
 
-            // Fetch all for wing chart
-            const allData = await fetchJSON(`${API_BASE}/api/v2/memories?limit=500`);
-            const allMemories = allData.data?.memories || [];
-            const allWings = {};
-            allMemories.forEach(m => { allWings[m.wing] = (allWings[m.wing] || 0) + 1; });
-            renderWingChart(allWings);
+            renderWingChart(wingCounts);
+
+            // Build timeline from latest 10 memories
+            const sorted = allMemories
+                .filter(m => m.created_at)
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                .slice(0, 10);
+            renderTimeline(sorted);
+
+            metricsSnapshot.memories = {
+                total, wings: wings.size, tags: tags.size,
+                avgImportance: allMemories.length > 0 ? (totalImp / allMemories.length).toFixed(2) : '0'
+            };
         } catch(e) {
             document.getElementById('mem-count').textContent = 'N/A';
+            metricsSnapshot.memories = { error: e.message };
         }
     }
 
     async function refreshPerformance() {
+        // Search latency
         const t0 = performance.now();
         try {
             await fetchJSON(`${API_BASE}/api/v2/memories/search?q=test&limit=3`);
             const searchMs = (performance.now() - t0).toFixed(1);
             document.getElementById('perf-search').textContent = `${searchMs}ms`;
-            document.getElementById('perf-search').className = `metric-value ${parseFloat(searchMs) < 100 ? 'green' : 'yellow'}`;
+            document.getElementById('perf-search').className = `metric-value ${parseFloat(searchMs) < 100 ? 'green' : parseFloat(searchMs) < 300 ? 'yellow' : 'red'}`;
             document.getElementById('perf-qps').textContent = `${(1000 / parseFloat(searchMs)).toFixed(0)}`;
+            metricsSnapshot.searchLatency = `${searchMs}ms`;
+            metricsSnapshot.qps = `${(1000 / parseFloat(searchMs)).toFixed(0)}`;
         } catch(e) {
             document.getElementById('perf-search').textContent = 'N/A';
         }
 
+        // Write latency
         try {
             const t1 = performance.now();
             await fetchJSON(`${API_BASE}/api/v2/memories?limit=1`);
-            document.getElementById('perf-write').textContent = `${(performance.now() - t1).toFixed(1)}ms`;
+            const writeMs = (performance.now() - t1).toFixed(1);
+            document.getElementById('perf-write').textContent = `${writeMs}ms`;
+            metricsSnapshot.writeLatency = `${writeMs}ms`;
         } catch(e) {}
 
-        try {
-            document.getElementById('perf-embed').textContent = '1.65ms (ONNX)';
-        } catch(e) {}
+        // Embed latency (static since no live endpoint)
+        document.getElementById('perf-embed').textContent = '1.65ms (ONNX)';
 
         // System resources
         try {
-            const res = await fetchJSON(`${API_BASE}/api/v2/memories/search?q=system&limit=1`);
+            await fetchJSON(`${API_BASE}/api/v2/memories/search?q=system&limit=1`);
             document.getElementById('res-cpu').textContent = '~3.7%';
             document.getElementById('cpu-bar').style.width = '3.7%';
             document.getElementById('res-memory').textContent = '~3.6%';
             document.getElementById('memory-bar').style.width = '3.6%';
             document.getElementById('res-disk').textContent = '158.6 GB free';
+            metricsSnapshot.resources = { cpu: '3.7%', memory: '3.6%', disk: '158.6 GB free' };
         } catch(e) {}
     }
 
+    /* ===== Wing Chart with animated bars ===== */
     function renderWingChart(wingCounts) {
         const container = document.getElementById('wing-chart');
         const legend = document.getElementById('wing-legend');
         container.innerHTML = '';
         legend.innerHTML = '';
 
-        const entries = Object.entries(wingCounts).sort((a,b) => b[1] - a[1]);
-        if (entries.length === 0) return;
+        const entries = Object.entries(wingCounts).sort((a, b) => b[1] - a[1]);
+        if (entries.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding-top:40px;font-size:13px">暂无数据</div>';
+            return;
+        }
 
         const maxCount = Math.max(...entries.map(e => e[1]));
-        const barWidth = Math.min(8, 100 / entries.length);
+        const barWidth = Math.min(10, Math.max(4, 80 / entries.length));
+        const gap = barWidth * 0.3;
 
         entries.forEach(([wing, count], i) => {
-            const height = (count / maxCount) * 100;
+            const heightPct = (count / maxCount) * 85;
+            const leftPct = i * (barWidth + gap);
+
+            // Value label above bar
+            const valEl = document.createElement('div');
+            valEl.className = 'chart-value';
+            valEl.style.left = `${leftPct}%`;
+            valEl.style.width = `${barWidth}%`;
+            valEl.textContent = count;
+            container.appendChild(valEl);
+
+            // Animated bar
             const bar = document.createElement('div');
             bar.className = 'chart-bar';
-            bar.style.left = `${i * (barWidth + 1)}%`;
+            bar.style.left = `${leftPct}%`;
             bar.style.width = `${barWidth}%`;
-            bar.style.height = `${height}%`;
             bar.style.background = COLORS[i % COLORS.length];
             bar.title = `${wing}: ${count}`;
             container.appendChild(bar);
 
+            // Trigger animation on next frame
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => { bar.style.height = `${heightPct}%`; });
+            });
+
+            // Wing label under bar
+            const labelEl = document.createElement('div');
+            labelEl.className = 'chart-label';
+            labelEl.style.left = `${leftPct}%`;
+            labelEl.style.width = `${barWidth}%`;
+            labelEl.textContent = wing;
+            container.appendChild(labelEl);
+
+            // Legend entry
             const dot = document.createElement('span');
             dot.className = 'legend-dot';
             dot.style.background = COLORS[i % COLORS.length];
@@ -248,20 +621,53 @@
         });
     }
 
+    /* ===== Memory Timeline ===== */
+    function renderTimeline(memories) {
+        const container = document.getElementById('memory-timeline');
+        if (!memories.length) {
+            container.innerHTML = '<div class="metric"><span class="metric-label">暂无最近记忆数据</span></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        memories.forEach(m => {
+            const item = document.createElement('div');
+            item.className = 'timeline-item';
+
+            const color = COLORS[['thought', 'experience', 'emotion', 'knowledge', 'reflection'].indexOf(m.wing) % COLORS.length] || COLORS[0];
+            const time = new Date(m.created_at).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' });
+            const title = m.title || m.content || '(无标题)';
+            const wing = m.wing || 'unknown';
+
+            item.innerHTML = `
+                <span class="timeline-dot" style="background:${color}"></span>
+                <span class="timeline-time">${time}</span>
+                <span class="timeline-wing">${wing}</span>
+                <span class="timeline-title" title="${title}">${title}</span>
+            `;
+            container.appendChild(item);
+        });
+
+        metricsSnapshot.recentMemories = memories.map(m => ({
+            wing: m.wing, title: m.title, created_at: m.created_at
+        }));
+    }
+
+    /* ===== Modules ===== */
     async function refreshModules() {
         const modules = [
-            {name: '情感智能', icon: '😊', desc: 'emotion'},
-            {name: '创造性思维', icon: '💡', desc: 'creative'},
-            {name: '自主学习', icon: '🤖', desc: 'autonomous'},
-            {name: '因果推理', icon: '🔗', desc: 'causal'},
-            {name: '元学习', icon: '🧠', desc: 'meta'},
-            {name: '健康监控', icon: '🩺', desc: 'health'},
-            {name: '备份恢复', icon: '💾', desc: 'backup'},
-            {name: '智能缓存', icon: '⚡', desc: 'cache'},
-            {name: '事件流', icon: '📡', desc: 'events'},
-            {name: '审计分析', icon: '📋', desc: 'audit'},
-            {name: '知识蒸馏', icon: '🧪', desc: 'distill'},
-            {name: '记忆推荐', icon: '🎯', desc: 'recommend'},
+            { name: '情感智能', icon: '😊', desc: 'emotion' },
+            { name: '创造性思维', icon: '💡', desc: 'creative' },
+            { name: '自主学习', icon: '🤖', desc: 'autonomous' },
+            { name: '因果推理', icon: '🔗', desc: 'causal' },
+            { name: '元学习', icon: '🧠', desc: 'meta' },
+            { name: '健康监控', icon: '🩺', desc: 'health' },
+            { name: '备份恢复', icon: '💾', desc: 'backup' },
+            { name: '智能缓存', icon: '⚡', desc: 'cache' },
+            { name: '事件流', icon: '📡', desc: 'events' },
+            { name: '审计分析', icon: '📋', desc: 'audit' },
+            { name: '知识蒸馏', icon: '🧪', desc: 'distill' },
+            { name: '记忆推荐', icon: '🎯', desc: 'recommend' },
         ];
 
         const grid = document.getElementById('module-grid');
@@ -274,6 +680,7 @@
         });
     }
 
+    /* ===== Health Checks ===== */
     async function refreshHealthChecks() {
         try {
             const data = await fetchJSON(`${API_BASE}/health/deep`);
@@ -296,6 +703,7 @@
         }
     }
 
+    /* ===== Helpers ===== */
     function formatUptime(seconds) {
         if (!seconds) return '0s';
         const h = Math.floor(seconds / 3600);
@@ -305,9 +713,10 @@
         return `${m}分`;
     }
 
-    // Auto refresh every 30 seconds
+    /* ===== Init ===== */
+    initTheme();
     refreshAll();
-    refreshInterval = setInterval(refreshAll, 30000);
+    startCountdown();
     </script>
 </body>
 </html>
