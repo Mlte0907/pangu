@@ -49,6 +49,41 @@ async def list_tools():
         return {"code": 500, "error": str(e)}
 
 
+@router.post("/tools/batch")
+async def batch_call_tools(req: BatchToolCallRequest):
+    """批量调用多个 MCP 工具（必须在 {tool_name} 之前注册）"""
+    results = []
+    try:
+        from pangu.server.mcp_server import MCPServer
+        from pangu.core.config import PanguConfig
+        config = PanguConfig.load()
+        config.ensure_dirs()
+        server = MCPServer(config)
+
+        for call in req.calls[:20]:
+            name = call.get("name", "")
+            args = call.get("arguments", {})
+            try:
+                request = {
+                    "method": "tools/call",
+                    "params": {"name": name, "arguments": args},
+                }
+                result = await server.handle_request(request)
+                content = result.get("result", {}).get("content", [])
+                text = content[0].get("text", "") if content else ""
+                try:
+                    data = json.loads(text)
+                except (json.JSONDecodeError, TypeError):
+                    data = text
+                results.append({"name": name, "code": 0, "data": data})
+            except Exception as e:
+                results.append({"name": name, "code": 500, "error": str(e)})
+
+        return {"code": 0, "data": {"total": len(results), "results": results}}
+    except Exception as e:
+        return {"code": 500, "error": str(e)}
+
+
 @router.get("/tools/{tool_name}")
 async def get_tool_info(tool_name: str):
     """获取单个工具的详细信息"""
@@ -102,47 +137,4 @@ async def call_tool(tool_name: str, req: ToolCallRequest = None):
         return {"code": 0, "data": data}
     except Exception as e:
         logger.error(f"Tool call error: {tool_name}: {e}", exc_info=True)
-        return {"code": 500, "error": str(e)}
-
-
-@router.post("/tools/batch")
-async def batch_call_tools(req: BatchToolCallRequest):
-    """批量调用多个 MCP 工具
-
-    Example:
-        POST /api/v2/tools/batch
-        {"calls": [
-            {"name": "pangu_stats", "arguments": {}},
-            {"name": "pangu_health_check", "arguments": {}}
-        ]}
-    """
-    results = []
-    try:
-        from pangu.server.mcp_server import MCPServer
-        from pangu.core.config import PanguConfig
-        config = PanguConfig.load()
-        config.ensure_dirs()
-        server = MCPServer(config)
-
-        for call in req.calls[:20]:
-            name = call.get("name", "")
-            args = call.get("arguments", {})
-            try:
-                request = {
-                    "method": "tools/call",
-                    "params": {"name": name, "arguments": args},
-                }
-                result = await server.handle_request(request)
-                content = result.get("result", {}).get("content", [])
-                text = content[0].get("text", "") if content else ""
-                try:
-                    data = json.loads(text)
-                except (json.JSONDecodeError, TypeError):
-                    data = text
-                results.append({"name": name, "code": 0, "data": data})
-            except Exception as e:
-                results.append({"name": name, "code": 500, "error": str(e)})
-
-        return {"code": 0, "data": {"total": len(results), "results": results}}
-    except Exception as e:
         return {"code": 500, "error": str(e)}
