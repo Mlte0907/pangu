@@ -746,6 +746,11 @@ class MCPServer:
             {"name": "pangu_feishu_send", "description": "发送飞书通知（文本消息）", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "消息内容"}}, "required": ["text"]}},
             {"name": "pangu_feishu_card", "description": "发送飞书卡片通知", "inputSchema": {"type": "object", "properties": {"title": {"type": "string"}, "content": {"type": "string", "description": "内容（Markdown格式）"}, "color": {"type": "string", "default": "blue"}}, "required": ["title", "content"]}},
             {"name": "pangu_feishu_status", "description": "查看飞书 Webhook 状态", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 多Agent协作增强 (v3.2) ──
+            {"name": "pangu_agent_activity", "description": "查看Agent活动流（读写记录）", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID（留空=全部）"}, "limit": {"type": "integer", "default": 20}}}},
+            {"name": "pangu_agent_search", "description": "Agent感知搜索（仅搜索该Agent可见的记忆）", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string"}, "query": {"type": "string"}}, "required": ["agent_id", "query"]}},
+            {"name": "pangu_agent_transfer", "description": "跨Agent记忆转移", "inputSchema": {"type": "object", "properties": {"from_agent": {"type": "string"}, "to_agent": {"type": "string"}, "memory_id": {"type": "string"}}, "required": ["from_agent", "to_agent", "memory_id"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4059,6 +4064,45 @@ class MCPServer:
                 return json.dumps({
                     "configured": configured,
                     "webhook_url": cfg.feishu_webhook_url[:50] + "..." if len(cfg.feishu_webhook_url) > 50 else cfg.feishu_webhook_url,
+                }, ensure_ascii=False, indent=2)
+
+            # ── 多Agent协作增强 (v3.2) ──
+            elif tool_name == "pangu_agent_activity":
+                from ..memory.multi_agent import get_multi_agent_memory
+                mam = get_multi_agent_memory()
+                agent_id = arguments.get("agent_id", None)
+                limit = arguments.get("limit", 20)
+                feed = mam.get_activity_feed(agent_id=agent_id, limit=limit)
+                return json.dumps({"count": len(feed), "feed": feed}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_agent_search":
+                from ..memory.multi_agent import get_multi_agent_memory
+                mam = get_multi_agent_memory()
+                agent_id = arguments["agent_id"]
+                query = arguments["query"]
+                mam.ensure_agent(agent_id)
+                all_mems = mam.read(agent_id)
+                query_lower = query.lower()
+                results = [
+                    {"id": m.id, "content": m.content[:100], "owner": m.owner, "scope": m.scope.value}
+                    for m in all_mems if query_lower in (m.content or "").lower()
+                ]
+                return json.dumps({"count": len(results), "results": results[:10]}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_agent_transfer":
+                from ..memory.multi_agent import get_multi_agent_memory
+                mam = get_multi_agent_memory()
+                from_agent = arguments["from_agent"]
+                to_agent = arguments["to_agent"]
+                memory_id = arguments["memory_id"]
+                mam.ensure_agent(to_agent)
+                mem = mam.get(from_agent, memory_id)
+                if not mem:
+                    return json.dumps({"error": f"Memory {memory_id} not found or not visible"}, ensure_ascii=False)
+                new_mem = mam.write(to_agent, mem.content, scope="shared", tags=mem.tags, references=[mem.id])
+                return json.dumps({
+                    "transferred": True, "from": from_agent, "to": to_agent,
+                    "new_id": new_mem.id, "original_id": mem.id,
                 }, ensure_ascii=False, indent=2)
 
             else:

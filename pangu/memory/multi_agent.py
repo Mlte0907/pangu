@@ -18,6 +18,7 @@ import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
@@ -133,6 +134,9 @@ class MultiAgentMemory:
         self._conflict_resolution = conflict_resolution
         # 读写统计
         self._stats: dict[str, dict[str, int]] = defaultdict(lambda: {"reads": 0, "writes": 0})
+        # 活动流
+        self._activity_feed: list[dict] = []
+        self._max_activity = 500
         # 锁
         self._lock = threading.RLock()
 
@@ -142,7 +146,33 @@ class MultiAgentMemory:
         """注册Agent到协作记忆空间"""
         with self._lock:
             self._agents[agent_id] = priority if priority is not None else self.DEFAULT_PRIORITY
+            self._log_activity(agent_id, "register", f"Agent {agent_id} registered")
             logger.info(f"Agent registered: {agent_id} (priority={self._agents[agent_id]})")
+
+    def ensure_agent(self, agent_id: str, priority: int = None) -> None:
+        """自动注册Agent（已注册则跳过）"""
+        if agent_id not in self._agents:
+            self.register_agent(agent_id, priority)
+
+    def _log_activity(self, agent_id: str, action: str, detail: str = ""):
+        """记录活动流"""
+        import time as _time
+        entry = {
+            "agent": agent_id,
+            "action": action,
+            "detail": detail[:200],
+            "timestamp": datetime.now().isoformat(),
+        }
+        self._activity_feed.append(entry)
+        if len(self._activity_feed) > self._max_activity:
+            self._activity_feed = self._activity_feed[-self._max_activity:]
+
+    def get_activity_feed(self, agent_id: str = None, limit: int = 20) -> list[dict]:
+        """获取活动流"""
+        feed = self._activity_feed
+        if agent_id:
+            feed = [e for e in feed if e["agent"] == agent_id]
+        return feed[-limit:]
 
     def unregister_agent(self, agent_id: str) -> None:
         """注销Agent"""
@@ -199,6 +229,7 @@ class MultiAgentMemory:
         with self._lock:
             self._memories[memory_id] = memory
             self._stats[agent_id]["writes"] += 1
+            self._log_activity(agent_id, "write", f"Wrote {getattr(memory.scope, 'value', memory.scope)} memory: {content[:60]}")
 
             # 记录引用关系
             for ref_id in (references or []):
@@ -218,7 +249,7 @@ class MultiAgentMemory:
         if conflicts:
             logger.warning(f"Memory {memory_id[:8]} has {len(conflicts)} conflicts")
 
-        logger.debug(f"Memory written: {memory_id[:8]} by {agent_id} (scope={scope.value})")
+        logger.debug(f"Memory written: {memory_id[:8]} by {agent_id} (scope={getattr(scope, 'value', scope)})")
         return memory
 
     def update(
@@ -273,15 +304,9 @@ class MultiAgentMemory:
     # ── 记忆读取 ──────────────────────────────────────────────
 
     def read(self, agent_id: str, tags: list[str] | None = None) -> list[AgentMemory]:
-        """读取当前Agent可见的所有记忆
-
-        可见性规则：
-        - public: 所有Agent可见
-        - shared: shared_with中包含该Agent
-        - private: 仅owner可见
-        """
+        """读取当前Agent可见的所有记忆（自动注册未注册的Agent）"""
         if agent_id not in self._agents:
-            return []
+            self.ensure_agent(agent_id)
 
         results = []
         with self._lock:
@@ -293,6 +318,7 @@ class MultiAgentMemory:
                 results.append(memory)
                 self._stats[agent_id]["reads"] += 1
 
+        self._log_activity(agent_id, "read", f"Read {len(results)} memories" + (f" [tags={tags}]" if tags else ""))
         return results
 
     def get(self, agent_id: str, memory_id: str) -> AgentMemory | None:
@@ -545,7 +571,7 @@ class MultiAgentMemory:
         with self._lock:
             scope_counts = defaultdict(int)
             for m in self._memories.values():
-                scope_counts[m.scope.value] += 1
+                scope_counts[getattr(m.scope, 'value', m.scope)] += 1
 
             return {
                 "total_agents": len(self._agents),
