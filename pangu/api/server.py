@@ -435,9 +435,35 @@ def create_app() -> FastAPI:
     from pangu.api.routes_tools import router as tools_router
     app.include_router(tools_router, prefix="/api/v2")
 
-    # 批量工具调用（直接注册避免路由冲突）
-    from pangu.api.routes_tools import batch_call_tools, BatchToolCallRequest
-    app.add_api_route("/api/v2/tools-batch", batch_call_tools, methods=["POST"])
+    # 批量工具调用（直接注册到 app 避免被 {tool_name} 截获）
+    from pangu.api.routes_tools import BatchToolCallRequest
+
+    @app.post("/api/v2/tools-batch")
+    async def tools_batch(req: BatchToolCallRequest):
+        results = []
+        try:
+            from pangu.server.mcp_server import MCPServer
+            from pangu.core.config import PanguConfig as _C
+            cfg = _C.load()
+            cfg.ensure_dirs()
+            srv = MCPServer(cfg)
+            for call in req.calls[:20]:
+                name = call.get("name", "")
+                args = call.get("arguments", {})
+                try:
+                    r = await srv.handle_request({"method": "tools/call", "params": {"name": name, "arguments": args}})
+                    content = r.get("result", {}).get("content", [])
+                    text = content[0].get("text", "") if content else ""
+                    try:
+                        data = json.loads(text)
+                    except (json.JSONDecodeError, TypeError):
+                        data = text
+                    results.append({"name": name, "code": 0, "data": data})
+                except Exception as e:
+                    results.append({"name": name, "code": 500, "error": str(e)})
+            return {"code": 0, "data": {"total": len(results), "results": results}}
+        except Exception as e:
+            return {"code": 500, "error": str(e)}
 
     # MCP HTTP 传输层（SSE + StreamableHTTP）
     from pangu.api.mcp_http import mcp_http_routes
