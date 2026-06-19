@@ -43,6 +43,15 @@ logger = logging.getLogger("pangu.api.server")
 
 def create_app() -> FastAPI:
     """创建 FastAPI 应用（伏羲移植版）"""
+    from pangu.core.config import PanguConfig as _Cfg, config as _orig_cfg
+    _loaded = _Cfg.load()
+    # 用加载后的配置替换全局单例，使整个模块统一使用 config.json 的值
+    for _field in _loaded.model_fields:
+        try:
+            setattr(_orig_cfg, _field, getattr(_loaded, _field))
+        except Exception:
+            pass
+    config = _orig_cfg
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
