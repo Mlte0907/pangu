@@ -743,6 +743,9 @@ class MCPServer:
             # ── 记忆质量管道 (v3.1) ──
             {"name": "pangu_quality_analyze", "description": "分析记忆质量（评分/去重/标签）", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_quality_fix", "description": "自动修复记忆质量问题（标签/去重）", "inputSchema": {"type": "object", "properties": {"dry_run": {"type": "boolean", "default": False}}}},
+            {"name": "pangu_feishu_send", "description": "发送飞书通知（文本消息）", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "消息内容"}}, "required": ["text"]}},
+            {"name": "pangu_feishu_card", "description": "发送飞书卡片通知", "inputSchema": {"type": "object", "properties": {"title": {"type": "string"}, "content": {"type": "string", "description": "内容（Markdown格式）"}, "color": {"type": "string", "default": "blue"}}, "required": ["title", "content"]}},
+            {"name": "pangu_feishu_status", "description": "查看飞书 Webhook 状态", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4029,6 +4032,33 @@ class MCPServer:
                     "high_quality": report.high_quality,
                     "low_quality": report.low_quality,
                     "dry_run": dry_run,
+                }, ensure_ascii=False, indent=2)
+
+            # ── 飞书通知 ──
+            elif tool_name == "pangu_feishu_send":
+                from ..memory.feishu_webhook import get_feishu_webhook
+                from ..core.config import PanguConfig as _Cfg
+                cfg = _Cfg.load()
+                wh = get_feishu_webhook(cfg.feishu_webhook_url)
+                result = wh.send_text(arguments["text"])
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_feishu_card":
+                from ..memory.feishu_webhook import get_feishu_webhook
+                from ..core.config import PanguConfig as _Cfg
+                cfg = _Cfg.load()
+                wh = get_feishu_webhook(cfg.feishu_webhook_url)
+                lines = [l.strip() for l in arguments["content"].split("\n") if l.strip()]
+                result = wh.send_card(arguments["title"], lines, arguments.get("color", "blue"))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_feishu_status":
+                from ..core.config import PanguConfig as _Cfg
+                cfg = _Cfg.load()
+                configured = bool(cfg.feishu_webhook_url)
+                return json.dumps({
+                    "configured": configured,
+                    "webhook_url": cfg.feishu_webhook_url[:50] + "..." if len(cfg.feishu_webhook_url) > 50 else cfg.feishu_webhook_url,
                 }, ensure_ascii=False, indent=2)
 
             else:
