@@ -67,6 +67,20 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Warmup failed: {e}")
 
+        # 自主记忆管理：检查是否需要运行维护周期
+        try:
+            from pangu.memory.autonomous import get_autonomous_engine
+            engine = get_autonomous_engine(config)
+            tick = engine.tick()
+            if tick["should_run"]:
+                logger.info(f"Autonomous maintenance: {len(tick['pending_tasks'])} tasks pending, running...")
+                cycle = engine.run_cycle()
+                logger.info(f"Autonomous cycle: {cycle.tasks_run} ran, {cycle.tasks_skipped} skipped, {cycle.tasks_failed} failed, {cycle.total_duration_ms:.0f}ms")
+            else:
+                logger.info("Autonomous maintenance: all tasks up to date")
+        except Exception as e:
+            logger.warning(f"Autonomous engine init failed: {e}")
+
         logger.info("盘古 server started")
         yield
         # 关闭
@@ -400,6 +414,11 @@ def create_app() -> FastAPI:
     # 任务状态同步路由
     from pangu.api.routes_tasks import router as task_router
     app.include_router(task_router, prefix="/api/v2")
+
+    # MCP HTTP 传输层（SSE + StreamableHTTP）
+    from pangu.api.mcp_http import mcp_http_routes
+    for route in mcp_http_routes:
+        app.routes.insert(0, route)
 
     # 健康检查
     @app.get("/health")

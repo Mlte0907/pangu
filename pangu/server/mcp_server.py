@@ -728,6 +728,11 @@ class MCPServer:
             {"name": "pangu_persona_identity", "description": "获取系统身份和人格特质", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_persona_values", "description": "获取系统价值观和原则", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_persona_health", "description": "系统综合健康度检查", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 自主记忆管理引擎 (v3.1) ──
+            {"name": "pangu_autonomous_tick", "description": "检查是否需要运行自主维护周期", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_autonomous_run", "description": "运行一次自主记忆管理周期（融合/压缩/衰减/遗忘/探索）", "inputSchema": {"type": "object", "properties": {"force": {"type": "boolean", "description": "强制运行所有任务", "default": False}}}},
+            {"name": "pangu_autonomous_status", "description": "查看自主引擎状态和任务调度", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -3904,6 +3909,38 @@ class MCPServer:
                 from ..memory.persona import get_persona_engine
                 engine = get_persona_engine(self.config)
                 result = engine.health_check(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── 自主记忆管理引擎 ──
+            elif tool_name == "pangu_autonomous_tick":
+                from ..memory.autonomous import get_autonomous_engine
+                engine = get_autonomous_engine(self.config)
+                result = engine.tick()
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_autonomous_run":
+                from ..memory.autonomous import get_autonomous_engine
+                force = arguments.get("force", False)
+                engine = get_autonomous_engine(self.config)
+                cycle = engine.run_cycle(force=force)
+                result = {
+                    "timestamp": cycle.timestamp,
+                    "duration_ms": cycle.total_duration_ms,
+                    "tasks_run": cycle.tasks_run,
+                    "tasks_skipped": cycle.tasks_skipped,
+                    "tasks_failed": cycle.tasks_failed,
+                    "trigger": cycle.trigger,
+                    "results": [
+                        {"name": r.name, "status": r.status, "duration_ms": r.duration_ms, "details": r.details}
+                        for r in cycle.results
+                    ],
+                }
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_autonomous_status":
+                from ..memory.autonomous import get_autonomous_engine
+                engine = get_autonomous_engine(self.config)
+                result = engine.get_status()
                 return json.dumps(result, ensure_ascii=False, indent=2)
 
             else:

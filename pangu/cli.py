@@ -1732,7 +1732,7 @@ def onnx_similarity(
 
 @app.command()
 def serve(
-    host: str = typer.Option("127.0.0.1", help="绑定地址"),
+    host: str = typer.Option("0.0.0.0", help="绑定地址"),
     port: int = typer.Option(8866, help="绑定端口"),
     reload: bool = typer.Option(False, help="自动重载"),
 ):

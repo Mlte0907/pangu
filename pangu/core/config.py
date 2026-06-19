@@ -40,7 +40,7 @@ class PanguConfig(BaseSettings):
     backup_dir: Path = Path(".")
 
     # ── 服务配置 ──
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 19528
     web_host: str = "127.0.0.1"
     web_port: int = 8866
@@ -218,6 +218,11 @@ class PanguConfig(BaseSettings):
             "http://127.0.0.1:3000",
             "http://localhost:5173",     # Vite
             "http://127.0.0.1:5173",
+            "http://192.168.5.8:19529",  # LAN
+            "http://192.168.5.8:8866",
+            "http://192.168.5.8:19528",
+            "http://172.16.42.1:19529",  # VPN
+            "http://172.16.42.1:8866",
         ]
     )
 
