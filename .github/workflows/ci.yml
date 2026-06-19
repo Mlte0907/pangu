@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  PYTHON_DEFAULT: "3.11"
+  PYTHON_DEFAULT: "3.12"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
@@ -104,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12"]
+        python: ["3.11", "3.12", "3.13"]
         os: [ubuntu-latest]
         include:
           - python: "3.11"
