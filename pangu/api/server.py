@@ -447,6 +447,16 @@ def create_app() -> FastAPI:
         from fastapi.responses import Response
         return Response(content=content, media_type=media_type)
 
+    # 自主引擎状态
+    @app.get("/api/v2/autonomous/status")
+    async def autonomous_status():
+        try:
+            from pangu.memory.autonomous import get_autonomous_engine
+            engine = get_autonomous_engine(config)
+            return {"code": 0, "data": engine.get_status()}
+        except Exception as e:
+            return {"code": 500, "error": str(e)}
+
     # 系统信息
     @app.get("/api/v2/system/info")
     async def system_info():

@@ -309,6 +309,26 @@
             <div id="memory-timeline" class="timeline"></div>
         </div>
 
+        <!-- 自主记忆管理 -->
+        <div class="card full-width">
+            <h2>🤖 自主记忆管理</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;">
+                <div>
+                    <div class="metric"><span class="metric-label">引擎状态</span><span id="auto-status" class="metric-value green">--</span></div>
+                    <div class="metric"><span class="metric-label">总执行次数</span><span id="auto-runs" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">总任务数</span><span id="auto-tasks" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">待执行任务</span><span id="auto-pending" class="metric-value yellow">--</span></div>
+                </div>
+                <div id="auto-task-list">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">任务调度</h3>
+                </div>
+                <div>
+                    <button class="btn" onclick="runAutonomous()" style="margin-bottom:8px;">▶ 立即执行</button>
+                    <div id="auto-run-result" style="font-size:12px;color:var(--text-secondary);margin-top:4px;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- 模块状态 -->
         <div class="card full-width">
             <h2>🧩 智能模块状态</h2>
@@ -481,8 +501,62 @@
             refreshPerformance(),
             refreshModules(),
             refreshHealthChecks(),
+            refreshAutonomous(),
         ]);
         if (autoRefreshEnabled) countdownValue = REFRESH_INTERVAL;
+    }
+
+    async function refreshAutonomous() {
+        try {
+            const res = await fetchJSON(`${API_BASE}/api/v2/autonomous/status`);
+            const d = res.data;
+            document.getElementById('auto-status').textContent = '✅ 运行中';
+            document.getElementById('auto-runs').textContent = d.total_runs;
+            document.getElementById('auto-tasks').textContent = d.total_tasks;
+            document.getElementById('auto-pending').textContent = d.tasks.filter(t => t.next_in_minutes <= 0).length;
+
+            const list = document.getElementById('auto-task-list');
+            list.innerHTML = '<h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">任务调度</h3>';
+            const taskNames = {
+                fusion: '融合', compression: '压缩', decay: '衰减',
+                forget: '遗忘', dream: '梦境', curiosity: '探索',
+                vector_rebuild: '向量索引', neural_sleep: '神经巩固'
+            };
+            d.tasks.forEach(t => {
+                const ready = t.next_in_minutes <= 0;
+                const item = document.createElement('div');
+                item.className = 'metric';
+                item.innerHTML = `
+                    <span class="metric-label">${taskNames[t.task] || t.task}</span>
+                    <span class="metric-value" style="font-size:12px;${ready ? 'color:var(--green)' : 'color:var(--text-muted)'}">${ready ? '就绪' : t.next_in_minutes + 'min'}</span>
+                `;
+                list.appendChild(item);
+            });
+        } catch(e) {
+            document.getElementById('auto-status').textContent = '❌ 不可用';
+        }
+    }
+
+    async function runAutonomous() {
+        const el = document.getElementById('auto-run-result');
+        el.textContent = '执行中...';
+        el.style.color = 'var(--accent)';
+        try {
+            const res = await fetchJSON(`${API_BASE}/mcp`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    jsonrpc: '2.0', id: 1,
+                    method: 'tools/call',
+                    params: {name: 'pangu_autonomous_run', arguments: {force: true}}
+                })
+            });
+            const data = JSON.parse(res.result.content[0].text);
+            el.innerHTML = `<span style="color:var(--green)">✅ ${data.tasks_run}成功 ${data.tasks_skipped}跳过 ${data.tasks_failed}失败 (${data.duration_ms}ms)</span>`;
+            refreshAutonomous();
+        } catch(e) {
+            el.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
+        }
     }
 
     async function refreshHealth() {
