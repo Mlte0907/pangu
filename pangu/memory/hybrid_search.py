@@ -152,4 +152,11 @@ def hybrid_search(
             "kg_rank": kg_ranks.get(mid),
         })
 
+    # 语义重排序
+    try:
+        from pangu.memory.reranker import rerank_search_results
+        results = rerank_search_results(query, results, drawers=drawers, limit=limit)
+    except Exception as e:
+        logger.debug(f"Reranking skipped: {e}")
+
     return results

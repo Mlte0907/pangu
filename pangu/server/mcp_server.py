@@ -751,6 +751,9 @@ class MCPServer:
             {"name": "pangu_agent_activity", "description": "查看Agent活动流（读写记录）", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string", "description": "Agent ID（留空=全部）"}, "limit": {"type": "integer", "default": 20}}}},
             {"name": "pangu_agent_search", "description": "Agent感知搜索（仅搜索该Agent可见的记忆）", "inputSchema": {"type": "object", "properties": {"agent_id": {"type": "string"}, "query": {"type": "string"}}, "required": ["agent_id", "query"]}},
             {"name": "pangu_agent_transfer", "description": "跨Agent记忆转移", "inputSchema": {"type": "object", "properties": {"from_agent": {"type": "string"}, "to_agent": {"type": "string"}, "memory_id": {"type": "string"}}, "required": ["from_agent", "to_agent", "memory_id"]}},
+
+            # ── 语义重排序 (v3.2) ──
+            {"name": "pangu_rerank", "description": "语义重排序搜索结果（上下文+时效+重要性+质量）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "context": {"type": "string", "description": "当前对话上下文"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4103,6 +4106,24 @@ class MCPServer:
                 return json.dumps({
                     "transferred": True, "from": from_agent, "to": to_agent,
                     "new_id": new_mem.id, "original_id": mem.id,
+                }, ensure_ascii=False, indent=2)
+
+            # ── 语义重排序 ──
+            elif tool_name == "pangu_rerank":
+                from ..memory.reranker import rerank_search_results
+                from ..memory.hybrid_search import hybrid_search
+                query = arguments["query"]
+                context = arguments.get("context", "")
+                limit = arguments.get("limit", 10)
+                rrf_results = hybrid_search(query, drawers, config=self.config, limit=limit * 2)
+                reranked = rerank_search_results(query, rrf_results, context=context, drawers=drawers, limit=limit)
+                return json.dumps({
+                    "count": len(reranked),
+                    "results": [{
+                        "id": r["id"], "content": r["content"][:100], "wing": r.get("wing"),
+                        "rerank_score": r.get("rerank_score", 0),
+                        "breakdown": r.get("rerank_breakdown", {}),
+                    } for r in reranked]
                 }, ensure_ascii=False, indent=2)
 
             else:
