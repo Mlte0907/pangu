@@ -739,6 +739,10 @@ class MCPServer:
             {"name": "pangu_collect_dir", "description": "从目录批量采集记忆", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "pattern": {"type": "string", "description": "文件匹配模式", "default": "*.md"}, "min_importance": {"type": "number", "default": 0.3}}}},
             {"name": "pangu_collect_all", "description": "扫描所有配置源自动采集", "inputSchema": {"type": "object", "properties": {"min_importance": {"type": "number", "default": 0.3}}}},
             {"name": "pangu_collect_stats", "description": "查看采集统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 记忆质量管道 (v3.1) ──
+            {"name": "pangu_quality_analyze", "description": "分析记忆质量（评分/去重/标签）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_quality_fix", "description": "自动修复记忆质量问题（标签/去重）", "inputSchema": {"type": "object", "properties": {"dry_run": {"type": "boolean", "default": False}}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -3986,6 +3990,27 @@ class MCPServer:
                 from ..memory.collector import get_collector
                 collector = get_collector(self.config)
                 return json.dumps(collector.get_stats(), ensure_ascii=False, indent=2)
+
+            # ── 记忆质量管道 ──
+            elif tool_name == "pangu_quality_analyze":
+                from ..memory.quality import get_quality_pipeline
+                pipe = get_quality_pipeline(self.config)
+                return json.dumps(pipe.get_report_dict(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_quality_fix":
+                from ..memory.quality import get_quality_pipeline
+                pipe = get_quality_pipeline(self.config)
+                dry_run = arguments.get("dry_run", False)
+                report = pipe.fix_all(dry_run=dry_run)
+                return json.dumps({
+                    "total": report.total,
+                    "avg_score": round(report.avg_score, 1),
+                    "tags_added": report.tags_added,
+                    "duplicates_removed": report.merged,
+                    "high_quality": report.high_quality,
+                    "low_quality": report.low_quality,
+                    "dry_run": dry_run,
+                }, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
