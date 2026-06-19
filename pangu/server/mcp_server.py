@@ -736,7 +736,7 @@ class MCPServer:
 
             # ── 通用自动采集 (v3.1) ──
             {"name": "pangu_collect_file", "description": "从指定文件采集记忆", "inputSchema": {"type": "object", "properties": {"file_path": {"type": "string", "description": "文件路径"}, "min_importance": {"type": "number", "description": "最小重要性", "default": 0.3}}, "required": ["file_path"]}},
-            {"name": "pangu_collect_dir", "description": "从目录批量采集记忆", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "pattern": {"type": "string", "description": "文件匹配模式", "default": "*.md"}, "min_importance": {"type": "number", "default": 0.3}}},
+            {"name": "pangu_collect_dir", "description": "从目录批量采集记忆", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "pattern": {"type": "string", "description": "文件匹配模式", "default": "*.md"}, "min_importance": {"type": "number", "default": 0.3}}}},
             {"name": "pangu_collect_all", "description": "扫描所有配置源自动采集", "inputSchema": {"type": "object", "properties": {"min_importance": {"type": "number", "default": 0.3}}}},
             {"name": "pangu_collect_stats", "description": "查看采集统计", "inputSchema": {"type": "object", "properties": {}}},
         ]
