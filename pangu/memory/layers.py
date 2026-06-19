@@ -323,7 +323,17 @@ class MemoryStack:
         return result
 
     def _save_drawers(self) -> None:
-        """保存抽屉到磁盘并刷新缓存"""
+        """保存抽屉到磁盘并刷新缓存（带脏检查，防止覆盖外部修改）"""
+        try:
+            if self._drawers_file.exists():
+                with open(self._drawers_file, encoding="utf-8") as f:
+                    disk_data = json.load(f)
+                if len(disk_data) > len(self._drawers):
+                    logger.warning(f"跳过保存: 磁盘有 {len(disk_data)} 条，内存仅 {len(self._drawers)} 条")
+                    return
+        except Exception:
+            pass
+
         with open(self._drawers_file, "w", encoding="utf-8") as f:
             json.dump([d.to_dict() for d in self._drawers], f, ensure_ascii=False, indent=2)
         self._cache.invalidate()
