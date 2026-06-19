@@ -4,11 +4,9 @@
 """
 import json
 import logging
-from datetime import datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from typing import Any
 
 logger = logging.getLogger("pangu.api.tools")
 router = APIRouter()
@@ -25,15 +23,19 @@ class BatchToolCallRequest(BaseModel):
     )
 
 
+def _get_server():
+    from pangu.server.mcp_server import MCPServer
+    from pangu.core.config import PanguConfig
+    config = PanguConfig.load()
+    config.ensure_dirs()
+    return MCPServer(config)
+
+
 @router.get("/tools")
 async def list_tools():
     """列出所有可用的 MCP 工具"""
     try:
-        from pangu.server.mcp_server import MCPServer
-        from pangu.core.config import PanguConfig
-        config = PanguConfig.load()
-        config.ensure_dirs()
-        server = MCPServer(config)
+        server = _get_server()
         tools = server.tools
         return {
             "code": 0,
@@ -53,11 +55,7 @@ async def list_tools():
 async def get_tool_info(tool_name: str):
     """获取单个工具的详细信息"""
     try:
-        from pangu.server.mcp_server import MCPServer
-        from pangu.core.config import PanguConfig
-        config = PanguConfig.load()
-        config.ensure_dirs()
-        server = MCPServer(config)
+        server = _get_server()
         tool = next((t for t in server.tools if t["name"] == tool_name), None)
         if not tool:
             return {"code": 404, "error": f"工具 {tool_name} 不存在"}
@@ -68,20 +66,10 @@ async def get_tool_info(tool_name: str):
 
 @router.post("/tools/{tool_name}")
 async def call_tool(tool_name: str, req: ToolCallRequest = None):
-    """调用单个 MCP 工具
-
-    Example:
-        POST /api/v2/tools/pangu_search_memories
-        {"arguments": {"query": "Python", "limit": 5}}
-    """
+    """调用单个 MCP 工具"""
     arguments = req.arguments if req else {}
     try:
-        from pangu.server.mcp_server import MCPServer
-        from pangu.core.config import PanguConfig
-        config = PanguConfig.load()
-        config.ensure_dirs()
-        server = MCPServer(config)
-
+        server = _get_server()
         request = {
             "method": "tools/call",
             "params": {"name": tool_name, "arguments": arguments},
