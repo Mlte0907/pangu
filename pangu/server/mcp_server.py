@@ -754,6 +754,7 @@ class MCPServer:
 
             # ── 语义重排序 (v3.2) ──
             {"name": "pangu_rerank", "description": "语义重排序搜索结果（上下文+时效+重要性+质量）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "context": {"type": "string", "description": "当前对话上下文"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
+            {"name": "pangu_search_explain", "description": "搜索结果解释（每条结果附带为什么匹配）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 5}}, "required": ["query"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4123,8 +4124,30 @@ class MCPServer:
                         "id": r["id"], "content": r["content"][:100], "wing": r.get("wing"),
                         "rerank_score": r.get("rerank_score", 0),
                         "breakdown": r.get("rerank_breakdown", {}),
+                        "explanation": r.get("explanation", ""),
+                        "match_reasons": r.get("match_reasons", []),
                     } for r in reranked]
                 }, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_search_explain":
+                from ..memory.hybrid_search import hybrid_search
+                query = arguments["query"]
+                limit = arguments.get("limit", 5)
+                results = hybrid_search(query, drawers, config=self.config, limit=limit)
+                output = []
+                for r in results:
+                    output.append({
+                        "id": r["id"],
+                        "content": r["content"][:100],
+                        "wing": r.get("wing"),
+                        "importance": r.get("importance"),
+                        "explanation": r.get("explanation", "语义匹配"),
+                        "match_reasons": r.get("match_reasons", []),
+                        "match_type": r.get("match_type", "keyword"),
+                        "rrf_score": r.get("rrf_score", 0),
+                        "rerank_score": r.get("rerank_score", 0),
+                    })
+                return json.dumps({"count": len(output), "results": output}, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})

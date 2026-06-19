@@ -159,4 +159,16 @@ def hybrid_search(
     except Exception as e:
         logger.debug(f"Reranking skipped: {e}")
 
+    # 生成搜索解释
+    try:
+        from pangu.memory.search_explainer import get_search_explainer
+        explainer = get_search_explainer()
+        for r in results:
+            exp = explainer.explain(query, r, all_results=results)
+            r["explanation"] = exp.summary
+            r["match_reasons"] = exp.match_reasons
+            r["match_type"] = exp.match_type
+    except Exception as e:
+        logger.debug(f"Search explanation skipped: {e}")
+
     return results
