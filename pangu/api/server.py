@@ -298,7 +298,10 @@ def create_app() -> FastAPI:
         启用条件：config.api_key 非空 或 jwt_secret 非空。
         公开端点始终豁免：/、/health*、/metrics、/docs、/openapi.json、/api/v2/auth/*。
         """
-        _EXEMPT_PATHS = {"/", "/health", "/health/deep", "/metrics", "/docs", "/openapi.json", "/redoc"}
+        _EXEMPT_PATHS = {"/", "/health", "/health/deep", "/metrics", "/docs", "/openapi.json", "/redoc",
+                          "/dashboard", "/graph", "/performance",
+                          "/api/v2/system/info", "/api/v2/autonomous/status",
+                          "/api/v2/graph", "/api/v2/tools"}
         _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh"}
         _EXEMPT_PREFIXES = ("/docs", "/redoc")
 
