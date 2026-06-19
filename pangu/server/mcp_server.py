@@ -733,6 +733,12 @@ class MCPServer:
             {"name": "pangu_autonomous_tick", "description": "检查是否需要运行自主维护周期", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_autonomous_run", "description": "运行一次自主记忆管理周期（融合/压缩/衰减/遗忘/探索）", "inputSchema": {"type": "object", "properties": {"force": {"type": "boolean", "description": "强制运行所有任务", "default": False}}}},
             {"name": "pangu_autonomous_status", "description": "查看自主引擎状态和任务调度", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 通用自动采集 (v3.1) ──
+            {"name": "pangu_collect_file", "description": "从指定文件采集记忆", "inputSchema": {"type": "object", "properties": {"file_path": {"type": "string", "description": "文件路径"}, "min_importance": {"type": "number", "description": "最小重要性", "default": 0.3}}, "required": ["file_path"]}},
+            {"name": "pangu_collect_dir", "description": "从目录批量采集记忆", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "pattern": {"type": "string", "description": "文件匹配模式", "default": "*.md"}, "min_importance": {"type": "number", "default": 0.3}}},
+            {"name": "pangu_collect_all", "description": "扫描所有配置源自动采集", "inputSchema": {"type": "object", "properties": {"min_importance": {"type": "number", "default": 0.3}}}},
+            {"name": "pangu_collect_stats", "description": "查看采集统计", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -3947,6 +3953,39 @@ class MCPServer:
                 engine = get_autonomous_engine(self.config)
                 result = engine.get_status()
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── 通用自动采集 ──
+            elif tool_name == "pangu_collect_file":
+                from ..memory.collector import get_collector
+                collector = get_collector(self.config)
+                results = collector.collect_from_file(
+                    arguments["file_path"],
+                    min_importance=arguments.get("min_importance", 0.3),
+                )
+                return json.dumps({"collected": len(results), "memories": results}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_collect_dir":
+                from ..memory.collector import get_collector
+                collector = get_collector(self.config)
+                result = collector.collect_from_dir(
+                    arguments["dir_path"],
+                    pattern=arguments.get("pattern", "*.md"),
+                    min_importance=arguments.get("min_importance", 0.3),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_collect_all":
+                from ..memory.collector import get_collector
+                collector = get_collector(self.config)
+                result = collector.collect_all_sources(
+                    min_importance=arguments.get("min_importance", 0.3),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_collect_stats":
+                from ..memory.collector import get_collector
+                collector = get_collector(self.config)
+                return json.dumps(collector.get_stats(), ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})

@@ -74,6 +74,9 @@ SCHEDULE_RULES = {
         "min_new_embeddings": 15,
         "interval_hours": 2,
     },
+    "collect": {
+        "interval_hours": 2,
+    },
 }
 
 
@@ -347,6 +350,22 @@ class AutonomousMemoryEngine:
         except Exception as e:
             return TaskResult(name="vector_index", status="failed", details={"error": str(e)})
 
+    def _task_collect(self, drawers: list[Drawer]) -> TaskResult:
+        """自动采集：从文件/目录/日志提取记忆"""
+        start = time.time()
+        try:
+            from .collector import get_collector
+            collector = get_collector(self.config)
+            result = collector.collect_all_sources(min_importance=0.3)
+            return TaskResult(
+                name="collect",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
+                details=result,
+            )
+        except Exception as e:
+            return TaskResult(name="collect", status="failed", details={"error": str(e)})
+
     # ── 主循环 ──
 
     def tick(self) -> dict:
@@ -429,6 +448,10 @@ class AutonomousMemoryEngine:
         # 神经巩固
         if force or self._should_run("dream"):
             tasks.append(("neural_sleep", self._task_neural_sleep, True))
+
+        # 自动采集
+        if force or self._should_run("collect"):
+            tasks.append(("collect", self._task_collect, True))
 
         trigger = f"new={new_count},old={old_count},force={force}"
         success = 0
