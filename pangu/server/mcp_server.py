@@ -778,6 +778,11 @@ class MCPServer:
                     tags=arguments.get("tags", []),
                 )
                 self.memory.add_drawer(drawer)
+                try:
+                    from ..memory.autonomous import on_memory_written
+                    on_memory_written()
+                except Exception:
+                    pass
                 return json.dumps({"status": "added", "id": drawer.id}, ensure_ascii=False)
 
             elif tool_name == "pangu_search_memories":

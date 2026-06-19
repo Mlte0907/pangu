@@ -505,3 +505,99 @@ def get_autonomous_engine(config: PanguConfig = None) -> AutonomousMemoryEngine:
     if _autonomous_engine is None:
         _autonomous_engine = AutonomousMemoryEngine(config)
     return _autonomous_engine
+
+
+# ── 后台调度器 ──
+
+import threading
+
+
+class BackgroundScheduler:
+    """后台自主调度器 — 在服务器进程内持续运行维护任务"""
+
+    def __init__(self, config: PanguConfig = None, interval_minutes: int = 30):
+        self.config = config or PanguConfig()
+        self.interval = interval_minutes * 60
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._last_run: float = 0.0
+        self._run_count: int = 0
+        self._last_result: dict = {}
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="pangu-autonomous")
+        self._thread.start()
+        logger.info(f"Autonomous scheduler started (interval={self.interval}s)")
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=10)
+        logger.info("Autonomous scheduler stopped")
+
+    def _loop(self):
+        while not self._stop_event.is_set():
+            self._stop_event.wait(timeout=self.interval)
+            if self._stop_event.is_set():
+                break
+            try:
+                engine = get_autonomous_engine(self.config)
+                tick = engine.tick()
+                if tick["should_run"]:
+                    cycle = engine.run_cycle()
+                    self._last_run = time.time()
+                    self._run_count += 1
+                    self._last_result = {
+                        "timestamp": cycle.timestamp,
+                        "tasks_run": cycle.tasks_run,
+                        "tasks_failed": cycle.tasks_failed,
+                        "duration_ms": cycle.total_duration_ms,
+                    }
+                    logger.info(
+                        f"Autonomous scheduler cycle #{self._run_count}: "
+                        f"{cycle.tasks_run} ran, {cycle.tasks_failed} failed, {cycle.total_duration_ms:.0f}ms"
+                    )
+            except Exception as e:
+                logger.error(f"Autonomous scheduler error: {e}")
+
+    def get_status(self) -> dict:
+        return {
+            "running": self._thread.is_alive() if self._thread else False,
+            "interval_minutes": self.interval // 60,
+            "total_runs": self._run_count,
+            "last_run": datetime.fromtimestamp(self._last_run).isoformat() if self._last_run else "never",
+            "last_result": self._last_result,
+        }
+
+
+_scheduler: BackgroundScheduler | None = None
+
+
+def get_scheduler(config: PanguConfig = None) -> BackgroundScheduler:
+    global _scheduler
+    if _scheduler is None:
+        _scheduler = BackgroundScheduler(config)
+    return _scheduler
+
+
+# ── 记忆写入钩子 ──
+
+_write_counter = 0
+_WRITE_HOOK_THRESHOLD = 10
+
+
+def on_memory_written():
+    """记忆写入后调用 — 达到阈值时触发自主维护"""
+    global _write_counter
+    _write_counter += 1
+    if _write_counter >= _WRITE_HOOK_THRESHOLD:
+        _write_counter = 0
+        try:
+            engine = get_autonomous_engine()
+            cycle = engine.run_cycle()
+            logger.info(f"Auto-triggered by writes: {cycle.tasks_run} tasks, {cycle.total_duration_ms:.0f}ms")
+        except Exception as e:
+            logger.debug(f"Write-hook auto-trigger failed: {e}")

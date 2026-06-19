@@ -326,6 +326,12 @@
                     <button class="btn" onclick="runAutonomous()" style="margin-bottom:8px;">▶ 立即执行</button>
                     <div id="auto-run-result" style="font-size:12px;color:var(--text-secondary);margin-top:4px;"></div>
                 </div>
+                <div>
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">后台调度器</h3>
+                    <div class="metric"><span class="metric-label">状态</span><span id="scheduler-status" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">间隔</span><span id="scheduler-interval" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">最近执行</span><span id="scheduler-last" class="metric-value" style="font-size:12px">--</span></div>
+                </div>
             </div>
         </div>
 
@@ -514,6 +520,14 @@
             document.getElementById('auto-runs').textContent = d.total_runs;
             document.getElementById('auto-tasks').textContent = d.total_tasks;
             document.getElementById('auto-pending').textContent = d.tasks.filter(t => t.next_in_minutes <= 0).length;
+
+            // 调度器状态
+            if (d.scheduler) {
+                document.getElementById('scheduler-status').textContent = d.scheduler.running ? '🟢 运行中' : '🔴 停止';
+                document.getElementById('scheduler-status').className = `metric-value ${d.scheduler.running ? 'green' : 'red'}`;
+                document.getElementById('scheduler-interval').textContent = d.scheduler.interval_minutes + 'min';
+                document.getElementById('scheduler-last').textContent = d.scheduler.last_run === 'never' ? '未执行' : new Date(d.scheduler.last_run).toLocaleTimeString();
+            }
 
             const list = document.getElementById('auto-task-list');
             list.innerHTML = '<h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">任务调度</h3>';

@@ -81,8 +81,24 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Autonomous engine init failed: {e}")
 
+        # 启动后台自主调度器（每 30 分钟自动检查维护）
+        try:
+            from pangu.memory.autonomous import get_scheduler
+            scheduler = get_scheduler(config)
+            scheduler.start()
+        except Exception as e:
+            logger.warning(f"Autonomous scheduler start failed: {e}")
+
         logger.info("盘古 server started")
         yield
+
+        # 停止后台调度器
+        try:
+            from pangu.memory.autonomous import get_scheduler
+            get_scheduler().stop()
+        except Exception:
+            pass
+
         # 关闭
         logger.info("盘古 server stopped")
 
@@ -451,9 +467,12 @@ def create_app() -> FastAPI:
     @app.get("/api/v2/autonomous/status")
     async def autonomous_status():
         try:
-            from pangu.memory.autonomous import get_autonomous_engine
+            from pangu.memory.autonomous import get_autonomous_engine, get_scheduler
             engine = get_autonomous_engine(config)
-            return {"code": 0, "data": engine.get_status()}
+            scheduler = get_scheduler()
+            status = engine.get_status()
+            status["scheduler"] = scheduler.get_status()
+            return {"code": 0, "data": status}
         except Exception as e:
             return {"code": 500, "error": str(e)}
 
