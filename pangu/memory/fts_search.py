@@ -26,6 +26,8 @@ def _get_jieba():
     global _jieba
     if _jieba is None:
         try:
+            import warnings
+            warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
             import jieba
             jieba.setLogLevel(logging.WARNING)
             _jieba = jieba
