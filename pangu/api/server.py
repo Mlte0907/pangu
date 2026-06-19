@@ -871,6 +871,40 @@ def create_app() -> FastAPI:
             return HTMLResponse(content=perf_path.read_text(encoding="utf-8"))
         return HTMLResponse(content="<h1>Performance page not found</h1>", status_code=404)
 
+    # ── 知识图谱 API ──
+    @app.get("/api/v2/graph")
+    async def graph_data(entity_type: str = None, limit: int = 100):
+        try:
+            from pangu.memory.knowledge_graph import KnowledgeGraph
+            from pangu.core.config import PanguConfig as _Cfg
+            cfg = _Cfg.load()
+            kg = KnowledgeGraph(cfg)
+            entities = kg.list_entities(entity_type)[:limit]
+            edges = []
+            for e in entities[:50]:
+                rels = kg.query_relations(subject_id=e["id"])
+                for r in rels:
+                    edges.append({
+                        "source": r["subject_id"],
+                        "target": r["object_id"],
+                        "predicate": r.get("predicate", ""),
+                        "confidence": r.get("confidence", 1.0),
+                    })
+            nodes = [{"id": e["id"], "name": e["name"], "type": e.get("type", "default"),
+                       "memory_count": e.get("memory_count", 0), "description": e.get("description", "")}
+                      for e in entities]
+            return {"code": 0, "data": {"nodes": nodes, "edges": edges, "total_entities": len(entities)}}
+        except Exception as e:
+            return {"code": 500, "error": str(e)}
+
+    @app.get("/graph", include_in_schema=False)
+    async def graph_page():
+        from fastapi.responses import HTMLResponse
+        graph_path = Path(__file__).parent.parent / "ui" / "templates" / "graph.html"
+        if graph_path.exists():
+            return HTMLResponse(content=graph_path.read_text(encoding="utf-8"))
+        return HTMLResponse(content="<h1>Graph page not found</h1>", status_code=404)
+
     # ── WebSocket 实时通知 ──
 
     from fastapi import WebSocket

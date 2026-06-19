@@ -755,6 +755,7 @@ class MCPServer:
             # ── 语义重排序 (v3.2) ──
             {"name": "pangu_rerank", "description": "语义重排序搜索结果（上下文+时效+重要性+质量）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "context": {"type": "string", "description": "当前对话上下文"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
             {"name": "pangu_search_explain", "description": "搜索结果解释（每条结果附带为什么匹配）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 5}}, "required": ["query"]}},
+            {"name": "pangu_graph_visualize_web", "description": "生成知识图谱可视化页面URL", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4148,6 +4149,13 @@ class MCPServer:
                         "rerank_score": r.get("rerank_score", 0),
                     })
                 return json.dumps({"count": len(output), "results": output}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_graph_visualize_web":
+                from ..core.config import PanguConfig as _Cfg
+                cfg = _Cfg.load()
+                host = cfg.host if cfg.host != "0.0.0.0" else "127.0.0.1"
+                url = f"http://{host}:{cfg.port}/graph"
+                return json.dumps({"url": url, "description": "在浏览器中打开此URL查看交互式知识图谱"}, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
