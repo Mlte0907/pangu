@@ -793,6 +793,11 @@ class MCPServer:
                     on_memory_written()
                 except Exception:
                     pass
+                try:
+                    from ..memory.memory_events import get_event_stream
+                    get_event_stream(self.config).emit_memory_write(drawer.id, drawer.content, drawer.wing)
+                except Exception:
+                    pass
                 return json.dumps({"status": "added", "id": drawer.id}, ensure_ascii=False)
 
             elif tool_name == "pangu_search_memories":
@@ -3984,6 +3989,13 @@ class MCPServer:
                 result = collector.collect_all_sources(
                     min_importance=arguments.get("min_importance", 0.3),
                 )
+                try:
+                    from ..memory.memory_events import get_event_stream
+                    count = result.get("total", 0)
+                    if count > 0:
+                        get_event_stream(self.config).emit("memory.collect", "", {"count": count, "sources": result.get("sources", {})})
+                except Exception:
+                    pass
                 return json.dumps(result, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_collect_stats":
@@ -4002,6 +4014,13 @@ class MCPServer:
                 pipe = get_quality_pipeline(self.config)
                 dry_run = arguments.get("dry_run", False)
                 report = pipe.fix_all(dry_run=dry_run)
+                try:
+                    from ..memory.memory_events import get_event_stream
+                    get_event_stream(self.config).emit("memory.quality_fix", "", {
+                        "tags_added": report.tags_added, "duplicates_removed": report.merged, "dry_run": dry_run,
+                    })
+                except Exception:
+                    pass
                 return json.dumps({
                     "total": report.total,
                     "avg_score": round(report.avg_score, 1),

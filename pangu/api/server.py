@@ -99,6 +99,13 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Autonomous scheduler start failed: {e}")
 
+        # 激活事件总线→WebSocket 桥接
+        try:
+            from pangu.memory.realtime_bridge import setup_bridge
+            setup_bridge()
+        except Exception as e:
+            logger.warning(f"Realtime bridge setup failed: {e}")
+
         logger.info("盘古 server started")
         yield
 
