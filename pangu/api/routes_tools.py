@@ -49,7 +49,7 @@ async def list_tools():
         return {"code": 500, "error": str(e)}
 
 
-@router.post("/tools/batch")
+@router.post("/tools-batch")
 async def batch_call_tools(req: BatchToolCallRequest):
     """批量调用多个 MCP 工具（必须在 {tool_name} 之前注册）"""
     results = []

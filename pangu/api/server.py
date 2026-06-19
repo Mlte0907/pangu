@@ -435,6 +435,10 @@ def create_app() -> FastAPI:
     from pangu.api.routes_tools import router as tools_router
     app.include_router(tools_router, prefix="/api/v2")
 
+    # 批量工具调用（直接注册避免路由冲突）
+    from pangu.api.routes_tools import batch_call_tools, BatchToolCallRequest
+    app.add_api_route("/api/v2/tools-batch", batch_call_tools, methods=["POST"])
+
     # MCP HTTP 传输层（SSE + StreamableHTTP）
     from pangu.api.mcp_http import mcp_http_routes
     for route in mcp_http_routes:
