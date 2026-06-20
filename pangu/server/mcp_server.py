@@ -3896,8 +3896,8 @@ class MCPServer:
                 return json.dumps(stats, ensure_ascii=False)
 
             elif tool_name == "pangu_search_stats":
-                from ..memory.retrieval import get_search_stats
-                return json.dumps(get_search_stats(), ensure_ascii=False, indent=2)
+                from ..memory.retrieval import get_search_stats as _get_search_stats
+                return json.dumps(_get_search_stats(), ensure_ascii=False, indent=2)
 
             # ── 梦境巩固 ──
 
