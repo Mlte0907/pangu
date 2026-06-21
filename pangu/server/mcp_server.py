@@ -756,6 +756,11 @@ class MCPServer:
             {"name": "pangu_rerank", "description": "语义重排序搜索结果（上下文+时效+重要性+质量）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "context": {"type": "string", "description": "当前对话上下文"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
             {"name": "pangu_search_explain", "description": "搜索结果解释（每条结果附带为什么匹配）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 5}}, "required": ["query"]}},
             {"name": "pangu_graph_visualize_web", "description": "生成知识图谱可视化页面URL", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 多模态输入 (v3.3) ──
+            {"name": "pangu_ingest_file", "description": "从文件提取多模态记忆（图片/PDF/文本/音频）", "inputSchema": {"type": "object", "properties": {"file_path": {"type": "string", "description": "文件路径"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string", "description": "自定义描述"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["file_path"]}},
+            {"name": "pangu_ingest_url", "description": "从URL抓取网页内容存入记忆", "inputSchema": {"type": "object", "properties": {"url": {"type": "string", "description": "网页URL"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["url"]}},
+            {"name": "pangu_ingest_text", "description": "直接存入文本记忆（支持自定义模态标签）", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "文本内容"}, "wing": {"type": "string", "default": "default"}, "modality": {"type": "string", "description": "模态标签", "default": "text"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["text"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4156,6 +4161,41 @@ class MCPServer:
                 host = cfg.host if cfg.host != "0.0.0.0" else "127.0.0.1"
                 url = f"http://{host}:{cfg.port}/graph"
                 return json.dumps({"url": url, "description": "在浏览器中打开此URL查看交互式知识图谱"}, ensure_ascii=False, indent=2)
+
+            # ── 多模态输入 (v3.3) ──
+            elif tool_name == "pangu_ingest_file":
+                from ..memory.multimodal_pipeline import get_multimodal_pipeline
+                pipe = get_multimodal_pipeline(self.config)
+                result = pipe.ingest_file(
+                    arguments["file_path"],
+                    wing=arguments.get("wing", "default"),
+                    description=arguments.get("description", ""),
+                    tags=arguments.get("tags", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_ingest_url":
+                from ..memory.multimodal_pipeline import get_multimodal_pipeline
+                pipe = get_multimodal_pipeline(self.config)
+                result = pipe.ingest_url(
+                    arguments["url"],
+                    wing=arguments.get("wing", "default"),
+                    description=arguments.get("description", ""),
+                    tags=arguments.get("tags", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_ingest_text":
+                from ..memory.multimodal_pipeline import get_multimodal_pipeline
+                pipe = get_multimodal_pipeline(self.config)
+                result = pipe.ingest_text(
+                    arguments["text"],
+                    wing=arguments.get("wing", "default"),
+                    description=arguments.get("description", ""),
+                    tags=arguments.get("tags", []),
+                    modality=arguments.get("modality", "text"),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
