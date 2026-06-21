@@ -25,12 +25,8 @@ async def _mcp_handle(request: Request) -> Response:
     session_id = request.headers.get("mcp-session-id") or request.query_params.get("session_id", str(uuid.uuid4()))
 
     try:
-        from pangu.server.mcp_server import MCPServer
-        from pangu.core.config import PanguConfig
-
-        config = PanguConfig.load()
-        config.ensure_dirs()
-        server = MCPServer(config)
+        from pangu.api.routes_tools import _get_server
+        server = _get_server()
         response = await server.handle_request(msg)
         if response is None:
             response = {"jsonrpc": "2.0", "id": msg.get("id"), "result": {}}

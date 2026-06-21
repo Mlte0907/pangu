@@ -23,12 +23,24 @@ class BatchToolCallRequest(BaseModel):
     )
 
 
+_cached_server = None
+
 def _get_server():
+    global _cached_server
+    if _cached_server is not None:
+        return _cached_server
     from pangu.server.mcp_server import MCPServer
     from pangu.core.config import PanguConfig
     config = PanguConfig.load()
     config.ensure_dirs()
-    return MCPServer(config)
+    _cached_server = MCPServer(config)
+    return _cached_server
+
+
+def reset_server():
+    """清除缓存的 MCPServer（写操作后调用）"""
+    global _cached_server
+    _cached_server = None
 
 
 @router.get("/tools")

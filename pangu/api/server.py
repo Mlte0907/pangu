@@ -77,6 +77,14 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Warmup failed: {e}")
 
+        # 预加载 MCPServer 实例（避免每次请求重建）
+        try:
+            from pangu.api.routes_tools import _get_server
+            _get_server()
+            logger.info("MCPServer instance preloaded")
+        except Exception as e:
+            logger.warning(f"MCPServer preload failed: {e}")
+
         # 自主记忆管理：检查是否需要运行维护周期
         try:
             from pangu.memory.autonomous import get_autonomous_engine
@@ -462,11 +470,8 @@ def create_app() -> FastAPI:
     async def tools_batch(req: BatchToolCallRequest):
         results = []
         try:
-            from pangu.server.mcp_server import MCPServer
-            from pangu.core.config import PanguConfig as _C
-            cfg = _C.load()
-            cfg.ensure_dirs()
-            srv = MCPServer(cfg)
+            from pangu.api.routes_tools import _get_server
+            srv = _get_server()
             for call in req.calls[:20]:
                 name = call.get("name", "")
                 args = call.get("arguments", {})
