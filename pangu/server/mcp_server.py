@@ -761,6 +761,10 @@ class MCPServer:
             {"name": "pangu_ingest_file", "description": "从文件提取多模态记忆（图片/PDF/文本/音频）", "inputSchema": {"type": "object", "properties": {"file_path": {"type": "string", "description": "文件路径"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string", "description": "自定义描述"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["file_path"]}},
             {"name": "pangu_ingest_url", "description": "从URL抓取网页内容存入记忆", "inputSchema": {"type": "object", "properties": {"url": {"type": "string", "description": "网页URL"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["url"]}},
             {"name": "pangu_ingest_text", "description": "直接存入文本记忆（支持自定义模态标签）", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "description": "文本内容"}, "wing": {"type": "string", "default": "default"}, "modality": {"type": "string", "description": "模态标签", "default": "text"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["text"]}},
+            {"name": "pangu_image_embed", "description": "图片CLIP嵌入+分析（尺寸/颜色/分类）", "inputSchema": {"type": "object", "properties": {"image_path": {"type": "string", "description": "图片文件路径"}}, "required": ["image_path"]}},
+            {"name": "pangu_image_classify", "description": "图片零样本分类（CLIP）", "inputSchema": {"type": "object", "properties": {"image_path": {"type": "string", "description": "图片文件路径"}}, "required": ["image_path"]}},
+            {"name": "pangu_image_search_by_text", "description": "以文搜图（文本匹配图片记忆）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索文本"}, "limit": {"type": "integer", "default": 5}}, "required": ["query"]}},
+            {"name": "pangu_image_search_by_image", "description": "以图搜图（图片匹配图片记忆）", "inputSchema": {"type": "object", "properties": {"image_path": {"type": "string", "description": "查询图片路径"}, "limit": {"type": "integer", "default": 5}}, "required": ["image_path"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4196,6 +4200,31 @@ class MCPServer:
                     modality=arguments.get("modality", "text"),
                 )
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── 图片引擎 (v3.3) ──
+            elif tool_name == "pangu_image_embed":
+                from ..memory.image_engine import get_image_engine
+                engine = get_image_engine(self.config)
+                result = engine.embed_image(arguments["image_path"])
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_image_classify":
+                from ..memory.image_engine import get_image_engine
+                engine = get_image_engine(self.config)
+                result = engine.classify_image(arguments["image_path"])
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_image_search_by_text":
+                from ..memory.image_engine import get_image_engine
+                engine = get_image_engine(self.config)
+                results = engine.search_by_text(arguments["query"], drawers, limit=arguments.get("limit", 5))
+                return json.dumps({"count": len(results), "results": results}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_image_search_by_image":
+                from ..memory.image_engine import get_image_engine
+                engine = get_image_engine(self.config)
+                results = engine.search_by_image(arguments["image_path"], drawers, limit=arguments.get("limit", 5))
+                return json.dumps({"count": len(results), "results": results}, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
