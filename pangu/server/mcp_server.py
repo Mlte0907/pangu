@@ -773,6 +773,9 @@ class MCPServer:
             {"name": "pangu_audio_transcribe", "description": "音频语音转文字（Whisper）", "inputSchema": {"type": "object", "properties": {"audio_path": {"type": "string", "description": "音频文件路径"}, "language": {"type": "string", "description": "语言（可选，如 zh/en/ja）"}}, "required": ["audio_path"]}},
             {"name": "pangu_audio_metadata", "description": "提取音频元数据（时长/格式/采样率）", "inputSchema": {"type": "object", "properties": {"audio_path": {"type": "string", "description": "音频文件路径"}}, "required": ["audio_path"]}},
             {"name": "pangu_audio_ingest", "description": "从音频提取记忆（转写+元数据+自动入库）", "inputSchema": {"type": "object", "properties": {"audio_path": {"type": "string", "description": "音频文件路径"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["audio_path"]}},
+
+            # ── 跨模态搜索 (v3.3 P1) ──
+            {"name": "pangu_multimodal_search", "description": "跨模态统一搜索（文本搜所有模态：文本/图片/视频/音频）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "modalities": {"type": "array", "items": {"type": "string"}, "description": "搜索的模态（默认全部）"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4282,6 +4285,18 @@ class MCPServer:
                     wing=arguments.get("wing", "default"),
                     description=arguments.get("description", ""),
                     tags=arguments.get("tags", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── 跨模态搜索 ──
+            elif tool_name == "pangu_multimodal_search":
+                from ..memory.multimodal_search import get_multimodal_search
+                engine = get_multimodal_search(self.config)
+                result = engine.search(
+                    arguments["query"],
+                    drawers=drawers,
+                    modalities=arguments.get("modalities"),
+                    limit=arguments.get("limit", 10),
                 )
                 return json.dumps(result, ensure_ascii=False, indent=2)
 
