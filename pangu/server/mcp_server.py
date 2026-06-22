@@ -768,6 +768,11 @@ class MCPServer:
             {"name": "pangu_video_ingest", "description": "从视频提取记忆（元数据+关键帧+CLIP分析）", "inputSchema": {"type": "object", "properties": {"video_path": {"type": "string", "description": "视频文件路径"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["video_path"]}},
             {"name": "pangu_video_metadata", "description": "提取视频元数据（时长/分辨率/编码/帧率）", "inputSchema": {"type": "object", "properties": {"video_path": {"type": "string", "description": "视频文件路径"}}, "required": ["video_path"]}},
             {"name": "pangu_video_frames", "description": "提取视频关键帧", "inputSchema": {"type": "object", "properties": {"video_path": {"type": "string", "description": "视频文件路径"}, "count": {"type": "integer", "description": "提取帧数", "default": 5}}, "required": ["video_path"]}},
+
+            # ── 音频引擎 (v3.3) ──
+            {"name": "pangu_audio_transcribe", "description": "音频语音转文字（Whisper）", "inputSchema": {"type": "object", "properties": {"audio_path": {"type": "string", "description": "音频文件路径"}, "language": {"type": "string", "description": "语言（可选，如 zh/en/ja）"}}, "required": ["audio_path"]}},
+            {"name": "pangu_audio_metadata", "description": "提取音频元数据（时长/格式/采样率）", "inputSchema": {"type": "object", "properties": {"audio_path": {"type": "string", "description": "音频文件路径"}}, "required": ["audio_path"]}},
+            {"name": "pangu_audio_ingest", "description": "从音频提取记忆（转写+元数据+自动入库）", "inputSchema": {"type": "object", "properties": {"audio_path": {"type": "string", "description": "音频文件路径"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["audio_path"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4252,6 +4257,33 @@ class MCPServer:
                 engine = get_video_engine(self.config)
                 frames = engine.extract_keyframes(arguments["video_path"], count=arguments.get("count", 5))
                 return json.dumps({"count": len(frames), "frames": frames}, ensure_ascii=False, indent=2)
+
+            # ── 音频引擎 (v3.3) ──
+            elif tool_name == "pangu_audio_transcribe":
+                from ..memory.audio_engine import get_audio_engine
+                engine = get_audio_engine(self.config)
+                result = engine.transcribe(
+                    arguments["audio_path"],
+                    language=arguments.get("language"),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_audio_metadata":
+                from ..memory.audio_engine import get_audio_engine
+                engine = get_audio_engine(self.config)
+                result = engine.get_metadata(arguments["audio_path"])
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_audio_ingest":
+                from ..memory.audio_engine import get_audio_engine
+                engine = get_audio_engine(self.config)
+                result = engine.ingest_audio(
+                    arguments["audio_path"],
+                    wing=arguments.get("wing", "default"),
+                    description=arguments.get("description", ""),
+                    tags=arguments.get("tags", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
