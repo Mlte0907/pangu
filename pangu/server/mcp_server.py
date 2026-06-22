@@ -765,6 +765,9 @@ class MCPServer:
             {"name": "pangu_image_classify", "description": "图片零样本分类（CLIP）", "inputSchema": {"type": "object", "properties": {"image_path": {"type": "string", "description": "图片文件路径"}}, "required": ["image_path"]}},
             {"name": "pangu_image_search_by_text", "description": "以文搜图（文本匹配图片记忆）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索文本"}, "limit": {"type": "integer", "default": 5}}, "required": ["query"]}},
             {"name": "pangu_image_search_by_image", "description": "以图搜图（图片匹配图片记忆）", "inputSchema": {"type": "object", "properties": {"image_path": {"type": "string", "description": "查询图片路径"}, "limit": {"type": "integer", "default": 5}}, "required": ["image_path"]}},
+            {"name": "pangu_video_ingest", "description": "从视频提取记忆（元数据+关键帧+CLIP分析）", "inputSchema": {"type": "object", "properties": {"video_path": {"type": "string", "description": "视频文件路径"}, "wing": {"type": "string", "default": "default"}, "description": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["video_path"]}},
+            {"name": "pangu_video_metadata", "description": "提取视频元数据（时长/分辨率/编码/帧率）", "inputSchema": {"type": "object", "properties": {"video_path": {"type": "string", "description": "视频文件路径"}}, "required": ["video_path"]}},
+            {"name": "pangu_video_frames", "description": "提取视频关键帧", "inputSchema": {"type": "object", "properties": {"video_path": {"type": "string", "description": "视频文件路径"}, "count": {"type": "integer", "description": "提取帧数", "default": 5}}, "required": ["video_path"]}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4225,6 +4228,30 @@ class MCPServer:
                 engine = get_image_engine(self.config)
                 results = engine.search_by_image(arguments["image_path"], drawers, limit=arguments.get("limit", 5))
                 return json.dumps({"count": len(results), "results": results}, ensure_ascii=False, indent=2)
+
+            # ── 视频引擎 (v3.3) ──
+            elif tool_name == "pangu_video_ingest":
+                from ..memory.video_engine import get_video_engine
+                engine = get_video_engine(self.config)
+                result = engine.ingest_video(
+                    arguments["video_path"],
+                    wing=arguments.get("wing", "default"),
+                    description=arguments.get("description", ""),
+                    tags=arguments.get("tags", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_video_metadata":
+                from ..memory.video_engine import get_video_engine
+                engine = get_video_engine(self.config)
+                result = engine.get_metadata(arguments["video_path"])
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_video_frames":
+                from ..memory.video_engine import get_video_engine
+                engine = get_video_engine(self.config)
+                frames = engine.extract_keyframes(arguments["video_path"], count=arguments.get("count", 5))
+                return json.dumps({"count": len(frames), "frames": frames}, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
