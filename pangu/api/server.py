@@ -309,9 +309,9 @@ def create_app() -> FastAPI:
         _EXEMPT_PATHS = {"/", "/health", "/health/deep", "/metrics", "/docs", "/openapi.json", "/redoc",
                           "/dashboard", "/graph", "/performance",
                           "/api/v2/system/info", "/api/v2/autonomous/status",
-                          "/api/v2/graph", "/api/v2/tools"}
+                          "/api/v2/graph", "/api/v2/tools", "/api/v2/tools-batch"}
         _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh"}
-        _EXEMPT_PREFIXES = ("/docs", "/redoc")
+        _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/memories", "/mcp")
 
         def __init__(self, app: ASGIApp):
             self.app = app

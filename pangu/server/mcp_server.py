@@ -778,7 +778,7 @@ class MCPServer:
             {"name": "pangu_multimodal_search", "description": "跨模态统一搜索（文本搜所有模态：文本/图片/视频/音频）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "modalities": {"type": "array", "items": {"type": "string"}, "description": "搜索的模态（默认全部）"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
 
             # ── 批量导入 (v3.3 P1.2) ──
-            {"name": "pangu_batch_scan", "description": "扫描目录，统计各类型文件数量", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "recursive": {"type": "boolean", "default": true}}, "required": ["dir_path"]}},
+            {"name": "pangu_batch_scan", "description": "扫描目录，统计各类型文件数量", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "recursive": {"type": "boolean", "default": True}}, "required": ["dir_path"]}},
             {"name": "pangu_batch_import", "description": "批量导入目录（自动检测类型+去重+入库）", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "wing": {"type": "string", "default": "default"}, "max_files": {"type": "integer", "default": 100, "description": "最多导入文件数"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["dir_path"]}},
             {"name": "pangu_batch_stats", "description": "查看批量导入统计", "inputSchema": {"type": "object", "properties": {}}},
 
