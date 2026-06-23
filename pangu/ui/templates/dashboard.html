@@ -820,11 +820,12 @@
             container.innerHTML = '';
 
             if (data.data?.checks) {
-                data.data.checks.forEach(check => {
+                const checks = Object.entries(data.data.checks);
+                checks.forEach(([name, check]) => {
                     const div = document.createElement('div');
                     div.className = 'metric';
                     const icon = check.status === 'ok' ? '✅' : (check.status === 'warning' ? '⚠️' : '❌');
-                    div.innerHTML = `<span class="metric-label">${icon} ${check.name}</span><span class="metric-value" style="font-size:13px">${check.message || check.status}</span>`;
+                    div.innerHTML = `<span class="metric-label">${icon} ${name}</span><span class="metric-value" style="font-size:13px">${check.status || 'N/A'}</span>`;
                     container.appendChild(div);
                 });
             } else {
