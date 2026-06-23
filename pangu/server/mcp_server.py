@@ -776,6 +776,11 @@ class MCPServer:
 
             # ── 跨模态搜索 (v3.3 P1) ──
             {"name": "pangu_multimodal_search", "description": "跨模态统一搜索（文本搜所有模态：文本/图片/视频/音频）", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "搜索查询"}, "modalities": {"type": "array", "items": {"type": "string"}, "description": "搜索的模态（默认全部）"}, "limit": {"type": "integer", "default": 10}}, "required": ["query"]}},
+
+            # ── 批量导入 (v3.3 P1.2) ──
+            {"name": "pangu_batch_scan", "description": "扫描目录，统计各类型文件数量", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "recursive": {"type": "boolean", "default": true}}, "required": ["dir_path"]}},
+            {"name": "pangu_batch_import", "description": "批量导入目录（自动检测类型+去重+入库）", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "wing": {"type": "string", "default": "default"}, "max_files": {"type": "integer", "default": 100, "description": "最多导入文件数"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["dir_path"]}},
+            {"name": "pangu_batch_stats", "description": "查看批量导入统计", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4299,6 +4304,29 @@ class MCPServer:
                     limit=arguments.get("limit", 10),
                 )
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── 批量导入 ──
+            elif tool_name == "pangu_batch_scan":
+                from ..memory.batch_import import get_batch_importer
+                importer = get_batch_importer(self.config)
+                result = importer.scan_directory(arguments["dir_path"], recursive=arguments.get("recursive", True))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_batch_import":
+                from ..memory.batch_import import get_batch_importer
+                importer = get_batch_importer(self.config)
+                result = importer.import_directory(
+                    arguments["dir_path"],
+                    wing=arguments.get("wing", "default"),
+                    max_files=arguments.get("max_files", 100),
+                    tags=arguments.get("tags", []),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_batch_stats":
+                from ..memory.batch_import import get_batch_importer
+                importer = get_batch_importer(self.config)
+                return json.dumps(importer.get_stats(), ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
