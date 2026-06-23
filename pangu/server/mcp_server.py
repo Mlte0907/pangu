@@ -800,6 +800,20 @@ class MCPServer:
             {"name": "pangu_autopilot_tick", "description": "运行一次自动驾驶检查（自动组织/维护/报告）", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_autopilot_suggest", "description": "基于当前任务主动推荐相关记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前任务描述"}, "limit": {"type": "integer", "default": 5}}, "required": ["context"]}},
             {"name": "pangu_autopilot_status", "description": "查看自动驾驶状态", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── Git Hook (v3.5) ──
+            {"name": "pangu_git_commit", "description": "记录最近一次 git commit 到记忆", "inputSchema": {"type": "object", "properties": {"repo_path": {"type": "string", "default": ".", "description": "仓库路径"}}}},
+            {"name": "pangu_git_push", "description": "记录 git push 操作", "inputSchema": {"type": "object", "properties": {"repo_path": {"type": "string", "default": "."}, "remote": {"type": "string", "default": "origin"}}}},
+            {"name": "pangu_git_recent", "description": "查看最近的 git 操作记录", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 10}}}},
+            {"name": "pangu_git_stats", "description": "查看 git 操作统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 上下文自动注入 (v3.5) ──
+            {"name": "pangu_auto_inject", "description": "基于当前上下文自动注入最相关的记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前上下文（对话/任务描述）"}, "limit": {"type": "integer", "default": 5}}, "required": ["context"]}},
+            {"name": "pangu_inject_stats", "description": "查看注入统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 文件监控 (v3.5) ──
+            {"name": "pangu_watch_directory", "description": "监控目录变更并自动提取记忆", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "pattern": {"type": "string", "default": "*.md", "description": "文件匹配模式"}, "recursive": {"type": "boolean", "default": true}}, "required": ["dir_path"]}},
+            {"name": "pangu_watch_status", "description": "查看文件监控状态", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4473,6 +4487,68 @@ class MCPServer:
                 from ..memory.auto_pilot import get_auto_pilot
                 pilot = get_auto_pilot(self.config)
                 return json.dumps(pilot.get_status(), ensure_ascii=False, indent=2)
+
+            # ── Git Hook ──
+            elif tool_name == "pangu_git_commit":
+                from ..memory.git_hook import get_git_hook
+                hook = get_git_hook(self.config)
+                result = hook.record_commit(arguments.get("repo_path", "."))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_git_push":
+                from ..memory.git_hook import get_git_hook
+                hook = get_git_hook(self.config)
+                result = hook.record_push(
+                    arguments.get("repo_path", "."),
+                    remote=arguments.get("remote", "origin"),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_git_recent":
+                from ..memory.git_hook import get_git_hook
+                hook = get_git_hook(self.config)
+                result = hook.get_recent(limit=arguments.get("limit", 10))
+                return json.dumps({"count": len(result), "commits": result}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_git_stats":
+                from ..memory.git_hook import get_git_hook
+                hook = get_git_hook(self.config)
+                return json.dumps(hook.get_stats(), ensure_ascii=False, indent=2)
+
+            # ── 上下文自动注入 ──
+            elif tool_name == "pangu_auto_inject":
+                from ..memory.context_injector import get_context_injector
+                injector = get_context_injector(self.config)
+                result = injector.auto_inject(
+                    context=arguments.get("context", ""),
+                    drawers=drawers,
+                    limit=arguments.get("limit", 5),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_inject_stats":
+                from ..memory.context_injector import get_context_injector
+                injector = get_context_injector(self.config)
+                return json.dumps(injector.get_injection_stats(), ensure_ascii=False, indent=2)
+
+            # ── 文件监控 ──
+            elif tool_name == "pangu_watch_directory":
+                from ..memory.file_watcher import get_file_watcher
+                watcher = get_file_watcher(self.config)
+                result = watcher.watch_directory(
+                    arguments["dir_path"],
+                    pattern=arguments.get("pattern", "*.md"),
+                    recursive=arguments.get("recursive", True),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_watch_status":
+                from ..memory.file_watcher import get_file_watcher
+                watcher = get_file_watcher(self.config)
+                stats = watcher.get_stats()
+                dirs = watcher.get_watched_dirs()
+                stats["directories"] = dirs
+                return json.dumps(stats, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
