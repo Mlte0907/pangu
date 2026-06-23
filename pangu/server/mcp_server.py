@@ -781,6 +781,11 @@ class MCPServer:
             {"name": "pangu_batch_scan", "description": "扫描目录，统计各类型文件数量", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "recursive": {"type": "boolean", "default": true}}, "required": ["dir_path"]}},
             {"name": "pangu_batch_import", "description": "批量导入目录（自动检测类型+去重+入库）", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "wing": {"type": "string", "default": "default"}, "max_files": {"type": "integer", "default": 100, "description": "最多导入文件数"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["dir_path"]}},
             {"name": "pangu_batch_stats", "description": "查看批量导入统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 多模态摘要 (v3.3 P1.3) ──
+            {"name": "pangu_multimodal_summary", "description": "跨模态综合摘要（综合所有模态内容生成摘要）", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 50, "description": "分析的记忆数量"}}}},
+            {"name": "pangu_summary_by_topic", "description": "按主题聚合多模态摘要", "inputSchema": {"type": "object", "properties": {"topic": {"type": "string", "description": "主题关键词"}, "limit": {"type": "integer", "default": 20}}, "required": ["topic"]}},
+            {"name": "pangu_summary_timeline", "description": "按时间线生成多模态摘要", "inputSchema": {"type": "object", "properties": {"days": {"type": "integer", "default": 7, "description": "统计最近N天"}}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4327,6 +4332,25 @@ class MCPServer:
                 from ..memory.batch_import import get_batch_importer
                 importer = get_batch_importer(self.config)
                 return json.dumps(importer.get_stats(), ensure_ascii=False, indent=2)
+
+            # ── 多模态摘要 ──
+            elif tool_name == "pangu_multimodal_summary":
+                from ..memory.multimodal_summary import get_multimodal_summary
+                engine = get_multimodal_summary(self.config)
+                result = engine.summarize_memories(drawers, limit=arguments.get("limit", 50))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_summary_by_topic":
+                from ..memory.multimodal_summary import get_multimodal_summary
+                engine = get_multimodal_summary(self.config)
+                result = engine.summarize_by_topic(drawers, arguments["topic"], limit=arguments.get("limit", 20))
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_summary_timeline":
+                from ..memory.multimodal_summary import get_multimodal_summary
+                engine = get_multimodal_summary(self.config)
+                result = engine.summarize_timeline(drawers, days=arguments.get("days", 7))
+                return json.dumps(result, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
