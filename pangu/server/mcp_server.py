@@ -848,6 +848,22 @@ class MCPServer:
                 wing = arguments.get("wing")
                 room = arguments.get("room")
                 results = self.search.search(query, drawers, wing=wing, room=room)
+                # 统一解密所有结果中的加密内容
+                try:
+                    from pangu.memory.encryption import decrypt
+                    items = results.get("results", results) if isinstance(results, dict) else results
+                    if isinstance(items, list):
+                        for r in items:
+                            if isinstance(r, dict):
+                                for key in ("content", "highlighted"):
+                                    c = r.get(key, "")
+                                    if c and c.startswith("gAAAAAB"):
+                                        try:
+                                            r[key] = decrypt(c)
+                                        except Exception:
+                                            pass
+                except Exception:
+                    pass
                 return json.dumps(results, ensure_ascii=False, indent=2)
 
             elif tool_name == "pangu_recall":
