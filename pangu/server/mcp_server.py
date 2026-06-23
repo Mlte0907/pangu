@@ -786,6 +786,20 @@ class MCPServer:
             {"name": "pangu_multimodal_summary", "description": "跨模态综合摘要（综合所有模态内容生成摘要）", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 50, "description": "分析的记忆数量"}}}},
             {"name": "pangu_summary_by_topic", "description": "按主题聚合多模态摘要", "inputSchema": {"type": "object", "properties": {"topic": {"type": "string", "description": "主题关键词"}, "limit": {"type": "integer", "default": 20}}, "required": ["topic"]}},
             {"name": "pangu_summary_timeline", "description": "按时间线生成多模态摘要", "inputSchema": {"type": "object", "properties": {"days": {"type": "integer", "default": 7, "description": "统计最近N天"}}}},
+
+            # ── Session Bridge (v3.4) ──
+            {"name": "pangu_session_start", "description": "记录会话开始", "inputSchema": {"type": "object", "properties": {"session_id": {"type": "string", "description": "会话ID"}, "agent": {"type": "string", "default": "claude", "description": "Agent标识"}, "description": {"type": "string", "description": "会话描述"}}, "required": ["session_id"]}},
+            {"name": "pangu_session_end", "description": "记录会话结束并生成摘要", "inputSchema": {"type": "object", "properties": {"session_id": {"type": "string", "description": "会话ID"}, "summary": {"type": "string", "description": "会话摘要"}, "key_events": {"type": "array", "items": {"type": "string"}, "description": "关键事件列表"}, "files_modified": {"type": "array", "items": {"type": "string"}, "description": "修改的文件列表"}}, "required": ["session_id"]}},
+            {"name": "pangu_session_resume", "description": "获取上一个会话的恢复上下文", "inputSchema": {"type": "object", "properties": {"agent": {"type": "string", "default": "claude"}, "limit": {"type": "integer", "default": 3, "description": "获取最近N个会话"}}}},
+            {"name": "pangu_session_record", "description": "记录会话中的事件", "inputSchema": {"type": "object", "properties": {"session_id": {"type": "string"}, "event_type": {"type": "string", "description": "事件类型如git_commit/file_edit/test_run"}, "detail": {"type": "string", "description": "事件详情"}}, "required": ["session_id", "event_type", "detail"]}},
+            {"name": "pangu_session_stats", "description": "获取会话统计", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 自动驾驶 (v3.4) ──
+            {"name": "pangu_autopilot_activate", "description": "激活自动驾驶模式（自动管理记忆）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_autopilot_deactivate", "description": "停用自动驾驶模式", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_autopilot_tick", "description": "运行一次自动驾驶检查（自动组织/维护/报告）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_autopilot_suggest", "description": "基于当前任务主动推荐相关记忆", "inputSchema": {"type": "object", "properties": {"context": {"type": "string", "description": "当前任务描述"}, "limit": {"type": "integer", "default": 5}}, "required": ["context"]}},
+            {"name": "pangu_autopilot_status", "description": "查看自动驾驶状态", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4367,6 +4381,98 @@ class MCPServer:
                 engine = get_multimodal_summary(self.config)
                 result = engine.summarize_timeline(drawers, days=arguments.get("days", 7))
                 return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── Session Bridge ──
+            elif tool_name == "pangu_session_start":
+                from ..memory.session_bridge import get_session_bridge
+                bridge = get_session_bridge(self.config)
+                result = bridge.start_session(
+                    arguments["session_id"],
+                    agent=arguments.get("agent", "claude"),
+                    description=arguments.get("description", ""),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_end":
+                from ..memory.session_bridge import get_session_bridge
+                bridge = get_session_bridge(self.config)
+                result = bridge.end_session(
+                    arguments["session_id"],
+                    summary=arguments.get("summary", ""),
+                    key_events=arguments.get("key_events"),
+                    files_modified=arguments.get("files_modified"),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_resume":
+                from ..memory.session_bridge import get_session_bridge
+                bridge = get_session_bridge(self.config)
+                result = bridge.get_resume_context(
+                    agent=arguments.get("agent", "claude"),
+                    limit=arguments.get("limit", 3),
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_record":
+                from ..memory.session_bridge import get_session_bridge
+                bridge = get_session_bridge(self.config)
+                result = bridge.record_event(
+                    arguments["session_id"],
+                    arguments["event_type"],
+                    arguments["detail"],
+                )
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_session_stats":
+                from ..memory.session_bridge import get_session_bridge
+                bridge = get_session_bridge(self.config)
+                return json.dumps(bridge.get_session_stats(), ensure_ascii=False, indent=2)
+
+            # ── 自动驾驶 ──
+            elif tool_name == "pangu_autopilot_activate":
+                from ..memory.auto_pilot import get_auto_pilot
+                pilot = get_auto_pilot(self.config)
+                result = pilot.activate()
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_autopilot_deactivate":
+                from ..memory.auto_pilot import get_auto_pilot
+                pilot = get_auto_pilot(self.config)
+                result = pilot.deactivate()
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_autopilot_tick":
+                from ..memory.auto_pilot import get_auto_pilot
+                pilot = get_auto_pilot(self.config)
+                result = pilot.tick(drawers)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_autopilot_suggest":
+                from ..memory.auto_pilot import get_auto_pilot
+                pilot = get_auto_pilot(self.config)
+                result = pilot.auto_suggest(
+                    context=arguments.get("context", ""),
+                    drawers=drawers,
+                    limit=arguments.get("limit", 5),
+                )
+                # 解密建议内容
+                try:
+                    from pangu.memory.encryption import decrypt
+                    for s in result.get("suggestions", []):
+                        c = s.get("content", "")
+                        if c and c.startswith("gAAAAAB"):
+                            try:
+                                s["content"] = decrypt(c)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_autopilot_status":
+                from ..memory.auto_pilot import get_auto_pilot
+                pilot = get_auto_pilot(self.config)
+                return json.dumps(pilot.get_status(), ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
