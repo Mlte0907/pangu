@@ -393,8 +393,8 @@
     let metricsSnapshot = {};
 
     /* ===== API ===== */
-    async function fetchJSON(url) {
-        const res = await fetch(url);
+    async function fetchJSON(url, options) {
+        const res = await fetch(url, options);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
     }
