@@ -814,6 +814,10 @@ class MCPServer:
             # ── 文件监控 (v3.5) ──
             {"name": "pangu_watch_directory", "description": "监控目录变更并自动提取记忆", "inputSchema": {"type": "object", "properties": {"dir_path": {"type": "string", "description": "目录路径"}, "pattern": {"type": "string", "default": "*.md", "description": "文件匹配模式"}, "recursive": {"type": "boolean", "default": true}}, "required": ["dir_path"]}},
             {"name": "pangu_watch_status", "description": "查看文件监控状态", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 搜索缓存 (v3.6 P0.2) ──
+            {"name": "pangu_cache_stats", "description": "查看搜索缓存统计", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_cache_clear", "description": "清空搜索缓存", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4549,6 +4553,18 @@ class MCPServer:
                 dirs = watcher.get_watched_dirs()
                 stats["directories"] = dirs
                 return json.dumps(stats, ensure_ascii=False, indent=2)
+
+            # ── 搜索缓存 ──
+            elif tool_name == "pangu_cache_stats":
+                from ..memory.search_cache import get_search_cache
+                cache = get_search_cache()
+                return json.dumps(cache.get_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_cache_clear":
+                from ..memory.search_cache import get_search_cache
+                cache = get_search_cache()
+                cache.clear()
+                return json.dumps({"status": "cleared"}, ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})

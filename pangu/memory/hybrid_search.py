@@ -27,6 +27,16 @@ def hybrid_search(
     vector_weight: float = 1.0,
     kg_weight: float = 0.5,
 ) -> list[dict]:
+    """混合检索 — 带缓存"""
+    # 检查缓存
+    try:
+        from pangu.memory.search_cache import get_search_cache
+        cache = get_search_cache()
+        cached = cache.get(query, limit=limit)
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
     """混合检索 — FTS + 向量 + KG 三路召回，RRF 融合排序
 
     Args:
@@ -170,5 +180,13 @@ def hybrid_search(
             r["match_type"] = exp.match_type
     except Exception as e:
         logger.debug(f"Search explanation skipped: {e}")
+
+    # 存入缓存
+    try:
+        from pangu.memory.search_cache import get_search_cache
+        cache = get_search_cache()
+        cache.set(query, results, limit=limit)
+    except Exception:
+        pass
 
     return results
