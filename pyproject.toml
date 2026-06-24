@@ -1,9 +1,12 @@
 [project]
 name = "pangu"
-version = "3.0.0"
-description = "盘古 — LMM+Wiki 超智能记忆系统"
-requires-python = ">=3.10"
+version = "3.6.0"
+description = "盘古 — AI Agent 多模态记忆系统"
+readme = "README.md"
+requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [{name = "盘古团队"}]
+keywords = ["ai", "memory", "agent", "mcp", "multimodal"]
 dependencies = [
     "chromadb>=0.5.0",
     "sentence-transformers>=3.0.0",
@@ -28,6 +31,10 @@ dependencies = [
     "prometheus-client>=0.19.0",
     "pyjwt>=2.8.0",
     "bcrypt>=4.1.0",
+    "Pillow>=10.0.0",
+    "pypdf>=3.0.0",
+    "openai-whisper>=20231117",
+    "cryptography>=41.0.0",
 ]
 
 [project.optional-dependencies]
