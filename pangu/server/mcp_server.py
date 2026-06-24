@@ -818,6 +818,11 @@ class MCPServer:
             # ── 搜索缓存 (v3.6 P0.2) ──
             {"name": "pangu_cache_stats", "description": "查看搜索缓存统计", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "pangu_cache_clear", "description": "清空搜索缓存", "inputSchema": {"type": "object", "properties": {}}},
+
+            # ── 错误监控 (v3.6 P1.1) ──
+            {"name": "pangu_error_stats", "description": "查看错误统计（错误率/趋势/严重错误）", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "pangu_error_recent", "description": "查看最近的错误日志", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "default": 20}, "tool": {"type": "string", "description": "按工具名过滤"}}}},
+            {"name": "pangu_health_report", "description": "生成综合健康报告（评分+建议）", "inputSchema": {"type": "object", "properties": {}}},
         ]
         for tool in raw:
             if "inputSchema" not in tool:
@@ -4565,6 +4570,26 @@ class MCPServer:
                 cache = get_search_cache()
                 cache.clear()
                 return json.dumps({"status": "cleared"}, ensure_ascii=False, indent=2)
+
+            # ── 错误监控 ──
+            elif tool_name == "pangu_error_stats":
+                from ..memory.error_monitor import get_error_monitor
+                monitor = get_error_monitor(self.config)
+                return json.dumps(monitor.get_stats(), ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_error_recent":
+                from ..memory.error_monitor import get_error_monitor
+                monitor = get_error_monitor(self.config)
+                errors = monitor.get_errors(
+                    tool=arguments.get("tool"),
+                    limit=arguments.get("limit", 20),
+                )
+                return json.dumps({"count": len(errors), "errors": errors}, ensure_ascii=False, indent=2)
+
+            elif tool_name == "pangu_health_report":
+                from ..memory.error_monitor import get_error_monitor
+                monitor = get_error_monitor(self.config)
+                return json.dumps(monitor.get_health_report(), ensure_ascii=False, indent=2)
 
             else:
                 return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
