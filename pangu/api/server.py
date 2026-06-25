@@ -128,9 +128,9 @@ def create_app() -> FastAPI:
         logger.info("盘古 server stopped")
 
     app = FastAPI(
-        title="盘古 v3.0",
-        description="盘古 — LMM+Wiki 超智能记忆系统 (伏羲增强版)",
-        version="3.0.0",
+        title="盘古 v3.7 — AI Agent 多模态记忆系统",
+        description="421个MCP工具 + 4种模态输入（文本/图片/视频/音频）+ 跨模态搜索 + 自主管理",
+        version="3.7.0",
         lifespan=lifespan,
     )
 
@@ -496,8 +496,9 @@ def create_app() -> FastAPI:
         app.routes.insert(0, route)
 
     # 健康检查
-    @app.get("/health")
+    @app.get("/health", tags=["系统"])
     async def health():
+        """健康检查 — 返回服务状态和版本"""
         from pangu.observability.health import quick_health_check
         return {"code": 0, "message": "ok", "data": quick_health_check()}
 
