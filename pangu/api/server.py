@@ -188,31 +188,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
 
-    # ── Block /docs from external access ──
-    # 白名单：localhost / 127.0.0.1 / ::1 / starlette TestClient 内置的 testclient 哨兵
-    _docs_allowed_clients = frozenset({"127.0.0.1", "localhost", "::1", "testclient"})
-
-    class _BlockDocsMiddleware:
-        """纯 ASGI 中间件：阻止外部访问 /docs 和 /openapi.json"""
-        _ALLOWED = _docs_allowed_clients
-
-        def __init__(self, app: ASGIApp):
-            self.app = app
-
-        async def __call__(self, scope: Scope, receive: Receive, send: Send):
-            if scope["type"] == "http":
-                path = scope.get("path", "")
-                if path in ("/docs", "/openapi.json"):
-                    client = scope.get("client")
-                    host = client[0] if client else ""
-                    if host not in self._ALLOWED:
-                        response = JSONResponse(
-                            status_code=403,
-                            content={"error": "Forbidden", "detail": "Documentation not accessible externally"},
-                        )
-                        await response(scope, receive, send)
-                        return
-            await self.app(scope, receive, send)
+    # /docs 已对所有客户端开放（认证关闭时）
 
     # ── API 指标中间件 ──
     class _MetricsMiddleware:
@@ -244,7 +220,6 @@ def create_app() -> FastAPI:
             except Exception:
                 pass
 
-    app.add_middleware(_BlockDocsMiddleware)
     app.add_middleware(_MetricsMiddleware)
 
     # ── 双鉴权初始化（API Key + JWT） ──

@@ -12,7 +12,23 @@ logger = logging.getLogger("pangu.mcp.http")
 
 
 async def _mcp_handle(request: Request) -> Response:
-    """处理 MCP JSON-RPC 请求"""
+    """处理 MCP JSON-RPC 请求（支持 GET 协商 + POST 调用）"""
+    if request.method == "GET":
+        session_id = str(uuid.uuid4())
+        root_path = request.scope.get("root_path", "")
+        message_url = f"{root_path}/messages?session_id={session_id}"
+        resp = JSONResponse({
+            "jsonrpc": "2.0",
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "pangu", "version": "3.7.0"},
+                "capabilities": {"tools": {}},
+                "endpoints": {"mcp": message_url},
+            },
+        })
+        resp.headers["mcp-session-id"] = session_id
+        return resp
+
     try:
         body = await request.body()
         msg = json.loads(body) if body else {}
@@ -76,7 +92,7 @@ async def _mcp_messages(request: Request) -> Response:
 
 mcp_http_routes = [
     # StreamableHTTP — 标准路径
-    Route("/mcp", _mcp_handle, methods=["POST"]),
+    Route("/mcp", _mcp_handle, methods=["GET", "POST"]),
     Route("/", _mcp_handle, methods=["POST"]),
     # SSE — 标准路径
     Route("/sse", _mcp_sse, methods=["GET"]),
