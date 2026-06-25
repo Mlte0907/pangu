@@ -116,9 +116,13 @@ class FTS5SearchEngine:
         return self._embedder
 
     def build_index(self, drawers: list[Drawer]) -> int:
-        """构建 FTS 内存索引（支持中文分词）"""
+        """构建 FTS 内存索引（支持中文分词）+ 磁盘持久化"""
         # 如果索引已构建且文档数量相同，跳过重建
         if self._indexed and self._indexed_count == len(drawers):
+            return len(self._fts_index)
+
+        # 尝试从磁盘加载索引
+        if self._load_index_from_disk():
             return len(self._fts_index)
 
         self._fts_index.clear()
@@ -130,20 +134,16 @@ class FTS5SearchEngine:
             content_lower = d.content.lower()
             self._fts_content_map[d.id] = content_lower
 
-            # 中文分词 + 英文单词
             tokens = set()
             if jieba:
-                # jieba 分词
                 words = jieba.cut(content_lower)
                 for w in words:
                     w = w.strip()
                     if len(w) >= 1:
                         tokens.add(w)
             else:
-                # 降级：正则分词
                 tokens = set(re.findall(r'[\u4e00-\u9fff]{1,}|[a-zA-Z]{2,}', content_lower))
 
-            # 标签也加入索引
             for tag in d.tags:
                 tokens.add(tag.lower())
 
@@ -155,7 +155,52 @@ class FTS5SearchEngine:
         self._indexed = True
         total_tokens = len(self._fts_index)
         logger.info(f"FTS index built: {total_tokens} tokens, {len(drawers)} documents, jieba={'yes' if jieba else 'no'}")
+
+        # 持久化到磁盘
+        self._save_index_to_disk()
+
         return total_tokens
+
+    def _get_index_path(self) -> Path:
+        return Path.home() / ".pangu" / "fts_index.json"
+
+    def _save_index_to_disk(self):
+        """保存索引到磁盘"""
+        try:
+            index_data = {}
+            for token, ids in self._fts_index.items():
+                index_data[token] = list(ids)
+            path = self._get_index_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "tokens": index_data,
+                    "doc_count": self._indexed_count,
+                    "built_at": datetime.now().isoformat(),
+                }, f)
+            logger.info(f"FTS index saved to disk: {len(index_data)} tokens")
+        except Exception as e:
+            logger.warning(f"Failed to save FTS index: {e}")
+
+    def _load_index_from_disk(self) -> bool:
+        """从磁盘加载索引"""
+        try:
+            path = self._get_index_path()
+            if not path.exists():
+                return False
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            # 检查文档数量是否匹配
+            if data.get("doc_count", 0) != self._indexed_count:
+                logger.info("FTS index stale, rebuilding")
+                return False
+            self._fts_index = {token: set(ids) for token, ids in data["tokens"].items()}
+            self._indexed = True
+            logger.info(f"FTS index loaded from disk: {len(self._fts_index)} tokens")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to load FTS index: {e}")
+            return False
 
     def _fts_search(self, query: str, drawers: list[Drawer], limit: int = 50) -> dict[str, float]:
         """FTS 全文搜索，返回 {drawer_id: score}"""
