@@ -12,18 +12,51 @@ logger = logging.getLogger("pangu.mcp.http")
 
 
 async def _mcp_handle(request: Request) -> Response:
-    """处理 MCP JSON-RPC 请求（支持 GET 协商 + POST 调用）"""
+    """处理 MCP JSON-RPC 请求（StreamableHTTP + SSE 传输）"""
     if request.method == "GET":
+        accept = request.headers.get("accept", "")
         session_id = str(uuid.uuid4())
-        root_path = request.scope.get("root_path", "")
-        message_url = f"{root_path}/messages?session_id={session_id}"
+
+        if "text/event-stream" in accept:
+            root_path = request.scope.get("root_path", "")
+            message_url = f"{root_path}/messages?session_id={session_id}"
+
+            async def event_stream():
+                endpoint_data = json.dumps({
+                    "jsonrpc": "2.0",
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "serverInfo": {"name": "pangu", "version": "3.7.0"},
+                        "capabilities": {"tools": {}},
+                        "endpoints": {"mcp": message_url},
+                    },
+                })
+                yield f"event: endpoint\ndata: {message_url}\n\n"
+                yield f"event: message\ndata: {endpoint_data}\n\n"
+                try:
+                    while True:
+                        await asyncio.sleep(30)
+                        yield ": keepalive\n\n"
+                except asyncio.CancelledError:
+                    pass
+
+            return StreamingResponse(
+                event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                    "mcp-session-id": session_id,
+                },
+            )
+
         resp = JSONResponse({
             "jsonrpc": "2.0",
             "result": {
                 "protocolVersion": "2024-11-05",
                 "serverInfo": {"name": "pangu", "version": "3.7.0"},
                 "capabilities": {"tools": {}},
-                "endpoints": {"mcp": message_url},
             },
         })
         resp.headers["mcp-session-id"] = session_id
@@ -47,9 +80,22 @@ async def _mcp_handle(request: Request) -> Response:
         if response is None:
             response = {"jsonrpc": "2.0", "id": msg.get("id"), "result": {}}
 
+        accept = request.headers.get("accept", "")
+        if "text/event-stream" in accept:
+            event_data = json.dumps(response, ensure_ascii=False)
+            async def sse_response():
+                yield f"event: message\ndata: {event_data}\n\n"
+            return StreamingResponse(
+                sse_response(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "mcp-session-id": session_id,
+                },
+            )
+
         resp = JSONResponse(response)
         resp.headers["mcp-session-id"] = session_id
-        resp.headers["Accept"] = "application/json, text/event-stream"
         return resp
     except Exception as e:
         logger.error(f"MCP POST error: {e}", exc_info=True)
