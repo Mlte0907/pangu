@@ -378,6 +378,38 @@
                 </div>
             </div>
         </div>
+
+        <!-- 记忆质量仪表盘 -->
+        <div class="card full-width">
+            <h2>📊 记忆质量</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;">
+                <div id="quality-chart" style="display:flex;align-items:flex-end;gap:8px;height:80px;padding:8px;"></div>
+                <div>
+                    <div class="metric"><span class="metric-label">平均质量分</span><span id="quality-avg" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">高质量记忆</span><span id="quality-high" class="metric-value green">--</span></div>
+                    <div class="metric"><span class="metric-label">低质量记忆</span><span id="quality-low" class="metric-value yellow">--</span></div>
+                    <div class="metric"><span class="metric-label">重复记忆</span><span id="quality-dup" class="metric-value red">--</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误监控 -->
+        <div class="card full-width">
+            <h2>🛡️ 错误监控</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;">
+                <div>
+                    <div class="metric"><span class="metric-label">错误率</span><span id="error-rate" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">总错误数</span><span id="error-total" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">最近1小时</span><span id="error-recent" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">严重错误</span><span id="error-critical" class="metric-value">--</span></div>
+                </div>
+                <div>
+                    <div class="metric"><span class="metric-label">健康评分</span><span id="error-score" class="metric-value">--</span></div>
+                    <div class="metric"><span class="metric-label">健康状态</span><span id="error-status" class="metric-value">--</span></div>
+                    <div id="error-recommendations" style="margin-top:8px;font-size:12px;color:var(--text-secondary);"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -508,6 +540,8 @@
             refreshModules(),
             refreshHealthChecks(),
             refreshAutonomous(),
+            refreshQuality(),
+            refreshErrors(),
         ]);
         if (autoRefreshEnabled) countdownValue = REFRESH_INTERVAL;
     }
@@ -833,6 +867,84 @@
             }
         } catch(e) {
             document.getElementById('health-checks').innerHTML = '<div class="metric"><span class="metric-label">⚠️ 无法获取详细健康检查</span></div>';
+        }
+    }
+
+    /* ===== Quality Dashboard ===== */
+    async function refreshQuality() {
+        try {
+            const r = await fetchJSON(`${API_BASE}/mcp`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'pangu_quality_analyze',arguments:{}}})
+            });
+            const data = JSON.parse(r.result.content[0].text);
+
+            document.getElementById('quality-avg').textContent = data.avg_score ? data.avg_score.toFixed(1) + '/100' : '--';
+            document.getElementById('quality-high').textContent = data.high_quality || 0;
+            document.getElementById('quality-low').textContent = data.low_quality || 0;
+            document.getElementById('quality-dup').textContent = data.duplicates || 0;
+
+            // Quality distribution chart
+            const chart = document.getElementById('quality-chart');
+            if (chart && data.distribution) {
+                chart.innerHTML = '';
+                const dist = data.distribution;
+                const max = Math.max(dist.good || 0, dist.fair || 0, dist.poor || 0, dist.excellent || 0, 1);
+                const items = [
+                    {label: '优秀', count: dist.excellent || 0, color: '#3fb950'},
+                    {label: '良好', count: dist.good || 0, color: '#58a6ff'},
+                    {label: '一般', count: dist.fair || 0, color: '#d29922'},
+                    {label: '较差', count: dist.poor || 0, color: '#f85149'},
+                ];
+                items.forEach(item => {
+                    const bar = document.createElement('div');
+                    bar.style.cssText = `flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;`;
+                    bar.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);margin-bottom:2px">${item.count}</div><div style="width:80%;height:${(item.count/max)*60}px;background:${item.color};border-radius:3px;transition:height 0.5s"></div><div style="font-size:9px;color:var(--text-muted);margin-top:2px">${item.label}</div>`;
+                    chart.appendChild(bar);
+                });
+            }
+            metricsSnapshot.quality = data;
+        } catch(e) {
+            document.getElementById('quality-avg').textContent = 'N/A';
+        }
+    }
+
+    /* ===== Error Monitoring ===== */
+    async function refreshErrors() {
+        try {
+            const r = await fetchJSON(`${API_BASE}/mcp`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'pangu_error_stats',arguments:{}}})
+            });
+            const data = JSON.parse(r.result.content[0].text);
+
+            document.getElementById('error-rate').textContent = data.error_rate ? (data.error_rate * 100).toFixed(1) + '%' : '0%';
+            document.getElementById('error-total').textContent = data.total_errors || 0;
+            document.getElementById('error-recent').textContent = data.recent_errors_1h || 0;
+            document.getElementById('error-critical').textContent = data.critical_errors || 0;
+            document.getElementById('error-critical').className = `metric-value ${(data.critical_errors||0) > 0 ? 'red' : 'green'}`;
+
+            // Health report
+            const r2 = await fetchJSON(`${API_BASE}/mcp`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'pangu_health_report',arguments:{}}})
+            });
+            const report = JSON.parse(r2.result.content[0].text);
+            document.getElementById('error-score').textContent = (report.score || 0) + '/100';
+            document.getElementById('error-score').className = `metric-value ${(report.score||0) >= 90 ? 'green' : (report.score||0) >= 70 ? 'yellow' : 'red'}`;
+            document.getElementById('error-status').textContent = report.status || '--';
+            document.getElementById('error-status').className = `metric-value ${(report.status||'') === 'healthy' ? 'green' : (report.status||'') === 'degraded' ? 'yellow' : 'red'}`;
+
+            const recs = document.getElementById('error-recommendations');
+            if (report.recommendations) {
+                recs.innerHTML = report.recommendations.map(r => `<div>• ${r}</div>`).join('');
+            }
+            metricsSnapshot.errors = data;
+        } catch(e) {
+            document.getElementById('error-rate').textContent = 'N/A';
         }
     }
 
