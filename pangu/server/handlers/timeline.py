@@ -24,7 +24,7 @@ HANDLERS = {}
 
 async def handle_build_timeline(server, drawers, arguments):
     """构建记忆时间线"""
-    from ..memory.timeline import TimelineEngine
+    from ...memory.timeline import TimelineEngine
     engine = TimelineEngine(server.config)
     wing = arguments.get("wing")
     events = engine.build_timeline(drawers, wing=wing)
@@ -41,7 +41,7 @@ HANDLERS["pangu_build_timeline"] = handle_build_timeline
 
 async def handle_find_causal_links(server, drawers, arguments):
     """发现记忆间的因果关系"""
-    from ..memory.timeline import TimelineEngine
+    from ...memory.timeline import TimelineEngine
     engine = TimelineEngine(server.config)
     events = engine.build_timeline(drawers)
     links = engine.find_causal_links(events)
@@ -56,7 +56,7 @@ HANDLERS["pangu_find_causal_links"] = handle_find_causal_links
 
 async def handle_event_chains(server, drawers, arguments):
     """构建事件链（时间相近的事件分组）"""
-    from ..memory.timeline import TimelineEngine
+    from ...memory.timeline import TimelineEngine
     engine = TimelineEngine(server.config)
     events = engine.build_timeline(drawers)
     chains = engine.build_event_chain(events)
@@ -73,7 +73,7 @@ HANDLERS["pangu_event_chains"] = handle_event_chains
 
 async def handle_timeline_query(server, drawers, arguments):
     """按时间范围查询记忆"""
-    from ..memory.timeline import TimelineEngine
+    from ...memory.timeline import TimelineEngine
     engine = TimelineEngine(server.config)
     events = engine.build_timeline(drawers)
     result = engine.query_timeline(
@@ -93,7 +93,7 @@ HANDLERS["pangu_timeline_query"] = handle_timeline_query
 
 async def handle_timeline_replay(server, drawers, arguments):
     """按时间线回放记忆"""
-    from ..memory.replay import ReplayEngine
+    from ...memory.replay import ReplayEngine
     engine = ReplayEngine(server.config)
     session = engine.timeline_replay(
         drawers,
@@ -117,7 +117,7 @@ HANDLERS["pangu_timeline_replay"] = handle_timeline_replay
 
 async def handle_topic_replay(server, drawers, arguments):
     """围绕主题回放相关记忆"""
-    from ..memory.replay import ReplayEngine
+    from ...memory.replay import ReplayEngine
     engine = ReplayEngine(server.config)
     topic = arguments.get("topic", "")
     session = engine.topic_replay(topic, drawers)
@@ -135,7 +135,7 @@ HANDLERS["pangu_topic_replay"] = handle_topic_replay
 
 async def handle_highlight_reel(server, drawers, arguments):
     """提取最重要的记忆时刻（精彩集锦）"""
-    from ..memory.replay import ReplayEngine
+    from ...memory.replay import ReplayEngine
     engine = ReplayEngine(server.config)
     session = engine.highlight_reel(drawers)
     return json.dumps({
@@ -152,7 +152,7 @@ HANDLERS["pangu_highlight_reel"] = handle_highlight_reel
 
 async def handle_temporal_timeline(server, drawers, arguments):
     """构建时间线"""
-    from ..memory.temporal_reasoning import get_temporal_engine
+    from ...memory.temporal_reasoning import get_temporal_engine
     te = get_temporal_engine(server.config)
     events = te.build_timeline(drawers)
     return json.dumps({
@@ -168,7 +168,7 @@ HANDLERS["pangu_temporal_timeline"] = handle_temporal_timeline
 
 async def handle_temporal_relations(server, drawers, arguments):
     """发现时间关系"""
-    from ..memory.temporal_reasoning import get_temporal_engine
+    from ...memory.temporal_reasoning import get_temporal_engine
     te = get_temporal_engine(server.config)
     rels = te.find_temporal_relations(drawers)
     return json.dumps({
@@ -184,7 +184,7 @@ HANDLERS["pangu_temporal_relations"] = handle_temporal_relations
 
 async def handle_temporal_query(server, drawers, arguments):
     """按时间范围查询"""
-    from ..memory.temporal_reasoning import get_temporal_engine
+    from ...memory.temporal_reasoning import get_temporal_engine
     te = get_temporal_engine(server.config)
     start = arguments.get("start")
     end = arguments.get("end")
@@ -198,7 +198,7 @@ HANDLERS["pangu_temporal_query"] = handle_temporal_query
 
 async def handle_temporal_stats(server, drawers, arguments):
     """获取时间统计"""
-    from ..memory.temporal_reasoning import get_temporal_engine
+    from ...memory.temporal_reasoning import get_temporal_engine
     te = get_temporal_engine(server.config)
     return json.dumps(te.get_temporal_stats(drawers), ensure_ascii=False, indent=2)
 
@@ -206,7 +206,7 @@ HANDLERS["pangu_temporal_stats"] = handle_temporal_stats
 
 async def handle_causal_discover(server, drawers, arguments):
     """发现因果链接"""
-    from ..memory.causal_reasoning import get_causal_engine
+    from ...memory.causal_reasoning import get_causal_engine
     cr = get_causal_engine(server.config)
     links = cr.discover_causal_links(drawers)
     return json.dumps({
@@ -222,7 +222,7 @@ HANDLERS["pangu_causal_discover"] = handle_causal_discover
 
 async def handle_causal_chains(server, drawers, arguments):
     """构建因果链"""
-    from ..memory.causal_reasoning import get_causal_engine
+    from ...memory.causal_reasoning import get_causal_engine
     cr = get_causal_engine(server.config)
     cr.discover_causal_links(drawers)
     chains = cr.build_causal_chains()
@@ -240,7 +240,7 @@ HANDLERS["pangu_causal_chains"] = handle_causal_chains
 
 async def handle_counterfactual(server, drawers, arguments):
     """反事实推理"""
-    from ..memory.causal_reasoning import get_causal_engine
+    from ...memory.causal_reasoning import get_causal_engine
     cr = get_causal_engine(server.config)
     cr.discover_causal_links(drawers)
     result = cr.counterfactual_reasoning(
@@ -258,7 +258,7 @@ HANDLERS["pangu_counterfactual"] = handle_counterfactual
 
 async def handle_root_cause(server, drawers, arguments):
     """根因分析"""
-    from ..memory.causal_reasoning import get_causal_engine
+    from ...memory.causal_reasoning import get_causal_engine
     cr = get_causal_engine(server.config)
     cr.discover_causal_links(drawers)
     result = cr.root_cause_analysis(arguments["effect_text"], drawers)
@@ -268,7 +268,7 @@ HANDLERS["pangu_root_cause"] = handle_root_cause
 
 async def handle_causal_stats(server, drawers, arguments):
     """因果推理统计"""
-    from ..memory.causal_reasoning import get_causal_engine
+    from ...memory.causal_reasoning import get_causal_engine
     cr = get_causal_engine(server.config)
     return json.dumps(cr.get_causal_stats(), ensure_ascii=False, indent=2)
 

@@ -45,7 +45,7 @@ HANDLERS = {}
 
 async def handle_analyze(server, drawers, arguments):
     """生成全面记忆分析报告"""
-    from ..memory.analytics import MemoryAnalyzer
+    from ...memory.analytics import MemoryAnalyzer
     analyzer = MemoryAnalyzer(server.config)
     wiki_count = server.wiki.stats().get("total_pages", 0)
     analysis = analyzer.analyze(drawers, wiki_page_count=wiki_count)
@@ -55,7 +55,7 @@ HANDLERS["pangu_analyze"] = handle_analyze
 
 async def handle_health_check(server, drawers, arguments):
     """检查记忆系统健康度"""
-    from ..memory.health_monitor import get_monitor
+    from ...memory.health_monitor import get_monitor
     hm = get_monitor(server.config)
     return json.dumps(hm.full_check(drawers), ensure_ascii=False, indent=2)
 
@@ -63,7 +63,7 @@ HANDLERS["pangu_health_check"] = handle_health_check
 
 async def handle_anomaly_detect(server, drawers, arguments):
     """检测记忆系统异常"""
-    from ..memory.analytics import MemoryAnalyzer
+    from ...memory.analytics import MemoryAnalyzer
     analyzer = MemoryAnalyzer(server.config)
     anomalies = analyzer.anomaly_detect(drawers)
     return json.dumps(anomalies, ensure_ascii=False, indent=2)
@@ -72,7 +72,7 @@ HANDLERS["pangu_anomaly_detect"] = handle_anomaly_detect
 
 async def handle_growth_trend(server, drawers, arguments):
     """分析记忆增长趋势"""
-    from ..memory.predictive_analytics import get_analytics
+    from ...memory.predictive_analytics import get_analytics
     pa = get_analytics(server.config)
     trend = pa.analyze_growth_trend(drawers)
     return json.dumps(trend, ensure_ascii=False, indent=2)
@@ -81,7 +81,7 @@ HANDLERS["pangu_growth_trend"] = handle_growth_trend
 
 async def handle_discover_patterns(server, drawers, arguments):
     """发现记忆中的隐藏模式和规律"""
-    from ..memory.creative_thinking import get_creative_thinking
+    from ...memory.creative_thinking import get_creative_thinking
     ct = get_creative_thinking(server.config)
     patterns = ct.discover_patterns(drawers)
     return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
@@ -90,7 +90,7 @@ HANDLERS["pangu_discover_patterns"] = handle_discover_patterns
 
 async def handle_pattern_insights(server, drawers, arguments):
     """从模式中提取洞察"""
-    from ..memory.patterns import PatternEngine
+    from ...memory.patterns import PatternEngine
     engine = PatternEngine(server.config)
     patterns = engine.discover_all(drawers)
     insights = engine.pattern_insights(patterns)
@@ -100,7 +100,7 @@ HANDLERS["pangu_pattern_insights"] = handle_pattern_insights
 
 async def handle_analyze_emotion(server, drawers, arguments):
     """分析文本情绪"""
-    from ..memory.emotional_intelligence import get_emotional_intelligence
+    from ...memory.emotional_intelligence import get_emotional_intelligence
     ei = get_emotional_intelligence(server.config)
     text = arguments.get("text", "")
     result = ei.analyze_emotion(text)
@@ -116,7 +116,7 @@ HANDLERS["pangu_analyze_emotion"] = handle_analyze_emotion
 
 async def handle_emotion_stats(server, drawers, arguments):
     """获取情感统计"""
-    from ..memory.emotional_intelligence import get_emotional_intelligence
+    from ...memory.emotional_intelligence import get_emotional_intelligence
     ei = get_emotional_intelligence(server.config)
     return json.dumps(ei.get_emotion_stats(), ensure_ascii=False, indent=2)
 
@@ -124,7 +124,7 @@ HANDLERS["pangu_emotion_stats"] = handle_emotion_stats
 
 async def handle_predict_emotion(server, drawers, arguments):
     """预测用户情绪"""
-    from ..memory.emotional_intelligence import get_emotional_intelligence
+    from ...memory.emotional_intelligence import get_emotional_intelligence
     ei = get_emotional_intelligence(server.config)
     context = arguments.get("context", "")
     result = ei.predict_emotion(context)
@@ -134,7 +134,7 @@ HANDLERS["pangu_predict_emotion"] = handle_predict_emotion
 
 async def handle_discover_patterns(server, drawers, arguments):
     """发现记忆中的模式"""
-    from ..memory.creative_thinking import get_creative_thinking
+    from ...memory.creative_thinking import get_creative_thinking
     ct = get_creative_thinking(server.config)
     patterns = ct.discover_patterns(drawers)
     return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
@@ -143,7 +143,7 @@ HANDLERS["pangu_discover_patterns"] = handle_discover_patterns
 
 async def handle_discover_knowledge(server, drawers, arguments):
     """从记忆中自动发现新知识"""
-    from ..memory.autonomous_learning import get_autonomous_learning
+    from ...memory.autonomous_learning import get_autonomous_learning
     al = get_autonomous_learning(server.config)
     discoveries = al.discover_knowledge(drawers)
     return json.dumps({"discoveries": discoveries, "count": len(discoveries)}, ensure_ascii=False, indent=2)
@@ -152,7 +152,7 @@ HANDLERS["pangu_discover_knowledge"] = handle_discover_knowledge
 
 async def handle_generate_hypotheses(server, drawers, arguments):
     """基于记忆生成假设"""
-    from ..memory.autonomous_learning import get_autonomous_learning
+    from ...memory.autonomous_learning import get_autonomous_learning
     al = get_autonomous_learning(server.config)
     limit = arguments.get("limit", 5)
     hypotheses = al.generate_hypotheses(drawers)
@@ -168,7 +168,7 @@ HANDLERS["pangu_generate_hypotheses"] = handle_generate_hypotheses
 
 async def handle_learning_stats(server, drawers, arguments):
     """获取自主学习统计"""
-    from ..memory.adaptive_learning import get_adaptive_learning
+    from ...memory.adaptive_learning import get_adaptive_learning
     al = get_adaptive_learning(server.config)
     return json.dumps(al.get_learning_stats(), ensure_ascii=False, indent=2)
 
@@ -176,7 +176,7 @@ HANDLERS["pangu_learning_stats"] = handle_learning_stats
 
 async def handle_self_diagnose(server, drawers, arguments):
     """系统自我诊断"""
-    from ..memory.self_evolution import get_evolution_engine
+    from ...memory.self_evolution import get_evolution_engine
     se = get_evolution_engine(server.config)
     diagnosis = se.diagnose(drawers)
     return json.dumps({
@@ -192,7 +192,7 @@ HANDLERS["pangu_self_diagnose"] = handle_self_diagnose
 
 async def handle_evolution_plan(server, drawers, arguments):
     """生成进化计划"""
-    from ..memory.self_evolution import get_evolution_engine
+    from ...memory.self_evolution import get_evolution_engine
     se = get_evolution_engine(server.config)
     diagnosis = se.diagnose(drawers)
     plan = se.generate_evolution_plan(diagnosis)
@@ -207,7 +207,7 @@ HANDLERS["pangu_evolution_plan"] = handle_evolution_plan
 
 async def handle_performance_trend(server, drawers, arguments):
     """查看性能趋势"""
-    from ..memory.self_evolution import get_evolution_engine
+    from ...memory.self_evolution import get_evolution_engine
     se = get_evolution_engine(server.config)
     metric = arguments.get("metric", "search_score")
     trend = se.get_performance_trend(metric)
@@ -217,7 +217,7 @@ HANDLERS["pangu_performance_trend"] = handle_performance_trend
 
 async def handle_evolution_stats(server, drawers, arguments):
     """获取进化统计"""
-    from ..memory.self_evolution import get_evolution_engine
+    from ...memory.self_evolution import get_evolution_engine
     se = get_evolution_engine(server.config)
     return json.dumps(se.get_evolution_stats(), ensure_ascii=False, indent=2)
 
@@ -225,7 +225,7 @@ HANDLERS["pangu_evolution_stats"] = handle_evolution_stats
 
 async def handle_anomaly_scan(server, drawers, arguments):
     """全面异常扫描"""
-    from ..memory.anomaly_detection import get_detector
+    from ...memory.anomaly_detection import get_detector
     det = get_detector(server.config)
     result = det.full_scan(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -234,7 +234,7 @@ HANDLERS["pangu_anomaly_scan"] = handle_anomaly_scan
 
 async def handle_anomaly_content(server, drawers, arguments):
     """内容异常检测"""
-    from ..memory.anomaly_detection import get_detector
+    from ...memory.anomaly_detection import get_detector
     det = get_detector(server.config)
     anomalies = det.detect_content_anomalies(drawers)
     return json.dumps({
@@ -247,7 +247,7 @@ HANDLERS["pangu_anomaly_content"] = handle_anomaly_content
 
 async def handle_anomaly_stats(server, drawers, arguments):
     """异常检测统计"""
-    from ..memory.anomaly_detection import get_detector
+    from ...memory.anomaly_detection import get_detector
     det = get_detector(server.config)
     return json.dumps(det.get_anomaly_stats(), ensure_ascii=False, indent=2)
 
@@ -255,7 +255,7 @@ HANDLERS["pangu_anomaly_stats"] = handle_anomaly_stats
 
 async def handle_predict_queries(server, drawers, arguments):
     """预测用户下一步查询"""
-    from ..memory.predictive_analytics import get_analytics
+    from ...memory.predictive_analytics import get_analytics
     pa = get_analytics(server.config)
     top_k = arguments.get("top_k", 5)
     predictions = pa.predict_next_queries([], top_k)
@@ -268,7 +268,7 @@ HANDLERS["pangu_predict_queries"] = handle_predict_queries
 
 async def handle_predict_forgetting(server, drawers, arguments):
     """预测即将遗忘的记忆"""
-    from ..memory.predictive_analytics import get_analytics
+    from ...memory.predictive_analytics import get_analytics
     pa = get_analytics(server.config)
     threshold = arguments.get("days_threshold", 30)
     predictions = pa.predict_forgetting(drawers, threshold)
@@ -281,7 +281,7 @@ HANDLERS["pangu_predict_forgetting"] = handle_predict_forgetting
 
 async def handle_growth_trend(server, drawers, arguments):
     """分析增长趋势"""
-    from ..memory.predictive_analytics import get_analytics
+    from ...memory.predictive_analytics import get_analytics
     pa = get_analytics(server.config)
     trend = pa.analyze_growth_trend(drawers)
     return json.dumps(trend, ensure_ascii=False, indent=2)
@@ -290,7 +290,7 @@ HANDLERS["pangu_growth_trend"] = handle_growth_trend
 
 async def handle_hot_topics(server, drawers, arguments):
     """预测热点主题"""
-    from ..memory.predictive_analytics import get_analytics
+    from ...memory.predictive_analytics import get_analytics
     pa = get_analytics(server.config)
     top_k = arguments.get("top_k", 5)
     predictions = pa.predict_hot_topics(drawers, top_k)
@@ -303,7 +303,7 @@ HANDLERS["pangu_hot_topics"] = handle_hot_topics
 
 async def handle_predictive_stats(server, drawers, arguments):
     """预测分析统计"""
-    from ..memory.predictive_analytics import get_analytics
+    from ...memory.predictive_analytics import get_analytics
     pa = get_analytics(server.config)
     return json.dumps(pa.get_prediction_stats(), ensure_ascii=False, indent=2)
 
@@ -311,7 +311,7 @@ HANDLERS["pangu_predictive_stats"] = handle_predictive_stats
 
 async def handle_meta_observe(server, drawers, arguments):
     """记录性能观察"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     ml.observe(arguments["module"], arguments["metric"], arguments["value"])
     return json.dumps({"status": "recorded"}, ensure_ascii=False, indent=2)
@@ -320,7 +320,7 @@ HANDLERS["pangu_meta_observe"] = handle_meta_observe
 
 async def handle_meta_recommend(server, drawers, arguments):
     """推荐最优策略"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     task_type = arguments.get("task_type", "search")
     result = ml.recommend_strategy(task_type)
@@ -330,7 +330,7 @@ HANDLERS["pangu_meta_recommend"] = handle_meta_recommend
 
 async def handle_meta_tune(server, drawers, arguments):
     """自动调优参数"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     result = ml.auto_tune()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -339,7 +339,7 @@ HANDLERS["pangu_meta_tune"] = handle_meta_tune
 
 async def handle_meta_insights(server, drawers, arguments):
     """获取学习洞察"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     return json.dumps(ml.get_learning_insights(), ensure_ascii=False, indent=2)
 
@@ -347,7 +347,7 @@ HANDLERS["pangu_meta_insights"] = handle_meta_insights
 
 async def handle_meta_stats(server, drawers, arguments):
     """元学习统计"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     return json.dumps(ml.get_meta_stats(), ensure_ascii=False, indent=2)
 
@@ -355,7 +355,7 @@ HANDLERS["pangu_meta_stats"] = handle_meta_stats
 
 async def handle_health_check(server, drawers, arguments):
     """全面健康检查"""
-    from ..memory.health_monitor import get_monitor
+    from ...memory.health_monitor import get_monitor
     hm = get_monitor(server.config)
     return json.dumps(hm.full_check(drawers), ensure_ascii=False, indent=2)
 
@@ -363,7 +363,7 @@ HANDLERS["pangu_health_check"] = handle_health_check
 
 async def handle_health_trend(server, drawers, arguments):
     """健康趋势"""
-    from ..memory.health_monitor import get_monitor
+    from ...memory.health_monitor import get_monitor
     hm = get_monitor(server.config)
     return json.dumps(hm.get_trend(), ensure_ascii=False, indent=2)
 
@@ -371,7 +371,7 @@ HANDLERS["pangu_health_trend"] = handle_health_trend
 
 async def handle_health_stats(server, drawers, arguments):
     """健康统计"""
-    from ..memory.health_monitor import get_monitor
+    from ...memory.health_monitor import get_monitor
     hm = get_monitor(server.config)
     return json.dumps(hm.get_health_stats(), ensure_ascii=False, indent=2)
 
@@ -379,7 +379,7 @@ HANDLERS["pangu_health_stats"] = handle_health_stats
 
 async def handle_learning_stats(server, drawers, arguments):
     """获取自适应学习统计"""
-    from ..memory.adaptive_learning import get_adaptive_learning
+    from ...memory.adaptive_learning import get_adaptive_learning
     al = get_adaptive_learning(server.config)
     return json.dumps(al.get_learning_stats(), ensure_ascii=False, indent=2)
 
@@ -387,7 +387,7 @@ HANDLERS["pangu_learning_stats"] = handle_learning_stats
 
 async def handle_benchmark(server, drawers, arguments):
     """运行性能基准测试"""
-    from ..observability.performance_monitor import PerformanceMonitor
+    from ...observability.performance_monitor import PerformanceMonitor
     monitor = PerformanceMonitor(server.config)
     result = monitor.run_benchmark()
     return json.dumps({
@@ -405,7 +405,7 @@ HANDLERS["pangu_benchmark"] = handle_benchmark
 
 async def handle_error_stats(server, drawers, arguments):
     """查看错误统计（错误率/趋势/严重错误）"""
-    from ..memory.error_monitor import get_error_monitor
+    from ...memory.error_monitor import get_error_monitor
     monitor = get_error_monitor(server.config)
     return json.dumps(monitor.get_stats(), ensure_ascii=False, indent=2)
 
@@ -413,7 +413,7 @@ HANDLERS["pangu_error_stats"] = handle_error_stats
 
 async def handle_health_report(server, drawers, arguments):
     """生成综合健康报告（评分+建议）"""
-    from ..memory.error_monitor import get_error_monitor
+    from ...memory.error_monitor import get_error_monitor
     monitor = get_error_monitor(server.config)
     return json.dumps(monitor.get_health_report(), ensure_ascii=False, indent=2)
 

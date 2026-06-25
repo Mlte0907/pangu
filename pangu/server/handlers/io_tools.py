@@ -38,7 +38,7 @@ HANDLERS = {}
 
 async def handle_export(server, drawers, arguments):
     """导出记忆数据为 JSON/ZIP"""
-    from ..memory.migration import MemoryExporter
+    from ...memory.migration import MemoryExporter
     exporter = MemoryExporter(server.config)
     output = arguments.get("output_path", "/tmp/pangu_export.json")
     fmt = arguments.get("format", "json")
@@ -49,7 +49,7 @@ HANDLERS["pangu_export"] = handle_export
 
 async def handle_import(server, drawers, arguments):
     """从文件导入记忆数据"""
-    from ..memory.migration import MemoryImporter
+    from ...memory.migration import MemoryImporter
     importer = MemoryImporter(server.config)
     file_path = arguments.get("file_path", "")
     merge = arguments.get("merge", True)
@@ -60,7 +60,7 @@ HANDLERS["pangu_import"] = handle_import
 
 async def handle_backup(server, drawers, arguments):
     """创建备份快照"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     desc = arguments.get("description", "")
     info = be.backup(drawers, desc)
@@ -73,7 +73,7 @@ HANDLERS["pangu_backup"] = handle_backup
 
 async def handle_list_backups(server, drawers, arguments):
     """列出所有备份"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     return json.dumps({"backups": be.list_backups(), "count": len(be.list_backups())}, ensure_ascii=False, indent=2)
 
@@ -81,7 +81,7 @@ HANDLERS["pangu_list_backups"] = handle_list_backups
 
 async def handle_restore_backup(server, drawers, arguments):
     """从备份恢复"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     result = be.restore(arguments["backup_id"])
     result.pop("drawers", None)
@@ -91,7 +91,7 @@ HANDLERS["pangu_restore_backup"] = handle_restore_backup
 
 async def handle_backup(server, drawers, arguments):
     """全量备份记忆"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     desc = arguments.get("description", "")
     info = be.backup(drawers, desc)
@@ -104,7 +104,7 @@ HANDLERS["pangu_backup"] = handle_backup
 
 async def handle_list_backups(server, drawers, arguments):
     """列出所有备份"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     return json.dumps({"backups": be.list_backups(), "count": len(be.list_backups())}, ensure_ascii=False, indent=2)
 
@@ -112,7 +112,7 @@ HANDLERS["pangu_list_backups"] = handle_list_backups
 
 async def handle_restore_backup(server, drawers, arguments):
     """恢复备份"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     result = be.restore(arguments["backup_id"])
     result.pop("drawers", None)
@@ -122,7 +122,7 @@ HANDLERS["pangu_restore_backup"] = handle_restore_backup
 
 async def handle_backup_stats(server, drawers, arguments):
     """备份统计"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     return json.dumps(be.get_backup_stats(), ensure_ascii=False, indent=2)
 
@@ -130,7 +130,7 @@ HANDLERS["pangu_backup_stats"] = handle_backup_stats
 
 async def handle_export_json(server, drawers, arguments):
     """JSON格式导出"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     result = ee.export_json(drawers, arguments.get("filepath"))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -139,7 +139,7 @@ HANDLERS["pangu_export_json"] = handle_export_json
 
 async def handle_export_markdown(server, drawers, arguments):
     """Markdown格式导出"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     result = ee.export_markdown(drawers, arguments.get("filepath"))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -148,7 +148,7 @@ HANDLERS["pangu_export_markdown"] = handle_export_markdown
 
 async def handle_export_csv(server, drawers, arguments):
     """CSV格式导出"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     result = ee.export_csv(drawers, arguments.get("filepath"))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -157,7 +157,7 @@ HANDLERS["pangu_export_csv"] = handle_export_csv
 
 async def handle_export_yaml(server, drawers, arguments):
     """YAML格式导出"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     result = ee.export_yaml(drawers, arguments.get("filepath"))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -166,7 +166,7 @@ HANDLERS["pangu_export_yaml"] = handle_export_yaml
 
 async def handle_export_obsidian(server, drawers, arguments):
     """Obsidian格式导出（带WikiLink）"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     result = ee.export_obsidian(drawers, arguments.get("filepath"))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -175,7 +175,7 @@ HANDLERS["pangu_export_obsidian"] = handle_export_obsidian
 
 async def handle_import_smart(server, drawers, arguments):
     """智能导入（自动检测格式）"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     result = ee.smart_import(arguments["filepath"])
     result.pop("data", None)
@@ -185,7 +185,7 @@ HANDLERS["pangu_import_smart"] = handle_import_smart
 
 async def handle_list_exports(server, drawers, arguments):
     """列出所有导出文件"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     return json.dumps({"exports": ee.list_exports()}, ensure_ascii=False, indent=2)
 
@@ -193,7 +193,7 @@ HANDLERS["pangu_list_exports"] = handle_list_exports
 
 async def handle_export_stats(server, drawers, arguments):
     """导出导入统计"""
-    from ..memory.export_import import get_export_engine
+    from ...memory.export_import import get_export_engine
     ee = get_export_engine(server.config)
     return json.dumps(ee.get_stats(), ensure_ascii=False, indent=2)
 
@@ -201,14 +201,14 @@ HANDLERS["pangu_export_stats"] = handle_export_stats
 
 async def handle_env_check(server, drawers, arguments):
     """运行环境检查"""
-    from ..memory.production import check_environment
+    from ...memory.production import check_environment
     return json.dumps(check_environment(), ensure_ascii=False, indent=2)
 
 HANDLERS["pangu_env_check"] = handle_env_check
 
 async def handle_startup_validate(server, drawers, arguments):
     """启动校验"""
-    from ..memory.production import default_startup_checks
+    from ...memory.production import default_startup_checks
     validator = default_startup_checks()
     ok, results = validator.validate()
     return json.dumps({"ok": ok, "checks": results}, ensure_ascii=False, indent=2)
@@ -217,7 +217,7 @@ HANDLERS["pangu_startup_validate"] = handle_startup_validate
 
 async def handle_importance_score(server, drawers, arguments):
     """计算记忆重要性评分"""
-    from ..memory.importance_scorer import get_importance_scorer
+    from ...memory.importance_scorer import get_importance_scorer
     scorer = get_importance_scorer(server.config)
     memory_id = arguments.get("memory_id", "")
     context = arguments.get("context", "")
@@ -236,7 +236,7 @@ HANDLERS["pangu_importance_score"] = handle_importance_score
 
 async def handle_auto_collect(server, drawers, arguments):
     """从会话文件自动提取记忆"""
-    from ..memory.auto_collector import AutoCollector
+    from ...memory.auto_collector import AutoCollector
     collector = AutoCollector(server.config)
     session_file = arguments.get("session_file", "")
     min_importance = arguments.get("min_importance", 0.3)
@@ -247,7 +247,7 @@ HANDLERS["pangu_auto_collect"] = handle_auto_collect
 
 async def handle_collect_file(server, drawers, arguments):
     """从指定文件采集记忆"""
-    from ..memory.collector import get_collector
+    from ...memory.collector import get_collector
     collector = get_collector(server.config)
     results = collector.collect_from_file(
         arguments["file_path"],
@@ -259,7 +259,7 @@ HANDLERS["pangu_collect_file"] = handle_collect_file
 
 async def handle_collect_dir(server, drawers, arguments):
     """从目录批量采集记忆"""
-    from ..memory.collector import get_collector
+    from ...memory.collector import get_collector
     collector = get_collector(server.config)
     result = collector.collect_from_dir(
         arguments["dir_path"],
@@ -272,20 +272,24 @@ HANDLERS["pangu_collect_dir"] = handle_collect_dir
 
 async def handle_collect_all(server, drawers, arguments):
     """扫描所有配置源自动采集"""
-    from ..memory.collector import get_collector
+    from ...memory.collector import get_collector
     collector = get_collector(server.config)
     result = collector.collect_all_sources(
         min_importance=arguments.get("min_importance", 0.3),
     )
-    from ..memory.memory_events import get_event_stream
-    count = result.get("total", 0)
-    if count > 0:
-        get_event_stream(server.config).emit("memory.collect", "", {"count": count, "sources": result.get("sources", {})})
+    try:
+        from ...memory.memory_events import get_event_stream
+        count = result.get("total", 0)
+        if count > 0:
+            get_event_stream(server.config).emit("memory.collect", "", {"count": count, "sources": result.get("sources", {})})
+    except Exception:
+        pass
+    return json.dumps(result, ensure_ascii=False, indent=2)
 HANDLERS["pangu_collect_all"] = handle_collect_all
 
 async def handle_collect_stats(server, drawers, arguments):
     """查看采集统计"""
-    from ..memory.collector import get_collector
+    from ...memory.collector import get_collector
     collector = get_collector(server.config)
     return json.dumps(collector.get_stats(), ensure_ascii=False, indent=2)
 
@@ -293,8 +297,8 @@ HANDLERS["pangu_collect_stats"] = handle_collect_stats
 
 async def handle_feishu_send(server, drawers, arguments):
     """发送飞书通知（文本消息）"""
-    from ..memory.feishu_webhook import get_feishu_webhook
-    from ..core.config import PanguConfig as _Cfg
+    from ...memory.feishu_webhook import get_feishu_webhook
+    from ...core.config import PanguConfig as _Cfg
     cfg = _Cfg.load()
     wh = get_feishu_webhook(cfg.feishu_webhook_url)
     result = wh.send_text(arguments["text"])
@@ -304,8 +308,8 @@ HANDLERS["pangu_feishu_send"] = handle_feishu_send
 
 async def handle_feishu_card(server, drawers, arguments):
     """发送飞书卡片通知"""
-    from ..memory.feishu_webhook import get_feishu_webhook
-    from ..core.config import PanguConfig as _Cfg
+    from ...memory.feishu_webhook import get_feishu_webhook
+    from ...core.config import PanguConfig as _Cfg
     cfg = _Cfg.load()
     wh = get_feishu_webhook(cfg.feishu_webhook_url)
     lines = [l.strip() for l in arguments["content"].split("\n") if l.strip()]
@@ -316,7 +320,7 @@ HANDLERS["pangu_feishu_card"] = handle_feishu_card
 
 async def handle_feishu_status(server, drawers, arguments):
     """查看飞书 Webhook 状态"""
-    from ..core.config import PanguConfig as _Cfg
+    from ...core.config import PanguConfig as _Cfg
     cfg = _Cfg.load()
     configured = bool(cfg.feishu_webhook_url)
     return json.dumps({
@@ -328,7 +332,7 @@ HANDLERS["pangu_feishu_status"] = handle_feishu_status
 
 async def handle_watch_directory(server, drawers, arguments):
     """监控目录变更并自动提取记忆"""
-    from ..memory.file_watcher import get_file_watcher
+    from ...memory.file_watcher import get_file_watcher
     watcher = get_file_watcher(server.config)
     result = watcher.watch_directory(
         arguments["dir_path"],
@@ -341,7 +345,7 @@ HANDLERS["pangu_watch_directory"] = handle_watch_directory
 
 async def handle_watch_status(server, drawers, arguments):
     """查看文件监控状态"""
-    from ..memory.file_watcher import get_file_watcher
+    from ...memory.file_watcher import get_file_watcher
     watcher = get_file_watcher(server.config)
     stats = watcher.get_stats()
     dirs = watcher.get_watched_dirs()

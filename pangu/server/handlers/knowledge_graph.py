@@ -65,7 +65,7 @@ HANDLERS["pangu_kg_neighbors"] = handle_kg_neighbors
 
 async def handle_kg_auto_extract(server, drawers, arguments):
     """从记忆中自动提取实体和关系丰富KG"""
-    from ..memory.knowledge_graph import KnowledgeGraph
+    from ...memory.knowledge_graph import KnowledgeGraph
     kg = KnowledgeGraph(server.config)
     max_d = arguments.get("max_drawers", 50)
     result = kg.auto_extract_entities(drawers, max_d)
@@ -75,7 +75,7 @@ HANDLERS["pangu_kg_auto_extract"] = handle_kg_auto_extract
 
 async def handle_kg_cross_domain(server, drawers, arguments):
     """跨领域知识迁移"""
-    from ..memory.knowledge_graph import KnowledgeGraph
+    from ...memory.knowledge_graph import KnowledgeGraph
     kg = KnowledgeGraph(server.config)
     source = arguments.get("source_domain", "")
     target = arguments.get("target_domain", "")
@@ -86,7 +86,7 @@ HANDLERS["pangu_kg_cross_domain"] = handle_kg_cross_domain
 
 async def handle_kg_similar_patterns(server, drawers, arguments):
     """查找相似模式"""
-    from ..memory.knowledge_graph import KnowledgeGraph
+    from ...memory.knowledge_graph import KnowledgeGraph
     kg = KnowledgeGraph(server.config)
     entity_id = arguments.get("entity_id", "")
     patterns = kg.find_similar_patterns(entity_id)

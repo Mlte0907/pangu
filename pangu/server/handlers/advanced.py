@@ -1,5 +1,19 @@
 """盘古 MCP Handler — advanced (121 tools)"""
 import json
+import time
+from ...memory.attention import AttentionStrategy
+from ...memory.differential_privacy import DifferentialPrivacy
+from ...memory.reconsolidation import ReconsolidationEngine
+from ...memory.reconsolidation import ResonanceEngine
+from ...memory.streaming_index import StreamingIndexer
+from ...memory.verification import VerificationLoop
+from ...memory.working_memory import WMItem
+from ...memory.adaptive_params import get_adaptive_engine
+from ...memory.attention import get_attention_system
+from ...memory.hologram import get_holographic_encoder
+from ...memory.judge import get_memory_judge
+from ...memory.working_memory import get_working_memory
+from ...memory.fts_search import holographic_search
 
 TOOLS = [
     {"name": "pangu_create_tunnel", "description": "\u521b\u5efa\u8de8 Wing \u96a7\u9053"},
@@ -156,7 +170,7 @@ HANDLERS["pangu_find_tunnels"] = handle_find_tunnels
 
 async def handle_cognitive_loop(server, drawers, arguments):
     """运行一次认知循环（observe→think→evaluate→act）"""
-    from ..memory.cognitive_loop import get_cognitive_loop
+    from ...memory.cognitive_loop import get_cognitive_loop
     loop = get_cognitive_loop(server.config)
     result = loop.run_cycle()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -165,7 +179,7 @@ HANDLERS["pangu_cognitive_loop"] = handle_cognitive_loop
 
 async def handle_cognitive_stats(server, drawers, arguments):
     """获取认知循环统计"""
-    from ..memory.cognitive_loop import get_cognitive_loop
+    from ...memory.cognitive_loop import get_cognitive_loop
     loop = get_cognitive_loop(server.config)
     return json.dumps(loop.get_stats(), ensure_ascii=False, indent=2)
 
@@ -173,7 +187,7 @@ HANDLERS["pangu_cognitive_stats"] = handle_cognitive_stats
 
 async def handle_metacognition_monitor(server, drawers, arguments):
     """系统级健康监测（策略表现、观察数据、建议）"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     return json.dumps(ml.monitor_system_health(), ensure_ascii=False, indent=2)
 
@@ -181,7 +195,7 @@ HANDLERS["pangu_metacognition_monitor"] = handle_metacognition_monitor
 
 async def handle_metacognition_reconfig(server, drawers, arguments):
     """自重构检测（低效策略、未使用策略、异常模块）"""
-    from ..memory.meta_learning import get_meta_engine
+    from ...memory.meta_learning import get_meta_engine
     ml = get_meta_engine(server.config)
     return json.dumps(ml.detect_self_reconfig(), ensure_ascii=False, indent=2)
 
@@ -189,7 +203,7 @@ HANDLERS["pangu_metacognition_reconfig"] = handle_metacognition_reconfig
 
 async def handle_worldmodel_forecast(server, drawers, arguments):
     """基于当前状态预测未来情景"""
-    from ..memory.world_model import get_world_model, TOP_SCENARIOS
+    from ...memory.world_model import get_world_model, TOP_SCENARIOS
     wm_model = get_world_model(server.config)
     scenarios = wm_model.forecast()
     return json.dumps({
@@ -213,7 +227,7 @@ HANDLERS["pangu_worldmodel_forecast"] = handle_worldmodel_forecast
 
 async def handle_worldmodel_plan(server, drawers, arguments):
     """为指定情景生成应对计划"""
-    from ..memory.world_model import get_world_model
+    from ...memory.world_model import get_world_model
     wm_model = get_world_model(server.config)
     scenario_id = arguments.get("scenario_id", "")
     scenarios = wm_model.forecast()
@@ -232,7 +246,7 @@ HANDLERS["pangu_worldmodel_plan"] = handle_worldmodel_plan
 
 async def handle_worldmodel_match(server, drawers, arguments):
     """将事件与预测情景匹配"""
-    from ..memory.world_model import get_world_model
+    from ...memory.world_model import get_world_model
     wm_model = get_world_model(server.config)
     event_type = arguments.get("event_type", "")
     event_data = arguments.get("event_data", {})
@@ -251,7 +265,7 @@ HANDLERS["pangu_worldmodel_match"] = handle_worldmodel_match
 
 async def handle_worldmodel_stats(server, drawers, arguments):
     """获取世界模型统计"""
-    from ..memory.world_model import get_world_model
+    from ...memory.world_model import get_world_model
     wm_model = get_world_model(server.config)
     return json.dumps(wm_model.get_stats(), ensure_ascii=False, indent=2)
 
@@ -468,7 +482,16 @@ async def handle_attention_switch(server, drawers, arguments):
     attn = get_attention_system()
     strategy_str = arguments.get("strategy", "bottom_up")
     reason = arguments.get("reason", "")
-    strategy = AttentionStrategy(strategy_str)
+    try:
+        strategy = AttentionStrategy(strategy_str)
+    except ValueError:
+        return json.dumps({"error": f"unknown strategy: {strategy_str}, valid: {[s.value for s in AttentionStrategy]}"})
+    old, new = attn.switch(strategy, reason=reason)
+    return json.dumps({
+        "old": old.value,
+        "new": new.value,
+        "reason": reason,
+    }, ensure_ascii=False)
 HANDLERS["pangu_attention_switch"] = handle_attention_switch
 
 async def handle_attention_ab_test(server, drawers, arguments):
@@ -487,7 +510,7 @@ HANDLERS["pangu_attention_ab_test"] = handle_attention_ab_test
 
 async def handle_streaming_index(server, drawers, arguments):
     """增量索引新记忆"""
-    from ..search.embedder import VectorEmbedder
+    from ...search.embedder import VectorEmbedder
     indexer = StreamingIndexer(server.config)
     embedder = VectorEmbedder(server.config)
     result = indexer.index(drawers, embedder=embedder)
@@ -563,7 +586,7 @@ HANDLERS["pangu_privatize_count"] = handle_privatize_count
 
 async def handle_autonomous_analyze(server, drawers, arguments):
     """分析任务复杂度并推荐能力"""
-    from ..autonomous import analyze_task
+    from ...autonomous import analyze_task
     task = arguments.get("task", "")
     result = analyze_task(task)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -572,7 +595,7 @@ HANDLERS["pangu_autonomous_analyze"] = handle_autonomous_analyze
 
 async def handle_neural_stats(server, drawers, arguments):
     """获取海马体-新皮层双系统统计"""
-    from ..memory.neural_memory import get_neural_engine
+    from ...memory.neural_memory import get_neural_engine
     engine = get_neural_engine()
     return json.dumps(engine.stats(), ensure_ascii=False, indent=2)
 
@@ -580,7 +603,7 @@ HANDLERS["pangu_neural_stats"] = handle_neural_stats
 
 async def handle_neural_sleep(server, drawers, arguments):
     """触发神经睡眠巩固（海马体→新皮层重播）"""
-    from ..memory.neural_memory import get_neural_engine
+    from ...memory.neural_memory import get_neural_engine
     engine = get_neural_engine()
     result = engine.sleep()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -589,7 +612,7 @@ HANDLERS["pangu_neural_sleep"] = handle_neural_sleep
 
 async def handle_neural_spreading(server, drawers, arguments):
     """基于种子记忆执行激活扩散，找到关联记忆"""
-    from ..memory.neural_memory import get_neural_engine
+    from ...memory.neural_memory import get_neural_engine
     engine = get_neural_engine()
     seed_ids = arguments.get("seed_ids", [])
     depth = arguments.get("depth", engine.config.neural_spreading_depth)
@@ -615,7 +638,7 @@ HANDLERS["pangu_neural_spreading"] = handle_neural_spreading
 
 async def handle_neural_inhibition(server, drawers, arguments):
     """对一组记忆执行竞争抑制，返回有效激活值"""
-    from ..memory.neural_memory import get_neural_engine
+    from ...memory.neural_memory import get_neural_engine
     engine = get_neural_engine()
     memory_ids = arguments.get("memory_ids", [])
     activations = engine.neocortex.mutual_inhibition(memory_ids)
@@ -627,7 +650,7 @@ HANDLERS["pangu_neural_inhibition"] = handle_neural_inhibition
 
 async def handle_neural_decay(server, drawers, arguments):
     """对所有神经记忆应用个性化衰减"""
-    from ..memory.neural_memory import get_neural_engine
+    from ...memory.neural_memory import get_neural_engine
     engine = get_neural_engine()
     forgotten = engine.apply_global_decay()
     return json.dumps({
@@ -639,7 +662,7 @@ HANDLERS["pangu_neural_decay"] = handle_neural_decay
 
 async def handle_multi_register(server, drawers, arguments):
     """注册Agent到协作记忆空间"""
-    from ..memory.multi_agent import get_multi_agent_memory
+    from ...memory.multi_agent import get_multi_agent_memory
     mam = get_multi_agent_memory()
     agent_id = arguments.get("agent_id", "")
     priority = arguments.get("priority", 5)
@@ -650,7 +673,7 @@ HANDLERS["pangu_multi_register"] = handle_multi_register
 
 async def handle_multi_write(server, drawers, arguments):
     """写入多Agent共享记忆"""
-    from ..memory.multi_agent import get_multi_agent_memory, MemoryScope
+    from ...memory.multi_agent import get_multi_agent_memory, MemoryScope
     mam = get_multi_agent_memory()
     agent_id = arguments.get("agent_id", "")
     content = arguments.get("content", "")
@@ -664,7 +687,7 @@ HANDLERS["pangu_multi_write"] = handle_multi_write
 
 async def handle_multi_read(server, drawers, arguments):
     """读取Agent可见的记忆"""
-    from ..memory.multi_agent import get_multi_agent_memory
+    from ...memory.multi_agent import get_multi_agent_memory
     mam = get_multi_agent_memory()
     agent_id = arguments.get("agent_id", "")
     tags = arguments.get("tags", None)
@@ -675,7 +698,7 @@ HANDLERS["pangu_multi_read"] = handle_multi_read
 
 async def handle_multi_agents(server, drawers, arguments):
     """获取所有已注册Agent"""
-    from ..memory.multi_agent import get_multi_agent_memory
+    from ...memory.multi_agent import get_multi_agent_memory
     mam = get_multi_agent_memory()
     agents = mam.get_agents()
     return json.dumps({"agents": agents, "count": len(agents)}, ensure_ascii=False)
@@ -684,7 +707,7 @@ HANDLERS["pangu_multi_agents"] = handle_multi_agents
 
 async def handle_generate_ideas(server, drawers, arguments):
     """基于记忆生成新想法"""
-    from ..memory.creative_thinking import get_creative_thinking
+    from ...memory.creative_thinking import get_creative_thinking
     ct = get_creative_thinking(server.config)
     limit = arguments.get("limit", 5)
     ideas = ct.generate_ideas(drawers)
@@ -700,7 +723,7 @@ HANDLERS["pangu_generate_ideas"] = handle_generate_ideas
 
 async def handle_generate_novel(server, drawers, arguments):
     """生成原创想法"""
-    from ..memory.creative_thinking import get_creative_thinking
+    from ...memory.creative_thinking import get_creative_thinking
     ct = get_creative_thinking(server.config)
     domain = arguments.get("domain", "")
     context = arguments.get("context", "")
@@ -711,7 +734,7 @@ HANDLERS["pangu_generate_novel"] = handle_generate_novel
 
 async def handle_agent_register(server, drawers, arguments):
     """注册 Agent"""
-    from ..memory.collaborative_intelligence import get_collaborative
+    from ...memory.collaborative_intelligence import get_collaborative
     ci = get_collaborative(server.config)
     result = ci.register_agent(
         arguments["agent_id"], arguments["name"],
@@ -723,7 +746,7 @@ HANDLERS["pangu_agent_register"] = handle_agent_register
 
 async def handle_agent_share(server, drawers, arguments):
     """Agent 间共享知识"""
-    from ..memory.collaborative_intelligence import get_collaborative
+    from ...memory.collaborative_intelligence import get_collaborative
     ci = get_collaborative(server.config)
     result = ci.share_knowledge(
         arguments["from_agent"], arguments["to_agent"],
@@ -735,7 +758,7 @@ HANDLERS["pangu_agent_share"] = handle_agent_share
 
 async def handle_collaborative_reason(server, drawers, arguments):
     """协作推理"""
-    from ..memory.collaborative_intelligence import get_collaborative
+    from ...memory.collaborative_intelligence import get_collaborative
     ci = get_collaborative(server.config)
     result = ci.collaborative_reasoning(
         arguments["task"], arguments.get("agent_ids"),
@@ -751,7 +774,7 @@ HANDLERS["pangu_collaborative_reason"] = handle_collaborative_reason
 
 async def handle_agent_stats(server, drawers, arguments):
     """获取 Agent 统计"""
-    from ..memory.collaborative_intelligence import get_collaborative
+    from ...memory.collaborative_intelligence import get_collaborative
     ci = get_collaborative(server.config)
     return json.dumps(ci.get_agent_stats(), ensure_ascii=False, indent=2)
 
@@ -759,7 +782,7 @@ HANDLERS["pangu_agent_stats"] = handle_agent_stats
 
 async def handle_synthesize(server, drawers, arguments):
     """按主题综合知识"""
-    from ..memory.knowledge_synthesis import get_synthesizer
+    from ...memory.knowledge_synthesis import get_synthesizer
     ks = get_synthesizer(server.config)
     limit = arguments.get("limit", 10)
     insights = ks.synthesize_by_topic(drawers)
@@ -776,7 +799,7 @@ HANDLERS["pangu_synthesize"] = handle_synthesize
 
 async def handle_find_contradictions(server, drawers, arguments):
     """检测矛盾信息"""
-    from ..memory.knowledge_synthesis import get_synthesizer
+    from ...memory.knowledge_synthesis import get_synthesizer
     ks = get_synthesizer(server.config)
     contradictions = ks.detect_contradictions(drawers)
     return json.dumps({
@@ -792,7 +815,7 @@ HANDLERS["pangu_find_contradictions"] = handle_find_contradictions
 
 async def handle_core_insights(server, drawers, arguments):
     """提取核心洞察"""
-    from ..memory.knowledge_synthesis import get_synthesizer
+    from ...memory.knowledge_synthesis import get_synthesizer
     ks = get_synthesizer(server.config)
     top_k = arguments.get("top_k", 10)
     insights = ks.extract_core_insights(drawers, top_k)
@@ -802,7 +825,7 @@ HANDLERS["pangu_core_insights"] = handle_core_insights
 
 async def handle_auto_learn(server, drawers, arguments):
     """执行自主学习循环"""
-    from ..memory.autonomous_learning import get_autonomous_learning
+    from ...memory.autonomous_learning import get_autonomous_learning
     al = get_autonomous_learning(server.config)
     result = al.auto_learn(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -811,7 +834,7 @@ HANDLERS["pangu_auto_learn"] = handle_auto_learn
 
 async def handle_arch_analyze(server, drawers, arguments):
     """分析记忆架构"""
-    from ..memory.adaptive_architecture import get_architecture
+    from ...memory.adaptive_architecture import get_architecture
     aa = get_architecture(server.config)
     return json.dumps(aa.analyze_architecture(drawers), ensure_ascii=False, indent=2)
 
@@ -819,7 +842,7 @@ HANDLERS["pangu_arch_analyze"] = handle_arch_analyze
 
 async def handle_arch_suggest(server, drawers, arguments):
     """架构重构建议"""
-    from ..memory.adaptive_architecture import get_architecture
+    from ...memory.adaptive_architecture import get_architecture
     aa = get_architecture(server.config)
     suggestions = aa.suggest_restructuring(drawers)
     return json.dumps({
@@ -831,7 +854,7 @@ HANDLERS["pangu_arch_suggest"] = handle_arch_suggest
 
 async def handle_cold_hot(server, drawers, arguments):
     """冷热分离建议"""
-    from ..memory.adaptive_architecture import get_architecture
+    from ...memory.adaptive_architecture import get_architecture
     aa = get_architecture(server.config)
     result = aa.suggest_cold_hot_separation(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -840,7 +863,7 @@ HANDLERS["pangu_cold_hot"] = handle_cold_hot
 
 async def handle_arch_stats(server, drawers, arguments):
     """架构统计"""
-    from ..memory.adaptive_architecture import get_architecture
+    from ...memory.adaptive_architecture import get_architecture
     aa = get_architecture(server.config)
     return json.dumps(aa.get_architecture_stats(), ensure_ascii=False, indent=2)
 
@@ -848,7 +871,7 @@ HANDLERS["pangu_arch_stats"] = handle_arch_stats
 
 async def handle_qa(server, drawers, arguments):
     """基于记忆的智能问答"""
-    from ..memory.qa_engine import get_qa_engine
+    from ...memory.qa_engine import get_qa_engine
     qa = get_qa_engine(server.config)
     question = arguments.get("question", "")
     result = qa.answer(question, drawers)
@@ -865,7 +888,7 @@ HANDLERS["pangu_qa"] = handle_qa
 
 async def handle_qa_batch(server, drawers, arguments):
     """批量智能问答"""
-    from ..memory.qa_engine import get_qa_engine
+    from ...memory.qa_engine import get_qa_engine
     qa = get_qa_engine(server.config)
     questions = arguments.get("questions", [])
     results = qa.batch_answer(questions, drawers)
@@ -881,7 +904,7 @@ HANDLERS["pangu_qa_batch"] = handle_qa_batch
 
 async def handle_qa_stats(server, drawers, arguments):
     """问答统计"""
-    from ..memory.qa_engine import get_qa_engine
+    from ...memory.qa_engine import get_qa_engine
     qa = get_qa_engine(server.config)
     return json.dumps(qa.get_qa_stats(), ensure_ascii=False, indent=2)
 
@@ -889,7 +912,7 @@ HANDLERS["pangu_qa_stats"] = handle_qa_stats
 
 async def handle_inject_context(server, drawers, arguments):
     """为文本注入相关记忆上下文"""
-    from ..memory.context_injection import get_injection_engine
+    from ...memory.context_injection import get_injection_engine
     ie = get_injection_engine(server.config)
     text = arguments.get("text", "")
     budget = arguments.get("token_budget", 500)
@@ -906,7 +929,7 @@ HANDLERS["pangu_inject_context"] = handle_inject_context
 
 async def handle_update_context(server, drawers, arguments):
     """增量更新上下文"""
-    from ..memory.context_injection import get_injection_engine
+    from ...memory.context_injection import get_injection_engine
     ie = get_injection_engine(server.config)
     text = arguments.get("text", "")
     result = ie.update_context(text, drawers)
@@ -919,7 +942,7 @@ HANDLERS["pangu_update_context"] = handle_update_context
 
 async def handle_current_context(server, drawers, arguments):
     """获取当前上下文缓冲"""
-    from ..memory.context_injection import get_injection_engine
+    from ...memory.context_injection import get_injection_engine
     ie = get_injection_engine(server.config)
     context = ie.get_current_context()
     return json.dumps({"context": context, "count": len(context)}, ensure_ascii=False, indent=2)
@@ -928,7 +951,7 @@ HANDLERS["pangu_current_context"] = handle_current_context
 
 async def handle_injection_stats(server, drawers, arguments):
     """上下文注入统计"""
-    from ..memory.context_injection import get_injection_engine
+    from ...memory.context_injection import get_injection_engine
     ie = get_injection_engine(server.config)
     return json.dumps(ie.get_injection_stats(), ensure_ascii=False, indent=2)
 
@@ -936,7 +959,7 @@ HANDLERS["pangu_injection_stats"] = handle_injection_stats
 
 async def handle_evaluate_forgetting(server, drawers, arguments):
     """评估所有记忆的遗忘价值"""
-    from ..memory.adaptive_forgetting import get_forgetting
+    from ...memory.adaptive_forgetting import get_forgetting
     af = get_forgetting(server.config)
     report = af.evaluate_all(drawers)
     return json.dumps({
@@ -952,7 +975,7 @@ HANDLERS["pangu_evaluate_forgetting"] = handle_evaluate_forgetting
 
 async def handle_auto_forget(server, drawers, arguments):
     """自动执行遗忘（归档+清理）"""
-    from ..memory.adaptive_forgetting import get_forgetting
+    from ...memory.adaptive_forgetting import get_forgetting
     af = get_forgetting(server.config)
     result = af.auto_forget(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -961,7 +984,7 @@ HANDLERS["pangu_auto_forget"] = handle_auto_forget
 
 async def handle_get_archive(server, drawers, arguments):
     """获取归档记忆"""
-    from ..memory.adaptive_forgetting import get_forgetting
+    from ...memory.adaptive_forgetting import get_forgetting
     af = get_forgetting(server.config)
     limit = arguments.get("limit", 20)
     archive = af.get_archive(limit)
@@ -971,8 +994,8 @@ HANDLERS["pangu_get_archive"] = handle_get_archive
 
 async def handle_consolidate(server, drawers, arguments):
     """执行智能记忆巩固"""
-    from ..memory.consolidation_intelligence import get_consolidation_intel
-    from ..memory.lifecycle import LifecycleManager
+    from ...memory.consolidation_intelligence import get_consolidation_intel
+    from ...memory.lifecycle import LifecycleManager
     ci = get_consolidation_intel(server.config)
     report = ci.run_consolidation(drawers)
     # 同时更新 lifecycle 状态中的 last_consolidation 时间戳
@@ -992,7 +1015,7 @@ HANDLERS["pangu_consolidate"] = handle_consolidate
 
 async def handle_merge_candidates(server, drawers, arguments):
     """查找可合并记忆"""
-    from ..memory.consolidation_intelligence import get_consolidation_intel
+    from ...memory.consolidation_intelligence import get_consolidation_intel
     ci = get_consolidation_intel(server.config)
     candidates = ci.find_merge_candidates(drawers)
     return json.dumps({
@@ -1008,7 +1031,7 @@ HANDLERS["pangu_merge_candidates"] = handle_merge_candidates
 
 async def handle_resolve_conflicts(server, drawers, arguments):
     """发现并解决矛盾记忆"""
-    from ..memory.consolidation_intelligence import get_consolidation_intel
+    from ...memory.consolidation_intelligence import get_consolidation_intel
     ci = get_consolidation_intel(server.config)
     actions = ci.find_conflicts(drawers)
     return json.dumps({
@@ -1023,7 +1046,7 @@ HANDLERS["pangu_resolve_conflicts"] = handle_resolve_conflicts
 
 async def handle_extract_keywords(server, drawers, arguments):
     """提取关键词"""
-    from ..memory.distillation import get_distiller
+    from ...memory.distillation import get_distiller
     d = get_distiller(server.config)
     text = arguments.get("text", "")
     top_k = arguments.get("top_k", 5)
@@ -1034,7 +1057,7 @@ HANDLERS["pangu_extract_keywords"] = handle_extract_keywords
 
 async def handle_build_graph(server, drawers, arguments):
     """从记忆构建知识图谱"""
-    from ..memory.graph_builder import get_builder
+    from ...memory.graph_builder import get_builder
     gb = get_builder(server.config)
     max_d = arguments.get("max_drawers", 100)
     result = gb.build_from_drawers(drawers, max_d)
@@ -1044,7 +1067,7 @@ HANDLERS["pangu_build_graph"] = handle_build_graph
 
 async def handle_verify_backup(server, drawers, arguments):
     """验证备份完整性"""
-    from ..memory.backup_restore import get_backup_engine
+    from ...memory.backup_restore import get_backup_engine
     be = get_backup_engine(server.config)
     return json.dumps(be.verify_backup(arguments["backup_id"]), ensure_ascii=False, indent=2)
 
@@ -1052,7 +1075,7 @@ HANDLERS["pangu_verify_backup"] = handle_verify_backup
 
 async def handle_event_emit(server, drawers, arguments):
     """发布记忆事件"""
-    from ..memory.memory_events import get_event_stream
+    from ...memory.memory_events import get_event_stream
     es = get_event_stream(server.config)
     event = es.emit(
         arguments["event_type"],
@@ -1065,7 +1088,7 @@ HANDLERS["pangu_event_emit"] = handle_event_emit
 
 async def handle_event_history(server, drawers, arguments):
     """查询事件历史"""
-    from ..memory.memory_events import get_event_stream
+    from ...memory.memory_events import get_event_stream
     es = get_event_stream(server.config)
     history = es.get_history(arguments.get("event_type"), arguments.get("limit", 50))
     return json.dumps({"events": history, "count": len(history)}, ensure_ascii=False, indent=2)
@@ -1074,7 +1097,7 @@ HANDLERS["pangu_event_history"] = handle_event_history
 
 async def handle_event_stats(server, drawers, arguments):
     """事件统计"""
-    from ..memory.memory_events import get_event_stream
+    from ...memory.memory_events import get_event_stream
     es = get_event_stream(server.config)
     return json.dumps(es.get_stats(), ensure_ascii=False, indent=2)
 
@@ -1082,7 +1105,7 @@ HANDLERS["pangu_event_stats"] = handle_event_stats
 
 async def handle_event_webhook_add(server, drawers, arguments):
     """添加 Webhook"""
-    from ..memory.memory_events import get_event_stream
+    from ...memory.memory_events import get_event_stream
     es = get_event_stream(server.config)
     result = es.add_webhook(arguments["url"], arguments["event_types"])
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1091,7 +1114,7 @@ HANDLERS["pangu_event_webhook_add"] = handle_event_webhook_add
 
 async def handle_event_save(server, drawers, arguments):
     """持久化事件历史"""
-    from ..memory.memory_events import get_event_stream
+    from ...memory.memory_events import get_event_stream
     es = get_event_stream(server.config)
     saved = es.save_history()
     return json.dumps({"saved": saved}, ensure_ascii=False, indent=2)
@@ -1100,7 +1123,7 @@ HANDLERS["pangu_event_save"] = handle_event_save
 
 async def handle_index_build(server, drawers, arguments):
     """构建所有索引"""
-    from ..memory.smart_indexing import get_smart_indexing
+    from ...memory.smart_indexing import get_smart_indexing
     si = get_smart_indexing(server.config)
     result = si.build_all_indexes(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1109,7 +1132,7 @@ HANDLERS["pangu_index_build"] = handle_index_build
 
 async def handle_index_search(server, drawers, arguments):
     """通过索引搜索"""
-    from ..memory.smart_indexing import get_smart_indexing
+    from ...memory.smart_indexing import get_smart_indexing
     si = get_smart_indexing(server.config)
     results = si.search_index(arguments["query"])
     return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False, indent=2)
@@ -1118,7 +1141,7 @@ HANDLERS["pangu_index_search"] = handle_index_search
 
 async def handle_index_recommend(server, drawers, arguments):
     """索引推荐"""
-    from ..memory.smart_indexing import get_smart_indexing
+    from ...memory.smart_indexing import get_smart_indexing
     si = get_smart_indexing(server.config)
     recs = si.recommend_indexes(drawers)
     return json.dumps({
@@ -1133,7 +1156,7 @@ HANDLERS["pangu_index_recommend"] = handle_index_recommend
 
 async def handle_index_health(server, drawers, arguments):
     """索引健康检查"""
-    from ..memory.smart_indexing import get_smart_indexing
+    from ...memory.smart_indexing import get_smart_indexing
     si = get_smart_indexing(server.config)
     return json.dumps(si.get_index_health(), ensure_ascii=False, indent=2)
 
@@ -1141,7 +1164,7 @@ HANDLERS["pangu_index_health"] = handle_index_health
 
 async def handle_index_cleanup(server, drawers, arguments):
     """清理无效索引"""
-    from ..memory.smart_indexing import get_smart_indexing
+    from ...memory.smart_indexing import get_smart_indexing
     si = get_smart_indexing(server.config)
     cleaned = si.cleanup_indexes()
     return json.dumps({"cleaned": cleaned, "remaining": len(si._indexes)}, ensure_ascii=False, indent=2)
@@ -1150,7 +1173,7 @@ HANDLERS["pangu_index_cleanup"] = handle_index_cleanup
 
 async def handle_cache_stats(server, drawers, arguments):
     """缓存统计"""
-    from ..memory.search_cache import get_search_cache
+    from ...memory.search_cache import get_search_cache
     cache = get_search_cache()
     return json.dumps(cache.get_stats(), ensure_ascii=False, indent=2)
 
@@ -1158,7 +1181,7 @@ HANDLERS["pangu_cache_stats"] = handle_cache_stats
 
 async def handle_cache_cleanup(server, drawers, arguments):
     """清理过期缓存"""
-    from ..memory.smart_cache import get_cache_manager
+    from ...memory.smart_cache import get_cache_manager
     cm = get_cache_manager(server.config)
     c1 = cm._l1.cleanup_expired()
     c2 = cm._l2.cleanup_expired()
@@ -1168,7 +1191,7 @@ HANDLERS["pangu_cache_cleanup"] = handle_cache_cleanup
 
 async def handle_cache_invalidate(server, drawers, arguments):
     """失效缓存"""
-    from ..memory.smart_cache import get_cache_manager
+    from ...memory.smart_cache import get_cache_manager
     cm = get_cache_manager(server.config)
     pattern = arguments.get("pattern", "")
     c1 = cm._l1.invalidate_pattern(pattern)
@@ -1179,7 +1202,7 @@ HANDLERS["pangu_cache_invalidate"] = handle_cache_invalidate
 
 async def handle_diff_content(server, drawers, arguments):
     """对比两段内容差异"""
-    from ..memory.memory_diff import get_diff_engine
+    from ...memory.memory_diff import get_diff_engine
     de = get_diff_engine(server.config)
     diff = de.diff_content(arguments["content_a"], arguments["content_b"])
     return json.dumps({
@@ -1193,7 +1216,7 @@ HANDLERS["pangu_diff_content"] = handle_diff_content
 
 async def handle_diff_batch(server, drawers, arguments):
     """批量差异对比"""
-    from ..memory.memory_diff import get_diff_engine
+    from ...memory.memory_diff import get_diff_engine
     de = get_diff_engine(server.config)
     results = de.batch_diff(drawers, arguments.get("reference_id"))
     return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False, indent=2)
@@ -1202,7 +1225,7 @@ HANDLERS["pangu_diff_batch"] = handle_diff_batch
 
 async def handle_diff_similarity(server, drawers, arguments):
     """计算记忆相似度矩阵"""
-    from ..memory.memory_diff import get_diff_engine
+    from ...memory.memory_diff import get_diff_engine
     de = get_diff_engine(server.config)
     matrix = de.similarity_matrix(drawers)
     return json.dumps({"size": matrix["size"], "ids": matrix["ids"]}, ensure_ascii=False, indent=2)
@@ -1211,7 +1234,7 @@ HANDLERS["pangu_diff_similarity"] = handle_diff_similarity
 
 async def handle_diff_stats(server, drawers, arguments):
     """差异统计"""
-    from ..memory.memory_diff import get_diff_engine
+    from ...memory.memory_diff import get_diff_engine
     de = get_diff_engine(server.config)
     return json.dumps(de.get_diff_stats(), ensure_ascii=False, indent=2)
 
@@ -1219,14 +1242,14 @@ HANDLERS["pangu_diff_stats"] = handle_diff_stats
 
 async def handle_visualize_graph(server, drawers, arguments):
     """可视化知识图谱"""
-    from ..memory.knowledge_graph import KnowledgeGraph
+    from ...memory.knowledge_graph import KnowledgeGraph
     kg = KnowledgeGraph(server.config)
     entities = kg.list_entities()
     relations = []
     with kg._conn() as conn:
         rows = conn.execute("SELECT * FROM relations").fetchall()
         relations = [dict(r) for r in rows]
-    from ..memory.visualization import get_visualizer
+    from ...memory.visualization import get_visualizer
     viz = get_visualizer(server.config)
     return viz.visualize_graph(entities, relations)
 
@@ -1234,7 +1257,7 @@ HANDLERS["pangu_visualize_graph"] = handle_visualize_graph
 
 async def handle_visualize_network(server, drawers, arguments):
     """可视化记忆网络"""
-    from ..memory.visualization import get_visualizer
+    from ...memory.visualization import get_visualizer
     viz = get_visualizer(server.config)
     return viz.visualize_network(drawers)
 
@@ -1242,7 +1265,7 @@ HANDLERS["pangu_visualize_network"] = handle_visualize_network
 
 async def handle_visualize_stats(server, drawers, arguments):
     """可视化统计信息"""
-    from ..memory.visualization import get_visualizer
+    from ...memory.visualization import get_visualizer
     viz = get_visualizer(server.config)
     return viz.visualize_stats(drawers)
 
@@ -1250,7 +1273,7 @@ HANDLERS["pangu_visualize_stats"] = handle_visualize_stats
 
 async def handle_detect_patterns(server, drawers, arguments):
     """检测用户行为模式"""
-    from ..memory.adaptive_learning import get_adaptive_learning
+    from ...memory.adaptive_learning import get_adaptive_learning
     al = get_adaptive_learning(server.config)
     patterns = al.detect_patterns()
     return json.dumps({"patterns": patterns, "count": len(patterns)}, ensure_ascii=False, indent=2)
@@ -1259,7 +1282,7 @@ HANDLERS["pangu_detect_patterns"] = handle_detect_patterns
 
 async def handle_popular_queries(server, drawers, arguments):
     """获取热门查询"""
-    from ..memory.adaptive_learning import get_adaptive_learning
+    from ...memory.adaptive_learning import get_adaptive_learning
     al = get_adaptive_learning(server.config)
     limit = arguments.get("limit", 10)
     return json.dumps(al.get_popular_queries(limit), ensure_ascii=False, indent=2)
@@ -1268,7 +1291,7 @@ HANDLERS["pangu_popular_queries"] = handle_popular_queries
 
 async def handle_frequent_memories(server, drawers, arguments):
     """获取频繁访问的记忆"""
-    from ..memory.adaptive_learning import get_adaptive_learning
+    from ...memory.adaptive_learning import get_adaptive_learning
     al = get_adaptive_learning(server.config)
     limit = arguments.get("limit", 10)
     return json.dumps(al.get_frequent_memories(limit), ensure_ascii=False, indent=2)
@@ -1277,7 +1300,7 @@ HANDLERS["pangu_frequent_memories"] = handle_frequent_memories
 
 async def handle_comment_add(server, drawers, arguments):
     """添加记忆评论"""
-    from ..memory.social_memory import SocialMemory
+    from ...memory.social_memory import SocialMemory
     sm = SocialMemory(server.config)
     memory_id = arguments.get("memory_id", "")
     author_id = arguments.get("author_id", "")
@@ -1289,7 +1312,7 @@ HANDLERS["pangu_comment_add"] = handle_comment_add
 
 async def handle_comment_list(server, drawers, arguments):
     """获取记忆评论列表"""
-    from ..memory.social_memory import SocialMemory
+    from ...memory.social_memory import SocialMemory
     sm = SocialMemory(server.config)
     memory_id = arguments.get("memory_id", "")
     comments = sm.get_comments(memory_id, top_level_only=False)
@@ -1299,7 +1322,7 @@ HANDLERS["pangu_comment_list"] = handle_comment_list
 
 async def handle_vote(server, drawers, arguments):
     """对记忆投票"""
-    from ..memory.social_memory import SocialMemory, VoteType
+    from ...memory.social_memory import SocialMemory, VoteType
     sm = SocialMemory(server.config)
     memory_id = arguments.get("memory_id", "")
     user_id = arguments.get("user_id", "")
@@ -1312,7 +1335,7 @@ HANDLERS["pangu_vote"] = handle_vote
 
 async def handle_vote_stats(server, drawers, arguments):
     """获取记忆投票统计"""
-    from ..memory.social_memory import SocialMemory
+    from ...memory.social_memory import SocialMemory
     sm = SocialMemory(server.config)
     memory_id = arguments.get("memory_id", "")
     stats = sm.get_votes(memory_id)
@@ -1322,7 +1345,7 @@ HANDLERS["pangu_vote_stats"] = handle_vote_stats
 
 async def handle_dream_cycle(server, drawers, arguments):
     """运行一次梦境巩固周期（fetch→dedup→link→decay→distill）"""
-    from ..memory.dream_memory import get_dream_engine
+    from ...memory.dream_memory import get_dream_engine
     engine = get_dream_engine(server.config)
     result = engine.run_dream_cycle(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1331,7 +1354,7 @@ HANDLERS["pangu_dream_cycle"] = handle_dream_cycle
 
 async def handle_dream_stats(server, drawers, arguments):
     """获取梦境巩固统计"""
-    from ..memory.dream_memory import get_dream_engine
+    from ...memory.dream_memory import get_dream_engine
     engine = get_dream_engine(server.config)
     return json.dumps(engine.dream_stats(), ensure_ascii=False, indent=2)
 
@@ -1339,7 +1362,7 @@ HANDLERS["pangu_dream_stats"] = handle_dream_stats
 
 async def handle_curiosity_explore(server, drawers, arguments):
     """运行好奇心探索（发现知识空白）"""
-    from ..memory.curiosity import get_curiosity_engine
+    from ...memory.curiosity import get_curiosity_engine
     engine = get_curiosity_engine(server.config)
     result = engine.explore(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1348,7 +1371,7 @@ HANDLERS["pangu_curiosity_explore"] = handle_curiosity_explore
 
 async def handle_curiosity_gaps(server, drawers, arguments):
     """发现知识空白并生成探索建议"""
-    from ..memory.curiosity import get_curiosity_engine
+    from ...memory.curiosity import get_curiosity_engine
     engine = get_curiosity_engine(server.config)
     result = engine.find_gaps(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1357,7 +1380,7 @@ HANDLERS["pangu_curiosity_gaps"] = handle_curiosity_gaps
 
 async def handle_persona_identity(server, drawers, arguments):
     """获取系统身份和人格特质"""
-    from ..memory.persona import get_persona_engine
+    from ...memory.persona import get_persona_engine
     engine = get_persona_engine(server.config)
     return json.dumps(engine.get_identity(), ensure_ascii=False, indent=2)
 
@@ -1365,7 +1388,7 @@ HANDLERS["pangu_persona_identity"] = handle_persona_identity
 
 async def handle_persona_values(server, drawers, arguments):
     """获取系统价值观和原则"""
-    from ..memory.persona import get_persona_engine
+    from ...memory.persona import get_persona_engine
     engine = get_persona_engine(server.config)
     return json.dumps(engine.get_values(), ensure_ascii=False, indent=2)
 
@@ -1373,7 +1396,7 @@ HANDLERS["pangu_persona_values"] = handle_persona_values
 
 async def handle_persona_health(server, drawers, arguments):
     """系统综合健康度检查"""
-    from ..memory.persona import get_persona_engine
+    from ...memory.persona import get_persona_engine
     engine = get_persona_engine(server.config)
     result = engine.health_check(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1382,7 +1405,7 @@ HANDLERS["pangu_persona_health"] = handle_persona_health
 
 async def handle_autonomous_tick(server, drawers, arguments):
     """检查是否需要运行自主维护周期"""
-    from ..memory.autonomous import get_autonomous_engine
+    from ...memory.autonomous import get_autonomous_engine
     engine = get_autonomous_engine(server.config)
     result = engine.tick()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1391,7 +1414,7 @@ HANDLERS["pangu_autonomous_tick"] = handle_autonomous_tick
 
 async def handle_autonomous_run(server, drawers, arguments):
     """运行一次自主记忆管理周期（融合/压缩/衰减/遗忘/探索）"""
-    from ..memory.autonomous import get_autonomous_engine
+    from ...memory.autonomous import get_autonomous_engine
     force = arguments.get("force", False)
     engine = get_autonomous_engine(server.config)
     cycle = engine.run_cycle(force=force)
@@ -1413,7 +1436,7 @@ HANDLERS["pangu_autonomous_run"] = handle_autonomous_run
 
 async def handle_autonomous_status(server, drawers, arguments):
     """查看自主引擎状态和任务调度"""
-    from ..memory.autonomous import get_autonomous_engine
+    from ...memory.autonomous import get_autonomous_engine
     engine = get_autonomous_engine(server.config)
     result = engine.get_status()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1422,7 +1445,7 @@ HANDLERS["pangu_autonomous_status"] = handle_autonomous_status
 
 async def handle_agent_activity(server, drawers, arguments):
     """查看Agent活动流（读写记录）"""
-    from ..memory.multi_agent import get_multi_agent_memory
+    from ...memory.multi_agent import get_multi_agent_memory
     mam = get_multi_agent_memory()
     agent_id = arguments.get("agent_id", None)
     limit = arguments.get("limit", 20)
@@ -1433,7 +1456,7 @@ HANDLERS["pangu_agent_activity"] = handle_agent_activity
 
 async def handle_agent_search(server, drawers, arguments):
     """Agent感知搜索（仅搜索该Agent可见的记忆）"""
-    from ..memory.multi_agent import get_multi_agent_memory
+    from ...memory.multi_agent import get_multi_agent_memory
     mam = get_multi_agent_memory()
     agent_id = arguments["agent_id"]
     query = arguments["query"]
@@ -1450,7 +1473,7 @@ HANDLERS["pangu_agent_search"] = handle_agent_search
 
 async def handle_agent_transfer(server, drawers, arguments):
     """跨Agent记忆转移"""
-    from ..memory.multi_agent import get_multi_agent_memory
+    from ...memory.multi_agent import get_multi_agent_memory
     mam = get_multi_agent_memory()
     from_agent = arguments["from_agent"]
     to_agent = arguments["to_agent"]
@@ -1469,7 +1492,7 @@ HANDLERS["pangu_agent_transfer"] = handle_agent_transfer
 
 async def handle_git_commit(server, drawers, arguments):
     """记录最近一次 git commit 到记忆"""
-    from ..memory.git_hook import get_git_hook
+    from ...memory.git_hook import get_git_hook
     hook = get_git_hook(server.config)
     result = hook.record_commit(arguments.get("repo_path", "."))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -1478,7 +1501,7 @@ HANDLERS["pangu_git_commit"] = handle_git_commit
 
 async def handle_git_push(server, drawers, arguments):
     """记录 git push 操作"""
-    from ..memory.git_hook import get_git_hook
+    from ...memory.git_hook import get_git_hook
     hook = get_git_hook(server.config)
     result = hook.record_push(
         arguments.get("repo_path", "."),
@@ -1490,7 +1513,7 @@ HANDLERS["pangu_git_push"] = handle_git_push
 
 async def handle_git_recent(server, drawers, arguments):
     """查看最近的 git 操作记录"""
-    from ..memory.git_hook import get_git_hook
+    from ...memory.git_hook import get_git_hook
     hook = get_git_hook(server.config)
     result = hook.get_recent(limit=arguments.get("limit", 10))
     return json.dumps({"count": len(result), "commits": result}, ensure_ascii=False, indent=2)
@@ -1499,7 +1522,7 @@ HANDLERS["pangu_git_recent"] = handle_git_recent
 
 async def handle_git_stats(server, drawers, arguments):
     """查看 git 操作统计"""
-    from ..memory.git_hook import get_git_hook
+    from ...memory.git_hook import get_git_hook
     hook = get_git_hook(server.config)
     return json.dumps(hook.get_stats(), ensure_ascii=False, indent=2)
 
@@ -1507,7 +1530,7 @@ HANDLERS["pangu_git_stats"] = handle_git_stats
 
 async def handle_inject_stats(server, drawers, arguments):
     """查看注入统计"""
-    from ..memory.context_injector import get_context_injector
+    from ...memory.context_injector import get_context_injector
     injector = get_context_injector(server.config)
     return json.dumps(injector.get_injection_stats(), ensure_ascii=False, indent=2)
 
@@ -1515,7 +1538,7 @@ HANDLERS["pangu_inject_stats"] = handle_inject_stats
 
 async def handle_cache_stats(server, drawers, arguments):
     """查看搜索缓存统计"""
-    from ..memory.search_cache import get_search_cache
+    from ...memory.search_cache import get_search_cache
     cache = get_search_cache()
     return json.dumps(cache.get_stats(), ensure_ascii=False, indent=2)
 
@@ -1523,7 +1546,7 @@ HANDLERS["pangu_cache_stats"] = handle_cache_stats
 
 async def handle_cache_clear(server, drawers, arguments):
     """清空搜索缓存"""
-    from ..memory.search_cache import get_search_cache
+    from ...memory.search_cache import get_search_cache
     cache = get_search_cache()
     cache.clear()
     return json.dumps({"status": "cleared"}, ensure_ascii=False, indent=2)
@@ -1532,7 +1555,7 @@ HANDLERS["pangu_cache_clear"] = handle_cache_clear
 
 async def handle_error_recent(server, drawers, arguments):
     """查看最近的错误日志"""
-    from ..memory.error_monitor import get_error_monitor
+    from ...memory.error_monitor import get_error_monitor
     monitor = get_error_monitor(server.config)
     errors = monitor.get_errors(
         tool=arguments.get("tool"),

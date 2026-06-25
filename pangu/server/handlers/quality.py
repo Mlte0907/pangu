@@ -1,5 +1,8 @@
 """盘古 MCP Handler — quality (20 tools)"""
 import json
+from ...memory.enhanced_evaluation import EnhancedContradictionDetector
+from ...memory.sanitizer import MemorySanitizer
+from ...memory.enhanced_evaluation import TrajectoryTracker
 
 TOOLS = [
     {"name": "pangu_detect_conflicts", "description": "\u68c0\u6d4b\u8bb0\u5fc6\u4e2d\u7684\u77db\u76fe\u548c\u4e0d\u4e00\u81f4"},
@@ -28,7 +31,7 @@ HANDLERS = {}
 
 async def handle_detect_conflicts(server, drawers, arguments):
     """检测记忆中的矛盾和不一致"""
-    from ..memory.conflict import ConflictDetector
+    from ...memory.conflict import ConflictDetector
     detector = ConflictDetector(server.config)
     wing = arguments.get("wing")
     filtered = [d for d in drawers if not wing or d.wing == wing]
@@ -46,7 +49,7 @@ HANDLERS["pangu_detect_conflicts"] = handle_detect_conflicts
 
 async def handle_check_pair(server, drawers, arguments):
     """检查两条记忆是否存在冲突"""
-    from ..memory.conflict import ConflictDetector
+    from ...memory.conflict import ConflictDetector
     detector = ConflictDetector(server.config)
     id_a = arguments.get("id_a", "")
     id_b = arguments.get("id_b", "")
@@ -61,7 +64,7 @@ HANDLERS["pangu_check_pair"] = handle_check_pair
 
 async def handle_find_duplicates(server, drawers, arguments):
     """检测重复或高度相似的记忆"""
-    from ..memory.semantic_compression import get_compressor
+    from ...memory.semantic_compression import get_compressor
     comp = get_compressor(server.config)
     threshold = arguments.get("threshold", 0.8)
     dups = comp.find_semantic_duplicates(drawers, threshold)
@@ -71,7 +74,7 @@ HANDLERS["pangu_find_duplicates"] = handle_find_duplicates
 
 async def handle_merge_duplicates(server, drawers, arguments):
     """合并重复记忆组"""
-    from ..memory.dedup import DuplicateGroup, MemoryDeduplicator
+    from ...memory.dedup import DuplicateGroup, MemoryDeduplicator
     deduper = MemoryDeduplicator(server.config)
     group_data = arguments.get("group", {})
     group = DuplicateGroup(
@@ -96,7 +99,7 @@ HANDLERS["pangu_merge_duplicates"] = handle_merge_duplicates
 
 async def handle_similarity_check(server, drawers, arguments):
     """检查两条记忆的相似度"""
-    from ..memory.dedup import MemoryDeduplicator
+    from ...memory.dedup import MemoryDeduplicator
     deduper = MemoryDeduplicator(server.config)
     id_a = arguments.get("id_a", "")
     id_b = arguments.get("id_b", "")
@@ -166,7 +169,7 @@ HANDLERS["pangu_trajectory_compare"] = handle_trajectory_compare
 
 async def handle_compress_by_tags(server, drawers, arguments):
     """按标签聚类压缩记忆"""
-    from ..memory.semantic_compression import get_compressor
+    from ...memory.semantic_compression import get_compressor
     comp = get_compressor(server.config)
     result = comp.compress_by_tags(drawers)
     return json.dumps({
@@ -181,7 +184,7 @@ HANDLERS["pangu_compress_by_tags"] = handle_compress_by_tags
 
 async def handle_find_duplicates(server, drawers, arguments):
     """发现语义重复记忆"""
-    from ..memory.semantic_compression import get_compressor
+    from ...memory.semantic_compression import get_compressor
     comp = get_compressor(server.config)
     threshold = arguments.get("threshold", 0.8)
     dups = comp.find_semantic_duplicates(drawers, threshold)
@@ -191,7 +194,7 @@ HANDLERS["pangu_find_duplicates"] = handle_find_duplicates
 
 async def handle_reassess_importance(server, drawers, arguments):
     """基于记忆网络重新评估重要性"""
-    from ..memory.semantic_compression import get_compressor
+    from ...memory.semantic_compression import get_compressor
     comp = get_compressor(server.config)
     updates = comp.reassess_importance(drawers)
     return json.dumps({"updates": updates, "count": len(updates)}, ensure_ascii=False, indent=2)
@@ -200,7 +203,7 @@ HANDLERS["pangu_reassess_importance"] = handle_reassess_importance
 
 async def handle_compression_stats(server, drawers, arguments):
     """获取压缩统计"""
-    from ..memory.semantic_compression import get_compressor
+    from ...memory.semantic_compression import get_compressor
     comp = get_compressor(server.config)
     return json.dumps(comp.get_compression_stats(drawers), ensure_ascii=False, indent=2)
 
@@ -208,7 +211,7 @@ HANDLERS["pangu_compression_stats"] = handle_compression_stats
 
 async def handle_assess_quality(server, drawers, arguments):
     """评估记忆质量"""
-    from ..memory.quality_scorer import get_scorer
+    from ...memory.quality_scorer import get_scorer
     qs = get_scorer(server.config)
     memory_id = arguments.get("memory_id", "")
     target = next((d for d in drawers if d.id == memory_id), None)
@@ -228,7 +231,7 @@ HANDLERS["pangu_assess_quality"] = handle_assess_quality
 
 async def handle_batch_assess(server, drawers, arguments):
     """批量质量评估"""
-    from ..memory.quality_scorer import get_scorer
+    from ...memory.quality_scorer import get_scorer
     qs = get_scorer(server.config)
     result = qs.batch_assess(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -237,7 +240,7 @@ HANDLERS["pangu_batch_assess"] = handle_batch_assess
 
 async def handle_auto_fix(server, drawers, arguments):
     """自动修复质量问题"""
-    from ..memory.quality_scorer import get_scorer
+    from ...memory.quality_scorer import get_scorer
     qs = get_scorer(server.config)
     result = qs.auto_fix(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -246,7 +249,7 @@ HANDLERS["pangu_auto_fix"] = handle_auto_fix
 
 async def handle_quality_stats(server, drawers, arguments):
     """质量统计"""
-    from ..memory.quality_scorer import get_scorer
+    from ...memory.quality_scorer import get_scorer
     qs = get_scorer(server.config)
     return json.dumps(qs.get_quality_stats(), ensure_ascii=False, indent=2)
 
@@ -254,7 +257,7 @@ HANDLERS["pangu_quality_stats"] = handle_quality_stats
 
 async def handle_quality_analyze(server, drawers, arguments):
     """分析记忆质量（评分/去重/标签）"""
-    from ..memory.quality import get_quality_pipeline
+    from ...memory.quality import get_quality_pipeline
     pipe = get_quality_pipeline(server.config)
     return json.dumps(pipe.get_report_dict(), ensure_ascii=False, indent=2)
 
@@ -262,12 +265,22 @@ HANDLERS["pangu_quality_analyze"] = handle_quality_analyze
 
 async def handle_quality_fix(server, drawers, arguments):
     """自动修复记忆质量问题（标签/去重）"""
-    from ..memory.quality import get_quality_pipeline
+    from ...memory.quality import get_quality_pipeline
     pipe = get_quality_pipeline(server.config)
     dry_run = arguments.get("dry_run", False)
     report = pipe.fix_all(dry_run=dry_run)
-    from ..memory.memory_events import get_event_stream
-    get_event_stream(server.config).emit("memory.quality_fix", "", {
-        "tags_added": report.tags_added, "duplicates_removed": report.merged, "dry_run": dry_run,
-    })
+    try:
+        from ...memory.memory_events import get_event_stream
+        get_event_stream(server.config).emit("memory.quality_fix", "", {
+            "tags_added": report.tags_added, "duplicates_removed": report.merged, "dry_run": dry_run,
+        })
+    except Exception:
+        pass
+    return json.dumps({
+        "total": report.total,
+        "avg_score": round(report.avg_score, 1),
+        "tags_added": report.tags_added,
+        "duplicates_removed": report.merged,
+        "dry_run": dry_run,
+    }, ensure_ascii=False)
 HANDLERS["pangu_quality_fix"] = handle_quality_fix

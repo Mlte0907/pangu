@@ -36,7 +36,7 @@ HANDLERS = {}
 
 async def handle_cross_session_links(server, drawers, arguments):
     """发现跨会话记忆关联"""
-    from ..memory.cross_session import CrossSessionIntegrator
+    from ...memory.cross_session import CrossSessionIntegrator
     integrator = CrossSessionIntegrator(server.config)
     min_sim = arguments.get("min_similarity", 0.4)
     max_links = arguments.get("max_links", 10)
@@ -47,7 +47,7 @@ HANDLERS["pangu_cross_session_links"] = handle_cross_session_links
 
 async def handle_auto_compress(server, drawers, arguments):
     """触发自动记忆压缩（长记忆→精简摘要）"""
-    from ..lifecycle import LifecycleManager
+    from ...lifecycle import LifecycleManager
     mgr = LifecycleManager(server.config)
     result = mgr.run_auto_compress()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -56,7 +56,7 @@ HANDLERS["pangu_auto_compress"] = handle_auto_compress
 
 async def handle_sync_record(server, drawers, arguments):
     """记录变更"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     entry = sm.record_change(
         arguments["memory_id"], arguments["operation"],
@@ -68,7 +68,7 @@ HANDLERS["pangu_sync_record"] = handle_sync_record
 
 async def handle_sync_pending(server, drawers, arguments):
     """获取待同步变更"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     pending = sm.get_pending_changes(arguments.get("since"))
     return json.dumps({"pending": pending, "count": len(pending)}, ensure_ascii=False, indent=2)
@@ -77,7 +77,7 @@ HANDLERS["pangu_sync_pending"] = handle_sync_pending
 
 async def handle_sync_incremental(server, drawers, arguments):
     """增量同步"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     changes = sm.get_incremental_changes(
         arguments.get("since_timestamp"),
@@ -89,7 +89,7 @@ HANDLERS["pangu_sync_incremental"] = handle_sync_incremental
 
 async def handle_sync_apply(server, drawers, arguments):
     """应用增量变更"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     result = sm.apply_incremental(arguments.get("remote_changes", []))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -98,7 +98,7 @@ HANDLERS["pangu_sync_apply"] = handle_sync_apply
 
 async def handle_sync_auto_resolve(server, drawers, arguments):
     """自动解决冲突"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     result = sm.auto_resolve_conflicts(arguments.get("strategy", "keep_latest"))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -107,7 +107,7 @@ HANDLERS["pangu_sync_auto_resolve"] = handle_sync_auto_resolve
 
 async def handle_sync_state(server, drawers, arguments):
     """同步状态"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     return json.dumps(sm.get_sync_state(), ensure_ascii=False, indent=2)
 
@@ -115,7 +115,7 @@ HANDLERS["pangu_sync_state"] = handle_sync_state
 
 async def handle_sync_stats(server, drawers, arguments):
     """同步统计"""
-    from ..memory.sync_manager import get_sync
+    from ...memory.sync_manager import get_sync
     sm = get_sync(server.config)
     return json.dumps(sm.get_sync_stats(), ensure_ascii=False, indent=2)
 
@@ -123,7 +123,7 @@ HANDLERS["pangu_sync_stats"] = handle_sync_stats
 
 async def handle_portal_write(server, drawers, arguments):
     """智能写入（自动标签+索引+事件）"""
-    from ..memory.portal import get_portal
+    from ...memory.portal import get_portal
     portal = get_portal(server.config)
     result = portal.smart_write(
         drawers, arguments["content"],
@@ -137,7 +137,7 @@ HANDLERS["pangu_portal_write"] = handle_portal_write
 
 async def handle_portal_search(server, drawers, arguments):
     """智能搜索（自动重写+索引+排序）"""
-    from ..memory.portal import get_portal
+    from ...memory.portal import get_portal
     portal = get_portal(server.config)
     result = portal.smart_search(drawers, arguments["query"], arguments.get("limit", 5))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -146,7 +146,7 @@ HANDLERS["pangu_portal_search"] = handle_portal_search
 
 async def handle_portal_panorama(server, drawers, arguments):
     """系统全景"""
-    from ..memory.portal import get_portal
+    from ...memory.portal import get_portal
     portal = get_portal(server.config)
     return json.dumps(portal.system_panorama(drawers), ensure_ascii=False, indent=2)
 
@@ -154,7 +154,7 @@ HANDLERS["pangu_portal_panorama"] = handle_portal_panorama
 
 async def handle_portal_maintain(server, drawers, arguments):
     """一键维护"""
-    from ..memory.portal import get_portal
+    from ...memory.portal import get_portal
     portal = get_portal(server.config)
     return json.dumps(portal.one_click_maintenance(drawers), ensure_ascii=False, indent=2)
 
@@ -162,7 +162,7 @@ HANDLERS["pangu_portal_maintain"] = handle_portal_maintain
 
 async def handle_portal_summary(server, drawers, arguments):
     """智能摘要"""
-    from ..memory.portal import get_portal
+    from ...memory.portal import get_portal
     portal = get_portal(server.config)
     summary = portal.get_smart_summary(drawers)
     return json.dumps({"summary": summary}, ensure_ascii=False, indent=2)
@@ -171,7 +171,7 @@ HANDLERS["pangu_portal_summary"] = handle_portal_summary
 
 async def handle_session_summary(server, drawers, arguments):
     """生成会话摘要"""
-    from ..memory.cross_session import CrossSessionIntegrator
+    from ...memory.cross_session import CrossSessionIntegrator
     cs = CrossSessionIntegrator(server.config)
     summary = cs.generate_session_summary(drawers)
     return json.dumps(summary, ensure_ascii=False, indent=2)
@@ -180,7 +180,7 @@ HANDLERS["pangu_session_summary"] = handle_session_summary
 
 async def handle_session_bridge(server, drawers, arguments):
     """构建上下文桥接"""
-    from ..memory.cross_session import CrossSessionIntegrator
+    from ...memory.cross_session import CrossSessionIntegrator
     cs = CrossSessionIntegrator(server.config)
     bridge = cs.build_context_bridge(drawers)
     return json.dumps(bridge, ensure_ascii=False, indent=2)
@@ -189,7 +189,7 @@ HANDLERS["pangu_session_bridge"] = handle_session_bridge
 
 async def handle_session_stats(server, drawers, arguments):
     """会话统计"""
-    from ..memory.session_bridge import get_session_bridge
+    from ...memory.session_bridge import get_session_bridge
     bridge = get_session_bridge(server.config)
     return json.dumps(bridge.get_session_stats(), ensure_ascii=False, indent=2)
 
@@ -197,7 +197,7 @@ HANDLERS["pangu_session_stats"] = handle_session_stats
 
 async def handle_session_inject(server, drawers, arguments):
     """跨会话上下文注入"""
-    from ..memory.cross_session import CrossSessionIntegrator
+    from ...memory.cross_session import CrossSessionIntegrator
     cs = CrossSessionIntegrator(server.config)
     result = cs.inject_session_context(arguments.get("query", ""), drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -206,7 +206,7 @@ HANDLERS["pangu_session_inject"] = handle_session_inject
 
 async def handle_session_start(server, drawers, arguments):
     """记录会话开始"""
-    from ..memory.session_bridge import get_session_bridge
+    from ...memory.session_bridge import get_session_bridge
     bridge = get_session_bridge(server.config)
     result = bridge.start_session(
         arguments["session_id"],
@@ -219,7 +219,7 @@ HANDLERS["pangu_session_start"] = handle_session_start
 
 async def handle_session_end(server, drawers, arguments):
     """记录会话结束并生成摘要"""
-    from ..memory.session_bridge import get_session_bridge
+    from ...memory.session_bridge import get_session_bridge
     bridge = get_session_bridge(server.config)
     result = bridge.end_session(
         arguments["session_id"],
@@ -233,7 +233,7 @@ HANDLERS["pangu_session_end"] = handle_session_end
 
 async def handle_session_resume(server, drawers, arguments):
     """获取上一个会话的恢复上下文"""
-    from ..memory.session_bridge import get_session_bridge
+    from ...memory.session_bridge import get_session_bridge
     bridge = get_session_bridge(server.config)
     result = bridge.get_resume_context(
         agent=arguments.get("agent", "claude"),
@@ -245,7 +245,7 @@ HANDLERS["pangu_session_resume"] = handle_session_resume
 
 async def handle_session_record(server, drawers, arguments):
     """记录会话中的事件"""
-    from ..memory.session_bridge import get_session_bridge
+    from ...memory.session_bridge import get_session_bridge
     bridge = get_session_bridge(server.config)
     result = bridge.record_event(
         arguments["session_id"],
@@ -258,7 +258,7 @@ HANDLERS["pangu_session_record"] = handle_session_record
 
 async def handle_session_stats(server, drawers, arguments):
     """获取会话统计"""
-    from ..memory.session_bridge import get_session_bridge
+    from ...memory.session_bridge import get_session_bridge
     bridge = get_session_bridge(server.config)
     return json.dumps(bridge.get_session_stats(), ensure_ascii=False, indent=2)
 
@@ -266,7 +266,7 @@ HANDLERS["pangu_session_stats"] = handle_session_stats
 
 async def handle_autopilot_activate(server, drawers, arguments):
     """激活自动驾驶模式（自动管理记忆）"""
-    from ..memory.auto_pilot import get_auto_pilot
+    from ...memory.auto_pilot import get_auto_pilot
     pilot = get_auto_pilot(server.config)
     result = pilot.activate()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -275,7 +275,7 @@ HANDLERS["pangu_autopilot_activate"] = handle_autopilot_activate
 
 async def handle_autopilot_deactivate(server, drawers, arguments):
     """停用自动驾驶模式"""
-    from ..memory.auto_pilot import get_auto_pilot
+    from ...memory.auto_pilot import get_auto_pilot
     pilot = get_auto_pilot(server.config)
     result = pilot.deactivate()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -284,7 +284,7 @@ HANDLERS["pangu_autopilot_deactivate"] = handle_autopilot_deactivate
 
 async def handle_autopilot_tick(server, drawers, arguments):
     """运行一次自动驾驶检查（自动组织/维护/报告）"""
-    from ..memory.auto_pilot import get_auto_pilot
+    from ...memory.auto_pilot import get_auto_pilot
     pilot = get_auto_pilot(server.config)
     result = pilot.tick(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -293,24 +293,30 @@ HANDLERS["pangu_autopilot_tick"] = handle_autopilot_tick
 
 async def handle_autopilot_suggest(server, drawers, arguments):
     """基于当前任务主动推荐相关记忆"""
-    from ..memory.auto_pilot import get_auto_pilot
+    from ...memory.auto_pilot import get_auto_pilot
     pilot = get_auto_pilot(server.config)
     result = pilot.auto_suggest(
         context=arguments.get("context", ""),
         drawers=drawers,
         limit=arguments.get("limit", 5),
     )
-    # 解密建议内容
-    from pangu.memory.encryption import decrypt
-    for s in result.get("suggestions", []):
-        c = s.get("content", "")
-        if c and c.startswith("gAAAAAB"):
-                s["content"] = decrypt(c)
+    try:
+        from ...memory.encryption import decrypt
+        for s in result.get("suggestions", []):
+            c = s.get("content", "")
+            if c and c.startswith("gAAAAAB"):
+                try:
+                    s["content"] = decrypt(c)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return json.dumps(result, ensure_ascii=False, default=str)
 HANDLERS["pangu_autopilot_suggest"] = handle_autopilot_suggest
 
 async def handle_autopilot_status(server, drawers, arguments):
     """查看自动驾驶状态"""
-    from ..memory.auto_pilot import get_auto_pilot
+    from ...memory.auto_pilot import get_auto_pilot
     pilot = get_auto_pilot(server.config)
     return json.dumps(pilot.get_status(), ensure_ascii=False, indent=2)
 

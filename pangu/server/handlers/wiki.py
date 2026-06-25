@@ -31,7 +31,7 @@ HANDLERS["pangu_get_wiki_page"] = handle_get_wiki_page
 
 async def handle_create_wiki_page(server, drawers, arguments):
     """创建 Wiki 页面"""
-    from ..core.palace import WikiPage
+    from ...core.palace import WikiPage
     page = WikiPage(
         id=f"wiki_manual_{arguments.get('title', '')[:20]}",
         title=arguments.get("title", ""),

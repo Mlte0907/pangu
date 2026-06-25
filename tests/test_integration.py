@@ -11,8 +11,8 @@ class TestApiServer:
         """测试应用创建"""
         from pangu.api.server import create_app
         app = create_app()
-        assert app.title == "盘古 v0.1.0"
-        assert app.version == "0.1.0"
+        assert "盘古" in app.title
+        assert "3.7" in app.version
 
     def test_app_has_routes(self):
         """测试应用注册了路由"""

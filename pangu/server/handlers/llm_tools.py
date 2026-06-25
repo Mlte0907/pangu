@@ -1,5 +1,6 @@
 """盘古 MCP Handler — llm_tools (19 tools)"""
 import json
+from ...core.llm import LLMEngine
 
 TOOLS = [
     {"name": "pangu_summarize", "description": "\u603b\u7ed3\u8bb0\u5fc6"},
@@ -54,7 +55,7 @@ HANDLERS["pangu_insight"] = handle_insight
 
 async def handle_deep_emotion_trajectory(server, drawers, arguments):
     """情绪轨迹追踪（速度/加速度/趋势）"""
-    from ..memory.deep_emotion import get_deep_emotion_engine
+    from ...memory.deep_emotion import get_deep_emotion_engine
     engine = get_deep_emotion_engine(server.config)
     return json.dumps(engine.analyze_trajectory(drawers), ensure_ascii=False, indent=2)
 
@@ -62,7 +63,7 @@ HANDLERS["pangu_deep_emotion_trajectory"] = handle_deep_emotion_trajectory
 
 async def handle_deep_emotion_decompose(server, drawers, arguments):
     """混合情绪解耦（识别复杂情绪中的多个成分）"""
-    from ..memory.deep_emotion import get_deep_emotion_engine
+    from ...memory.deep_emotion import get_deep_emotion_engine
     engine = get_deep_emotion_engine(server.config)
     return json.dumps(engine.decompose_emotions(drawers), ensure_ascii=False, indent=2)
 
@@ -70,7 +71,7 @@ HANDLERS["pangu_deep_emotion_decompose"] = handle_deep_emotion_decompose
 
 async def handle_deep_emotion_stats(server, drawers, arguments):
     """获取深度情绪统计"""
-    from ..memory.deep_emotion import get_deep_emotion_engine
+    from ...memory.deep_emotion import get_deep_emotion_engine
     engine = get_deep_emotion_engine(server.config)
     return json.dumps(engine.get_stats(drawers), ensure_ascii=False, indent=2)
 
@@ -78,7 +79,7 @@ HANDLERS["pangu_deep_emotion_stats"] = handle_deep_emotion_stats
 
 async def handle_debate_run(server, drawers, arguments):
     """运行多策略辩论（分析/创意/保守三策略评分选优）"""
-    from ..memory.debate import get_debate_engine
+    from ...memory.debate import get_debate_engine
     engine = get_debate_engine(server.config)
     result = engine.run_debate(
         question=arguments.get("question", ""),
@@ -91,7 +92,7 @@ HANDLERS["pangu_debate_run"] = handle_debate_run
 
 async def handle_debate_stats(server, drawers, arguments):
     """获取辩论统计"""
-    from ..memory.debate import get_debate_engine
+    from ...memory.debate import get_debate_engine
     engine = get_debate_engine(server.config)
     return json.dumps(engine.get_stats(), ensure_ascii=False, indent=2)
 
@@ -99,7 +100,7 @@ HANDLERS["pangu_debate_stats"] = handle_debate_stats
 
 async def handle_narrative_generate(server, drawers, arguments):
     """生成记忆叙事（按Wing聚合为连贯叙事线）"""
-    from ..memory.narrative import get_narrative_engine
+    from ...memory.narrative import get_narrative_engine
     engine = get_narrative_engine(server.config)
     return json.dumps(engine.generate_narrative(drawers), ensure_ascii=False, indent=2)
 
@@ -107,7 +108,7 @@ HANDLERS["pangu_narrative_generate"] = handle_narrative_generate
 
 async def handle_narrative_themes(server, drawers, arguments):
     """提取记忆主题"""
-    from ..memory.narrative import get_narrative_engine
+    from ...memory.narrative import get_narrative_engine
     engine = get_narrative_engine(server.config)
     return json.dumps(engine.extract_themes(drawers), ensure_ascii=False, indent=2)
 
@@ -115,7 +116,7 @@ HANDLERS["pangu_narrative_themes"] = handle_narrative_themes
 
 async def handle_narrative_identity(server, drawers, arguments):
     """生成身份连续性叙事"""
-    from ..memory.narrative import get_narrative_engine
+    from ...memory.narrative import get_narrative_engine
     engine = get_narrative_engine(server.config)
     return json.dumps(engine.identity_statement(drawers), ensure_ascii=False, indent=2)
 

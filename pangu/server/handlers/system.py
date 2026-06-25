@@ -85,14 +85,14 @@ HANDLERS["pangu_identity"] = handle_identity
 
 async def handle_system_health(server, drawers, arguments):
     """深度系统健康检查（DB/结构/嵌入/统计）"""
-    from ..observability.health import deep_health_check
+    from ...observability.health import deep_health_check
     return json.dumps(deep_health_check(), ensure_ascii=False, indent=2)
 
 HANDLERS["pangu_system_health"] = handle_system_health
 
 async def handle_system_metrics(server, drawers, arguments):
     """获取 Prometheus 格式系统指标"""
-    from ..observability.metrics import get_metrics_response
+    from ...observability.metrics import get_metrics_response
     content, _ = get_metrics_response()
     if isinstance(content, bytes):
         content = content.decode()
@@ -126,7 +126,7 @@ HANDLERS["pangu_config_set"] = handle_config_set
 
 async def handle_config_reload(server, drawers, arguments):
     """热更新配置"""
-    from ..core.config import PanguConfig
+    from ...core.config import PanguConfig
     new_cfg = PanguConfig.reload()
     server.config = new_cfg
     return json.dumps({"status": "reloaded", "llm_provider": new_cfg.llm_provider}, ensure_ascii=False)
@@ -135,7 +135,7 @@ HANDLERS["pangu_config_reload"] = handle_config_reload
 
 async def handle_schema_version(server, drawers, arguments):
     """获取数据库 schema 版本"""
-    from ..store.migrations import get_schema_version
+    from ...store.migrations import get_schema_version
     version = get_schema_version()
     return json.dumps({"schema_version": version}, ensure_ascii=False)
 
@@ -143,7 +143,7 @@ HANDLERS["pangu_schema_version"] = handle_schema_version
 
 async def handle_schema_migrations(server, drawers, arguments):
     """列出所有迁移版本"""
-    from ..store.migrations import get_available_migrations
+    from ...store.migrations import get_available_migrations
     migrations = get_available_migrations()
     return json.dumps(migrations, ensure_ascii=False, indent=2)
 
@@ -153,7 +153,7 @@ async def handle_api_server_start(server, drawers, arguments):
     """启动 REST API 服务器"""
     import uvicorn
 
-    from ..api.server import create_app
+    from ...api.server import create_app
     host = arguments.get("host", server.config.host)
     port = arguments.get("port", server.config.port)
     app = create_app()
@@ -173,7 +173,7 @@ HANDLERS["pangu_api_server_start"] = handle_api_server_start
 
 async def handle_graph_infer(server, drawers, arguments):
     """基于知识图谱推理"""
-    from ..memory.graph_reasoning import GraphReasoning
+    from ...memory.graph_reasoning import GraphReasoning
     gr = GraphReasoning(server.config)
     query = arguments.get("query", "")
     result = gr.infer(query)
@@ -190,7 +190,7 @@ HANDLERS["pangu_graph_infer"] = handle_graph_infer
 
 async def handle_graph_contradictions(server, drawers, arguments):
     """检测图中的矛盾关系"""
-    from ..memory.graph_reasoning import GraphReasoning
+    from ...memory.graph_reasoning import GraphReasoning
     gr = GraphReasoning(server.config)
     contradictions = gr.detect_contradictions()
     return json.dumps({
@@ -202,7 +202,7 @@ HANDLERS["pangu_graph_contradictions"] = handle_graph_contradictions
 
 async def handle_graph_causal_chain(server, drawers, arguments):
     """因果链分析"""
-    from ..memory.graph_reasoning import GraphReasoning
+    from ...memory.graph_reasoning import GraphReasoning
     gr = GraphReasoning(server.config)
     entity_id = arguments.get("entity_id", "")
     max_depth = arguments.get("max_depth", 5)
@@ -213,7 +213,7 @@ HANDLERS["pangu_graph_causal_chain"] = handle_graph_causal_chain
 
 async def handle_graph_temporal(server, drawers, arguments):
     """时序推理"""
-    from ..memory.graph_reasoning import GraphReasoning
+    from ...memory.graph_reasoning import GraphReasoning
     gr = GraphReasoning(server.config)
     query = arguments.get("query", "")
     result = gr.temporal_reasoning(query)
@@ -223,7 +223,7 @@ HANDLERS["pangu_graph_temporal"] = handle_graph_temporal
 
 async def handle_graph_analogy(server, drawers, arguments):
     """类比检测"""
-    from ..memory.graph_reasoning import GraphReasoning
+    from ...memory.graph_reasoning import GraphReasoning
     gr = GraphReasoning(server.config)
     query = arguments.get("query", "")
     result = gr.analogy_detection(query)
@@ -233,7 +233,7 @@ HANDLERS["pangu_graph_analogy"] = handle_graph_analogy
 
 async def handle_graph_visualize(server, drawers, arguments):
     """推理过程可视化"""
-    from ..memory.graph_reasoning import GraphReasoning
+    from ...memory.graph_reasoning import GraphReasoning
     gr = GraphReasoning(server.config)
     query = arguments.get("query", "")
     result = gr.infer(query)
@@ -244,7 +244,7 @@ HANDLERS["pangu_graph_visualize"] = handle_graph_visualize
 
 async def handle_graph_entity(server, drawers, arguments):
     """获取实体信息"""
-    from ..memory.graph_builder import get_builder
+    from ...memory.graph_builder import get_builder
     gb = get_builder(server.config)
     name = arguments.get("name", "")
     entity = gb.get_entity(name)
@@ -261,7 +261,7 @@ HANDLERS["pangu_graph_entity"] = handle_graph_entity
 
 async def handle_graph_path(server, drawers, arguments):
     """查找实体间路径"""
-    from ..memory.graph_builder import get_builder
+    from ...memory.graph_builder import get_builder
     gb = get_builder(server.config)
     path = gb.find_path(arguments["from_name"], arguments["to_name"])
     return json.dumps({
@@ -273,7 +273,7 @@ HANDLERS["pangu_graph_path"] = handle_graph_path
 
 async def handle_graph_quality(server, drawers, arguments):
     """评估图谱质量"""
-    from ..memory.graph_builder import get_builder
+    from ...memory.graph_builder import get_builder
     gb = get_builder(server.config)
     return json.dumps(gb.assess_quality(), ensure_ascii=False, indent=2)
 
@@ -281,7 +281,7 @@ HANDLERS["pangu_graph_quality"] = handle_graph_quality
 
 async def handle_graph_stats(server, drawers, arguments):
     """图谱统计"""
-    from ..memory.graph_builder import get_builder
+    from ...memory.graph_builder import get_builder
     gb = get_builder(server.config)
     return json.dumps(gb.get_graph_stats(), ensure_ascii=False, indent=2)
 
@@ -289,7 +289,7 @@ HANDLERS["pangu_graph_stats"] = handle_graph_stats
 
 async def handle_project_create(server, drawers, arguments):
     """创建项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.create_project(
         arguments["project_id"], arguments["name"],
@@ -300,7 +300,7 @@ HANDLERS["pangu_project_create"] = handle_project_create
 
 async def handle_project_switch(server, drawers, arguments):
     """切换项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.switch_project(arguments["project_id"]), ensure_ascii=False, indent=2)
 
@@ -308,7 +308,7 @@ HANDLERS["pangu_project_switch"] = handle_project_switch
 
 async def handle_project_list(server, drawers, arguments):
     """列出所有项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps({"projects": pm.list_projects()}, ensure_ascii=False, indent=2)
 
@@ -316,7 +316,7 @@ HANDLERS["pangu_project_list"] = handle_project_list
 
 async def handle_project_active(server, drawers, arguments):
     """获取当前项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.get_active_project(), ensure_ascii=False, indent=2)
 
@@ -324,7 +324,7 @@ HANDLERS["pangu_project_active"] = handle_project_active
 
 async def handle_project_save(server, drawers, arguments):
     """保存记忆到当前项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.save_memories(drawers), ensure_ascii=False, indent=2)
 
@@ -332,7 +332,7 @@ HANDLERS["pangu_project_save"] = handle_project_save
 
 async def handle_project_load(server, drawers, arguments):
     """加载项目记忆"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     pid = arguments.get("project_id")
     memories = pm.load_memories(pid)
@@ -342,7 +342,7 @@ HANDLERS["pangu_project_load"] = handle_project_load
 
 async def handle_project_search(server, drawers, arguments):
     """跨项目搜索"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     results = pm.search_cross_project(arguments["query"], arguments.get("limit", 10))
     return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False, indent=2)
@@ -351,7 +351,7 @@ HANDLERS["pangu_project_search"] = handle_project_search
 
 async def handle_project_merge(server, drawers, arguments):
     """合并项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.merge_project(
         arguments["source_id"], arguments.get("target_id"),
@@ -361,7 +361,7 @@ HANDLERS["pangu_project_merge"] = handle_project_merge
 
 async def handle_project_delete(server, drawers, arguments):
     """删除项目"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.delete_project(arguments["project_id"]), ensure_ascii=False, indent=2)
 
@@ -369,7 +369,7 @@ HANDLERS["pangu_project_delete"] = handle_project_delete
 
 async def handle_project_stats(server, drawers, arguments):
     """项目统计"""
-    from ..memory.project_manager import get_project_manager
+    from ...memory.project_manager import get_project_manager
     pm = get_project_manager(server.config)
     return json.dumps(pm.get_project_stats(), ensure_ascii=False, indent=2)
 
@@ -377,7 +377,7 @@ HANDLERS["pangu_project_stats"] = handle_project_stats
 
 async def handle_audit_log(server, drawers, arguments):
     """记录审计日志"""
-    from ..memory.audit_analytics import get_audit
+    from ...memory.audit_analytics import get_audit
     audit = get_audit(server.config)
     entry = audit.log(arguments["operation"], arguments.get("target_id", ""))
     return json.dumps({"entry_id": entry.entry_id, "timestamp": entry.timestamp}, ensure_ascii=False, indent=2)
@@ -386,7 +386,7 @@ HANDLERS["pangu_audit_log"] = handle_audit_log
 
 async def handle_audit_query(server, drawers, arguments):
     """查询审计日志"""
-    from ..memory.audit_analytics import get_audit
+    from ...memory.audit_analytics import get_audit
     audit = get_audit(server.config)
     entries = audit.get_entries(
         arguments.get("operation"), arguments.get("user_id"),
@@ -398,7 +398,7 @@ HANDLERS["pangu_audit_query"] = handle_audit_query
 
 async def handle_audit_stats(server, drawers, arguments):
     """操作统计"""
-    from ..memory.audit_analytics import get_audit
+    from ...memory.audit_analytics import get_audit
     audit = get_audit(server.config)
     return json.dumps(audit.get_operation_stats(), ensure_ascii=False, indent=2)
 
@@ -406,7 +406,7 @@ HANDLERS["pangu_audit_stats"] = handle_audit_stats
 
 async def handle_access_patterns(server, drawers, arguments):
     """访问模式分析"""
-    from ..memory.audit_analytics import get_audit
+    from ...memory.audit_analytics import get_audit
     audit = get_audit(server.config)
     return json.dumps(audit.get_access_patterns(), ensure_ascii=False, indent=2)
 
@@ -414,7 +414,7 @@ HANDLERS["pangu_access_patterns"] = handle_access_patterns
 
 async def handle_security_summary(server, drawers, arguments):
     """安全摘要"""
-    from ..memory.audit_analytics import get_audit
+    from ...memory.audit_analytics import get_audit
     audit = get_audit(server.config)
     return json.dumps(audit.get_security_summary(), ensure_ascii=False, indent=2)
 
@@ -422,7 +422,7 @@ HANDLERS["pangu_security_summary"] = handle_security_summary
 
 async def handle_plugin_list(server, drawers, arguments):
     """列出所有插件"""
-    from ..plugins import get_plugin_manager
+    from ...plugins import get_plugin_manager
     pm = get_plugin_manager()
     return json.dumps({"plugins": pm.list_plugins(), "count": pm.plugin_count}, ensure_ascii=False, indent=2)
 
@@ -430,7 +430,7 @@ HANDLERS["pangu_plugin_list"] = handle_plugin_list
 
 async def handle_plugin_enable(server, drawers, arguments):
     """启用插件"""
-    from ..plugins import get_plugin_manager
+    from ...plugins import get_plugin_manager
     pm = get_plugin_manager()
     ok = pm.enable(arguments["name"])
     return json.dumps({"status": "enabled" if ok else "not_found"}, ensure_ascii=False, indent=2)
@@ -439,7 +439,7 @@ HANDLERS["pangu_plugin_enable"] = handle_plugin_enable
 
 async def handle_plugin_disable(server, drawers, arguments):
     """禁用插件"""
-    from ..plugins import get_plugin_manager
+    from ...plugins import get_plugin_manager
     pm = get_plugin_manager()
     ok = pm.disable(arguments["name"])
     return json.dumps({"status": "disabled" if ok else "not_found"}, ensure_ascii=False, indent=2)
@@ -448,7 +448,7 @@ HANDLERS["pangu_plugin_disable"] = handle_plugin_disable
 
 async def handle_plugin_config(server, drawers, arguments):
     """获取插件配置"""
-    from ..plugins import get_plugin_manager
+    from ...plugins import get_plugin_manager
     pm = get_plugin_manager()
     config = pm.get_config(arguments["name"])
     return json.dumps({"name": arguments["name"], "config": config}, ensure_ascii=False, indent=2)
@@ -457,7 +457,7 @@ HANDLERS["pangu_plugin_config"] = handle_plugin_config
 
 async def handle_plugin_discover(server, drawers, arguments):
     """发现并加载自定义插件"""
-    from ..plugins import get_plugin_manager
+    from ...plugins import get_plugin_manager
     pm = get_plugin_manager()
     path = arguments.get("path")
     count = pm.discover_plugins(path)
@@ -467,7 +467,7 @@ HANDLERS["pangu_plugin_discover"] = handle_plugin_discover
 
 async def handle_version_history(server, drawers, arguments):
     """获取记忆变更历史"""
-    from ..memory.versioning import get_version_control
+    from ...memory.versioning import get_version_control
     vc = get_version_control(server.config)
     memory_id = arguments.get("memory_id", "")
     history = vc.get_change_history(memory_id)
@@ -477,7 +477,7 @@ HANDLERS["pangu_version_history"] = handle_version_history
 
 async def handle_version_compare(server, drawers, arguments):
     """比较两个版本的差异"""
-    from ..memory.versioning import get_version_control
+    from ...memory.versioning import get_version_control
     vc = get_version_control(server.config)
     memory_id = arguments.get("memory_id", "")
     v1 = arguments.get("v1", 1)
@@ -489,7 +489,7 @@ HANDLERS["pangu_version_compare"] = handle_version_compare
 
 async def handle_graph_visualize_web(server, drawers, arguments):
     """生成知识图谱可视化页面URL"""
-    from ..core.config import PanguConfig as _Cfg
+    from ...core.config import PanguConfig as _Cfg
     cfg = _Cfg.load()
     host = cfg.host if cfg.host != "0.0.0.0" else "127.0.0.1"
     url = f"http://{host}:{cfg.port}/graph"

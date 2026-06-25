@@ -1,5 +1,6 @@
 """盘古 MCP Handler — consolidation (32 tools)"""
 import json
+from ...memory.distill_enhanced import DistillationTower
 
 TOOLS = [
     {"name": "pangu_consolidation_stats", "description": "\u83b7\u53d6\u8bb0\u5fc6\u5de9\u56fa\u7edf\u8ba1\uff08\u9057\u5fd8/\u590d\u4e60/\u538b\u7f29\u72b6\u6001\uff09"},
@@ -40,8 +41,8 @@ HANDLERS = {}
 
 async def handle_consolidation_stats(server, drawers, arguments):
     """获取记忆巩固统计（遗忘/复习/压缩状态）"""
-    from ..memory.consolidation_intelligence import get_consolidation_intel
-    from ..memory.lifecycle import LifecycleManager
+    from ...memory.consolidation_intelligence import get_consolidation_intel
+    from ...memory.lifecycle import LifecycleManager
     ci = get_consolidation_intel(server.config)
     stats = ci.get_consolidation_stats()
     # 同时从 LifecycleManager 读取 last_consolidation
@@ -90,7 +91,7 @@ HANDLERS["pangu_memory_importance"] = handle_memory_importance
 
 async def handle_fuse_topic(server, drawers, arguments):
     """融合同一主题的记忆为结构化理解"""
-    from ..memory.fusion import FusionEngine
+    from ...memory.fusion import FusionEngine
     engine = FusionEngine(server.config)
     topic = arguments.get("topic", "")
     fused = engine.fuse_topic(topic, drawers)
@@ -108,7 +109,7 @@ HANDLERS["pangu_fuse_topic"] = handle_fuse_topic
 
 async def handle_progressive_summarize(server, drawers, arguments):
     """渐进式摘要（从细节到抽象）"""
-    from ..memory.fusion import FusionEngine
+    from ...memory.fusion import FusionEngine
     engine = FusionEngine(server.config)
     result = engine.progressive_summarize(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -117,7 +118,7 @@ HANDLERS["pangu_progressive_summarize"] = handle_progressive_summarize
 
 async def handle_crystallize_knowledge(server, drawers, arguments):
     """从记忆中结晶可复用知识"""
-    from ..memory.fusion import FusionEngine
+    from ...memory.fusion import FusionEngine
     engine = FusionEngine(server.config)
     topic = arguments.get("topic", "")
     knowledge = engine.crystallize_knowledge(drawers, topic=topic)
@@ -164,7 +165,7 @@ HANDLERS["pangu_distill_stats"] = handle_distill_stats
 
 async def handle_importance_feedback(server, drawers, arguments):
     """根据反馈信号动态调整记忆重要性"""
-    from ..memory.retrieval import importance_feedback
+    from ...memory.retrieval import importance_feedback
     result = importance_feedback(
         arguments["drawer_id"],
         arguments["signal"],
@@ -176,7 +177,7 @@ HANDLERS["pangu_importance_feedback"] = handle_importance_feedback
 
 async def handle_auto_fusion(server, drawers, arguments):
     """触发自动记忆融合（同主题>=3条）"""
-    from ..lifecycle import LifecycleManager
+    from ...lifecycle import LifecycleManager
     mgr = LifecycleManager(server.config)
     result = mgr.run_auto_fusion()
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -185,7 +186,7 @@ HANDLERS["pangu_auto_fusion"] = handle_auto_fusion
 
 async def handle_validate_memories(server, drawers, arguments):
     """验证所有记忆的准确性和时效性"""
-    from ..memory.memory_validator import MemoryValidator
+    from ...memory.memory_validator import MemoryValidator
     validator = MemoryValidator(server.config)
     result = validator.validate_all(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -194,7 +195,7 @@ HANDLERS["pangu_validate_memories"] = handle_validate_memories
 
 async def handle_proactive_predict(server, drawers, arguments):
     """基于上下文预测相关记忆"""
-    from ..memory.proactive import get_proactive_engine
+    from ...memory.proactive import get_proactive_engine
     engine = get_proactive_engine(server.config)
     context = arguments.get("context", "")
     limit = arguments.get("limit", 5)
@@ -211,7 +212,7 @@ HANDLERS["pangu_proactive_predict"] = handle_proactive_predict
 
 async def handle_proactive_suggest(server, drawers, arguments):
     """基于当前上下文主动推荐记忆"""
-    from ..memory.proactive import get_proactive_engine
+    from ...memory.proactive import get_proactive_engine
     engine = get_proactive_engine(server.config)
     context = engine.get_context()
     limit = arguments.get("limit", 5)
@@ -229,7 +230,7 @@ HANDLERS["pangu_proactive_suggest"] = handle_proactive_suggest
 
 async def handle_context_status(server, drawers, arguments):
     """获取当前上下文状态"""
-    from ..memory.proactive import get_proactive_engine
+    from ...memory.proactive import get_proactive_engine
     engine = get_proactive_engine(server.config)
     context = engine.get_context()
     return json.dumps({
@@ -242,7 +243,7 @@ HANDLERS["pangu_context_status"] = handle_context_status
 
 async def handle_resonance_find(server, drawers, arguments):
     """发现情感/语义共鸣的记忆对并构建图谱边"""
-    from ..memory.resonance import get_resonance_engine
+    from ...memory.resonance import get_resonance_engine
     engine = get_resonance_engine(server.config)
     matches = engine.find_resonance(
         drawers,
@@ -260,7 +261,7 @@ HANDLERS["pangu_resonance_find"] = handle_resonance_find
 
 async def handle_resonance_edges(server, drawers, arguments):
     """为共鸣匹配建立图谱边"""
-    from ..memory.resonance import get_resonance_engine
+    from ...memory.resonance import get_resonance_engine
     engine = get_resonance_engine(server.config)
     matches = arguments.get("matches", [])
     edges = engine.build_edges(
@@ -273,7 +274,7 @@ HANDLERS["pangu_resonance_edges"] = handle_resonance_edges
 
 async def handle_resonance_stats(server, drawers, arguments):
     """获取共鸣匹配统计"""
-    from ..memory.resonance import get_resonance_engine
+    from ...memory.resonance import get_resonance_engine
     engine = get_resonance_engine(server.config)
     return json.dumps(engine.stats(), ensure_ascii=False, indent=2)
 
@@ -281,7 +282,7 @@ HANDLERS["pangu_resonance_stats"] = handle_resonance_stats
 
 async def handle_intent_predict(server, drawers, arguments):
     """从记忆行为序列推断当前用户意图"""
-    from ..memory.intent_prediction import get_intent_predictor
+    from ...memory.intent_prediction import get_intent_predictor
     predictor = get_intent_predictor(server.config)
     intent = predictor.predict_intent(drawers, arguments.get("context", ""))
     task_chain = predictor.track_task_chain(drawers)
@@ -296,7 +297,7 @@ HANDLERS["pangu_intent_predict"] = handle_intent_predict
 
 async def handle_intent_tasks(server, drawers, arguments):
     """任务链追踪 — 跟踪多步骤任务进度"""
-    from ..memory.intent_prediction import get_intent_predictor
+    from ...memory.intent_prediction import get_intent_predictor
     predictor = get_intent_predictor(server.config)
     task_chain = predictor.track_task_chain(drawers)
     return json.dumps(task_chain, ensure_ascii=False, indent=2)
@@ -305,7 +306,7 @@ HANDLERS["pangu_intent_tasks"] = handle_intent_tasks
 
 async def handle_intent_stats(server, drawers, arguments):
     """获取意图预测统计"""
-    from ..memory.intent_prediction import get_intent_predictor
+    from ...memory.intent_prediction import get_intent_predictor
     predictor = get_intent_predictor(server.config)
     return json.dumps(predictor.stats(), ensure_ascii=False, indent=2)
 
@@ -313,7 +314,7 @@ HANDLERS["pangu_intent_stats"] = handle_intent_stats
 
 async def handle_synthesis_cross_cluster(server, drawers, arguments):
     """跨集群联想 — 发现不同Wing间的知识关联"""
-    from ..memory.knowledge_synthesis import get_synthesizer
+    from ...memory.knowledge_synthesis import get_synthesizer
     ks = get_synthesizer(server.config)
     insights = ks.cross_cluster_association(drawers)
     return json.dumps({"insights": insights, "count": len(insights)}, ensure_ascii=False, indent=2)
@@ -322,7 +323,7 @@ HANDLERS["pangu_synthesis_cross_cluster"] = handle_synthesis_cross_cluster
 
 async def handle_synthesis_gaps(server, drawers, arguments):
     """知识缺口识别 — 找出缺少深度分析的主题"""
-    from ..memory.knowledge_synthesis import get_synthesizer
+    from ...memory.knowledge_synthesis import get_synthesizer
     ks = get_synthesizer(server.config)
     gaps = ks.knowledge_gap_detection(drawers)
     return json.dumps({"gaps": gaps, "count": len(gaps)}, ensure_ascii=False, indent=2)
@@ -331,7 +332,7 @@ HANDLERS["pangu_synthesis_gaps"] = handle_synthesis_gaps
 
 async def handle_forget_stats(server, drawers, arguments):
     """遗忘统计"""
-    from ..memory.adaptive_forgetting import get_forgetting
+    from ...memory.adaptive_forgetting import get_forgetting
     af = get_forgetting(server.config)
     return json.dumps(af.get_forgetting_stats(), ensure_ascii=False, indent=2)
 
@@ -339,8 +340,8 @@ HANDLERS["pangu_forget_stats"] = handle_forget_stats
 
 async def handle_consolidation_stats(server, drawers, arguments):
     """巩固统计"""
-    from ..memory.consolidation_intelligence import get_consolidation_intel
-    from ..memory.lifecycle import LifecycleManager
+    from ...memory.consolidation_intelligence import get_consolidation_intel
+    from ...memory.lifecycle import LifecycleManager
     ci = get_consolidation_intel(server.config)
     stats = ci.get_consolidation_stats()
     # 同时从 LifecycleManager 读取 last_consolidation
@@ -352,7 +353,7 @@ HANDLERS["pangu_consolidation_stats"] = handle_consolidation_stats
 
 async def handle_distill(server, drawers, arguments):
     """蒸馏所有记忆为精炼知识"""
-    from ..memory.distillation import get_distiller
+    from ...memory.distillation import get_distiller
     d = get_distiller(server.config)
     min_size = arguments.get("min_group_size", 2)
     report = d.distill_all(drawers, min_size)
@@ -372,7 +373,7 @@ HANDLERS["pangu_distill"] = handle_distill
 
 async def handle_distill_by_wing(server, drawers, arguments):
     """按领域蒸馏"""
-    from ..memory.distillation import get_distiller
+    from ...memory.distillation import get_distiller
     d = get_distiller(server.config)
     result = d.distill_by_wing(drawers)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -381,7 +382,7 @@ HANDLERS["pangu_distill_by_wing"] = handle_distill_by_wing
 
 async def handle_distillation_stats(server, drawers, arguments):
     """蒸馏统计"""
-    from ..memory.distillation import get_distiller
+    from ...memory.distillation import get_distiller
     d = get_distiller(server.config)
     return json.dumps(d.get_distillation_stats(), ensure_ascii=False, indent=2)
 
@@ -389,7 +390,7 @@ HANDLERS["pangu_distillation_stats"] = handle_distillation_stats
 
 async def handle_auto_inject(server, drawers, arguments):
     """基于当前上下文自动注入最相关的记忆"""
-    from ..memory.context_injector import get_context_injector
+    from ...memory.context_injector import get_context_injector
     injector = get_context_injector(server.config)
     result = injector.auto_inject(
         context=arguments.get("context", ""),

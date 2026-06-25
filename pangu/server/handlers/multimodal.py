@@ -25,7 +25,7 @@ HANDLERS = {}
 
 async def handle_ingest_file(server, drawers, arguments):
     """从文件提取多模态记忆（图片/PDF/文本/音频）"""
-    from ..memory.multimodal_pipeline import get_multimodal_pipeline
+    from ...memory.multimodal_pipeline import get_multimodal_pipeline
     pipe = get_multimodal_pipeline(server.config)
     result = pipe.ingest_file(
         arguments["file_path"],
@@ -39,7 +39,7 @@ HANDLERS["pangu_ingest_file"] = handle_ingest_file
 
 async def handle_ingest_url(server, drawers, arguments):
     """从URL抓取网页内容存入记忆"""
-    from ..memory.multimodal_pipeline import get_multimodal_pipeline
+    from ...memory.multimodal_pipeline import get_multimodal_pipeline
     pipe = get_multimodal_pipeline(server.config)
     result = pipe.ingest_url(
         arguments["url"],
@@ -53,7 +53,7 @@ HANDLERS["pangu_ingest_url"] = handle_ingest_url
 
 async def handle_ingest_text(server, drawers, arguments):
     """直接存入文本记忆（支持自定义模态标签）"""
-    from ..memory.multimodal_pipeline import get_multimodal_pipeline
+    from ...memory.multimodal_pipeline import get_multimodal_pipeline
     pipe = get_multimodal_pipeline(server.config)
     result = pipe.ingest_text(
         arguments["text"],
@@ -68,7 +68,7 @@ HANDLERS["pangu_ingest_text"] = handle_ingest_text
 
 async def handle_image_embed(server, drawers, arguments):
     """图片CLIP嵌入+分析（尺寸/颜色/分类）"""
-    from ..memory.image_engine import get_image_engine
+    from ...memory.image_engine import get_image_engine
     engine = get_image_engine(server.config)
     result = engine.embed_image(arguments["image_path"])
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -77,7 +77,7 @@ HANDLERS["pangu_image_embed"] = handle_image_embed
 
 async def handle_image_classify(server, drawers, arguments):
     """图片零样本分类（CLIP）"""
-    from ..memory.image_engine import get_image_engine
+    from ...memory.image_engine import get_image_engine
     engine = get_image_engine(server.config)
     result = engine.classify_image(arguments["image_path"])
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -86,7 +86,7 @@ HANDLERS["pangu_image_classify"] = handle_image_classify
 
 async def handle_image_search_by_text(server, drawers, arguments):
     """以文搜图（文本匹配图片记忆）"""
-    from ..memory.image_engine import get_image_engine
+    from ...memory.image_engine import get_image_engine
     engine = get_image_engine(server.config)
     results = engine.search_by_text(arguments["query"], drawers, limit=arguments.get("limit", 5))
     return json.dumps({"count": len(results), "results": results}, ensure_ascii=False, indent=2)
@@ -95,7 +95,7 @@ HANDLERS["pangu_image_search_by_text"] = handle_image_search_by_text
 
 async def handle_image_search_by_image(server, drawers, arguments):
     """以图搜图（图片匹配图片记忆）"""
-    from ..memory.image_engine import get_image_engine
+    from ...memory.image_engine import get_image_engine
     engine = get_image_engine(server.config)
     results = engine.search_by_image(arguments["image_path"], drawers, limit=arguments.get("limit", 5))
     return json.dumps({"count": len(results), "results": results}, ensure_ascii=False, indent=2)
@@ -104,7 +104,7 @@ HANDLERS["pangu_image_search_by_image"] = handle_image_search_by_image
 
 async def handle_video_ingest(server, drawers, arguments):
     """从视频提取记忆（元数据+关键帧+CLIP分析）"""
-    from ..memory.video_engine import get_video_engine
+    from ...memory.video_engine import get_video_engine
     engine = get_video_engine(server.config)
     result = engine.ingest_video(
         arguments["video_path"],
@@ -118,7 +118,7 @@ HANDLERS["pangu_video_ingest"] = handle_video_ingest
 
 async def handle_video_metadata(server, drawers, arguments):
     """提取视频元数据（时长/分辨率/编码/帧率）"""
-    from ..memory.video_engine import get_video_engine
+    from ...memory.video_engine import get_video_engine
     engine = get_video_engine(server.config)
     result = engine.get_metadata(arguments["video_path"])
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -127,7 +127,7 @@ HANDLERS["pangu_video_metadata"] = handle_video_metadata
 
 async def handle_video_frames(server, drawers, arguments):
     """提取视频关键帧"""
-    from ..memory.video_engine import get_video_engine
+    from ...memory.video_engine import get_video_engine
     engine = get_video_engine(server.config)
     frames = engine.extract_keyframes(arguments["video_path"], count=arguments.get("count", 5))
     return json.dumps({"count": len(frames), "frames": frames}, ensure_ascii=False, indent=2)
@@ -136,7 +136,7 @@ HANDLERS["pangu_video_frames"] = handle_video_frames
 
 async def handle_audio_transcribe(server, drawers, arguments):
     """音频语音转文字（Whisper）"""
-    from ..memory.audio_engine import get_audio_engine
+    from ...memory.audio_engine import get_audio_engine
     engine = get_audio_engine(server.config)
     result = engine.transcribe(
         arguments["audio_path"],
@@ -148,7 +148,7 @@ HANDLERS["pangu_audio_transcribe"] = handle_audio_transcribe
 
 async def handle_audio_metadata(server, drawers, arguments):
     """提取音频元数据（时长/格式/采样率）"""
-    from ..memory.audio_engine import get_audio_engine
+    from ...memory.audio_engine import get_audio_engine
     engine = get_audio_engine(server.config)
     result = engine.get_metadata(arguments["audio_path"])
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -157,7 +157,7 @@ HANDLERS["pangu_audio_metadata"] = handle_audio_metadata
 
 async def handle_audio_ingest(server, drawers, arguments):
     """从音频提取记忆（转写+元数据+自动入库）"""
-    from ..memory.audio_engine import get_audio_engine
+    from ...memory.audio_engine import get_audio_engine
     engine = get_audio_engine(server.config)
     result = engine.ingest_audio(
         arguments["audio_path"],
@@ -171,7 +171,7 @@ HANDLERS["pangu_audio_ingest"] = handle_audio_ingest
 
 async def handle_multimodal_search(server, drawers, arguments):
     """跨模态统一搜索（文本搜所有模态：文本/图片/视频/音频）"""
-    from ..memory.multimodal_search import get_multimodal_search
+    from ...memory.multimodal_search import get_multimodal_search
     engine = get_multimodal_search(server.config)
     result = engine.search(
         arguments["query"],
@@ -185,7 +185,7 @@ HANDLERS["pangu_multimodal_search"] = handle_multimodal_search
 
 async def handle_multimodal_summary(server, drawers, arguments):
     """跨模态综合摘要（综合所有模态内容生成摘要）"""
-    from ..memory.multimodal_summary import get_multimodal_summary
+    from ...memory.multimodal_summary import get_multimodal_summary
     engine = get_multimodal_summary(server.config)
     result = engine.summarize_memories(drawers, limit=arguments.get("limit", 50))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -194,7 +194,7 @@ HANDLERS["pangu_multimodal_summary"] = handle_multimodal_summary
 
 async def handle_summary_by_topic(server, drawers, arguments):
     """按主题聚合多模态摘要"""
-    from ..memory.multimodal_summary import get_multimodal_summary
+    from ...memory.multimodal_summary import get_multimodal_summary
     engine = get_multimodal_summary(server.config)
     result = engine.summarize_by_topic(drawers, arguments["topic"], limit=arguments.get("limit", 20))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -203,7 +203,7 @@ HANDLERS["pangu_summary_by_topic"] = handle_summary_by_topic
 
 async def handle_summary_timeline(server, drawers, arguments):
     """按时间线生成多模态摘要"""
-    from ..memory.multimodal_summary import get_multimodal_summary
+    from ...memory.multimodal_summary import get_multimodal_summary
     engine = get_multimodal_summary(server.config)
     result = engine.summarize_timeline(drawers, days=arguments.get("days", 7))
     return json.dumps(result, ensure_ascii=False, indent=2)

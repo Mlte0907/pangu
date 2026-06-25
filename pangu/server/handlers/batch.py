@@ -11,7 +11,7 @@ HANDLERS = {}
 
 async def handle_batch_scan(server, drawers, arguments):
     """扫描目录，统计各类型文件数量"""
-    from ..memory.batch_import import get_batch_importer
+    from ...memory.batch_import import get_batch_importer
     importer = get_batch_importer(server.config)
     result = importer.scan_directory(arguments["dir_path"], recursive=arguments.get("recursive", True))
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -20,7 +20,7 @@ HANDLERS["pangu_batch_scan"] = handle_batch_scan
 
 async def handle_batch_import(server, drawers, arguments):
     """批量导入目录（自动检测类型+去重+入库）"""
-    from ..memory.batch_import import get_batch_importer
+    from ...memory.batch_import import get_batch_importer
     importer = get_batch_importer(server.config)
     result = importer.import_directory(
         arguments["dir_path"],
@@ -34,7 +34,7 @@ HANDLERS["pangu_batch_import"] = handle_batch_import
 
 async def handle_batch_stats(server, drawers, arguments):
     """查看批量导入统计"""
-    from ..memory.batch_import import get_batch_importer
+    from ...memory.batch_import import get_batch_importer
     importer = get_batch_importer(server.config)
     return json.dumps(importer.get_stats(), ensure_ascii=False, indent=2)
 

@@ -1,5 +1,6 @@
 """盘古 MCP Handler — embed (6 tools)"""
 import json
+from ...memory.vector_index import get_vector_index
 
 TOOLS = [
     {"name": "pangu_vector_index_stats", "description": "\u83b7\u53d6\u5411\u91cf\u7d22\u5f15\u7edf\u8ba1"},
