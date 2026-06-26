@@ -133,6 +133,7 @@ jobs:
           python -m pytest tests/test_core.py tests/test_v2_features.py \
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
+                          tests/test_integration.py \
                           --junitxml=reports/junit-${{ matrix.python }}-${{ matrix.os }}.xml \
                           -q --tb=short --maxfail=20
 
