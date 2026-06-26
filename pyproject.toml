@@ -80,6 +80,8 @@ ignore = ["E501"]
 "tests/manual_api_smoke.py" = ["E402"]
 "tests/manual_perf.py" = ["E402", "E701", "E702", "I001"]
 "tests/manual_security.py" = ["E402"]
+# 自动生成的 handler 模块
+"pangu/server/handlers/*" = ["E402", "F821", "F841", "E741"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
