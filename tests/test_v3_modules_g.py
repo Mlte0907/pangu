@@ -130,8 +130,10 @@ class TestEventBus:
         from pangu.memory.event_bus import Event
 
         received = []
+
         def handler(e):
             return received.append(e)
+
         self.bus.subscribe("t", handler)
         self.bus.unsubscribe("t", handler)
         self.bus.publish(Event(type="t"))

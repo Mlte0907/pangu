@@ -38,3 +38,5 @@ rich>=13.0.0
 
 # ── 监控与指标 ──
 prometheus-client>=0.19.0
+pyjwt>=2.8.0
+bcrypt>=4.0.0

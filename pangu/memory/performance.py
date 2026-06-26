@@ -738,6 +738,7 @@ class PerformanceOptimizer:
 
             def factory():
                 return Drawer(id="", content="", wing="default", room="default")
+
         if reset is None:
 
             def reset(d):

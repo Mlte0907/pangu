@@ -663,8 +663,10 @@ class TestErrorRecovery:
     def test_event_bus_subscribe_nonexistent_event(self):
         """订阅不存在的事件类型"""
         bus = EventBus()
+
         def handler(e):
             return None
+
         bus.subscribe("nonexistent_type", handler)
         bus.publish(Event(type="nonexistent_type", data={}))
         bus.unsubscribe("nonexistent_type", handler)
