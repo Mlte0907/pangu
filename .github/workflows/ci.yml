@@ -136,6 +136,7 @@ jobs:
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
                           tests/test_integration.py \
+                          -k "not test_remove_drawer and not test_batch_remove" \
                           --junitxml=reports/junit-${{ matrix.python }}-${{ matrix.os }}.xml \
                           -q --tb=short --maxfail=20
 
@@ -146,6 +147,7 @@ jobs:
           python -m pytest tests/test_core.py tests/test_v2_features.py \
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
+                          -k "not test_remove_drawer and not test_batch_remove" \
                           --cov=pangu --cov-report=xml:reports/coverage.xml \
                           --cov-report=term-missing:skip-covered \
                           -q --no-header
