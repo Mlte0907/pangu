@@ -1,6 +1,6 @@
 [project]
 name = "pangu"
-version = "3.6.0"
+version = "3.7.0"
 description = "盘古 — AI Agent 多模态记忆系统"
 readme = "README.md"
 requires-python = ">=3.11"
