@@ -1,4 +1,5 @@
 """盘古核心配置模块 — 基于 pydantic-settings（伏羲移植）"""
+
 import json
 import os
 from pathlib import Path
@@ -47,24 +48,24 @@ class PanguConfig(BaseSettings):
     api_key: str = ""
 
     # ── JWT 鉴权配置 ──
-    jwt_secret: str = ""                          # 留空时从 jwt_secret_file 自动加载/生成
-    jwt_secret_file: str = ""                     # 默认 {data_dir}/.jwt_secret
+    jwt_secret: str = ""  # 留空时从 jwt_secret_file 自动加载/生成
+    jwt_secret_file: str = ""  # 默认 {data_dir}/.jwt_secret
     jwt_algorithm: str = "HS256"
-    jwt_access_ttl: int = 3600                    # access token 1 小时
-    jwt_refresh_ttl: int = 7 * 86400              # refresh token 7 天
+    jwt_access_ttl: int = 3600  # access token 1 小时
+    jwt_refresh_ttl: int = 7 * 86400  # refresh token 7 天
     jwt_default_user: str = "admin"
-    jwt_default_password: str = "pangu-admin"     # 部署后建议通过 jwt_users 覆盖
+    jwt_default_password: str = "pangu-admin"  # 部署后建议通过 jwt_users 覆盖
     jwt_users: dict = Field(default_factory=dict)  # {username: bcrypt_hash}，留空则用 default
 
     # ── RBAC 角色权限配置 ──
-    jwt_default_role: str = "admin"               # 未指定用户的默认角色
+    jwt_default_role: str = "admin"  # 未指定用户的默认角色
     jwt_roles: dict = Field(default_factory=dict)  # 角色 → scope 列表；空则用 ROLE_PRESETS
     jwt_user_roles: dict = Field(default_factory=dict)  # {username: role_name}
 
     # ── ABAC 多租户 / 策略配置 ──
-    abac_enabled: bool = True                     # 是否启用 ABAC 策略引擎
-    abac_default_tenant: str = "default"          # 缺省 tenant_id
-    abac_tenant_header: str = "x-tenant-id"       # 从 header 提取租户
+    abac_enabled: bool = True  # 是否启用 ABAC 策略引擎
+    abac_default_tenant: str = "default"  # 缺省 tenant_id
+    abac_tenant_header: str = "x-tenant-id"  # 从 header 提取租户
     abac_policies: list = Field(default_factory=list)  # 自定义策略（JSON list）
     abac_user_attrs: dict = Field(default_factory=dict)  # {username: {tenant_id, department, clearance, groups}}
 
@@ -150,10 +151,10 @@ class PanguConfig(BaseSettings):
     default_context_budget: int = 1000
 
     # ── 记忆压缩配置 ──
-    compression_min_age_days: int = 30      # 最小压缩天数
+    compression_min_age_days: int = 30  # 最小压缩天数
     compression_min_importance: float = 0.3  # 最小压缩重要性
-    compression_min_length: int = 100        # 最小压缩长度
-    compression_max_key_points: int = 3      # 最大关键点数
+    compression_min_length: int = 100  # 最小压缩长度
+    compression_max_key_points: int = 3  # 最大关键点数
 
     # ── 记忆巩固配置 ──
     consolidation_enabled: bool = True
@@ -184,16 +185,22 @@ class PanguConfig(BaseSettings):
     dream_interval: int = 1800
 
     # ── 置信度来源 ──
-    confidence_sources: dict = Field(
-        default_factory=lambda: {"direct": 1.0, "inferred": 0.6, "hearsay": 0.3}
-    )
+    confidence_sources: dict = Field(default_factory=lambda: {"direct": 1.0, "inferred": 0.6, "hearsay": 0.3})
 
     # ── 图谱配置 ──
     edge_types: list = Field(
         default_factory=lambda: [
-            "causes", "contradicts", "refines", "depends_on",
-            "related_to", "temporal", "enables", "hinders",
-            "supersedes", "wikilink", "mentions",
+            "causes",
+            "contradicts",
+            "refines",
+            "depends_on",
+            "related_to",
+            "temporal",
+            "enables",
+            "hinders",
+            "supersedes",
+            "wikilink",
+            "mentions",
         ]
     )
 
@@ -214,9 +221,9 @@ class PanguConfig(BaseSettings):
             "http://127.0.0.1:19528",
             "http://localhost:8866",
             "http://127.0.0.1:8866",
-            "http://localhost:3000",     # 常见前端 dev 端口
+            "http://localhost:3000",  # 常见前端 dev 端口
             "http://127.0.0.1:3000",
-            "http://localhost:5173",     # Vite
+            "http://localhost:5173",  # Vite
             "http://127.0.0.1:5173",
             "http://192.168.5.8:19529",  # LAN
             "http://192.168.5.8:8866",
@@ -274,7 +281,9 @@ class PanguConfig(BaseSettings):
         config_path = config_path or self.config_path
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
-        data = self.model_dump(exclude={"api_key", "llm_api_key", "siliconflow_key", "jwt_secret", "jwt_default_password"})
+        data = self.model_dump(
+            exclude={"api_key", "llm_api_key", "siliconflow_key", "jwt_secret", "jwt_default_password"}
+        )
         # 转换 Path 对象为字符串
         for k, v in data.items():
             if isinstance(v, Path):
@@ -296,11 +305,13 @@ class PanguConfig(BaseSettings):
         import importlib
 
         import pangu.core.config as mod
+
         importlib.reload(mod)
 
         # 重置 Embedding 服务的电路断路器
         try:
             from pangu.memory.embedding import get_embedding_service
+
             svc = get_embedding_service()
             svc.reset_circuit()
         except Exception:

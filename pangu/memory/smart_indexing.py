@@ -7,6 +7,7 @@
 4. 索引健康：监控索引健康状态
 5. 索引优化：自动清理无效索引
 """
+
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ logger = logging.getLogger("pangu.memory.smart_indexing")
 @dataclass
 class IndexEntry:
     """索引条目"""
+
     key: str
     index_type: str  # hot_word / tag / wing / temporal
     memory_ids: list[str]
@@ -29,6 +31,7 @@ class IndexEntry:
 @dataclass
 class IndexRecommendation:
     """索引推荐"""
+
     index_type: str
     key: str
     reason: str
@@ -47,13 +50,15 @@ class SmartIndexingEngine:
 
     def log_query(self, query: str, result_ids: list[str] = None) -> None:
         """记录查询"""
-        self._query_log.append({
-            "query": query,
-            "result_ids": result_ids or [],
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._query_log.append(
+            {
+                "query": query,
+                "result_ids": result_ids or [],
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         if len(self._query_log) > self._max_query_log:
-            self._query_log = self._query_log[-self._max_query_log:]
+            self._query_log = self._query_log[-self._max_query_log :]
 
     def build_hot_word_index(self, drawers: list) -> dict:
         """构建热词索引"""
@@ -78,7 +83,8 @@ class SmartIndexingEngine:
             key = f"hot:{word}"
             if key not in self._indexes or freq > self._indexes[key].hit_count:
                 self._indexes[key] = IndexEntry(
-                    key=key, index_type="hot_word",
+                    key=key,
+                    index_type="hot_word",
                     memory_ids=word_memories[word][:50],
                     hit_count=freq,
                     created_at=datetime.now().isoformat(),
@@ -98,7 +104,8 @@ class SmartIndexingEngine:
         for tag, mem_ids in tag_memories.items():
             key = f"tag:{tag}"
             self._indexes[key] = IndexEntry(
-                key=key, index_type="tag",
+                key=key,
+                index_type="tag",
                 memory_ids=mem_ids,
                 hit_count=len(mem_ids),
                 created_at=datetime.now().isoformat(),
@@ -116,7 +123,8 @@ class SmartIndexingEngine:
         for wing, mem_ids in wing_memories.items():
             key = f"wing:{wing}"
             self._indexes[key] = IndexEntry(
-                key=key, index_type="wing",
+                key=key,
+                index_type="wing",
                 memory_ids=mem_ids,
                 hit_count=len(mem_ids),
                 created_at=datetime.now().isoformat(),
@@ -165,13 +173,15 @@ class SmartIndexingEngine:
         for word, freq in sorted(query_words.items(), key=lambda x: -x[1])[:10]:
             key = f"hot:{word}"
             if key not in self._indexes:
-                recommendations.append(IndexRecommendation(
-                    index_type="hot_word",
-                    key=word,
-                    reason=f"高频查询词（{freq}次）但无索引",
-                    expected_benefit=f"预计提升 {freq} 次查询的检索速度",
-                    priority=1 if freq > 5 else 2,
-                ))
+                recommendations.append(
+                    IndexRecommendation(
+                        index_type="hot_word",
+                        key=word,
+                        reason=f"高频查询词（{freq}次）但无索引",
+                        expected_benefit=f"预计提升 {freq} 次查询的检索速度",
+                        priority=1 if freq > 5 else 2,
+                    )
+                )
 
         tag_counts: dict[str, int] = defaultdict(int)
         for d in drawers:
@@ -181,13 +191,15 @@ class SmartIndexingEngine:
         for tag, count in sorted(tag_counts.items(), key=lambda x: -x[1])[:5]:
             key = f"tag:{tag}"
             if key not in self._indexes:
-                recommendations.append(IndexRecommendation(
-                    index_type="tag",
-                    key=tag,
-                    reason=f"标签 {tag} 关联 {count} 条记忆但无索引",
-                    expected_benefit="加速按标签检索",
-                    priority=2,
-                ))
+                recommendations.append(
+                    IndexRecommendation(
+                        index_type="tag",
+                        key=tag,
+                        reason=f"标签 {tag} 关联 {count} 条记忆但无索引",
+                        expected_benefit="加速按标签检索",
+                        priority=2,
+                    )
+                )
 
         return recommendations
 
@@ -226,10 +238,12 @@ class SmartIndexingEngine:
         return {
             "total_indexes": len(self._indexes),
             "query_log_size": len(self._query_log),
-            "types": dict(defaultdict(int, {
-                it: sum(1 for e in self._indexes.values() if e.index_type == it)
-                for e in self._indexes.values()
-            })),
+            "types": dict(
+                defaultdict(
+                    int,
+                    {it: sum(1 for e in self._indexes.values() if e.index_type == it) for e in self._indexes.values()},
+                )
+            ),
         }
 
 

@@ -8,8 +8,8 @@
 
 结果自动合并去重，按模态分组展示。
 """
+
 import logging
-import time
 from collections import defaultdict
 
 from ..core.config import PanguConfig
@@ -24,8 +24,7 @@ class MultimodalSearchEngine:
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
 
-    def search(self, query: str, drawers: list[Drawer] = None,
-               modalities: list[str] = None, limit: int = 10) -> dict:
+    def search(self, query: str, drawers: list[Drawer] = None, modalities: list[str] = None, limit: int = 10) -> dict:
         """跨模态搜索
 
         Args:
@@ -110,20 +109,22 @@ class MultimodalSearchEngine:
             for w in query_words:
                 if w in content_lower:
                     score += 0.3
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 if tag.lower() in query_lower:
                     score += 0.2
 
             if score > 0:
-                results.append({
-                    "id": d.id,
-                    "content": (d.content or "")[:200],
-                    "wing": d.wing,
-                    "importance": d.importance,
-                    "modality": "text",
-                    "tags": d.tags or [],
-                    "score": score,
-                })
+                results.append(
+                    {
+                        "id": d.id,
+                        "content": (d.content or "")[:200],
+                        "wing": d.wing,
+                        "importance": d.importance,
+                        "modality": "text",
+                        "tags": d.tags or [],
+                        "score": score,
+                    }
+                )
 
         results.sort(key=lambda x: -x["score"])
         return results[:limit]
@@ -132,6 +133,7 @@ class MultimodalSearchEngine:
         """CLIP 文搜图"""
         try:
             from pangu.memory.image_engine import get_image_engine
+
             engine = get_image_engine(self.config)
             results = engine.search_by_text(query, drawers, limit)
             for r in results:
@@ -157,7 +159,7 @@ class MultimodalSearchEngine:
             for w in query_words:
                 if w in content_lower:
                     score += 0.3
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 if tag.lower() in query_lower:
                     score += 0.2
             # 视频时长加权
@@ -166,15 +168,17 @@ class MultimodalSearchEngine:
                 score += 0.1
 
             if score > 0:
-                results.append({
-                    "id": d.id,
-                    "content": (d.content or "")[:200],
-                    "wing": d.wing,
-                    "modality": "video",
-                    "tags": d.tags or [],
-                    "duration": duration,
-                    "score": score,
-                })
+                results.append(
+                    {
+                        "id": d.id,
+                        "content": (d.content or "")[:200],
+                        "wing": d.wing,
+                        "modality": "video",
+                        "tags": d.tags or [],
+                        "duration": duration,
+                        "score": score,
+                    }
+                )
 
         results.sort(key=lambda x: -x["score"])
         return results[:limit]
@@ -200,22 +204,25 @@ class MultimodalSearchEngine:
                     score += 0.2
 
             if score > 0:
-                results.append({
-                    "id": d.id,
-                    "content": (d.content or "")[:200],
-                    "transcription_preview": d.metadata.get("transcription", "")[:100],
-                    "wing": d.wing,
-                    "modality": "audio",
-                    "language": d.metadata.get("language", "unknown"),
-                    "duration": d.metadata.get("duration", 0),
-                    "score": score,
-                })
+                results.append(
+                    {
+                        "id": d.id,
+                        "content": (d.content or "")[:200],
+                        "transcription_preview": d.metadata.get("transcription", "")[:100],
+                        "wing": d.wing,
+                        "modality": "audio",
+                        "language": d.metadata.get("language", "unknown"),
+                        "duration": d.metadata.get("duration", 0),
+                        "score": score,
+                    }
+                )
 
         results.sort(key=lambda x: -x["score"])
         return results[:limit]
 
     def _load_drawers(self) -> list[Drawer]:
         from pathlib import Path
+
         drawers_file = Path(self.config.palace_path) / "drawers.json"
         if not drawers_file.exists():
             return []

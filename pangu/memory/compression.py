@@ -6,11 +6,10 @@
 3. 存储压缩版本：保留压缩版 + 原始引用
 4. 自动触发：lifecycle 定期执行压缩
 """
+
 import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -21,6 +20,7 @@ logger = logging.getLogger("pangu.memory.compression")
 @dataclass
 class CompressionResult:
     """压缩结果"""
+
     original: str
     compressed: str
     compression_ratio: float
@@ -40,6 +40,7 @@ class MemoryCompressor:
         if self._llm_engine is None:
             try:
                 from ..core.llm import LLMEngine
+
                 self._llm_engine = LLMEngine(self.config)
             except ImportError:
                 self._llm_engine = None
@@ -86,7 +87,7 @@ class MemoryCompressor:
             key_points = self._extract_key_points(drawer.content)
 
         # 生成压缩版本
-        compressed = f"关键点: {'; '.join(key_points[:self.config.compression_max_key_points])}"
+        compressed = f"关键点: {'; '.join(key_points[: self.config.compression_max_key_points])}"
         if len(compressed) > 200:
             compressed = compressed[:197] + "..."
 
@@ -96,7 +97,7 @@ class MemoryCompressor:
             original=drawer.content,
             compressed=compressed,
             compression_ratio=round(compression_ratio, 3),
-            key_points=key_points[:self.config.compression_max_key_points],
+            key_points=key_points[: self.config.compression_max_key_points],
             memory_id=drawer.id,
         )
 

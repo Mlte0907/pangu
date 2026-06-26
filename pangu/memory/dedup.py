@@ -9,6 +9,7 @@
 - 可配置的相似度阈值
 - 自动合并策略
 """
+
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,6 +23,7 @@ from ..core.palace import Drawer
 @dataclass
 class DuplicateGroup:
     """重复记忆组"""
+
     id: str
     memory_ids: list[str]  # 重复记忆 ID 列表
     primary_id: str  # 主记忆（保留）
@@ -38,11 +40,10 @@ class MemoryDeduplicator:
     def _cosine_sim(a, b) -> float:
         if not a or not b or len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
+        dot = sum(x * y for x, y in zip(a, b, strict=False))
         na = sum(x * x for x in a) ** 0.5
         nb = sum(x * x for x in b) ** 0.5
         return dot / (na * nb) if na and nb else 0.0
-
 
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
@@ -53,14 +54,15 @@ class MemoryDeduplicator:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
 
-    def find_duplicates(self, drawers: list[Drawer],
-                        threshold: float = 0.99,
-                        method: str = "auto") -> list[DuplicateGroup]:
+    def find_duplicates(
+        self, drawers: list[Drawer], threshold: float = 0.99, method: str = "auto"
+    ) -> list[DuplicateGroup]:
         """查找重复记忆
 
         Args:
@@ -86,8 +88,7 @@ class MemoryDeduplicator:
         else:
             return self._keyword_dedup(drawers, threshold)
 
-    def _vector_dedup(self, drawers: list[Drawer],
-                      threshold: float) -> list[DuplicateGroup]:
+    def _vector_dedup(self, drawers: list[Drawer], threshold: float) -> list[DuplicateGroup]:
         """基于向量相似度的去重"""
         texts = [d.content for d in drawers]
         n = len(drawers)
@@ -117,8 +118,7 @@ class MemoryDeduplicator:
         """基于内容哈希的精确去重"""
         hash_map: dict[str, list[int]] = {}
         for i, d in enumerate(drawers):
-            content_hash = hashlib.sha256(
-                d.content.strip().encode()).hexdigest()
+            content_hash = hashlib.sha256(d.content.strip().encode()).hexdigest()
             if content_hash not in hash_map:
                 hash_map[content_hash] = []
             hash_map[content_hash].append(i)
@@ -133,11 +133,10 @@ class MemoryDeduplicator:
     @staticmethod
     def _tokenize_text(text: str) -> set[str]:
         import re
-        return set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                               text.lower()))
 
-    def _keyword_dedup(self, drawers: list[Drawer],
-                       threshold: float) -> list[DuplicateGroup]:
+        return set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text.lower()))
+
+    def _keyword_dedup(self, drawers: list[Drawer], threshold: float) -> list[DuplicateGroup]:
         """基于关键词重叠的去重"""
         token_sets = [self._tokenize_text(d.content) for d in drawers]
         n = len(drawers)
@@ -158,25 +157,29 @@ class MemoryDeduplicator:
         union = len(token_sets[i] | token_sets[j])
         return intersection / union if union > 0 else 0
 
-    def _build_similarity_matrix(self, indices: list[int],
-                                 drawers: list[Drawer],
-                                 similar_pairs: list[tuple],
-                                 threshold: float) -> tuple[dict, list]:
+    def _build_similarity_matrix(
+        self, indices: list[int], drawers: list[Drawer], similar_pairs: list[tuple], threshold: float
+    ) -> tuple[dict, list]:
         sim_matrix = {}
         sims = []
         for a in range(len(indices)):
             for b in range(a + 1, len(indices)):
                 key = f"{drawers[indices[a]].id}_{drawers[indices[b]].id}"
-                sim = next((s for i, j, s in similar_pairs
-                            if (i == indices[a] and j == indices[b]) or
-                            (i == indices[b] and j == indices[a])), threshold)
+                sim = next(
+                    (
+                        s
+                        for i, j, s in similar_pairs
+                        if (i == indices[a] and j == indices[b]) or (i == indices[b] and j == indices[a])
+                    ),
+                    threshold,
+                )
                 sim_matrix[key] = round(sim, 4)
                 sims.append(sim)
         return sim_matrix, sims
 
-    def _group_duplicates(self, drawers: list[Drawer],
-                          similar_pairs: list[tuple],
-                          threshold: float) -> list[DuplicateGroup]:
+    def _group_duplicates(
+        self, drawers: list[Drawer], similar_pairs: list[tuple], threshold: float
+    ) -> list[DuplicateGroup]:
         """将相似对分组为重复组"""
         if not similar_pairs:
             return []
@@ -214,32 +217,28 @@ class MemoryDeduplicator:
 
             # 选择主记忆（重要性最高、内容最长的）
             group_drawers = [drawers[i] for i in indices]
-            primary = max(group_drawers,
-                          key=lambda d: (d.importance, len(d.content)))
+            primary = max(group_drawers, key=lambda d: (d.importance, len(d.content)))
 
-            sim_matrix, sims = self._build_similarity_matrix(
-                indices, drawers, similar_pairs, threshold
-            )
+            sim_matrix, sims = self._build_similarity_matrix(indices, drawers, similar_pairs, threshold)
 
             avg_sim = sum(sims) / len(sims) if sims else threshold
 
-            group_id = hex_digest(
-                "".join(sorted(d.id for d in group_drawers))
-            )[:12]
+            group_id = hex_digest("".join(sorted(d.id for d in group_drawers)))[:12]
 
-            result.append(DuplicateGroup(
-                id=group_id,
-                memory_ids=[d.id for d in group_drawers],
-                primary_id=primary.id,
-                duplicate_ids=[d.id for d in group_drawers if d.id != primary.id],
-                similarity_matrix=sim_matrix,
-                avg_similarity=round(avg_sim, 4),
-            ))
+            result.append(
+                DuplicateGroup(
+                    id=group_id,
+                    memory_ids=[d.id for d in group_drawers],
+                    primary_id=primary.id,
+                    duplicate_ids=[d.id for d in group_drawers if d.id != primary.id],
+                    similarity_matrix=sim_matrix,
+                    avg_similarity=round(avg_sim, 4),
+                )
+            )
 
         return result
 
-    def merge_duplicates(self, group: DuplicateGroup,
-                         drawers: list[Drawer]) -> Drawer | None:
+    def merge_duplicates(self, group: DuplicateGroup, drawers: list[Drawer]) -> Drawer | None:
         """合并重复记忆组为一条记忆
 
         Args:
@@ -253,13 +252,10 @@ class MemoryDeduplicator:
         if not group_drawers:
             return None
 
-        primary = next((d for d in group_drawers if d.id == group.primary_id),
-                       group_drawers[0])
+        primary = next((d for d in group_drawers if d.id == group.primary_id), group_drawers[0])
 
         # 合并标签
-        all_tags = list(set(
-            tag for d in group_drawers for tag in (d.tags or [])
-        ))
+        all_tags = list(set(tag for d in group_drawers for tag in (d.tags or [])))
 
         # 合并内容（取最长 + 补充差异）
         contents = [d.content for d in group_drawers]
@@ -277,8 +273,7 @@ class MemoryDeduplicator:
             importance=merged_importance,
             tags=all_tags,
             source_file=primary.source_file,
-            created_at=min(d.created_at for d in group_drawers
-                           if d.created_at),
+            created_at=min(d.created_at for d in group_drawers if d.created_at),
         )
 
     def dedup_stats(self, groups: list[DuplicateGroup]) -> dict:
@@ -288,11 +283,8 @@ class MemoryDeduplicator:
             "duplicate_groups": len(groups),
             "total_duplicate_memories": total_dup,
             "estimated_savings": total_dup,
-            "avg_similarity": round(
-                sum(g.avg_similarity for g in groups) / len(groups), 4
-            ) if groups else 0.0,
-            "largest_group": max(len(g.memory_ids) for g in groups)
-            if groups else 0,
+            "avg_similarity": round(sum(g.avg_similarity for g in groups) / len(groups), 4) if groups else 0.0,
+            "largest_group": max(len(g.memory_ids) for g in groups) if groups else 0,
         }
 
     def similarity_check(self, drawer_a: Drawer, drawer_b: Drawer) -> dict:

@@ -1,4 +1,5 @@
 """盘古 MCP HTTP 传输层 — 支持 SSE + StreamableHTTP 远程访问"""
+
 import asyncio
 import json
 import logging
@@ -22,15 +23,17 @@ async def _mcp_handle(request: Request) -> Response:
             message_url = f"{root_path}/messages?session_id={session_id}"
 
             async def event_stream():
-                endpoint_data = json.dumps({
-                    "jsonrpc": "2.0",
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "serverInfo": {"name": "pangu", "version": "3.7.0"},
-                        "capabilities": {"tools": {}},
-                        "endpoints": {"mcp": message_url},
-                    },
-                })
+                endpoint_data = json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "protocolVersion": "2024-11-05",
+                            "serverInfo": {"name": "pangu", "version": "3.7.0"},
+                            "capabilities": {"tools": {}},
+                            "endpoints": {"mcp": message_url},
+                        },
+                    }
+                )
                 yield f"event: endpoint\ndata: {message_url}\n\n"
                 yield f"event: message\ndata: {endpoint_data}\n\n"
                 try:
@@ -51,14 +54,16 @@ async def _mcp_handle(request: Request) -> Response:
                 },
             )
 
-        resp = JSONResponse({
-            "jsonrpc": "2.0",
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "serverInfo": {"name": "pangu", "version": "3.7.0"},
-                "capabilities": {"tools": {}},
-            },
-        })
+        resp = JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {"name": "pangu", "version": "3.7.0"},
+                    "capabilities": {"tools": {}},
+                },
+            }
+        )
         resp.headers["mcp-session-id"] = session_id
         return resp
 
@@ -75,6 +80,7 @@ async def _mcp_handle(request: Request) -> Response:
 
     try:
         from pangu.api.routes_tools import _get_server
+
         server = _get_server()
         response = await server.handle_request(msg)
         if response is None:
@@ -83,8 +89,10 @@ async def _mcp_handle(request: Request) -> Response:
         accept = request.headers.get("accept", "")
         if "text/event-stream" in accept:
             event_data = json.dumps(response, ensure_ascii=False)
+
             async def sse_response():
                 yield f"event: message\ndata: {event_data}\n\n"
+
             return StreamingResponse(
                 sse_response(),
                 media_type="text/event-stream",

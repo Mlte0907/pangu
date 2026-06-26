@@ -7,8 +7,8 @@
 4. 查询聚焦：识别核心意图，去除噪声
 5. 查询建议：推荐更好的搜索查询
 """
+
 import logging
-import re
 from dataclasses import dataclass
 
 logger = logging.getLogger("pangu.memory.query_rewriter")
@@ -17,6 +17,7 @@ logger = logging.getLogger("pangu.memory.query_rewriter")
 @dataclass
 class RewrittenQuery:
     """重写后的查询"""
+
     original: str
     rewritten: str
     strategy: str
@@ -57,8 +58,7 @@ class QueryRewriter:
         self.config = config
         self._rewrite_history: list[dict] = []
 
-    def _match_word_synonyms(self, word: str, synonyms: list[str],
-                              query: str, top_k: int) -> list[str]:
+    def _match_word_synonyms(self, word: str, synonyms: list[str], query: str, top_k: int) -> list[str]:
         """为单个词匹配同义词"""
         if word not in query:
             return []
@@ -69,7 +69,7 @@ class QueryRewriter:
         expanded = []
         for word, synonyms in self.SYNONYM_MAP.items():
             expanded.extend(self._match_word_synonyms(word, synonyms, query, top_k))
-        return expanded[:top_k * 2]
+        return expanded[: top_k * 2]
 
     def detect_intent(self, query: str) -> str:
         """检测查询意图"""
@@ -129,12 +129,14 @@ class QueryRewriter:
             confidence=confidence,
         )
 
-        self._rewrite_history.append({
-            "original": query[:50],
-            "strategy": strategy,
-            "expanded_count": len(expanded),
-            "intent": intent,
-        })
+        self._rewrite_history.append(
+            {
+                "original": query[:50],
+                "strategy": strategy,
+                "expanded_count": len(expanded),
+                "intent": intent,
+            }
+        )
 
         return result
 

@@ -7,10 +7,11 @@
 4. 增量同步：只同步变更部分
 5. 同步状态：追踪同步状态
 """
-import json
+
 import hashlib
+import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,7 @@ logger = logging.getLogger("pangu.memory.sync_manager")
 @dataclass
 class ChangeEntry:
     """变更条目"""
+
     change_id: str
     memory_id: str
     operation: str  # create / update / delete
@@ -33,6 +35,7 @@ class ChangeEntry:
 @dataclass
 class SyncState:
     """同步状态"""
+
     device_id: str
     last_sync: str
     pending_changes: int
@@ -55,6 +58,7 @@ class SyncManager:
         """获取设备标识"""
         import platform
         import socket
+
         hostname = socket.gethostname()
         system = platform.system().lower()
         return f"{system}_{hostname}"
@@ -71,16 +75,21 @@ class SyncManager:
     def _save_changes(self) -> None:
         changes_file = self._sync_dir / "changes.json"
         data = [
-            {"change_id": c.change_id, "memory_id": c.memory_id,
-             "operation": c.operation, "timestamp": c.timestamp,
-             "source": c.source, "content_hash": c.content_hash,
-             "old_content_hash": c.old_content_hash, "resolved": c.resolved}
+            {
+                "change_id": c.change_id,
+                "memory_id": c.memory_id,
+                "operation": c.operation,
+                "timestamp": c.timestamp,
+                "source": c.source,
+                "content_hash": c.content_hash,
+                "old_content_hash": c.old_content_hash,
+                "resolved": c.resolved,
+            }
             for c in self._changes[-5000:]
         ]
         changes_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
-    def record_change(self, memory_id: str, operation: str,
-                      content: str = "", old_content: str = "") -> ChangeEntry:
+    def record_change(self, memory_id: str, operation: str, content: str = "", old_content: str = "") -> ChangeEntry:
         """记录变更"""
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16] if content else ""
         old_hash = hashlib.sha256(old_content.encode()).hexdigest()[:16] if old_content else ""
@@ -105,14 +114,17 @@ class SyncManager:
             pending = [c for c in pending if c.timestamp > since]
 
         return [
-            {"id": c.change_id, "memory_id": c.memory_id,
-             "operation": c.operation, "timestamp": c.timestamp,
-             "source": c.source}
+            {
+                "id": c.change_id,
+                "memory_id": c.memory_id,
+                "operation": c.operation,
+                "timestamp": c.timestamp,
+                "source": c.source,
+            }
             for c in pending[-200:]
         ]
 
-    def _check_single_remote_conflict(self, rc: dict,
-                                       local_entries: list[ChangeEntry]) -> dict | None:
+    def _check_single_remote_conflict(self, rc: dict, local_entries: list[ChangeEntry]) -> dict | None:
         """检查单个远程变更是否与本地存在冲突"""
         mem_id = rc.get("memory_id", "")
         for lc in local_entries:
@@ -122,10 +134,12 @@ class SyncManager:
 
     @staticmethod
     def _is_update_conflict(lc: ChangeEntry, rc: dict) -> bool:
-        return (not lc.resolved and
-                lc.operation == "update" and
-                rc.get("operation") == "update" and
-                lc.content_hash != rc.get("content_hash", ""))
+        return (
+            not lc.resolved
+            and lc.operation == "update"
+            and rc.get("operation") == "update"
+            and lc.content_hash != rc.get("content_hash", "")
+        )
 
     @staticmethod
     def _build_conflict_dict(mem_id: str, lc: ChangeEntry, rc: dict) -> dict:
@@ -200,9 +214,14 @@ class SyncManager:
             entries = [c for c in entries if c.memory_id == memory_id]
 
         return [
-            {"id": c.change_id, "memory_id": c.memory_id,
-             "operation": c.operation, "timestamp": c.timestamp,
-             "source": c.source, "resolved": c.resolved}
+            {
+                "id": c.change_id,
+                "memory_id": c.memory_id,
+                "operation": c.operation,
+                "timestamp": c.timestamp,
+                "source": c.source,
+                "resolved": c.resolved,
+            }
             for c in entries[-limit:]
         ]
 
@@ -228,9 +247,14 @@ class SyncManager:
             changes = [c for c in changes if c.source != source]
 
         return [
-            {"id": c.change_id, "memory_id": c.memory_id,
-             "operation": c.operation, "content_hash": c.content_hash,
-             "timestamp": c.timestamp, "source": c.source}
+            {
+                "id": c.change_id,
+                "memory_id": c.memory_id,
+                "operation": c.operation,
+                "content_hash": c.content_hash,
+                "timestamp": c.timestamp,
+                "source": c.source,
+            }
             for c in changes
         ]
 
@@ -253,7 +277,7 @@ class SyncManager:
                     conflicts += 1
                     continue
 
-            entry = self.record_change(mem_id, op, content=rc.get("content", ""))
+            self.record_change(mem_id, op, content=rc.get("content", ""))
             applied += 1
 
         self._save_changes()

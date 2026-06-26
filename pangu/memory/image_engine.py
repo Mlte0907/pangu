@@ -7,13 +7,8 @@
 4. 跨模态搜索：文本搜图 / 图搜图
 5. 图片记忆存储：元数据+向量+缩略图摘要
 """
-import hashlib
-import io
-import json
+
 import logging
-import os
-import struct
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -26,9 +21,22 @@ logger = logging.getLogger("pangu.memory.image_engine")
 
 # CLIP 零样本标签
 CLIP_CATEGORIES = [
-    "photo", "screenshot", "diagram", "chart", "code", "document",
-    "person", "landscape", "object", "logo", "icon", "text_image",
-    "architecture", "interface", "poster", "handwriting",
+    "photo",
+    "screenshot",
+    "diagram",
+    "chart",
+    "code",
+    "document",
+    "person",
+    "landscape",
+    "object",
+    "logo",
+    "icon",
+    "text_image",
+    "architecture",
+    "interface",
+    "poster",
+    "handwriting",
 ]
 
 
@@ -45,8 +53,10 @@ class ImageMemoryEngine:
         if self._clip_model is None:
             try:
                 import os
+
                 os.environ["HF_HUB_OFFLINE"] = "1"
                 from transformers import CLIPModel, CLIPProcessor
+
                 self._clip_model = CLIPModel.from_pretrained(
                     "openai/clip-vit-base-patch32",
                     local_files_only=True,
@@ -73,6 +83,7 @@ class ImageMemoryEngine:
         if self.clip:
             try:
                 import torch
+
                 inputs = self._clip_processor(images=img, text=["a photo"], return_tensors="pt")
                 with torch.no_grad():
                     outputs = self.clip(**inputs)
@@ -98,6 +109,7 @@ class ImageMemoryEngine:
             return []
         try:
             import torch
+
             dummy_img = Image.new("RGB", (224, 224), (128, 128, 128))
             inputs = self._clip_processor(text=[text], images=dummy_img, return_tensors="pt")
             with torch.no_grad():
@@ -125,9 +137,8 @@ class ImageMemoryEngine:
 
         try:
             import torch
-            inputs = self._clip_processor(
-                text=CLIP_CATEGORIES, images=img, return_tensors="pt", padding=True
-            )
+
+            inputs = self._clip_processor(text=CLIP_CATEGORIES, images=img, return_tensors="pt", padding=True)
             with torch.no_grad():
                 outputs = self.clip(**inputs)
             logits = outputs.logits_per_image[0]
@@ -135,10 +146,12 @@ class ImageMemoryEngine:
 
             results = []
             for i in np.argsort(probs)[::-1][:5]:
-                results.append({
-                    "category": CLIP_CATEGORIES[i],
-                    "score": float(probs[i]),
-                })
+                results.append(
+                    {
+                        "category": CLIP_CATEGORIES[i],
+                        "score": float(probs[i]),
+                    }
+                )
 
             return {
                 "image": str(path),
@@ -165,7 +178,7 @@ class ImageMemoryEngine:
         # 描述生成
         desc_parts = [f"[图片] {path.name}"]
         desc_parts.append(f"{w}x{h}px, {mode}, {format_name}")
-        desc_parts.append(f"{stat.st_size/1024:.1f}KB")
+        desc_parts.append(f"{stat.st_size / 1024:.1f}KB")
         if colors:
             desc_parts.append(f"主色调: {', '.join(colors[:3])}")
 
@@ -212,10 +225,17 @@ class ImageMemoryEngine:
     def _rgb_to_name(r: int, g: int, b: int) -> str:
         """RGB 转颜色名"""
         colors = {
-            "红色": (180, 30, 30), "蓝色": (30, 30, 180), "绿色": (30, 150, 30),
-            "黄色": (200, 200, 30), "白色": (220, 220, 220), "黑色": (30, 30, 30),
-            "灰色": (128, 128, 128), "橙色": (220, 120, 30), "紫色": (120, 30, 180),
-            "青色": (30, 180, 180), "粉色": (220, 120, 160),
+            "红色": (180, 30, 30),
+            "蓝色": (30, 30, 180),
+            "绿色": (30, 150, 30),
+            "黄色": (200, 200, 30),
+            "白色": (220, 220, 220),
+            "黑色": (30, 30, 30),
+            "灰色": (128, 128, 128),
+            "橙色": (220, 120, 30),
+            "紫色": (120, 30, 180),
+            "青色": (30, 180, 180),
+            "粉色": (220, 120, 160),
         }
         best_name, best_dist = "未知", float("inf")
         for name, (cr, cg, cb) in colors.items():
@@ -247,7 +267,7 @@ class ImageMemoryEngine:
                 continue
             try:
                 n = min(len(query_vec), len(stored_vec))
-                dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n]))
+                dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n], strict=False))
                 norm_a = sum(a * a for a in query_vec[:n]) ** 0.5
                 norm_b = sum(b * b for b in stored_vec[:n]) ** 0.5
                 sim = dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0
@@ -272,7 +292,7 @@ class ImageMemoryEngine:
                 continue
             try:
                 n = min(len(query_vec), len(stored_vec))
-                dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n]))
+                dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n], strict=False))
                 norm_a = sum(a * a for a in query_vec[:n]) ** 0.5
                 norm_b = sum(b * b for b in stored_vec[:n]) ** 0.5
                 sim = dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0

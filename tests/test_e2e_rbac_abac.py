@@ -11,6 +11,7 @@
 - alice 写 classification=3 → clearance=1 < 3 → 403（classification_based）
 - 公开 visibility 资源 → 跨租户可读
 """
+
 from __future__ import annotations
 
 import json
@@ -32,12 +33,14 @@ def e2e_app(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(
         "PANGU_ABAC_USER_ATTRS",
-        json.dumps({
-            "admin": {"tenant_id": "acme", "clearance": 3, "department": "ops", "groups": ["admins"]},
-            "alice": {"tenant_id": "acme", "clearance": 1, "department": "rd", "groups": ["dev"]},
-            "bob": {"tenant_id": "globex", "clearance": 2, "department": "sales", "groups": ["sales"]},
-            "carol": {"tenant_id": "acme", "clearance": 0, "department": "qa", "groups": ["qa"]},
-        }),
+        json.dumps(
+            {
+                "admin": {"tenant_id": "acme", "clearance": 3, "department": "ops", "groups": ["admins"]},
+                "alice": {"tenant_id": "acme", "clearance": 1, "department": "rd", "groups": ["dev"]},
+                "bob": {"tenant_id": "globex", "clearance": 2, "department": "sales", "groups": ["sales"]},
+                "carol": {"tenant_id": "acme", "clearance": 0, "department": "qa", "groups": ["qa"]},
+            }
+        ),
     )
 
     from pangu.api.abac import clear_policies, register_builtin_policies
@@ -54,6 +57,7 @@ def e2e_app(tmp_path, monkeypatch):
 @pytest.fixture
 def e2e_client(e2e_app):
     from fastapi.testclient import TestClient
+
     app, _ = e2e_app
     return TestClient(app)
 

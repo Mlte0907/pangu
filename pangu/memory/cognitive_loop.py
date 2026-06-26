@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import Any
 
 from ..core.config import PanguConfig
-from ..memory.working_memory import get_working_memory
 from ..memory.attention import AttentionStrategy, get_attention_system
+from ..memory.working_memory import get_working_memory
 
 logger = logging.getLogger("pangu.memory.cognitive_loop")
 
@@ -64,7 +64,8 @@ class CognitiveLoop:
             "working_memory": wm.stats,
             "wm_focus": [
                 {"id": s.id, "urgency": s.urgency, "activation": round(s.activation, 2)}
-                for s in wm.slots if s.activation > 0.3
+                for s in wm.slots
+                if s.activation > 0.3
             ][:3],
             "total_time_ms": total_time_ms,
             "timestamp": datetime.now().isoformat(),
@@ -86,8 +87,14 @@ class CognitiveLoop:
     def _observe(self, wm, attention) -> dict:
         """观察阶段：扫描工作记忆和注意力状态"""
         focus_items = [
-            {"id": s.id, "content": s.content[:80], "activation": round(s.activation, 2), "urgency": round(s.urgency, 2)}
-            for s in wm.slots if s.activation > 0.3
+            {
+                "id": s.id,
+                "content": s.content[:80],
+                "activation": round(s.activation, 2),
+                "urgency": round(s.urgency, 2),
+            }
+            for s in wm.slots
+            if s.activation > 0.3
         ][:5]
         return {
             "wm_slots_used": len(wm.slots),

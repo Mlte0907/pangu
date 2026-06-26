@@ -1,10 +1,9 @@
 """盘古性能基准监控 — 持续监控性能变化"""
 
-import time
 import statistics
+import time
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
 from ..core.config import PanguConfig
 
@@ -12,6 +11,7 @@ from ..core.config import PanguConfig
 @dataclass
 class BenchmarkResult:
     """基准测试结果"""
+
     timestamp: str
     total_memories: int
     vector_count: int
@@ -31,9 +31,9 @@ class PerformanceMonitor:
 
     def run_benchmark(self) -> BenchmarkResult:
         """运行性能基准测试"""
-        from ..memory.layers import MemoryStack, _estimate_tokens
-        from ..memory.retrieval import recall, clear_recall_cache
         from ..memory.hybrid_search import hybrid_search
+        from ..memory.layers import MemoryStack, _estimate_tokens
+        from ..memory.retrieval import clear_recall_cache, recall
         from ..memory.vector_index import get_vector_index
 
         stack = MemoryStack(config=self.config)
@@ -45,6 +45,7 @@ class PerformanceMonitor:
 
         # ONNX 嵌入延迟
         from ..memory.onnx_embedder import get_onnx_embedder
+
         onnx = get_onnx_embedder()
         t0 = time.perf_counter()
         onnx.embed("benchmark test")

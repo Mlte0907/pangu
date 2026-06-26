@@ -8,18 +8,14 @@
 5. 性能边界测试
 """
 
-import os
 import sys
-import tempfile
 import threading
 import time
-from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -29,18 +25,17 @@ from pangu.memory.decay import decay_batch, get_decay_stats, get_purge_candidate
 from pangu.memory.event_bus import Event, EventBus, EventPriority
 from pangu.memory.importance_scorer import ImportanceScorer
 from pangu.memory.retrieval import (
+    _cosine_similarity,
+    _expand_query,
+    _get_search_suggestions,
+    _highlight_content,
     clear_recall_cache,
+    get_search_stats,
+    importance_feedback,
     recall,
     recall_by_ids,
     recall_context,
-    get_search_stats,
-    _cosine_similarity,
-    _highlight_content,
-    _expand_query,
-    _get_search_suggestions,
-    importance_feedback,
 )
-
 
 # ══════════════════════════════════════════════════════════════════════
 # 辅助函数
@@ -216,6 +211,7 @@ class TestEmptyInput:
     def test_ingest_batch_empty(self):
         """空文本列表批量摄入"""
         from pangu.memory.ingestion import ingest_batch
+
         results = ingest_batch([])
         assert results == []
 
@@ -577,7 +573,7 @@ class TestErrorRecovery:
     def test_recall_with_broken_embedding(self):
         """损坏嵌入向量的检索"""
         drawer = _make_drawer(id="broken_emb")
-        drawer.metadata["embedding"] = [float('nan')] * 384
+        drawer.metadata["embedding"] = [float("nan")] * 384
         results = recall(query="test", drawers=[drawer], limit=5)
         assert isinstance(results, list)
 
@@ -643,6 +639,7 @@ class TestErrorRecovery:
     def test_missing_file_layer0(self):
         """Layer0 身份文件不存在"""
         from pangu.memory.layers import Layer0
+
         layer = Layer0(identity_path="/tmp/nonexistent_pangu_test_identity.txt")
         text = layer.render()
         assert "身份未配置" in text
@@ -666,7 +663,8 @@ class TestErrorRecovery:
     def test_event_bus_subscribe_nonexistent_event(self):
         """订阅不存在的事件类型"""
         bus = EventBus()
-        handler = lambda e: None
+        def handler(e):
+            return None
         bus.subscribe("nonexistent_type", handler)
         bus.publish(Event(type="nonexistent_type", data={}))
         bus.unsubscribe("nonexistent_type", handler)
@@ -729,6 +727,7 @@ class TestPerformanceBoundary:
     def test_batch_ingest_100(self):
         """批量摄入 100 条记忆"""
         from pangu.memory.ingestion import ingest_batch
+
         texts = [f"批量测试记忆编号{i}" for i in range(100)]
         results = ingest_batch(texts)
         assert isinstance(results, list)
@@ -780,10 +779,7 @@ class TestPerformanceBoundary:
 
     def test_decay_batch_1000(self):
         """1000 条记忆批量衰减"""
-        drawers = [
-            _make_drawer(id=f"d_{i}", importance=float(i % 5 + 1))
-            for i in range(1000)
-        ]
+        drawers = [_make_drawer(id=f"d_{i}", importance=float(i % 5 + 1)) for i in range(1000)]
         stats = decay_batch(drawers, dry_run=True)
         assert stats["total"] == 1000
 
@@ -840,6 +836,7 @@ class TestPerformanceBoundary:
     def test_memory_validator_memory_diff(self):
         """记忆差异计算"""
         from pangu.memory.memory_diff import MemoryDiffEngine
+
         engine = MemoryDiffEngine()
         result = engine.diff_content("版本A内容", "版本B内容", id_a="diff_a", id_b="diff_b")
         assert result.memory_id_a == "diff_a"
@@ -849,6 +846,7 @@ class TestPerformanceBoundary:
     def test_hot_cold_memory_split(self):
         """冷热记忆分离"""
         from pangu.memory.decay import get_purge_candidates
+
         drawers = _make_drawers(20)
         for d in drawers[:5]:
             d.metadata["decay_score"] = 0.1
@@ -860,6 +858,7 @@ class TestPerformanceBoundary:
     def test_memory_export_import_roundtrip(self):
         """记忆导出导入往返"""
         from pangu.memory.export_import import ExportImportEngine
+
         engine = ExportImportEngine()
         drawers = _make_drawers(5)
         result = engine.export_json(drawers)
@@ -932,6 +931,7 @@ class TestPerformanceBoundary:
     def test_lru_cache_basic(self):
         """LRU 缓存基本操作"""
         from pangu.memory.layers import LRUCache
+
         cache = LRUCache(max_size=3)
         cache.set("a", 1)
         cache.set("b", 2)
@@ -944,6 +944,7 @@ class TestPerformanceBoundary:
     def test_lru_cache_invalidate(self):
         """LRU 缓存清除"""
         from pangu.memory.layers import LRUCache
+
         cache = LRUCache()
         cache.set("x", 10)
         cache.set("y", 20)
@@ -970,6 +971,7 @@ class TestPerformanceBoundary:
     def test_memory_diff_no_changes(self):
         """无差异记忆对比"""
         from pangu.memory.memory_diff import MemoryDiffEngine
+
         engine = MemoryDiffEngine()
         result = engine.diff_content("相同内容", "相同内容", id_a="same", id_b="same")
         assert result.added == 0

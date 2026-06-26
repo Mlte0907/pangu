@@ -6,10 +6,9 @@
 3. 想法生成：基于已有知识生成新想法
 4. 类比推理：将一个领域的解决方案迁移到另一个领域
 """
+
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from dataclasses import dataclass
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -20,6 +19,7 @@ logger = logging.getLogger("pangu.memory.creative_thinking")
 @dataclass
 class Idea:
     """生成的想法"""
+
     title: str
     description: str
     source_memories: list[str]  # 来源记忆 ID
@@ -117,13 +117,15 @@ class CreativeThinking:
 
                 common = wing1_tags & wing2_tags
                 if common:
-                    ideas.append(Idea(
-                        title=f"{wings[i]} 与 {wings[j]} 的关联",
-                        description=f"发现共同主题: {', '.join(list(common)[:3])}",
-                        source_memories=[d.id for d in by_wing[wings[i]][:2]],
-                        confidence=0.7,
-                        category="innovation",
-                    ))
+                    ideas.append(
+                        Idea(
+                            title=f"{wings[i]} 与 {wings[j]} 的关联",
+                            description=f"发现共同主题: {', '.join(list(common)[:3])}",
+                            source_memories=[d.id for d in by_wing[wings[i]][:2]],
+                            confidence=0.7,
+                            category="innovation",
+                        )
+                    )
 
         return ideas
 
@@ -134,13 +136,15 @@ class CreativeThinking:
         # 查找低重要性记忆（可能是改进机会）
         low_importance = [d for d in drawers if d.importance / 5.0 < 0.3]
         if len(low_importance) > 5:
-            ideas.append(Idea(
-                title="记忆优化机会",
-                description=f"发现 {len(low_importance)} 条低重要性记忆，可能需要压缩或归档",
-                source_memories=[d.id for d in low_importance[:3]],
-                confidence=0.6,
-                category="improvement",
-            ))
+            ideas.append(
+                Idea(
+                    title="记忆优化机会",
+                    description=f"发现 {len(low_importance)} 条低重要性记忆，可能需要压缩或归档",
+                    source_memories=[d.id for d in low_importance[:3]],
+                    confidence=0.6,
+                    category="improvement",
+                )
+            )
 
         return ideas
 
@@ -161,12 +165,14 @@ class CreativeThinking:
         for i in range(min(3, len(tag_list))):
             for j in range(i + 1, min(5, len(tag_list))):
                 if tag_list[i] != tag_list[j]:
-                    ideas.append({
-                        "title": f"跨领域创新: {tag_list[i]} + {tag_list[j]}",
-                        "description": f"结合 {tag_list[i]} 和 {tag_list[j]} 可能产生创新",
-                        "confidence": 0.7,
-                        "category": "innovation",
-                    })
+                    ideas.append(
+                        {
+                            "title": f"跨领域创新: {tag_list[i]} + {tag_list[j]}",
+                            "description": f"结合 {tag_list[i]} 和 {tag_list[j]} 可能产生创新",
+                            "confidence": 0.7,
+                            "category": "innovation",
+                        }
+                    )
         return ideas
 
     def generate_novel_ideas(self, domain: str, context: str, drawers: list[Drawer] = None) -> list[dict]:

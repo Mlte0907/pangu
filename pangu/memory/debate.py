@@ -5,13 +5,12 @@
 2. 四维度评分 — 逻辑性/可行性/创新性/完整性
 3. 加权总分选优 — 按维度权重计算胜出策略
 """
+
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.debate")
 
@@ -38,7 +37,7 @@ def _clamp_score(value: int) -> int:
     return max(0, min(5, value))
 
 
-def _count_keywords(text: str, keywords: List[str]) -> int:
+def _count_keywords(text: str, keywords: list[str]) -> int:
     return sum(1 for kw in keywords if kw in text)
 
 
@@ -47,7 +46,9 @@ class DebateStrategy:
     name: str = ""
     description: str = ""
     answer: str = ""
-    scores: Dict[str, int] = field(default_factory=lambda: {"logic": 0, "feasibility": 0, "innovation": 0, "completeness": 0})
+    scores: dict[str, int] = field(
+        default_factory=lambda: {"logic": 0, "feasibility": 0, "innovation": 0, "completeness": 0}
+    )
 
     @property
     def weighted_total(self) -> float:
@@ -95,7 +96,11 @@ def _score_strategy(strategy: DebateStrategy, question: str) -> DebateStrategy:
     innovation_score = min(5, 2 + _count_keywords(answer, INNOVATION_KEYWORDS))
     completeness_score = min(5, 2 + _count_keywords(answer, COMPLETENESS_KEYWORDS))
 
-    sentences = [s.strip() for s in answer.replace("。", ".\n").replace("！", "!\n").replace("？", "?\n").split("\n") if s.strip()]
+    sentences = [
+        s.strip()
+        for s in answer.replace("。", ".\n").replace("！", "!\n").replace("？", "?\n").split("\n")
+        if s.strip()
+    ]
     if len(sentences) >= 5:
         completeness_score = min(5, completeness_score + 1)
     elif len(sentences) < 3:
@@ -161,7 +166,7 @@ class DebateEngine:
             return cached["result"]
 
         selected_templates = STRATEGY_TEMPLATES[:strategies_count]
-        strategies: List[DebateStrategy] = []
+        strategies: list[DebateStrategy] = []
 
         for template in selected_templates:
             answer = _generate_strategy_answer(template, question, context)

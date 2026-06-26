@@ -6,14 +6,13 @@
 3. 上下文注入：新会话启动时自动加载相关历史上下文
 4. 跨会话链接：发现并链接不同会话间的关联记忆
 """
+
 import json
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.session_bridge")
 
@@ -42,8 +41,7 @@ class SessionBridge:
         except Exception as e:
             logger.error(f"保存会话数据失败: {e}")
 
-    def start_session(self, session_id: str, agent: str = "claude",
-                      description: str = "") -> dict:
+    def start_session(self, session_id: str, agent: str = "claude", description: str = "") -> dict:
         """记录新会话开始"""
         session = {
             "id": session_id,
@@ -62,8 +60,9 @@ class SessionBridge:
         self._save_sessions()
         return {"status": "started", "session_id": session_id}
 
-    def end_session(self, session_id: str, summary: str = "",
-                    key_events: list[str] = None, files_modified: list[str] = None) -> dict:
+    def end_session(
+        self, session_id: str, summary: str = "", key_events: list[str] = None, files_modified: list[str] = None
+    ) -> dict:
         """记录会话结束，生成摘要"""
         for s in self._sessions["sessions"]:
             if s["id"] == session_id:
@@ -82,11 +81,13 @@ class SessionBridge:
         """记录会话中的事件"""
         for s in self._sessions["sessions"]:
             if s["id"] == session_id:
-                s["key_events"].append({
-                    "type": event_type,
-                    "detail": detail[:200],
-                    "timestamp": datetime.now().isoformat(),
-                })
+                s["key_events"].append(
+                    {
+                        "type": event_type,
+                        "detail": detail[:200],
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
                 self._save_sessions()
                 return {"status": "recorded"}
         return {"error": f"会话 {session_id} 未找到"}
@@ -95,11 +96,13 @@ class SessionBridge:
         """记录工具调用"""
         for s in self._sessions["sessions"]:
             if s["id"] == session_id:
-                s["tools_called"].append({
-                    "tool": tool_name,
-                    "summary": result_summary[:100],
-                    "timestamp": datetime.now().isoformat(),
-                })
+                s["tools_called"].append(
+                    {
+                        "tool": tool_name,
+                        "summary": result_summary[:100],
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
                 self._save_sessions()
                 return {"status": "recorded"}
         return {"error": f"会话 {session_id} 未找到"}
@@ -134,7 +137,9 @@ class SessionBridge:
 
         return {
             "context": "\n\n".join(context_parts),
-            "sessions": [{"id": s["id"], "summary": s.get("summary", ""), "started_at": s.get("started_at", "")} for s in recent],
+            "sessions": [
+                {"id": s["id"], "summary": s.get("summary", ""), "started_at": s.get("started_at", "")} for s in recent
+            ],
             "total_sessions": len(sessions),
         }
 
@@ -157,6 +162,7 @@ class SessionBridge:
         """将会话摘要存入 Palace"""
         try:
             from ..memory.ingestion import remember
+
             summary = session.get("summary", "")
             if not summary:
                 events = session.get("key_events", [])

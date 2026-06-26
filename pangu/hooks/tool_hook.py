@@ -7,6 +7,7 @@ ECC 协议：
 
 自动过滤低价值调用，提取文件变更和关键信息，上传到盘古记忆。
 """
+
 import json
 import os
 import re
@@ -22,23 +23,71 @@ IMPORTANT_TOOLS = {"Write", "Edit", "Bash", "Agent", "TodoWrite", "TaskCreate", 
 FILE_TOOLS = {"Write", "Edit", "Bash"}
 
 HIGH_IMPORTANCE_KEYWORDS = [
-    "修复", "fix", "bug", "BUG", "错误", "问题",
-    "安全", "security", "漏洞", "vulnerability",
-    "重构", "refactor", "优化", "performance",
-    "新增", "create", "删除", "delete",
+    "修复",
+    "fix",
+    "bug",
+    "BUG",
+    "错误",
+    "问题",
+    "安全",
+    "security",
+    "漏洞",
+    "vulnerability",
+    "重构",
+    "refactor",
+    "优化",
+    "performance",
+    "新增",
+    "create",
+    "删除",
+    "delete",
 ]
 
 BASH_BLACKLIST = {
-    "ls", "pwd", "cd", "echo", "cat", "head", "tail",
-    "grep", "find", "which", "whoami", "date", "uptime",
-    "df", "du", "free", "uname", "arch", "id", "env",
-    "kill", "ps", "top", "htop",
+    "ls",
+    "pwd",
+    "cd",
+    "echo",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "which",
+    "whoami",
+    "date",
+    "uptime",
+    "df",
+    "du",
+    "free",
+    "uname",
+    "arch",
+    "id",
+    "env",
+    "kill",
+    "ps",
+    "top",
+    "htop",
 }
 BASH_WHITELIST = {
-    "git", "npm", "pip", "pip3", "python", "python3",
-    "make", "docker", "docker-compose", "kubectl",
-    "curl", "wget", "ssh", "scp", "rsync",
-    "bash", "sh", "zsh",
+    "git",
+    "npm",
+    "pip",
+    "pip3",
+    "python",
+    "python3",
+    "make",
+    "docker",
+    "docker-compose",
+    "kubectl",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "rsync",
+    "bash",
+    "sh",
+    "zsh",
 }
 
 SENSITIVE_PATTERNS = [
@@ -69,12 +118,12 @@ def _extract_bash_command(tool_input) -> list:
     stripped = cmd.strip()
     if not stripped:
         return []
-    parts = re.split(r'&&|\|\||;|\|', stripped)
+    parts = re.split(r"&&|\|\||;|\|", stripped)
     commands = []
     for part in parts:
         part = part.strip()
         if part:
-            commands.append(part.split()[0] if ' ' in part else part)
+            commands.append(part.split()[0] if " " in part else part)
     return commands
 
 
@@ -123,14 +172,14 @@ def _extract_file_changes(tool_name: str, tool_input) -> list:
             changes.append("git commit")
         elif "git push" in cmd:
             changes.append("git push")
-        elif re.search(r'\b(pip install|npm install|brew install)\b', cmd):
+        elif re.search(r"\b(pip install|npm install|brew install)\b", cmd):
             changes.append("依赖安装")
     return changes
 
 
 def _sanitize(text: str) -> str:
     for pattern in SENSITIVE_PATTERNS:
-        text = re.sub(pattern, '***', text)
+        text = re.sub(pattern, "***", text)
     return text
 
 
@@ -200,9 +249,9 @@ def main():
     if changes:
         summary_parts.extend(changes[:3])
 
-    text = f"""[工具调用] {datetime.now().strftime('%H:%M:%S')}
+    text = f"""[工具调用] {datetime.now().strftime("%H:%M:%S")}
 
-{' | '.join(summary_parts)}
+{" | ".join(summary_parts)}
 
 输入: {tool_input_str[:500]}
 输出: {tool_output_str[:1000]}"""

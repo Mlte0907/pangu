@@ -6,10 +6,10 @@
 3. 时间线可视化：展示记忆的时间演变
 4. 统计可视化：展示记忆分布统计
 """
+
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Any
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -40,7 +40,7 @@ class MemoryVisualizer:
             lines.append(f"  {rtype}: {count}")
 
         # 图谱结构
-        lines.append(f"\n图谱结构:")
+        lines.append("\n图谱结构:")
         entity_map = {e["id"]: e for e in entities}
         for rel in relations[:10]:  # 只显示前10条
             subject = entity_map.get(rel.get("subject_id", ""), {}).get("name", "?")
@@ -72,7 +72,7 @@ class MemoryVisualizer:
             all_tags.extend(d.tags)
         tag_counts = Counter(all_tags).most_common(10)
         if tag_counts:
-            lines.append(f"\n热门标签:")
+            lines.append("\n热门标签:")
             for tag, count in tag_counts:
                 lines.append(f"  {tag}: {count}")
 
@@ -86,7 +86,7 @@ class MemoryVisualizer:
             else:
                 importance_dist["低(<2)"] += 1
 
-        lines.append(f"\n重要性分布:")
+        lines.append("\n重要性分布:")
         for level, count in importance_dist.items():
             lines.append(f"  {level}: {count}")
 
@@ -126,9 +126,9 @@ class MemoryVisualizer:
 
         # 按 Wing 统计
         by_wing = Counter(d.wing for d in drawers)
-        lines.append(f"\n按 Wing 分布:")
+        lines.append("\n按 Wing 分布:")
         for wing, count in by_wing.most_common(5):
-            lines.append(f"  {wing}: {count} ({count/total*100:.1f}%)")
+            lines.append(f"  {wing}: {count} ({count / total * 100:.1f}%)")
 
         # 重要性统计
         avg_importance = sum(d.importance for d in drawers) / max(total, 1)

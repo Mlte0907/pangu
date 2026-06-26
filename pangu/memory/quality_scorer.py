@@ -7,6 +7,7 @@
 4. 质量趋势：跟踪记忆质量的变化趋势
 5. 自动修复：自动修复可修复的质量问题
 """
+
 import logging
 import re
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ logger = logging.getLogger("pangu.memory.quality_scorer")
 @dataclass
 class QualityDimension:
     """质量维度"""
+
     name: str
     score: float  # 0-1
     weight: float
@@ -27,6 +29,7 @@ class QualityDimension:
 @dataclass
 class QualityAssessment:
     """质量评估结果"""
+
     memory_id: str
     overall_score: float
     dimensions: list[QualityDimension]
@@ -39,7 +42,11 @@ class QualityScorer:
     """记忆质量评分引擎"""
 
     GRADE_THRESHOLDS = {
-        "A": 0.85, "B": 0.70, "C": 0.55, "D": 0.40, "F": 0.0,
+        "A": 0.85,
+        "B": 0.70,
+        "C": 0.55,
+        "D": 0.40,
+        "F": 0.0,
     }
 
     def __init__(self, config=None):
@@ -49,7 +56,7 @@ class QualityScorer:
     def score_completeness(self, drawer) -> QualityDimension:
         """完整性评分"""
         content_len = len(drawer.content)
-        has_tags = len(drawer.tags) > 0
+        len(drawer.tags) > 0
         has_wing = bool(drawer.wing)
 
         length_score = min(1.0, content_len / 100)
@@ -91,7 +98,7 @@ class QualityScorer:
         unique_chars = len(set(content))
         char_diversity = unique_chars / total_chars
 
-        meaningful = len(re.findall(r'[\u4e00-\u9fff]+|[a-zA-Z]+|\d+', content))
+        meaningful = len(re.findall(r"[\u4e00-\u9fff]+|[a-zA-Z]+|\d+", content))
         meaningful_ratio = meaningful / max(total_chars // 2, 1)
 
         score = char_diversity * 0.5 + min(1.0, meaningful_ratio) * 0.5
@@ -162,12 +169,14 @@ class QualityScorer:
 
         avg_score = total_score / max(len(assessments), 1)
 
-        self._assessment_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "total": len(assessments),
-            "avg_score": round(avg_score, 3),
-            "grades": grade_counts.copy(),
-        })
+        self._assessment_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "total": len(assessments),
+                "avg_score": round(avg_score, 3),
+                "grades": grade_counts.copy(),
+            }
+        )
 
         return {
             "total_assessed": len(assessments),
@@ -193,8 +202,7 @@ class QualityScorer:
                 issue_counts[key] = issue_counts.get(key, 0) + 1
 
         return [
-            {"issue": issue, "count": count}
-            for issue, count in sorted(issue_counts.items(), key=lambda x: -x[1])[:5]
+            {"issue": issue, "count": count} for issue, count in sorted(issue_counts.items(), key=lambda x: -x[1])[:5]
         ]
 
     def auto_fix(self, drawers: list) -> dict:
@@ -203,7 +211,7 @@ class QualityScorer:
         for d in drawers:
             if not d.tags:
                 words = [w for w in d.content.split() if len(w) >= 2]
-                d.tags = list(set(w for w in words if re.match(r'^[\u4e00-\u9fff]+$', w)))[:5]
+                d.tags = list(set(w for w in words if re.match(r"^[\u4e00-\u9fff]+$", w)))[:5]
                 if not d.tags:
                     d.tags = ["auto_tagged"]
                 fixed += 1

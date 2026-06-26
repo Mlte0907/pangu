@@ -6,16 +6,13 @@
 3. 音频摘要：基于转写文本生成记忆
 4. 自动入库：转写后自动存入 Palace 记忆
 """
+
 import json
 import logging
-import os
 import subprocess
-import tempfile
-from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.audio_engine")
 
@@ -35,6 +32,7 @@ class AudioMemoryEngine:
         if self._whisper_model is None:
             try:
                 import whisper
+
                 self._whisper_model = whisper.load_model(self._whisper_name)
                 logger.info(f"Whisper model '{self._whisper_name}' loaded")
             except Exception as e:
@@ -59,37 +57,44 @@ class AudioMemoryEngine:
 
         try:
             cmd = [
-                "ffprobe", "-v", "quiet",
-                "-print_format", "json",
-                "-show_format", "-show_streams",
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
                 str(path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 data = json.loads(result.stdout)
                 fmt = data.get("format", {})
-                meta.update({
-                    "duration": float(fmt.get("duration", 0)),
-                    "duration_str": self._format_duration(float(fmt.get("duration", 0))),
-                    "bitrate": int(fmt.get("bit_rate", 0)),
-                    "format_name": fmt.get("format_long_name", ""),
-                })
+                meta.update(
+                    {
+                        "duration": float(fmt.get("duration", 0)),
+                        "duration_str": self._format_duration(float(fmt.get("duration", 0))),
+                        "bitrate": int(fmt.get("bit_rate", 0)),
+                        "format_name": fmt.get("format_long_name", ""),
+                    }
+                )
 
                 for stream in data.get("streams", []):
                     if stream.get("codec_type") == "audio":
-                        meta.update({
-                            "audio_codec": stream.get("codec_name", ""),
-                            "channels": int(stream.get("channels", 0)),
-                            "sample_rate": int(stream.get("sample_rate", 0)),
-                        })
+                        meta.update(
+                            {
+                                "audio_codec": stream.get("codec_name", ""),
+                                "channels": int(stream.get("channels", 0)),
+                                "sample_rate": int(stream.get("sample_rate", 0)),
+                            }
+                        )
                         break
         except Exception as e:
             logger.warning(f"ffprobe failed: {e}")
 
         return meta
 
-    def transcribe(self, audio_path: str, language: str = None,
-                   task: str = "transcribe") -> dict:
+    def transcribe(self, audio_path: str, language: str = None, task: str = "transcribe") -> dict:
         """语音转文字"""
         path = Path(audio_path).expanduser()
         if not path.exists():
@@ -107,11 +112,13 @@ class AudioMemoryEngine:
 
             segments = []
             for seg in result.get("segments", []):
-                segments.append({
-                    "start": round(seg["start"], 2),
-                    "end": round(seg["end"], 2),
-                    "text": seg["text"].strip(),
-                })
+                segments.append(
+                    {
+                        "start": round(seg["start"], 2),
+                        "end": round(seg["end"], 2),
+                        "text": seg["text"].strip(),
+                    }
+                )
 
             return {
                 "text": result.get("text", "").strip(),
@@ -123,9 +130,14 @@ class AudioMemoryEngine:
             logger.error(f"Transcription failed: {e}")
             return {"error": str(e), "transcription": ""}
 
-    def ingest_audio(self, audio_path: str, wing: str = "default",
-                     description: str = "", tags: list[str] = None,
-                     auto_store: bool = True) -> dict:
+    def ingest_audio(
+        self,
+        audio_path: str,
+        wing: str = "default",
+        description: str = "",
+        tags: list[str] = None,
+        auto_store: bool = True,
+    ) -> dict:
         """从音频提取记忆并入库"""
         path = Path(audio_path).expanduser().resolve()
         if not path.exists():
@@ -178,6 +190,7 @@ class AudioMemoryEngine:
 
         if auto_store and transcription:
             from ..memory.ingestion import remember
+
             importance = min(1.0, 0.5 + len(transcription) / 5000)
             item_id, drawer = remember(
                 raw_text=content[:2000],

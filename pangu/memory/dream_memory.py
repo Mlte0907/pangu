@@ -7,9 +7,7 @@
 """
 
 import logging
-import uuid
 from datetime import datetime
-from typing import Any
 
 from ..core.config import PanguConfig
 
@@ -120,11 +118,7 @@ class DreamConsolidation:
                     continue
                 sim = self._jaccard_similarity(items[i].content, items[j].content)
                 if sim > 0.85:
-                    older = (
-                        items[j]
-                        if items[i].created_at > items[j].created_at
-                        else items[i]
-                    )
+                    older = items[j] if items[i].created_at > items[j].created_at else items[i]
                     merged_ids.add(older.id)
                     merged += 1
                 if merged >= 20:
@@ -141,11 +135,13 @@ class DreamConsolidation:
             for j in range(i + 1, len(items)):
                 sim = self._jaccard_similarity(items[i].content, items[j].content)
                 if 0.3 < sim < 0.85:
-                    self._link_pairs.append({
-                        "source": items[i].id,
-                        "target": items[j].id,
-                        "weight": round(sim, 3),
-                    })
+                    self._link_pairs.append(
+                        {
+                            "source": items[i].id,
+                            "target": items[j].id,
+                            "weight": round(sim, 3),
+                        }
+                    )
                     linked += 1
                 if linked >= 50:
                     break
@@ -156,25 +152,19 @@ class DreamConsolidation:
 
     def _step_decay(self, drawers: list) -> int:
         """衰减修剪：标记低重要性记忆"""
-        return sum(
-            1 for d in drawers
-            if d.importance < 2.0
-        )
+        return sum(1 for d in drawers if d.importance < 2.0)
 
     def _step_distill(self, items: list) -> int:
         """蒸馏候选：高重要性记忆作为知识蒸馏候选"""
-        return sum(
-            1 for d in items
-            if d.importance >= 4.0
-        )
+        return sum(1 for d in items if d.importance >= 4.0)
 
     @staticmethod
     def _jaccard_similarity(a: str, b: str) -> float:
         """3-gram Jaccard 相似度"""
         if not a or not b:
             return 0.0
-        a_grams = {a[i:i + 3] for i in range(max(0, len(a) - 2))}
-        b_grams = {b[i:i + 3] for i in range(max(0, len(b) - 2))}
+        a_grams = {a[i : i + 3] for i in range(max(0, len(a) - 2))}
+        b_grams = {b[i : i + 3] for i in range(max(0, len(b) - 2))}
         if not a_grams or not b_grams:
             return 0.0
         intersection = len(a_grams & b_grams)

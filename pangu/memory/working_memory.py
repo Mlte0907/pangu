@@ -28,13 +28,14 @@ WM_DEFAULT_TOKEN_BUDGET = 2048
 @dataclass
 class WMItem:
     """工作记忆项"""
+
     id: str
     content: str
     source: str = "unknown"
     emotional_valence: float = 0.0  # -1.0 ~ 1.0
-    urgency: float = 0.0            # 0.0 ~ 1.0
+    urgency: float = 0.0  # 0.0 ~ 1.0
     tokens: int = 0
-    activation: float = 1.0         # 0.0 ~ 1.0，越高越活跃
+    activation: float = 1.0  # 0.0 ~ 1.0，越高越活跃
     created_at: float = field(default_factory=time.time)
     last_access: float = field(default_factory=time.time)
     access_count: int = 0
@@ -142,9 +143,9 @@ class WorkingMemory:
 
         # 优先级1: 低激活 + 低情感
         low_act_low_val = [
-            (k, v) for k, v in candidates
-            if v.activation < self.EVICT_P1_ACTIVATION
-            and v.emotional_valence < self.EVICT_P1_VALENCE
+            (k, v)
+            for k, v in candidates
+            if v.activation < self.EVICT_P1_ACTIVATION and v.emotional_valence < self.EVICT_P1_VALENCE
         ]
         if low_act_low_val:
             victim_id, victim = min(low_act_low_val, key=lambda x: x[1].activation + x[1].emotional_valence)
@@ -173,8 +174,7 @@ class WorkingMemory:
 
     def _select_eviction_candidate(self, candidates: list) -> tuple:
         """从候选列表中选择驱逐目标"""
-        low_act_low_val = [(k, v) for k, v in candidates
-                           if v.activation < 0.3 and v.emotional_valence < 0.3]
+        low_act_low_val = [(k, v) for k, v in candidates if v.activation < 0.3 and v.emotional_valence < 0.3]
         if low_act_low_val:
             return min(low_act_low_val, key=lambda x: x[1].activation + x[1].emotional_valence)
 
@@ -282,6 +282,7 @@ class WorkingMemory:
     def checkpoint(self) -> int:
         """将工作记忆持久化（用于崩溃恢复）"""
         from ..core.config import PanguConfig
+
         config = PanguConfig()
         checkpoint_path = os.path.join(config.palace_path, "wm_checkpoint.json")
 
@@ -322,6 +323,7 @@ class WorkingMemory:
     def restore_checkpoint(self) -> int:
         """从持久化恢复工作记忆"""
         from ..core.config import PanguConfig
+
         config = PanguConfig()
         checkpoint_path = os.path.join(config.palace_path, "wm_checkpoint.json")
 
@@ -359,9 +361,7 @@ class WorkingMemory:
         if self._checkpoint_thread and self._checkpoint_thread.is_alive():
             return
         self._checkpoint_stop.clear()
-        self._checkpoint_thread = threading.Thread(
-            target=self._auto_checkpoint_loop, daemon=True, name="wm-checkpoint"
-        )
+        self._checkpoint_thread = threading.Thread(target=self._auto_checkpoint_loop, daemon=True, name="wm-checkpoint")
         self._checkpoint_thread.start()
         logger.info(f"WM auto-checkpoint started (interval={WM_CHECKPOINT_INTERVAL}s)")
 

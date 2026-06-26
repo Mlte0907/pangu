@@ -6,8 +6,9 @@
 3. 分工协调：根据 Agent 专长分配任务
 4. 冲突解决：解决 Agent 间知识冲突
 """
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 logger = logging.getLogger("pangu.memory.collaborative_intelligence")
@@ -16,6 +17,7 @@ logger = logging.getLogger("pangu.memory.collaborative_intelligence")
 @dataclass
 class AgentProfile:
     """Agent 画像"""
+
     agent_id: str
     name: str
     specialties: list[str]  # 专长领域
@@ -26,6 +28,7 @@ class AgentProfile:
 @dataclass
 class CollaborationResult:
     """协作结果"""
+
     task: str
     participants: list[str]
     shared_findings: list[dict]
@@ -109,11 +112,13 @@ class CollaborativeIntelligence:
         for agent_id in participants:
             if agent_id in self._agents:
                 agent = self._agents[agent_id]
-                findings.append({
-                    "agent": agent.name,
-                    "domain": agent.specialties[:2] if agent.specialties else ["general"],
-                    "shared_knowledge_count": len(agent.shared_knowledge),
-                })
+                findings.append(
+                    {
+                        "agent": agent.name,
+                        "domain": agent.specialties[:2] if agent.specialties else ["general"],
+                        "shared_knowledge_count": len(agent.shared_knowledge),
+                    }
+                )
 
         consensus = f"基于 {len(participants)} 个 Agent 的协作分析"
         confidence = min(0.9, 0.5 + len(participants) * 0.1)
@@ -126,12 +131,14 @@ class CollaborativeIntelligence:
             confidence=confidence,
         )
 
-        self._collaboration_history.append({
-            "task": task,
-            "participants": participants,
-            "timestamp": datetime.now().isoformat(),
-            "confidence": confidence,
-        })
+        self._collaboration_history.append(
+            {
+                "task": task,
+                "participants": participants,
+                "timestamp": datetime.now().isoformat(),
+                "confidence": confidence,
+            }
+        )
 
         return result
 
@@ -171,8 +178,13 @@ class CollaborativeIntelligence:
             "shared_knowledge_count": len(self._shared_knowledge),
             "collaboration_count": len(self._collaboration_history),
             "agents": [
-                {"id": a.agent_id, "name": a.name, "trust": a.trust_score,
-                 "specialties": a.specialties, "shared": len(a.shared_knowledge)}
+                {
+                    "id": a.agent_id,
+                    "name": a.name,
+                    "trust": a.trust_score,
+                    "specialties": a.specialties,
+                    "shared": len(a.shared_knowledge),
+                }
                 for a in self._agents.values()
             ],
         }

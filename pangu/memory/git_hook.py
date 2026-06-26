@@ -6,15 +6,14 @@
 3. 状态查询：查看最近的 git 操作记录
 4. 自动入库：commit 信息自动存入 Palace 记忆
 """
+
 import json
 import logging
 import subprocess
-import time
 from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.git_hook")
 
@@ -48,7 +47,9 @@ class GitHook:
         try:
             result = subprocess.run(
                 ["git"] + args,
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
                 cwd=cwd,
             )
             return result.stdout.strip()
@@ -147,7 +148,8 @@ class GitHook:
         """将 commit 信息存入 Palace"""
         try:
             from ..memory.ingestion import remember
-            content = f"Git {commit_info.get('type','commit')}: {commit_info.get('message','')}"
+
+            content = f"Git {commit_info.get('type', 'commit')}: {commit_info.get('message', '')}"
             if commit_info.get("files"):
                 content += f"\n改动文件: {', '.join(commit_info['files'][:5])}"
             if commit_info.get("author"):

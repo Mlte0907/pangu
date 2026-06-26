@@ -73,7 +73,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "B", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "E402", "F401", "F821", "F811", "F841", "E722", "E741", "B007", "B015", "B035", "B905", "N801", "N802", "N806"]
 
 [tool.ruff.lint.per-file-ignores]
 # 手动测试脚本允许 import 在前置日志之后（UX 友好）

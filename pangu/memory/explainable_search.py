@@ -6,8 +6,9 @@
 3. 权重可视化：展示各因素对排序的贡献
 4. 搜索改进建议：基于解释给出搜索优化建议
 """
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger("pangu.memory.explainable_search")
 
@@ -15,6 +16,7 @@ logger = logging.getLogger("pangu.memory.explainable_search")
 @dataclass
 class SearchExplanation:
     """搜索结果解释"""
+
     memory_id: str
     content_preview: str
     score: float
@@ -57,12 +59,12 @@ class ExplainableSearchEngine:
                     matched.append(term)
                     factors["keyword_match"] = factors.get("keyword_match", 0) + 0.2
 
-            if hasattr(drawer, 'tags') and drawer.tags:
+            if hasattr(drawer, "tags") and drawer.tags:
                 tag_overlap = len(set(query_terms) & set(t.lower() for t in drawer.tags))
                 if tag_overlap > 0:
                     factors["tag_match"] = tag_overlap * 0.15
 
-            if hasattr(drawer, 'importance'):
+            if hasattr(drawer, "importance"):
                 imp_factor = (drawer.importance / 5.0) * 0.1
                 factors["importance"] = imp_factor
 
@@ -72,29 +74,33 @@ class ExplainableSearchEngine:
             if not factors:
                 factors["partial_match"] = 0.1
 
-            total_factor = sum(factors.values())
+            sum(factors.values())
             if factors:
                 primary = max(factors.items(), key=lambda x: x[1])
                 primary_reason = f"{primary[0]} (贡献 {primary[1]:.2f})"
             else:
                 primary_reason = "弱匹配"
 
-            explanations.append(SearchExplanation(
-                memory_id=memory_id,
-                content_preview=drawer.content[:80],
-                score=score,
-                factors=factors,
-                primary_reason=primary_reason,
-                matched_terms=matched,
-            ))
+            explanations.append(
+                SearchExplanation(
+                    memory_id=memory_id,
+                    content_preview=drawer.content[:80],
+                    score=score,
+                    factors=factors,
+                    primary_reason=primary_reason,
+                    matched_terms=matched,
+                )
+            )
 
         explanations.sort(key=lambda e: e.score, reverse=True)
 
-        self._explanation_history.append({
-            "query": query,
-            "result_count": len(explanations),
-            "top_score": explanations[0].score if explanations else 0,
-        })
+        self._explanation_history.append(
+            {
+                "query": query,
+                "result_count": len(explanations),
+                "top_score": explanations[0].score if explanations else 0,
+            }
+        )
 
         return explanations
 
@@ -133,7 +139,8 @@ class ExplainableSearchEngine:
             "total_explanations": len(self._explanation_history),
             "avg_results_per_query": (
                 sum(e["result_count"] for e in self._explanation_history) / len(self._explanation_history)
-                if self._explanation_history else 0
+                if self._explanation_history
+                else 0
             ),
         }
 

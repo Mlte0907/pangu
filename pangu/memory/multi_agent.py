@@ -20,41 +20,45 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
-from .conflict import ConflictDetector, ConflictSeverity, MemoryConflict
+from .conflict import ConflictDetector
 
 logger = logging.getLogger("pangu.memory.multi_agent")
 
 
 class MemoryScope(str, Enum):
     """记忆权限范围"""
-    PRIVATE = "private"    # 仅创建者可见
-    SHARED = "shared"      # 指定Agent组可见
-    PUBLIC = "public"      # 所有Agent可见
+
+    PRIVATE = "private"  # 仅创建者可见
+    SHARED = "shared"  # 指定Agent组可见
+    PUBLIC = "public"  # 所有Agent可见
 
 
 class SyncStrategy(str, Enum):
     """跨Agent同步策略"""
-    IMMEDIATE = "immediate"     # 实时同步
-    BATCH = "batch"             # 批量同步
-    ON_DEMAND = "on_demand"     # 按需同步
+
+    IMMEDIATE = "immediate"  # 实时同步
+    BATCH = "batch"  # 批量同步
+    ON_DEMAND = "on_demand"  # 按需同步
 
 
 class ConflictResolution(str, Enum):
     """冲突解决策略"""
-    LAST_WRITE_WINS = "last_write_wins"   # 最后写入者胜出
+
+    LAST_WRITE_WINS = "last_write_wins"  # 最后写入者胜出
     HIGHEST_PRIORITY = "highest_priority"  # 高优先级Agent胜出
-    MANUAL = "manual"                       # 人工介入
-    MERGE = "merge"                         # 合并
+    MANUAL = "manual"  # 人工介入
+    MERGE = "merge"  # 合并
 
 
 @dataclass
 class AgentMemory:
     """Agent记忆项"""
+
     id: str
     content: str
-    owner: str                           # 创建者Agent ID
+    owner: str  # 创建者Agent ID
     scope: MemoryScope = MemoryScope.PRIVATE
     shared_with: list[str] = field(default_factory=list)  # shared范围下的可见Agent
     tags: list[str] = field(default_factory=list)
@@ -63,25 +67,27 @@ class AgentMemory:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     references: list[str] = field(default_factory=list)  # 引用的其他记忆ID
-    ref_count: int = 0                  # 被引用次数
+    ref_count: int = 0  # 被引用次数
 
 
 @dataclass
 class MemoryReference:
     """记忆引用关系"""
-    referrer: str       # 引用者Agent ID
-    reference_id: str   # 被引用的记忆ID
-    referrer_id: str    # 引用者记忆ID
+
+    referrer: str  # 引用者Agent ID
+    reference_id: str  # 被引用的记忆ID
+    referrer_id: str  # 引用者记忆ID
     created_at: float = field(default_factory=time.time)
 
 
 @dataclass
 class SyncEvent:
     """同步事件"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:12])
     agent_id: str = ""
     memory_id: str = ""
-    action: str = ""       # create / update / delete
+    action: str = ""  # create / update / delete
     timestamp: float = field(default_factory=time.time)
     resolved: bool = False
 
@@ -156,7 +162,6 @@ class MultiAgentMemory:
 
     def _log_activity(self, agent_id: str, action: str, detail: str = ""):
         """记录活动流"""
-        import time as _time
         entry = {
             "agent": agent_id,
             "action": action,
@@ -165,7 +170,7 @@ class MultiAgentMemory:
         }
         self._activity_feed.append(entry)
         if len(self._activity_feed) > self._max_activity:
-            self._activity_feed = self._activity_feed[-self._max_activity:]
+            self._activity_feed = self._activity_feed[-self._max_activity :]
 
     def get_activity_feed(self, agent_id: str = None, limit: int = 20) -> list[dict]:
         """获取活动流"""
@@ -229,16 +234,20 @@ class MultiAgentMemory:
         with self._lock:
             self._memories[memory_id] = memory
             self._stats[agent_id]["writes"] += 1
-            self._log_activity(agent_id, "write", f"Wrote {getattr(memory.scope, 'value', memory.scope)} memory: {content[:60]}")
+            self._log_activity(
+                agent_id, "write", f"Wrote {getattr(memory.scope, 'value', memory.scope)} memory: {content[:60]}"
+            )
 
             # 记录引用关系
-            for ref_id in (references or []):
+            for ref_id in references or []:
                 if ref_id in self._memories:
-                    self._references[ref_id].append(MemoryReference(
-                        referrer=agent_id,
-                        reference_id=ref_id,
-                        referrer_id=memory_id,
-                    ))
+                    self._references[ref_id].append(
+                        MemoryReference(
+                            referrer=agent_id,
+                            reference_id=ref_id,
+                            referrer_id=memory_id,
+                        )
+                    )
                     self._memories[ref_id].ref_count += 1
 
         # 发布同步事件
@@ -392,11 +401,13 @@ class MultiAgentMemory:
             if reference_id not in memory.references:
                 memory.references.append(reference_id)
                 ref_target.ref_count += 1
-                self._references[reference_id].append(MemoryReference(
-                    referrer=agent_id,
-                    reference_id=reference_id,
-                    referrer_id=memory_id,
-                ))
+                self._references[reference_id].append(
+                    MemoryReference(
+                        referrer=agent_id,
+                        reference_id=reference_id,
+                        referrer_id=memory_id,
+                    )
+                )
         return True
 
     def get_references_to(self, memory_id: str) -> list[MemoryReference]:
@@ -428,13 +439,15 @@ class MultiAgentMemory:
                 memory = self._memories.get(mid)
                 if not memory:
                     continue
-                result.append({
-                    "id": memory.id,
-                    "owner": memory.owner,
-                    "content_preview": memory.content[:60],
-                    "version": memory.version,
-                    "level": level,
-                })
+                result.append(
+                    {
+                        "id": memory.id,
+                        "owner": memory.owner,
+                        "content_preview": memory.content[:60],
+                        "version": memory.version,
+                        "level": level,
+                    }
+                )
                 # 向上追溯：谁引用了这条记忆
                 for ref in self._references.get(mid, []):
                     queue.append((ref.referrer_id, level + 1))
@@ -450,8 +463,7 @@ class MultiAgentMemory:
     def get_pending_syncs(self, agent_id: str) -> list[SyncEvent]:
         """获取Agent的待同步事件"""
         with self._lock:
-            return [e for e in self._sync_events
-                    if not e.resolved and e.agent_id != agent_id]
+            return [e for e in self._sync_events if not e.resolved and e.agent_id != agent_id]
 
     def resolve_sync(self, event_id: str) -> None:
         """标记同步事件已处理"""
@@ -490,8 +502,7 @@ class MultiAgentMemory:
         """
         with self._lock:
             if agent_id:
-                memories = [m for m in self._memories.values()
-                            if m.owner == agent_id and self._is_visible(m, agent_id)]
+                memories = [m for m in self._memories.values() if m.owner == agent_id and self._is_visible(m, agent_id)]
             else:
                 memories = list(self._memories.values())
 
@@ -571,7 +582,7 @@ class MultiAgentMemory:
         with self._lock:
             scope_counts = defaultdict(int)
             for m in self._memories.values():
-                scope_counts[getattr(m.scope, 'value', m.scope)] += 1
+                scope_counts[getattr(m.scope, "value", m.scope)] += 1
 
             return {
                 "total_agents": len(self._agents),
@@ -681,28 +692,32 @@ class MultiAgentMemory:
         """检测新记忆与已有记忆的冲突"""
         conflicts = []
         with self._lock:
-            existing = [m for m in self._memories.values()
-                        if m.id != new_memory.id and self._is_visible(m, new_memory.owner)]
+            existing = [
+                m for m in self._memories.values() if m.id != new_memory.id and self._is_visible(m, new_memory.owner)
+            ]
 
         for mem in existing:
             if not self._texts_may_conflict(new_memory.content, mem.content):
                 continue
             conf = self._compute_conflict(new_memory, mem)
             if conf["confidence"] > 0.3:
-                conflicts.append({
-                    "memory_a": new_memory.id,
-                    "memory_b": mem.id,
-                    "description": conf["description"],
-                    "severity": conf["severity"],
-                    "confidence": conf["confidence"],
-                })
+                conflicts.append(
+                    {
+                        "memory_a": new_memory.id,
+                        "memory_b": mem.id,
+                        "description": conf["description"],
+                        "severity": conf["severity"],
+                        "confidence": conf["confidence"],
+                    }
+                )
         return conflicts
 
     def _texts_may_conflict(self, text_a: str, text_b: str) -> bool:
         """快速判断两段文本是否可能冲突（基于关键词重叠）"""
         import re
-        words_a = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text_a.lower()))
-        words_b = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text_b.lower()))
+
+        words_a = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text_a.lower()))
+        words_b = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text_b.lower()))
         if not words_a or not words_b:
             return False
         return len(words_a & words_b) >= 2
@@ -710,12 +725,11 @@ class MultiAgentMemory:
     def _compute_conflict(self, mem_a: AgentMemory, mem_b: AgentMemory) -> dict[str, Any]:
         """计算两段内容的冲突程度"""
         import re
+
         # 矛盾词对
         contradiction_pairs = [
-            (["是", "正确", "成功", "支持", "增加"],
-             ["不是", "错误", "失败", "不支持", "减少"]),
-            (["yes", "true", "success", "enable"],
-             ["no", "false", "fail", "disable"]),
+            (["是", "正确", "成功", "支持", "增加"], ["不是", "错误", "失败", "不支持", "减少"]),
+            (["yes", "true", "success", "enable"], ["no", "false", "fail", "disable"]),
         ]
 
         text_a = mem_a.content.lower()
@@ -731,8 +745,8 @@ class MultiAgentMemory:
                 contradictions += 1
 
         # 主题重叠
-        words_a = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text_a))
-        words_b = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text_b))
+        words_a = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text_a))
+        words_b = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text_b))
         overlap = len(words_a & words_b) / max(len(words_a | words_b), 1)
 
         if contradictions == 0:

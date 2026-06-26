@@ -10,11 +10,10 @@
 7. 矛盾检测：检测图中的矛盾关系
 8. 推理链可视化：展示推理过程和依据
 """
+
 import logging
 import re
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from dataclasses import dataclass
 
 from ..core.config import PanguConfig
 from .knowledge_graph import KnowledgeGraph
@@ -25,6 +24,7 @@ logger = logging.getLogger("pangu.memory.graph_reasoning")
 @dataclass
 class InferenceResult:
     """推理结果"""
+
     query: str
     entities: list[dict]
     paths: list[list[dict]]
@@ -60,16 +60,10 @@ class GraphReasoning:
         reasoning_parts = []
         for i in range(len(entities)):
             for j in range(i + 1, len(entities)):
-                path = self.kg.find_path(
-                    entities[i]["id"],
-                    entities[j]["id"],
-                    max_depth=3
-                )
+                path = self.kg.find_path(entities[i]["id"], entities[j]["id"], max_depth=3)
                 if path:
                     paths.extend(path)
-                    reasoning_parts.append(
-                        f"找到路径: {entities[i].get('name', '')} → {entities[j].get('name', '')}"
-                    )
+                    reasoning_parts.append(f"找到路径: {entities[i].get('name', '')} → {entities[j].get('name', '')}")
         return paths, reasoning_parts
 
     def infer(self, query: str) -> InferenceResult:
@@ -140,15 +134,17 @@ class GraphReasoning:
 
                 # 如果两个关系可以传递，则推导出新关系
                 if pred_b in self.INFERENCE_RULES.get(pred_a, []):
-                    inferences.append({
-                        "type": "transitivity",
-                        "source": pred_a,
-                        "target": pred_b,
-                        "inferred": pred_a,
-                        "from_entity": rel_a.get("subject_id", ""),
-                        "to_entity": rel_b.get("object_id", ""),
-                        "confidence": rel_a.get("confidence", 1.0) * rel_b.get("confidence", 1.0),
-                    })
+                    inferences.append(
+                        {
+                            "type": "transitivity",
+                            "source": pred_a,
+                            "target": pred_b,
+                            "inferred": pred_a,
+                            "from_entity": rel_a.get("subject_id", ""),
+                            "to_entity": rel_b.get("object_id", ""),
+                            "confidence": rel_a.get("confidence", 1.0) * rel_b.get("confidence", 1.0),
+                        }
+                    )
 
         return inferences
 
@@ -207,12 +203,14 @@ class GraphReasoning:
 
             if causal_rels:
                 for rel in causal_rels[:2]:  # 只取前2个因果关系
-                    chain.append({
-                        "entity": entity.get("name", ""),
-                        "relation": rel.get("predicate", ""),
-                        "target": rel.get("object_id", ""),
-                        "confidence": rel.get("confidence", 1.0),
-                    })
+                    chain.append(
+                        {
+                            "entity": entity.get("name", ""),
+                            "relation": rel.get("predicate", ""),
+                            "target": rel.get("object_id", ""),
+                            "confidence": rel.get("confidence", 1.0),
+                        }
+                    )
                     current = rel.get("object_id", "")
                     break
             else:
@@ -234,11 +232,15 @@ class GraphReasoning:
         all_entities = self.kg.list_entities()
 
         time_patterns = [
-            r'(\d{4})年',
-            r'(\d{1,2})月',
-            r'(\d{1,2})日',
-            r'昨天', r'今天', r'明天',
-            r'上周', r'本周', r'下周',
+            r"(\d{4})年",
+            r"(\d{1,2})月",
+            r"(\d{1,2})日",
+            r"昨天",
+            r"今天",
+            r"明天",
+            r"上周",
+            r"本周",
+            r"下周",
         ]
 
         for entity in all_entities:
@@ -251,18 +253,17 @@ class GraphReasoning:
         # 分析时序关系
         temporal_relations = []
         for i, e1 in enumerate(time_entities):
-            for e2 in time_entities[i+1:]:
+            for e2 in time_entities[i + 1 :]:
                 # 查找两个实体间的关系
-                relations = self.kg.query_relations(
-                    subject_id=e1["id"],
-                    object_id=e2["id"]
-                )
+                relations = self.kg.query_relations(subject_id=e1["id"], object_id=e2["id"])
                 if relations:
-                    temporal_relations.append({
-                        "from": e1.get("name", ""),
-                        "to": e2.get("name", ""),
-                        "relation": relations[0].get("predicate", ""),
-                    })
+                    temporal_relations.append(
+                        {
+                            "from": e1.get("name", ""),
+                            "to": e2.get("name", ""),
+                            "relation": relations[0].get("predicate", ""),
+                        }
+                    )
 
         return {
             "time_entities": len(time_entities),
@@ -302,13 +303,15 @@ class GraphReasoning:
         pred2 = set(r.get("predicate", "") for r in rels2)
         common = pred1 & pred2
         if common:
-            analogies.append({
-                "entity1": e1.get("name", ""),
-                "entity2": e2.get("name", ""),
-                "common_relations": list(common),
-                "type1": e1.get("type", ""),
-                "type2": e2.get("type", ""),
-            })
+            analogies.append(
+                {
+                    "entity1": e1.get("name", ""),
+                    "entity2": e2.get("name", ""),
+                    "common_relations": list(common),
+                    "type1": e1.get("type", ""),
+                    "type2": e2.get("type", ""),
+                }
+            )
 
     def detect_contradictions(self) -> list[dict]:
         """检测图中的矛盾关系"""
@@ -322,7 +325,7 @@ class GraphReasoning:
 
         # 检查矛盾对
         for i, rel_a in enumerate(all_relations):
-            for rel_b in all_relations[i + 1:]:
+            for rel_b in all_relations[i + 1 :]:
                 result = self._check_relation_contradiction(rel_a, rel_b)
                 if result:
                     contradictions.append(result)
@@ -334,8 +337,9 @@ class GraphReasoning:
         pred_b = rel_b.get("predicate", "")
         for p1, p2 in self.CONTRADICTION_PAIRS:
             if (pred_a == p1 and pred_b == p2) or (pred_a == p2 and pred_b == p1):
-                if (rel_a.get("subject_id") == rel_b.get("subject_id") or
-                    rel_a.get("object_id") == rel_b.get("object_id")):
+                if rel_a.get("subject_id") == rel_b.get("subject_id") or rel_a.get("object_id") == rel_b.get(
+                    "object_id"
+                ):
                     return {
                         "relation_a": rel_a,
                         "relation_b": rel_b,
@@ -358,7 +362,9 @@ class GraphReasoning:
         if result.inferences:
             lines.append(f"推导出 {len(result.inferences)} 个新关系")
             for inf in result.inferences[:3]:
-                lines.append(f"  - {inf.get('inferred', '')}: {inf.get('from_entity', '')} → {inf.get('to_entity', '')}")
+                lines.append(
+                    f"  - {inf.get('inferred', '')}: {inf.get('from_entity', '')} → {inf.get('to_entity', '')}"
+                )
 
         if result.reasoning_chain:
             lines.append("推理过程:")
@@ -380,37 +386,45 @@ class GraphReasoning:
 
         # 实体可视化
         for entity in result.entities:
-            visualization["entities"].append({
-                "id": entity.get("id", ""),
-                "name": entity.get("name", ""),
-                "type": entity.get("type", ""),
-            })
+            visualization["entities"].append(
+                {
+                    "id": entity.get("id", ""),
+                    "name": entity.get("name", ""),
+                    "type": entity.get("type", ""),
+                }
+            )
 
         # 路径可视化
         for path in result.paths:
             path_viz = []
             for rel in path:
-                path_viz.append({
-                    "from": rel.get("subject_id", ""),
-                    "relation": rel.get("predicate", ""),
-                    "to": rel.get("object_id", ""),
-                })
+                path_viz.append(
+                    {
+                        "from": rel.get("subject_id", ""),
+                        "relation": rel.get("predicate", ""),
+                        "to": rel.get("object_id", ""),
+                    }
+                )
             visualization["paths"].append(path_viz)
 
         # 推理步骤
         for i, step in enumerate(result.reasoning_chain):
-            visualization["steps"].append({
-                "step": i + 1,
-                "description": step,
-            })
+            visualization["steps"].append(
+                {
+                    "step": i + 1,
+                    "description": step,
+                }
+            )
 
         # 结论
         if result.inferences:
             for inf in result.inferences:
-                visualization["conclusions"].append({
-                    "type": inf.get("type", ""),
-                    "statement": f"{inf.get('from_entity', '')} → {inf.get('to_entity', '')}",
-                    "confidence": inf.get("confidence", 0),
-                })
+                visualization["conclusions"].append(
+                    {
+                        "type": inf.get("type", ""),
+                        "statement": f"{inf.get('from_entity', '')} → {inf.get('to_entity', '')}",
+                        "confidence": inf.get("confidence", 0),
+                    }
+                )
 
         return visualization

@@ -35,9 +35,16 @@ class TestVacuumPersistentCache:
         # 写入一些数据
         for i in range(10):
             engine._persistent_cache.put(
-                f"key_{i}", "openai", "gpt-4o-mini", {},
-                LLMResponse(content=f"r{i}" * 100, model="gpt-4o-mini", provider="openai",
-                            usage={"prompt_tokens": 100, "completion_tokens": 200}),
+                f"key_{i}",
+                "openai",
+                "gpt-4o-mini",
+                {},
+                LLMResponse(
+                    content=f"r{i}" * 100,
+                    model="gpt-4o-mini",
+                    provider="openai",
+                    usage={"prompt_tokens": 100, "completion_tokens": 200},
+                ),
             )
 
         result = engine.vacuum_persistent_cache()
@@ -129,7 +136,10 @@ class TestVacuumSkipCases:
         # 写入一些数据使 VACUUM 有意义
         for i in range(3):
             engine._persistent_cache.put(
-                f"k_{i}", "p", "m", {},
+                f"k_{i}",
+                "p",
+                "m",
+                {},
                 LLMResponse(content="x" * 500, model="m", provider="p"),
             )
         result = engine.auto_vacuum_on_start()

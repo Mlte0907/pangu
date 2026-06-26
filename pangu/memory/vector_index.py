@@ -33,18 +33,19 @@ class VectorIndex:
     """
 
     def __init__(self, dim: int = 384):
-        from pathlib import Path
         import os
+        from pathlib import Path
+
         self.dim = dim
         self._index: np.ndarray | None = None  # numpy 模式
-        self._faiss_index = None                # FAISS 模式
-        self._hnsw_index = None                 # hnswlib 模式
+        self._faiss_index = None  # FAISS 模式
+        self._hnsw_index = None  # hnswlib 模式
         self._ids: list[str] = []
         self._is_built: bool = False
         self._size: int = 0
         self._use_faiss: bool = False
         self._use_hnsw: bool = False
-        self._cache_dir = Path(os.environ.get('PANGU_CACHE_DIR', '/home/xiaoxin/.cache/pangu'))
+        self._cache_dir = Path(os.environ.get("PANGU_CACHE_DIR", "/home/xiaoxin/.cache/pangu"))
         self._index_file = self._cache_dir / "vector_index.npz"
         self._faiss_file = self._cache_dir / "vector_index.faiss"
         self._faiss_ids_file = self._cache_dir / "vector_index_ids.json"
@@ -64,22 +65,18 @@ class VectorIndex:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
             if self._use_hnsw and self._hnsw_index is not None:
                 self._hnsw_index.save_index(str(self._hnsw_file))
-                with open(self._hnsw_ids_file, 'w') as f:
+                with open(self._hnsw_ids_file, "w") as f:
                     json.dump(self._ids, f)
-                logger.debug(f"hnswlib index saved")
+                logger.debug("hnswlib index saved")
             elif self._use_faiss and self._faiss_index is not None:
                 import faiss
+
                 faiss.write_index(self._faiss_index, str(self._faiss_file))
-                with open(self._faiss_ids_file, 'w') as f:
+                with open(self._faiss_ids_file, "w") as f:
                     json.dump(self._ids, f)
-                logger.debug(f"FAISS index saved")
+                logger.debug("FAISS index saved")
             elif self._is_built and self._index is not None:
-                np.savez_compressed(
-                    self._index_file,
-                    vectors=self._index,
-                    ids=self._ids,
-                    dim=self.dim
-                )
+                np.savez_compressed(self._index_file, vectors=self._index, ids=self._ids, dim=self.dim)
                 logger.debug(f"Vector index saved to {self._index_file}")
         except Exception as e:
             logger.warning(f"Vector index save failed: {e}")
@@ -90,7 +87,8 @@ class VectorIndex:
             # 尝试加载 hnswlib
             if self._hnsw_file.exists() and self._hnsw_ids_file.exists():
                 import hnswlib
-                self._hnsw_index = hnswlib.Index(space='cosine', dim=self.dim)
+
+                self._hnsw_index = hnswlib.Index(space="cosine", dim=self.dim)
                 self._hnsw_index.load_index(str(self._hnsw_file))
                 with open(self._hnsw_ids_file) as f:
                     self._ids = json.load(f)
@@ -102,6 +100,7 @@ class VectorIndex:
             # 尝试加载 FAISS
             if self._faiss_file.exists() and self._faiss_ids_file.exists():
                 import faiss
+
                 self._faiss_index = faiss.read_index(str(self._faiss_file))
                 with open(self._faiss_ids_file) as f:
                     self._ids = json.load(f)
@@ -113,8 +112,8 @@ class VectorIndex:
             # 降级到 numpy
             if self._index_file.exists():
                 data = np.load(self._index_file)
-                self._index = data['vectors']
-                self._ids = list(data['ids'])
+                self._index = data["vectors"]
+                self._ids = list(data["ids"])
                 self._is_built = True
                 self._size = len(self._ids)
                 logger.info(f"Vector index loaded: {self._size} vectors from {self._index_file}")
@@ -155,6 +154,7 @@ class VectorIndex:
             if self._size >= FAISS_THRESHOLD:
                 try:
                     import hnswlib
+
                     self._build_hnsw(arr)
                 except ImportError:
                     self._build_faiss(arr)
@@ -175,8 +175,9 @@ class VectorIndex:
         """构建 FAISS 索引"""
         try:
             import faiss
+
             nlist = min(int(np.sqrt(len(arr))), 256)  # 聚类中心数
-            quantizer = faiss.IndexFlatIP(self.dim)    # 内积 = 余弦（已归一化）
+            quantizer = faiss.IndexFlatIP(self.dim)  # 内积 = 余弦（已归一化）
             self._faiss_index = faiss.IndexIVFFlat(quantizer, self.dim, nlist, faiss.METRIC_INNER_PRODUCT)
             self._faiss_index.train(arr.astype(np.float32))
             self._faiss_index.add(arr.astype(np.float32))
@@ -193,7 +194,8 @@ class VectorIndex:
         """构建 hnswlib 索引"""
         try:
             import hnswlib
-            self._hnsw_index = hnswlib.Index(space='cosine', dim=self.dim)
+
+            self._hnsw_index = hnswlib.Index(space="cosine", dim=self.dim)
             self._hnsw_index.init_index(max_elements=self._size, ef_construction=200, M=16)
             self._hnsw_index.add_items(arr.astype(np.float32), list(range(self._size)))
             self._hnsw_index.set_ef(50)  # 搜索时的 ef 参数
@@ -260,6 +262,7 @@ class VectorIndex:
         if not self._use_faiss and not self._use_hnsw and self._size >= FAISS_THRESHOLD:
             try:
                 import hnswlib
+
                 self._build_hnsw(self._index)
             except ImportError:
                 self._build_faiss(self._index)
@@ -287,6 +290,7 @@ class VectorIndex:
         if not self._use_faiss and not self._use_hnsw and self._size >= FAISS_THRESHOLD:
             try:
                 import hnswlib
+
                 self._build_hnsw(self._index)
             except ImportError:
                 self._build_faiss(self._index)
@@ -344,7 +348,7 @@ class VectorIndex:
         """hnswlib 近似最近邻搜索"""
         indices, distances = self._hnsw_index.knn_query(query.reshape(1, -1), k=top_k)
         results = []
-        for idx, dist in zip(indices[0], distances[0]):
+        for idx, dist in zip(indices[0], distances[0], strict=False):
             if idx < len(self._ids):
                 # hnswlib 返回距离，转换为相似度
                 similarity = 1.0 - dist
@@ -356,7 +360,7 @@ class VectorIndex:
         """FAISS 近似最近邻搜索"""
         distances, indices = self._faiss_index.search(query.reshape(1, -1), top_k)
         results = []
-        for dist, idx in zip(distances[0], indices[0]):
+        for dist, idx in zip(distances[0], indices[0], strict=False):
             if idx >= 0 and idx < len(self._ids) and dist > 0:
                 results.append((self._ids[idx], float(dist)))
         return results
@@ -432,6 +436,7 @@ class VectorIndex:
             mem_mb = 0
             try:
                 import faiss
+
                 mem_mb = faiss.index_memory(self._faiss_index) / 1024 / 1024
             except Exception:
                 pass
@@ -493,8 +498,7 @@ class HolographicIndex:
         logger.info(f"Holographic index built: {len(self._indices)} dimensions, {self._hologram_count} holograms")
         return self._is_built
 
-    def fused_search(self, query_projections: dict, weights: dict,
-                     top_k: int = 10) -> list[tuple[str, float]]:
+    def fused_search(self, query_projections: dict, weights: dict, top_k: int = 10) -> list[tuple[str, float]]:
         """跨维度融合搜索
 
         Args:

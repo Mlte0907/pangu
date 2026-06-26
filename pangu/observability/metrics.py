@@ -1,4 +1,5 @@
 """盘古 Prometheus 指标导出（伏羲移植）"""
+
 import contextlib
 import logging
 import time
@@ -17,6 +18,7 @@ try:
         Histogram,
         generate_latest,
     )
+
     _prom_available = True
 except ImportError:
     logger.debug("prometheus_client not installed, metrics disabled")
@@ -200,15 +202,20 @@ if _prom_available:
     )
 
 else:
+
     class _NoopMetric:
         def labels(self, **kw):
             return self
+
         def inc(self, *a, **kw):
             pass
+
         def dec(self, *a, **kw):
             pass
+
         def set(self, *a, **kw):
             pass
+
         def observe(self, *a, **kw):
             pass
 
@@ -230,6 +237,7 @@ else:
 
 def track_engine_run(engine_name: str):
     """装饰器：追踪引擎运行"""
+
     def decorator(fn: Callable):
         @wraps(fn)
         def wrapper(*args, **kw):
@@ -244,7 +252,9 @@ def track_engine_run(engine_name: str):
                 raise
             finally:
                 ENGINE_RUN_DURATION.labels(engine_name=engine_name).observe(time.time() - start)
+
         return wrapper
+
     return decorator
 
 
@@ -316,17 +326,13 @@ def update_llm_metrics(engine) -> None:
 
         # Tokens 与成本
         if engine._total_prompt_tokens > 0:
-            LLM_TOKENS_TOTAL.labels(
-                provider=provider, model=model, type="prompt"
-            ).inc(engine._total_prompt_tokens)
+            LLM_TOKENS_TOTAL.labels(provider=provider, model=model, type="prompt").inc(engine._total_prompt_tokens)
         if engine._total_completion_tokens > 0:
-            LLM_TOKENS_TOTAL.labels(
-                provider=provider, model=model, type="completion"
-            ).inc(engine._total_completion_tokens)
+            LLM_TOKENS_TOTAL.labels(provider=provider, model=model, type="completion").inc(
+                engine._total_completion_tokens
+            )
         if engine._estimated_cost_usd > 0:
-            LLM_COST_USD.labels(
-                provider=provider, model=model
-            ).inc(engine._estimated_cost_usd)
+            LLM_COST_USD.labels(provider=provider, model=model).inc(engine._estimated_cost_usd)
 
         # 调用次数
         if engine._call_count > 0:
@@ -334,9 +340,7 @@ def update_llm_metrics(engine) -> None:
 
         # 平均延迟
         if engine.avg_latency_ms > 0:
-            LLM_LATENCY.labels(provider=provider, model=model).observe(
-                engine.avg_latency_ms / 1000.0
-            )
+            LLM_LATENCY.labels(provider=provider, model=model).observe(engine.avg_latency_ms / 1000.0)
     except Exception as e:
         logger.debug("update_llm_metrics failed: %s", e)
 

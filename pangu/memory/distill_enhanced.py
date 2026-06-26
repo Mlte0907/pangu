@@ -6,9 +6,9 @@
 纯大脑能力：不做执行，只做知识提炼和结构化。
 """
 
+import asyncio
 import json
 import logging
-import asyncio
 import re
 from datetime import datetime
 from typing import Any
@@ -32,6 +32,7 @@ class DistillationTower:
         if self._llm_engine is None:
             try:
                 from ..core.llm import LLMEngine
+
                 self._llm_engine = LLMEngine(self.config)
             except ImportError:
                 self._llm_engine = None
@@ -140,17 +141,17 @@ class DistillationTower:
         # 提取高频关键词
         all_words = []
         for text in texts:
-            words = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text.lower())
+            words = re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text.lower())
             all_words.extend(words)
 
         from collections import Counter
+
         word_counts = Counter(all_words)
         top_words = [w for w, _ in word_counts.most_common(5)]
 
         # 提取可能的因果链
         causal_patterns = re.findall(
-            r'(?:因为|由于|所以|因此|导致|造成|引起|从而|进而|使得)([^，。；]{5,30})',
-            " ".join(texts)
+            r"(?:因为|由于|所以|因此|导致|造成|引起|从而|进而|使得)([^，。；]{5,30})", " ".join(texts)
         )
 
         return {
@@ -175,11 +176,13 @@ class DistillationTower:
         chains = []
         for concept, card in self._cards.items():
             for link in card.get("knowledge_card", {}).get("causal_links", []):
-                chains.append({
-                    "concept": concept,
-                    "causal_link": link,
-                    "confidence": card.get("knowledge_card", {}).get("confidence", 0.5),
-                })
+                chains.append(
+                    {
+                        "concept": concept,
+                        "causal_link": link,
+                        "confidence": card.get("knowledge_card", {}).get("confidence", 0.5),
+                    }
+                )
         return chains
 
     def get_knowledge_graph(self) -> dict:
@@ -188,11 +191,13 @@ class DistillationTower:
         edges = []
         for concept, card in self._cards.items():
             kc = card.get("knowledge_card", {})
-            nodes.append({
-                "id": concept,
-                "confidence": kc.get("confidence", 0.5),
-                "evidence_count": kc.get("evidence_count", 0),
-            })
+            nodes.append(
+                {
+                    "id": concept,
+                    "confidence": kc.get("confidence", 0.5),
+                    "evidence_count": kc.get("evidence_count", 0),
+                }
+            )
             for rel in kc.get("relations", []):
                 edges.append({"source": concept, "target": rel, "type": "related"})
 

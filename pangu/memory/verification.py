@@ -48,8 +48,7 @@ class VerificationLoop:
             else:
                 result = subprocess.run(["echo", "build"], capture_output=True, text=True)
             return VerificationResult(
-                phase="build", passed=result.returncode == 0,
-                output=result.stdout + result.stderr
+                phase="build", passed=result.returncode == 0, output=result.stdout + result.stderr
             )
         except Exception as e:
             return VerificationResult(phase="build", passed=False, output=str(e))
@@ -60,12 +59,10 @@ class VerificationLoop:
             result = self._execute_type_check()
             errors = self._count_type_errors(result.stdout)
             return VerificationResult(
-                phase="type_check", passed=result.returncode == 0,
-                output=result.stdout, errors=errors
+                phase="type_check", passed=result.returncode == 0, output=result.stdout, errors=errors
             )
         except FileNotFoundError:
-            return VerificationResult(phase="type_check", passed=True,
-                                       output="mypy not installed, skipping")
+            return VerificationResult(phase="type_check", passed=True, output="mypy not installed, skipping")
         except Exception as e:
             return VerificationResult(phase="type_check", passed=False, output=str(e))
 
@@ -93,12 +90,10 @@ class VerificationLoop:
             )
             warnings = len([line for line in result.stdout.split("\n") if "warning" in line.lower()])
             return VerificationResult(
-                phase="lint", passed=result.returncode == 0,
-                output=result.stdout, warnings=warnings
+                phase="lint", passed=result.returncode == 0, output=result.stdout, warnings=warnings
             )
         except FileNotFoundError:
-            return VerificationResult(phase="lint", passed=True,
-                                       output="ruff not installed, skipping")
+            return VerificationResult(phase="lint", passed=True, output="ruff not installed, skipping")
         except Exception as e:
             return VerificationResult(phase="lint", passed=False, output=str(e))
 
@@ -112,13 +107,9 @@ class VerificationLoop:
                 text=True,
                 timeout=300,
             )
-            return VerificationResult(
-                phase="tests", passed=result.returncode == 0,
-                output=result.stdout[-2000:]
-            )
+            return VerificationResult(phase="tests", passed=result.returncode == 0, output=result.stdout[-2000:])
         except FileNotFoundError:
-            return VerificationResult(phase="tests", passed=True,
-                                       output="pytest not found, skipping")
+            return VerificationResult(phase="tests", passed=True, output="pytest not found, skipping")
         except Exception as e:
             return VerificationResult(phase="tests", passed=False, output=str(e))
 
@@ -141,7 +132,7 @@ class VerificationLoop:
         # 检查硬编码密码
         try:
             result = subprocess.run(
-                ["grep", "-rn", 'password\\s*=\\s*["\']', "pangu/", "--include=*.py"],
+                ["grep", "-rn", "password\\s*=\\s*[\"']", "pangu/", "--include=*.py"],
                 cwd=self.project_path,
                 capture_output=True,
                 text=True,
@@ -153,8 +144,7 @@ class VerificationLoop:
             pass
 
         return VerificationResult(
-            phase="security", passed=len(findings) == 0,
-            output="\n".join(findings) if findings else "No issues found"
+            phase="security", passed=len(findings) == 0, output="\n".join(findings) if findings else "No issues found"
         )
 
     def run_diff_review(self) -> VerificationResult:
@@ -168,8 +158,7 @@ class VerificationLoop:
                 timeout=10,
             )
             return VerificationResult(
-                phase="diff_review", passed=True,
-                output=result.stdout if result.returncode == 0 else "Not a git repo"
+                phase="diff_review", passed=True, output=result.stdout if result.returncode == 0 else "Not a git repo"
             )
         except Exception as e:
             return VerificationResult(phase="diff_review", passed=False, output=str(e))
@@ -201,6 +190,5 @@ class VerificationLoop:
             logger.info(f"{phase_name}: {'PASS' if results[phase_name]['passed'] else 'FAIL'}")
 
         results["timestamp"] = datetime.now().isoformat()
-        results["all_passed"] = all(r["passed"] for r in results.values()
-                                    if isinstance(r, dict) and "passed" in r)
+        results["all_passed"] = all(r["passed"] for r in results.values() if isinstance(r, dict) and "passed" in r)
         return results

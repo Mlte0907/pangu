@@ -7,9 +7,10 @@
 4. 知识结晶：将散乱记忆转化为结构化知识
 5. 蒸馏追踪：追踪蒸馏过程和信息保留率
 """
+
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 logger = logging.getLogger("pangu.memory.distillation")
@@ -18,6 +19,7 @@ logger = logging.getLogger("pangu.memory.distillation")
 @dataclass
 class DistilledKnowledge:
     """蒸馏后的知识"""
+
     id: str
     original_ids: list[str]
     summary: str
@@ -31,6 +33,7 @@ class DistilledKnowledge:
 @dataclass
 class DistillationReport:
     """蒸馏报告"""
+
     input_count: int
     output_count: int
     tokens_saved: int
@@ -41,10 +44,44 @@ class DistillationReport:
 class DistillationEngine:
     """记忆蒸馏引擎"""
 
-    STOP_WORDS = {"的", "了", "是", "在", "和", "有", "这", "个", "就", "不",
-                  "也", "都", "而", "及", "与", "或", "但", "如果", "可以",
-                  "the", "a", "an", "is", "are", "was", "in", "on", "at",
-                  "to", "for", "of", "with", "by", "from", "it", "that"}
+    STOP_WORDS = {
+        "的",
+        "了",
+        "是",
+        "在",
+        "和",
+        "有",
+        "这",
+        "个",
+        "就",
+        "不",
+        "也",
+        "都",
+        "而",
+        "及",
+        "与",
+        "或",
+        "但",
+        "如果",
+        "可以",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "it",
+        "that",
+    }
 
     def __init__(self, config=None):
         self.config = config
@@ -52,7 +89,7 @@ class DistillationEngine:
 
     def extract_keywords(self, text: str, top_k: int = 5) -> list[str]:
         """提取关键词"""
-        words = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text)
+        words = re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text)
         word_freq: dict[str, int] = {}
         for w in words:
             wl = w.lower()
@@ -72,7 +109,7 @@ class DistillationEngine:
         # 提取高频词
         all_words: dict[str, int] = {}
         for text in texts:
-            for word in re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text):
+            for word in re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text):
                 wl = word.lower()
                 if wl not in self.STOP_WORDS:
                     all_words[wl] = all_words.get(wl, 0) + 1
@@ -161,12 +198,14 @@ class DistillationEngine:
             distilled=distilled,
         )
 
-        self._distillation_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "input": total_input,
-            "output": total_output,
-            "saved": total_saved,
-        })
+        self._distillation_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "input": total_input,
+                "output": total_output,
+                "saved": total_saved,
+            }
+        )
 
         return report
 

@@ -1,4 +1,5 @@
 """盘古 Wiki 引擎 — 知识页面的创建、链接和维护"""
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -26,10 +27,7 @@ class WikiEngine:
         if self.index_file.exists():
             with open(self.index_file, encoding="utf-8") as f:
                 data = json.load(f)
-            self._pages = {
-                pid: WikiPage.from_dict(pdata)
-                for pid, pdata in data.get("pages", {}).items()
-            }
+            self._pages = {pid: WikiPage.from_dict(pdata) for pid, pdata in data.get("pages", {}).items()}
         else:
             self._pages = {}
             self._save_index()
@@ -118,14 +116,10 @@ class WikiEngine:
 
     # ── 智能功能 ──
 
-    async def auto_generate_page(self, llm: LLMEngine, title: str, wing: str,
-                                  memories: list[dict]) -> WikiPage:
+    async def auto_generate_page(self, llm: LLMEngine, title: str, wing: str, memories: list[dict]) -> WikiPage:
         """使用 LMM 自动从记忆中生成 Wiki 页面"""
         # 获取已有页面作为上下文
-        existing_pages = [
-            {"title": p.title, "summary": p.summary}
-            for p in self._pages.values() if p.wing == wing
-        ]
+        existing_pages = [{"title": p.title, "summary": p.summary} for p in self._pages.values() if p.wing == wing]
 
         result = await llm.generate_wiki_page(title, memories, existing_pages)
 
@@ -140,9 +134,7 @@ class WikiEngine:
 
         # 检测页面关联
         all_pages = [{"title": p.title, "summary": p.summary} for p in self._pages.values()]
-        linked_titles = await llm.detect_links(
-            {"title": page.title, "summary": page.summary}, all_pages
-        )
+        linked_titles = await llm.detect_links({"title": page.title, "summary": page.summary}, all_pages)
         for linked_title in linked_titles:
             linked_page = self.get_page_by_title(linked_title)
             if linked_page:
@@ -165,15 +157,15 @@ class WikiEngine:
 3. 使用 Markdown 格式
 4. 使用中文输出"""
 
-        memory_text = "\n\n---\n\n".join([
-            m.get("content", "")[:1000] for m in memories[:5]
-        ])
+        memory_text = "\n\n---\n\n".join([m.get("content", "")[:1000] for m in memories[:5]])
 
         llm_response = await llm.chat(
-            messages=[{
-                "role": "user",
-                "content": f"现有页面：\n标题：{page.title}\n内容：\n{page.content}\n\n新记忆：\n{memory_text}\n\n请融合更新。"
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"现有页面：\n标题：{page.title}\n内容：\n{page.content}\n\n新记忆：\n{memory_text}\n\n请融合更新。",
+                }
+            ],
             system=system,
             max_tokens=4096,
         )
@@ -237,22 +229,26 @@ class WikiEngine:
         edges = []
 
         for page in self._pages.values():
-            nodes.append({
-                "id": page.id,
-                "label": page.title,
-                "type": "wiki_page",
-                "wing": page.wing,
-                "summary": page.summary,
-                "version": page.version,
-            })
+            nodes.append(
+                {
+                    "id": page.id,
+                    "label": page.title,
+                    "type": "wiki_page",
+                    "wing": page.wing,
+                    "summary": page.summary,
+                    "version": page.version,
+                }
+            )
 
             for linked_id in page.linked_pages:
                 if linked_id in self._pages:
-                    edges.append({
-                        "from": page.id,
-                        "to": linked_id,
-                        "type": "wiki_link",
-                    })
+                    edges.append(
+                        {
+                            "from": page.id,
+                            "to": linked_id,
+                            "type": "wiki_link",
+                        }
+                    )
 
         return {"nodes": nodes, "edges": edges}
 

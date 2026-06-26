@@ -5,8 +5,9 @@
 2. 主题提取 — 从记忆片段中提取主题聚类
 3. 身份连续性 — 从自省记忆生成连续身份叙事
 """
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from ..core.config import PanguConfig
@@ -84,16 +85,20 @@ class NarrativeEngine:
                 previews = [d.content[:80].replace("\n", " ") for d in wing_drawers[:5]]
                 avg_importance = sum(d.importance for d in wing_drawers) / len(wing_drawers)
                 narrative_text = f"In wing '{wing}' ({len(wing_drawers)} memories, avg importance {avg_importance:.2f}): {' → '.join(previews)}"
-                narratives.append(Narrative(
-                    drawer=wing,
-                    thread_length=len(wing_drawers),
-                    narrative=narrative_text[:500],
-                    avg_importance=round(avg_importance, 2),
-                ).__dict__)
+                narratives.append(
+                    Narrative(
+                        drawer=wing,
+                        thread_length=len(wing_drawers),
+                        narrative=narrative_text[:500],
+                        avg_importance=round(avg_importance, 2),
+                    ).__dict__
+                )
 
-        identity_items = [d for d in drawers if d.importance > 4.0 and any(
-            t in d.tags for t in ["自省", "反思", "身份", "soul", "identity"]
-        )]
+        identity_items = [
+            d
+            for d in drawers
+            if d.importance > 4.0 and any(t in d.tags for t in ["自省", "反思", "身份", "soul", "identity"])
+        ]
         identity_statement = _generate_identity_statement(identity_items[:10])
 
         themes = _extract_themes(timeline)
@@ -103,7 +108,8 @@ class NarrativeEngine:
                 memory_count=theme["count"],
                 sample=theme["previews"][0][:80] if theme["previews"] else "",
             ).__dict__
-            for theme in themes if theme["count"] >= 2
+            for theme in themes
+            if theme["count"] >= 2
         ]
 
         return {
@@ -119,16 +125,23 @@ class NarrativeEngine:
         """提取主题"""
         themes = _extract_themes(drawers[:30])
         theme_summaries = [
-            {"drawer": t["drawer"], "memory_count": t["count"], "sample": t["previews"][0][:80] if t["previews"] else ""}
-            for t in themes if t["count"] >= 2
+            {
+                "drawer": t["drawer"],
+                "memory_count": t["count"],
+                "sample": t["previews"][0][:80] if t["previews"] else "",
+            }
+            for t in themes
+            if t["count"] >= 2
         ]
         return {"themes": theme_summaries, "count": len(theme_summaries)}
 
     def identity_statement(self, drawers: list[Drawer]) -> dict:
         """生成身份连续性叙事"""
-        identity_items = [d for d in drawers if d.importance > 4.0 and any(
-            t in d.tags for t in ["自省", "反思", "身份", "soul", "identity"]
-        )]
+        identity_items = [
+            d
+            for d in drawers
+            if d.importance > 4.0 and any(t in d.tags for t in ["自省", "反思", "身份", "soul", "identity"])
+        ]
         statement = _generate_identity_statement(identity_items[:10])
         return {
             "identity": statement,
@@ -140,9 +153,9 @@ class NarrativeEngine:
         """获取叙事统计"""
         wings = set(d.wing for d in drawers)
         high_importance = sum(1 for d in drawers if d.importance > 3.0)
-        identity_tagged = sum(1 for d in drawers if any(
-            t in d.tags for t in ["自省", "反思", "身份", "soul", "identity"]
-        ))
+        identity_tagged = sum(
+            1 for d in drawers if any(t in d.tags for t in ["自省", "反思", "身份", "soul", "identity"])
+        )
         return {
             "total_memories": len(drawers),
             "wings": len(wings),

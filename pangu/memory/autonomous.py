@@ -12,13 +12,14 @@
     result = engine.run_cycle()  # 运行一次自主周期
     result = engine.tick()      # 检查是否需要运行（轻量）
 """
+
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -29,6 +30,7 @@ logger = logging.getLogger("pangu.memory.autonomous")
 @dataclass
 class TaskResult:
     """单个任务的执行结果"""
+
     name: str
     status: str  # success / skipped / failed
     duration_ms: float = 0.0
@@ -38,6 +40,7 @@ class TaskResult:
 @dataclass
 class CycleResult:
     """一个完整周期的执行结果"""
+
     timestamp: str
     total_duration_ms: float
     tasks_run: int
@@ -173,6 +176,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .fusion import FusionEngine
+
             engine = FusionEngine(self.config)
             topic_groups = engine._group_by_keywords(drawers)
             fused = 0
@@ -195,6 +199,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .compression import MemoryCompressor
+
             compressor = MemoryCompressor(self.config)
             compressible = [d for d in drawers if compressor._is_compressible(d)]
             compressed = 0
@@ -222,6 +227,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .decay import decay_batch
+
             stats = decay_batch(drawers, dry_run=False)
             return TaskResult(
                 name="decay",
@@ -237,6 +243,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .adaptive_forgetting import AdaptiveForgetting
+
             af = AdaptiveForgetting(self.config)
             result = af.auto_forget(drawers)
             return TaskResult(
@@ -253,6 +260,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .dream_memory import DreamConsolidation
+
             dream = DreamConsolidation(self.config)
             result = dream.run_dream_cycle(drawers)
             return TaskResult(
@@ -269,6 +277,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .curiosity import CuriosityEngine
+
             engine = CuriosityEngine(self.config)
             result = engine.explore(drawers)
             return TaskResult(
@@ -288,6 +297,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .lifecycle import LifecycleManager
+
             lm = LifecycleManager(self.config)
             result = lm.rebuild_vector_index()
             return TaskResult(
@@ -304,6 +314,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .neural_memory import get_neural_engine
+
             engine = get_neural_engine()
             if engine.needs_sleep():
                 result = engine.sleep()
@@ -321,15 +332,15 @@ class AutonomousMemoryEngine:
         """增量更新向量索引"""
         start = time.time()
         try:
-            from .vector_index import get_vector_index
             from .embedding import get_embedding_service
+            from .vector_index import get_vector_index
 
             vi = get_vector_index()
             embed_svc = get_embedding_service()
 
             indexed = 0
             for d in drawers:
-                if d.id in vi._id_map if hasattr(vi, '_id_map') else False:
+                if d.id in vi._id_map if hasattr(vi, "_id_map") else False:
                     continue
                 embedding = d.metadata.get("embedding")
                 if not embedding:
@@ -355,6 +366,7 @@ class AutonomousMemoryEngine:
         start = time.time()
         try:
             from .collector import get_collector
+
             collector = get_collector(self.config)
             result = collector.collect_all_sources(min_importance=0.3)
             return TaskResult(
@@ -408,9 +420,7 @@ class AutonomousMemoryEngine:
                 trigger="no_memories",
             )
 
-        new_count = self._count_new_since(
-            drawers, self._state.get("last_run", {}).get("fusion", 0)
-        )
+        new_count = self._count_new_since(drawers, self._state.get("last_run", {}).get("fusion", 0))
         old_count = self._count_old_memories(drawers)
 
         tasks: list[tuple[str, Callable, bool]] = []
@@ -489,10 +499,7 @@ class AutonomousMemoryEngine:
             results=results,
             trigger=trigger,
         )
-        logger.info(
-            f"自主周期完成: {success}成功, {skipped}跳过, {failed}失败, "
-            f"耗时{total_ms:.0f}ms, 触发: {trigger}"
-        )
+        logger.info(f"自主周期完成: {success}成功, {skipped}跳过, {failed}失败, 耗时{total_ms:.0f}ms, 触发: {trigger}")
         return cycle
 
     def get_status(self) -> dict:
@@ -504,11 +511,13 @@ class AutonomousMemoryEngine:
             last = last_run.get(task, 0)
             interval = rule.get("interval_hours", 1) * 3600
             remaining = max(0, interval - (now - last))
-            pending.append({
-                "task": task,
-                "last_run": datetime.fromtimestamp(last).isoformat() if last else "never",
-                "next_in_minutes": round(remaining / 60, 1),
-            })
+            pending.append(
+                {
+                    "task": task,
+                    "last_run": datetime.fromtimestamp(last).isoformat() if last else "never",
+                    "next_in_minutes": round(remaining / 60, 1),
+                }
+            )
 
         drawers = self._load_drawers()
         return {

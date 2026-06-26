@@ -38,6 +38,7 @@ DEFAULT_FUSION_WEIGHTS = {
 @dataclass
 class Hologram:
     """全息记忆投影 — 一条记忆的多维度编码"""
+
     item_id: str
     projections: dict[str, np.ndarray] = field(default_factory=dict)
 
@@ -59,8 +60,7 @@ class TemporalEncoder:
         self._dim = dim
         self._rng = np.random.default_rng(42)
 
-    def encode(self, created_at: str = "", wing: str = "", room: str = "",
-               sequence_position: int = 0) -> np.ndarray:
+    def encode(self, created_at: str = "", wing: str = "", room: str = "", sequence_position: int = 0) -> np.ndarray:
         vec = np.zeros(self._dim, dtype=np.float32)
 
         if created_at:
@@ -156,6 +156,7 @@ class CausalEncoder:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService()
             except ImportError:
                 self._embedder = None
@@ -170,7 +171,7 @@ class CausalEncoder:
             if self.embedder:
                 emb = self.embedder.embed(causal_summary)
                 if emb:
-                    for i, v in enumerate(emb[:min(len(emb), self._dim)]):
+                    for i, v in enumerate(emb[: min(len(emb), self._dim)]):
                         vec[i] = v
                     norm = np.linalg.norm(vec)
                     if norm > 1e-8:
@@ -197,8 +198,7 @@ class SourceEncoder:
     def __init__(self, dim: int = 128):
         self._dim = dim
 
-    def encode(self, source_type: str = "", agent_id: str = "",
-               session_id: str = "") -> np.ndarray:
+    def encode(self, source_type: str = "", agent_id: str = "", session_id: str = "") -> np.ndarray:
         vec = np.zeros(self._dim, dtype=np.float32)
 
         parts = [source_type, agent_id, session_id]
@@ -235,6 +235,7 @@ class HolographicEncoder:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
@@ -276,18 +277,16 @@ class HolographicEncoder:
     ) -> Hologram:
         projections = self._encode_semantic_projection(raw_text)
 
-        projections["temporal"] = self.temporal.encode(
-            created_at, wing, room, sequence_position
-        )
+        projections["temporal"] = self.temporal.encode(created_at, wing, room, sequence_position)
         projections["emotional"] = self.emotional.encode(valence, arousal, dominance)
         projections["causal"] = self.causal.encode(causal_summary)
         projections["source"] = self.source.encode(source_type, agent_id, session_id)
 
         return Hologram(item_id=item_id, projections=projections)
 
-    def encode_from_drawer(self, drawer, causal_summary: str = "",
-                           source_type: str = "", agent_id: str = "",
-                           session_id: str = "") -> Hologram:
+    def encode_from_drawer(
+        self, drawer, causal_summary: str = "", source_type: str = "", agent_id: str = "", session_id: str = ""
+    ) -> Hologram:
         """从 Drawer 对象编码"""
         return self.encode(
             item_id=drawer.id,
@@ -348,6 +347,7 @@ class HolographicSearch:
                 hv = holo.get(dim)
                 if qv is not None and hv is not None:
                     from .fts_search import cosine_similarity
+
                     dim_scores[dim] = cosine_similarity(qv.tolist(), hv.tolist()) * weight
 
             if dim_scores:

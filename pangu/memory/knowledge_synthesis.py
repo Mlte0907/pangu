@@ -6,6 +6,7 @@
 3. 矛盾检测：发现不同来源的矛盾信息
 4. 知识图谱增强：将综合结果反馈到知识图谱
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,6 +17,7 @@ logger = logging.getLogger("pangu.memory.knowledge_synthesis")
 @dataclass
 class Insight:
     """洞察"""
+
     topic: str
     summary: str
     sources: list[str]
@@ -27,6 +29,7 @@ class Insight:
 @dataclass
 class Contradiction:
     """矛盾"""
+
     claim_a: str
     claim_b: str
     source_a: str
@@ -55,21 +58,23 @@ class KnowledgeSynthesizer:
                 continue
 
             sources = list(set(d.wing for d in group))
-            avg_importance = sum(d.importance for d in group) / len(group)
+            sum(d.importance for d in group) / len(group)
             contents = [d.content[:100] for d in group]
 
             summary = f"[{tag}] {len(group)} 条记忆来自 {len(sources)} 个领域"
             if len(contents) > 0:
                 summary += f"。核心内容: {contents[0][:60]}..."
 
-            insights.append(Insight(
-                topic=tag,
-                summary=summary,
-                sources=sources,
-                confidence=min(0.9, 0.3 + len(group) * 0.1),
-                supporting_count=len(group),
-                contradicting_count=0,
-            ))
+            insights.append(
+                Insight(
+                    topic=tag,
+                    summary=summary,
+                    sources=sources,
+                    confidence=min(0.9, 0.3 + len(group) * 0.1),
+                    supporting_count=len(group),
+                    contradicting_count=0,
+                )
+            )
 
         insights.sort(key=lambda i: i.confidence, reverse=True)
         return insights[:20]
@@ -94,14 +99,16 @@ class KnowledgeSynthesizer:
             neg = [d for d in group if any(k in d.content for k in negative_keywords)]
 
             if pos and neg:
-                contradictions.append(Contradiction(
-                    claim_a=pos[0].content[:80],
-                    claim_b=neg[0].content[:80],
-                    source_a=pos[0].wing,
-                    source_b=neg[0].wing,
-                    topic=tag,
-                    severity="minor",
-                ))
+                contradictions.append(
+                    Contradiction(
+                        claim_a=pos[0].content[:80],
+                        claim_b=neg[0].content[:80],
+                        source_a=pos[0].wing,
+                        source_b=neg[0].wing,
+                        topic=tag,
+                        severity="minor",
+                    )
+                )
 
         return contradictions
 
@@ -118,20 +125,24 @@ class KnowledgeSynthesizer:
 
         insights = []
         for d, score in scored[:top_k]:
-            insights.append({
-                "id": d.id,
-                "content": d.content[:100],
-                "wing": d.wing,
-                "importance": d.importance,
-                "score": round(score, 3),
-                "tags": d.tags[:5],
-            })
+            insights.append(
+                {
+                    "id": d.id,
+                    "content": d.content[:100],
+                    "wing": d.wing,
+                    "importance": d.importance,
+                    "score": round(score, 3),
+                    "tags": d.tags[:5],
+                }
+            )
 
-        self._synthesis_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "total_drawers": len(drawers),
-            "insights_extracted": len(insights),
-        })
+        self._synthesis_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "total_drawers": len(drawers),
+                "insights_extracted": len(insights),
+            }
+        )
 
         return insights
 
@@ -154,16 +165,12 @@ class KnowledgeSynthesizer:
         for i in range(len(wings)):
             for j in range(i + 1, len(wings)):
                 wing_a, wing_b = wings[i], wings[j]
-                self._find_cross_wing_links(
-                    wing_groups[wing_a], wing_groups[wing_b],
-                    wing_a, wing_b, insights
-                )
+                self._find_cross_wing_links(wing_groups[wing_a], wing_groups[wing_b], wing_a, wing_b, insights)
 
         insights.sort(key=lambda x: x.get("weight", 0), reverse=True)
         return insights[:10]
 
-    def _find_cross_wing_links(self, drawables_a: list, drawables_b: list,
-                                wing_a: str, wing_b: str, insights: list):
+    def _find_cross_wing_links(self, drawables_a: list, drawables_b: list, wing_a: str, wing_b: str, insights: list):
         """在两个 Wing 之间寻找关联"""
         tags_a: dict[str, list] = {}
         for d in drawables_a:
@@ -174,15 +181,17 @@ class KnowledgeSynthesizer:
             for tag in d.tags:
                 if tag in tags_a:
                     for src in tags_a[tag][:2]:
-                        insights.append({
-                            "source_id": src.id[:8],
-                            "target_id": d.id[:8],
-                            "source_wing": wing_a,
-                            "target_wing": wing_b,
-                            "shared_tag": tag,
-                            "weight": min(src.importance, d.importance) / 5.0,
-                            "type": "cross_cluster_link",
-                        })
+                        insights.append(
+                            {
+                                "source_id": src.id[:8],
+                                "target_id": d.id[:8],
+                                "source_wing": wing_a,
+                                "target_wing": wing_b,
+                                "shared_tag": tag,
+                                "weight": min(src.importance, d.importance) / 5.0,
+                                "type": "cross_cluster_link",
+                            }
+                        )
 
     def knowledge_gap_detection(self, drawers: list) -> list[dict]:
         """知识缺口识别 — 找出缺少深度分析或对立观点的主题
@@ -202,31 +211,29 @@ class KnowledgeSynthesizer:
             if len(group) < 2:
                 continue
 
-            has_edges = any(
-                d.metadata.get("edges")
-                for d in group
-            )
+            has_edges = any(d.metadata.get("edges") for d in group)
 
             if not has_edges:
-                gaps.append({
-                    "entity": tag,
-                    "mention_count": len(group),
-                    "missing": "graph_connection",
-                    "suggestion": f"主题'{tag}'被提及{len(group)}次但缺少图谱连接",
-                    "type": "knowledge_gap",
-                })
+                gaps.append(
+                    {
+                        "entity": tag,
+                        "mention_count": len(group),
+                        "missing": "graph_connection",
+                        "suggestion": f"主题'{tag}'被提及{len(group)}次但缺少图谱连接",
+                        "type": "knowledge_gap",
+                    }
+                )
 
-        disconnected = [
-            d for d in drawers
-            if d.importance >= 3.0 and not d.metadata.get("edges")
-        ]
+        disconnected = [d for d in drawers if d.importance >= 3.0 and not d.metadata.get("edges")]
         for d in disconnected[:5]:
-            gaps.append({
-                "entity": d.content[:80],
-                "missing": "graph_connection",
-                "suggestion": "高重要性记忆缺乏图谱连接",
-                "type": "knowledge_gap",
-            })
+            gaps.append(
+                {
+                    "entity": d.content[:80],
+                    "missing": "graph_connection",
+                    "suggestion": "高重要性记忆缺乏图谱连接",
+                    "type": "knowledge_gap",
+                }
+            )
 
         return gaps[:10]
 

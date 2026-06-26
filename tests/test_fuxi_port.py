@@ -1,4 +1,5 @@
 """盘古伏羲移植模块测试"""
+
 import os
 import tempfile
 from pathlib import Path
@@ -71,6 +72,7 @@ class TestMigrations:
     def test_available_migrations(self):
         """测试迁移列表"""
         from pangu.store.migrations import get_available_migrations
+
         migrations = get_available_migrations()
         assert len(migrations) >= 8
         versions = [m["version"] for m in migrations]
@@ -80,12 +82,14 @@ class TestMigrations:
     def test_get_schema_version(self):
         """测试获取 schema 版本"""
         from pangu.store.migrations import get_schema_version
+
         version = get_schema_version()
         assert version in ("none", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8")
 
     def test_migration_structure(self):
         """测试迁移结构完整性"""
         from pangu.store.migrations import MIGRATIONS
+
         for version, label, forward_op, _rollback in MIGRATIONS:
             assert isinstance(version, str)
             assert isinstance(label, str)
@@ -100,6 +104,7 @@ class TestHealthCheck:
     def test_quick_health_check(self):
         """测试快速健康检查"""
         from pangu.observability.health import quick_health_check
+
         result = quick_health_check()
         assert result["status"] == "ok"
         assert "version" in result
@@ -109,6 +114,7 @@ class TestHealthCheck:
     def test_deep_health_check(self):
         """测试深度健康检查"""
         from pangu.observability.health import deep_health_check
+
         result = deep_health_check()
         assert result["status"] in ("ok", "degraded")
         assert "checks" in result
@@ -121,6 +127,7 @@ class TestMetrics:
     def test_metrics_response(self):
         """测试指标响应"""
         from pangu.observability.metrics import get_metrics_response
+
         content, media_type = get_metrics_response()
         assert isinstance(content, (str, bytes))
         assert len(content) > 0
@@ -128,12 +135,14 @@ class TestMetrics:
     def test_update_memory_count(self):
         """测试更新记忆计数"""
         from pangu.observability.metrics import update_memory_count
+
         # 不应抛出异常
         update_memory_count(42)
 
     def test_record_api_request(self):
         """测试记录 API 请求"""
         from pangu.observability.metrics import record_api_request
+
         # 不应抛出异常
         record_api_request("GET", "/api/v2/memories", 200, 0.05)
 
@@ -144,6 +153,7 @@ class TestAutonomousEngine:
     def test_analyze_memory_task(self):
         """测试记忆类任务分析"""
         from pangu.autonomous import analyze_task
+
         result = analyze_task("帮我检索一下之前的记忆")
         assert result["needs_memory"] is True
         assert len(result["matched_scenarios"]) >= 1
@@ -151,12 +161,14 @@ class TestAutonomousEngine:
     def test_analyze_reflection_task(self):
         """测试反思类任务分析"""
         from pangu.autonomous import analyze_task
+
         result = analyze_task("帮我复盘一下最近的工作")
         assert len(result["matched_scenarios"]) >= 1
 
     def test_analyze_complex_task(self):
         """测试复杂任务分析"""
         from pangu.autonomous import analyze_task
+
         result = analyze_task("重构整个项目的架构设计")
         assert result["complexity"] > 0
         assert isinstance(result["needs_deep_decision"], bool)
@@ -164,6 +176,7 @@ class TestAutonomousEngine:
     def test_analyze_simple_task(self):
         """测试简单任务分析"""
         from pangu.autonomous import analyze_task
+
         result = analyze_task("hello world")
         assert result["complexity"] == 0
         assert result["needs_deep_decision"] is False

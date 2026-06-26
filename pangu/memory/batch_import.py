@@ -7,28 +7,67 @@
 4. 去重（按文件哈希）
 5. 批量导入统计
 """
+
 import json
 import logging
-import os
 import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.batch_import")
 
-TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".java", ".go", ".rs", ".json",
-             ".yaml", ".yml", ".toml", ".xml", ".html", ".css", ".sql", ".sh",
-             ".csv", ".log", ".ini", ".cfg", ".c", ".cpp", ".h", ".rb", ".php"}
+TEXT_EXTS = {
+    ".txt",
+    ".md",
+    ".py",
+    ".js",
+    ".ts",
+    ".java",
+    ".go",
+    ".rs",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".xml",
+    ".html",
+    ".css",
+    ".sql",
+    ".sh",
+    ".csv",
+    ".log",
+    ".ini",
+    ".cfg",
+    ".c",
+    ".cpp",
+    ".h",
+    ".rb",
+    ".php",
+}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTS = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".3gp"}
 AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma", ".opus"}
 DOC_EXTS = {".pdf"}
-SKIP_EXTS = {".pyc", ".pyo", ".o", ".so", ".dll", ".exe", ".bin", ".DS_Store",
-              ".git", ".idea", ".vscode", ".cache", ".db", ".sqlite", ".lock"}
+SKIP_EXTS = {
+    ".pyc",
+    ".pyo",
+    ".o",
+    ".so",
+    ".dll",
+    ".exe",
+    ".bin",
+    ".DS_Store",
+    ".git",
+    ".idea",
+    ".vscode",
+    ".cache",
+    ".db",
+    ".sqlite",
+    ".lock",
+}
 
 
 class BatchImporter:
@@ -56,8 +95,7 @@ class BatchImporter:
         except Exception as e:
             logger.error(f"保存导入状态失败: {e}")
 
-    def scan_directory(self, dir_path: str, recursive: bool = True,
-                       include_hidden: bool = False) -> dict:
+    def scan_directory(self, dir_path: str, recursive: bool = True, include_hidden: bool = False) -> dict:
         """扫描目录，统计各类型文件数量"""
         path = Path(dir_path).expanduser()
         if not path.exists() or not path.is_dir():
@@ -99,9 +137,14 @@ class BatchImporter:
             "files": dict(stats),
         }
 
-    def import_directory(self, dir_path: str, wing: str = "default",
-                         min_importance: float = 0.3, tags: list[str] = None,
-                         max_files: int = 100) -> dict:
+    def import_directory(
+        self,
+        dir_path: str,
+        wing: str = "default",
+        min_importance: float = 0.3,
+        tags: list[str] = None,
+        max_files: int = 100,
+    ) -> dict:
         """批量导入目录"""
         scan = self.scan_directory(dir_path)
         if "error" in scan:
@@ -110,7 +153,7 @@ class BatchImporter:
         start_time = time.time()
         all_files = []
         for file_type, files in scan["files"].items():
-            for fp in files[:max_files // max(len(scan["files"]), 1)]:
+            for fp in files[: max_files // max(len(scan["files"]), 1)]:
                 all_files.append((fp, file_type))
 
         results = {"imported": 0, "skipped": 0, "failed": 0, "by_type": defaultdict(int), "errors": []}
@@ -148,10 +191,10 @@ class BatchImporter:
             "total_imported_alltime": self._state["total_imported"],
         }
 
-    def _import_single(self, file_path: str, file_type: str,
-                       wing: str, tags: list[str]) -> dict:
+    def _import_single(self, file_path: str, file_type: str, wing: str, tags: list[str]) -> dict:
         """导入单个文件"""
         from ..memory.multimodal_pipeline import get_multimodal_pipeline
+
         pipe = get_multimodal_pipeline(self.config)
 
         if file_type in ("text", "doc"):
@@ -161,6 +204,7 @@ class BatchImporter:
             if not result.get("error") and not result.get("stored"):
                 # Pipeline may not store images, use image engine
                 from ..memory.image_engine import get_image_engine
+
                 engine = get_image_engine(self.config)
                 embed_result = engine.embed_image(file_path)
                 if embed_result.get("embedding"):
@@ -169,10 +213,12 @@ class BatchImporter:
             return result
         elif file_type == "video":
             from ..memory.video_engine import get_video_engine
+
             engine = get_video_engine(self.config)
             return engine.ingest_video(file_path, wing=wing, tags=tags, auto_store=True)
         elif file_type == "audio":
             from ..memory.audio_engine import get_audio_engine
+
             engine = get_audio_engine(self.config)
             return engine.ingest_audio(file_path, wing=wing, tags=tags, auto_store=True)
         else:

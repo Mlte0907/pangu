@@ -5,6 +5,7 @@
 - 性能：与 md5/sha1 相当，CPU 友好
 - API：与 hashlib.md5().hexdigest() 兼容
 """
+
 from __future__ import annotations
 
 import hashlib

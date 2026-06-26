@@ -1,18 +1,17 @@
 """Pangu v3.0 模块测试 — 第六批 11 个记忆子系统"""
-import hashlib
-import os
-import tempfile
-import time
-from datetime import datetime, timedelta
-from pathlib import Path
 
-import pytest
+import tempfile
+from datetime import datetime, timedelta
+
 from pangu.core.palace import Drawer
 
 
 def _d(id="t1", content="test content", wing="test_wing", importance=3.0, tags=None, created_at=None):
     return Drawer(
-        id=id, content=content, wing=wing, importance=importance,
+        id=id,
+        content=content,
+        wing=wing,
+        importance=importance,
         tags=tags or ["test"],
         created_at=created_at or datetime.now().isoformat(),
     )
@@ -20,9 +19,11 @@ def _d(id="t1", content="test content", wing="test_wing", importance=3.0, tags=N
 
 # ── 1. AdaptiveLearningSystem ──
 
+
 class TestAdaptiveLearningSystem:
     def setup_method(self):
         from pangu.memory.adaptive_learning import AdaptiveLearningSystem
+
         self.sys = AdaptiveLearningSystem()
 
     def test_init(self):
@@ -97,6 +98,7 @@ class TestAdaptiveLearningSystem:
 
     def test_singleton(self):
         from pangu.memory.adaptive_learning import get_adaptive_learning
+
         s1 = get_adaptive_learning()
         s2 = get_adaptive_learning()
         assert s1 is s2
@@ -104,9 +106,11 @@ class TestAdaptiveLearningSystem:
 
 # ── 2. AdaptiveParamEngine ──
 
+
 class TestAdaptiveParamEngine:
     def setup_method(self):
         from pangu.memory.adaptive_params import AdaptiveParamEngine, AdaptiveParams, clamp_params
+
         self.Engine = AdaptiveParamEngine
         self.Params = AdaptiveParams
         self.clamp_params = clamp_params
@@ -122,8 +126,13 @@ class TestAdaptiveParamEngine:
         assert len(self.engine._signal_buffer) == 1
 
     def test_evaluate_no_change(self):
-        stats = {"total_memories": 100, "growth_rate": 10, "duplicate_rate": 0.05,
-                 "forget_rate": 0.1, "avg_search_score": 0.5}
+        stats = {
+            "total_memories": 100,
+            "growth_rate": 10,
+            "duplicate_rate": 0.05,
+            "forget_rate": 0.1,
+            "avg_search_score": 0.5,
+        }
         result = self.engine.evaluate(stats)
         assert result.update_reason == "no_change"
 
@@ -181,6 +190,7 @@ class TestAdaptiveParamEngine:
 
     def test_singleton(self):
         from pangu.memory.adaptive_params import get_adaptive_engine
+
         e1 = get_adaptive_engine()
         e2 = get_adaptive_engine()
         assert e1 is e2
@@ -188,9 +198,11 @@ class TestAdaptiveParamEngine:
 
 # ── 3. AdvancedReasoning ──
 
+
 class TestAdvancedReasoning:
     def setup_method(self):
         from pangu.memory.advanced_reasoning import AdvancedReasoning
+
         self.engine = AdvancedReasoning()
 
     def test_init(self):
@@ -215,12 +227,14 @@ class TestAdvancedReasoning:
 
     def test_infer_causal_path_not_found(self):
         from pangu.memory.advanced_reasoning import CausalLink
+
         links = [CausalLink(id="c1", cause="a", effect="b", confidence=0.8, evidence=[])]
         path = self.engine.infer_causal_path("x", "y", links)
         assert path is None
 
     def test_infer_causal_path_found(self):
         from pangu.memory.advanced_reasoning import CausalLink
+
         links = [
             CausalLink(id="c1", cause="a", effect="b", confidence=0.8, evidence=[]),
             CausalLink(id="c2", cause="b", effect="c", confidence=0.7, evidence=[]),
@@ -236,8 +250,7 @@ class TestAdvancedReasoning:
     def test_predict_trends(self):
         base = datetime(2025, 1, 1, 0, 0, 0)
         drawers = [
-            _d(id=f"d{i}", tags=["alpha"], created_at=(base + timedelta(hours=i * 24)).isoformat())
-            for i in range(10)
+            _d(id=f"d{i}", tags=["alpha"], created_at=(base + timedelta(hours=i * 24)).isoformat()) for i in range(10)
         ]
         result = self.engine.predict_trends(drawers)
         assert isinstance(result, list)
@@ -249,11 +262,11 @@ class TestAdvancedReasoning:
     def test_detect_anomalies(self):
         base = datetime(2025, 1, 1, 0, 0, 0)
         drawers = [
-            _d(id=f"d{i}", content="short", created_at=(base + timedelta(hours=i)).isoformat())
-            for i in range(20)
+            _d(id=f"d{i}", content="short", created_at=(base + timedelta(hours=i)).isoformat()) for i in range(20)
         ]
-        drawers.append(_d(id="outlier", content="x" * 500, tags=["alpha"] * 5,
-                          created_at=(base + timedelta(hours=25)).isoformat()))
+        drawers.append(
+            _d(id="outlier", content="x" * 500, tags=["alpha"] * 5, created_at=(base + timedelta(hours=25)).isoformat())
+        )
         try:
             alerts = self.engine.detect_anomalies(drawers)
             assert isinstance(alerts, list)
@@ -272,13 +285,16 @@ class TestAdvancedReasoning:
 
 # ── 4. AttentionSystem ──
 
+
 class TestAttentionSystem:
     def setup_method(self):
         from pangu.memory.attention import AttentionSystem
+
         self.sys = AttentionSystem()
 
     def test_init(self):
         from pangu.memory.attention import AttentionStrategy
+
         assert self.sys.active_strategy == AttentionStrategy.BOTTOM_UP
         assert self.sys.budget == 100
 
@@ -301,27 +317,32 @@ class TestAttentionSystem:
 
     def test_switch(self):
         from pangu.memory.attention import AttentionStrategy
+
         old, new = self.sys.switch(AttentionStrategy.FOCUS, "test")
         assert old == AttentionStrategy.BOTTOM_UP
         assert new == AttentionStrategy.FOCUS
 
     def test_evaluate_urgency(self):
         from pangu.memory.attention import AttentionStrategy
+
         result = self.sys.evaluate(0.0, 0.8, 0.0)
         assert result == AttentionStrategy.URGENCY_DRIVEN
 
     def test_evaluate_emotion(self):
         from pangu.memory.attention import AttentionStrategy
+
         result = self.sys.evaluate(0.9, 0.0, 0.0)
         assert result == AttentionStrategy.EMOTION_DRIVEN
 
     def test_evaluate_explore(self):
         from pangu.memory.attention import AttentionStrategy
+
         result = self.sys.evaluate(0.0, 0.0, 0.8)
         assert result == AttentionStrategy.EXPLORE
 
     def test_evaluate_bottom_up(self):
         from pangu.memory.attention import AttentionStrategy
+
         result = self.sys.evaluate(0.0, 0.0, 0.0)
         assert result == AttentionStrategy.BOTTOM_UP
 
@@ -332,6 +353,7 @@ class TestAttentionSystem:
 
     def test_ab_test(self):
         from pangu.memory.attention import AttentionStrategy
+
         self.sys.start_ab_test(AttentionStrategy.FOCUS, AttentionStrategy.EXPLORE)
         assert self.sys.stats["ab_test_active"] is True
         result = self.sys.stop_ab_test()
@@ -343,11 +365,13 @@ class TestAttentionSystem:
 
     def test_record_feedback_no_ab(self):
         from pangu.memory.attention import AttentionStrategy
+
         self.sys.record_feedback(AttentionStrategy.FOCUS, 0.9)
         assert self.sys._ab_records == []
 
     def test_switch_ab_rejects_other(self):
         from pangu.memory.attention import AttentionStrategy
+
         self.sys.start_ab_test(AttentionStrategy.FOCUS, AttentionStrategy.EXPLORE)
         old, new = self.sys.switch(AttentionStrategy.BOTTOM_UP, "test")
         assert old == new == AttentionStrategy.BOTTOM_UP
@@ -355,6 +379,7 @@ class TestAttentionSystem:
 
     def test_singleton(self):
         from pangu.memory.attention import get_attention_system
+
         s1 = get_attention_system()
         s2 = get_attention_system()
         assert s1 is s2
@@ -362,9 +387,11 @@ class TestAttentionSystem:
 
 # ── 5. AutoCollector sub-systems ──
 
+
 class TestConversationParser:
     def setup_method(self):
         from pangu.memory.auto_collector import ConversationParser
+
         self.parser = ConversationParser()
 
     def test_parse_session_nonexistent(self):
@@ -397,7 +424,9 @@ class TestConversationParser:
         assert "hi" in result["content"]
 
     def test_parse_line_tool_call(self):
-        line = '{"type": "message", "message": {"role": "assistant", "content": [{"type": "toolCall", "name": "bash"}]}}'
+        line = (
+            '{"type": "message", "message": {"role": "assistant", "content": [{"type": "toolCall", "name": "bash"}]}}'
+        )
         result = self.parser._parse_line(line)
         assert "工具调用" in result["content"]
 
@@ -410,6 +439,7 @@ class TestConversationParser:
 class TestImportanceFilter:
     def setup_method(self):
         from pangu.memory.auto_collector import ImportanceFilter
+
         self.f = ImportanceFilter()
 
     def test_empty_content(self):
@@ -444,6 +474,7 @@ class TestImportanceFilter:
 class TestCategoryClassifier:
     def setup_method(self):
         from pangu.memory.auto_collector import CategoryClassifier
+
         self.c = CategoryClassifier()
 
     def test_classify_empty(self):
@@ -475,6 +506,7 @@ class TestCategoryClassifier:
 class TestAutoCollector:
     def setup_method(self):
         from pangu.memory.auto_collector import AutoCollector
+
         self.collector = AutoCollector()
 
     def test_init(self):
@@ -494,9 +526,11 @@ class TestAutoCollector:
 
 # ── 6. CrossSessionIntegrator ──
 
+
 class TestCrossSessionIntegrator:
     def setup_method(self):
         from pangu.memory.cross_session import CrossSessionIntegrator
+
         self.integrator = CrossSessionIntegrator()
 
     def test_find_cross_session_links_empty(self):
@@ -530,9 +564,11 @@ class TestCrossSessionIntegrator:
 
 # ── 7. DifferentialPrivacy ──
 
+
 class TestDifferentialPrivacy:
     def setup_method(self):
         from pangu.memory.differential_privacy import DifferentialPrivacy
+
         self.dp = DifferentialPrivacy(epsilon=1.0, delta=1e-5)
 
     def test_init(self):
@@ -594,6 +630,7 @@ class TestDifferentialPrivacy:
 class TestFederatedMemory:
     def setup_method(self):
         from pangu.memory.differential_privacy import FederatedMemory
+
         self.fm = FederatedMemory(epsilon=1.0)
 
     def test_aggregate_importance(self):
@@ -616,9 +653,11 @@ class TestFederatedMemory:
 
 # ── 8. DistillationTower ──
 
+
 class TestDistillationTower:
     def setup_method(self):
         from pangu.memory.distill_enhanced import DistillationTower
+
         self.tower = DistillationTower()
 
     def test_distill_fallback(self):
@@ -654,9 +693,11 @@ class TestDistillationTower:
 
 # ── 9. DomainKnowledge ──
 
+
 class TestDomainKnowledge:
     def setup_method(self):
         from pangu.memory.domain_knowledge import DomainKnowledge
+
         self.dk = DomainKnowledge()
 
     def test_init_has_defaults(self):
@@ -665,12 +706,18 @@ class TestDomainKnowledge:
 
     def test_create_and_get(self):
         from pangu.memory.domain_knowledge import (
-            KnowledgeEntry, DomainType, KnowledgeCategory,
+            DomainType,
+            KnowledgeCategory,
+            KnowledgeEntry,
         )
+
         entry = KnowledgeEntry(
-            id="test_entry_1", domain=DomainType.SOFTWARE_ENGINEERING,
-            category=KnowledgeCategory.BEST_PRACTICE, title="测试条目",
-            content="测试内容", tags=["test"],
+            id="test_entry_1",
+            domain=DomainType.SOFTWARE_ENGINEERING,
+            category=KnowledgeCategory.BEST_PRACTICE,
+            title="测试条目",
+            content="测试内容",
+            tags=["test"],
         )
         self.dk.create_entry(entry)
         got = self.dk.get_entry("test_entry_1")
@@ -683,11 +730,18 @@ class TestDomainKnowledge:
 
     def test_update_entry(self):
         from pangu.memory.domain_knowledge import (
-            KnowledgeEntry, DomainType, KnowledgeCategory, KnowledgeStatus,
+            DomainType,
+            KnowledgeCategory,
+            KnowledgeEntry,
+            KnowledgeStatus,
         )
+
         entry = KnowledgeEntry(
-            id="test_upd", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-            title="原始标题", content="原始内容",
+            id="test_upd",
+            domain=DomainType.CUSTOM,
+            category=KnowledgeCategory.GUIDE,
+            title="原始标题",
+            content="原始内容",
         )
         self.dk.create_entry(entry)
         updated = self.dk.update_entry("test_upd", title="新标题", status=KnowledgeStatus.REVIEW)
@@ -698,11 +752,17 @@ class TestDomainKnowledge:
 
     def test_delete_entry(self):
         from pangu.memory.domain_knowledge import (
-            KnowledgeEntry, DomainType, KnowledgeCategory,
+            DomainType,
+            KnowledgeCategory,
+            KnowledgeEntry,
         )
+
         entry = KnowledgeEntry(
-            id="test_del", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-            title="删除测试", content="内容",
+            id="test_del",
+            domain=DomainType.CUSTOM,
+            category=KnowledgeCategory.GUIDE,
+            title="删除测试",
+            content="内容",
         )
         self.dk.create_entry(entry)
         assert self.dk.delete_entry("test_del") is True
@@ -721,12 +781,17 @@ class TestDomainKnowledge:
 
     def test_add_and_get_related(self):
         from pangu.memory.domain_knowledge import (
-            KnowledgeEntry, DomainType, KnowledgeCategory,
+            DomainType,
+            KnowledgeCategory,
+            KnowledgeEntry,
         )
-        e1 = KnowledgeEntry(id="rel_a", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-                            title="A", content="a")
-        e2 = KnowledgeEntry(id="rel_b", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-                            title="B", content="b")
+
+        e1 = KnowledgeEntry(
+            id="rel_a", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE, title="A", content="a"
+        )
+        e2 = KnowledgeEntry(
+            id="rel_b", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE, title="B", content="b"
+        )
         self.dk.create_entry(e1)
         self.dk.create_entry(e2)
         self.dk.add_relation("rel_a", "rel_b")
@@ -747,10 +812,19 @@ class TestDomainKnowledge:
 
     def test_deprecate_entry(self):
         from pangu.memory.domain_knowledge import (
-            KnowledgeEntry, DomainType, KnowledgeCategory, KnowledgeStatus,
+            DomainType,
+            KnowledgeCategory,
+            KnowledgeEntry,
+            KnowledgeStatus,
         )
-        entry = KnowledgeEntry(id="dep_test", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-                               title="Dep", content="dep content")
+
+        entry = KnowledgeEntry(
+            id="dep_test",
+            domain=DomainType.CUSTOM,
+            category=KnowledgeCategory.GUIDE,
+            title="Dep",
+            content="dep content",
+        )
         self.dk.create_entry(entry)
         self.dk.deprecate_entry("dep_test", reason="outdated")
         got = self.dk.get_entry("dep_test")
@@ -759,12 +833,27 @@ class TestDomainKnowledge:
 
     def test_merge_entries(self):
         from pangu.memory.domain_knowledge import (
-            KnowledgeEntry, DomainType, KnowledgeCategory,
+            DomainType,
+            KnowledgeCategory,
+            KnowledgeEntry,
         )
-        src = KnowledgeEntry(id="merge_src_f2", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-                             title="Source", content="source content", tags=["src_tag"])
-        tgt = KnowledgeEntry(id="merge_tgt_f2", domain=DomainType.CUSTOM, category=KnowledgeCategory.GUIDE,
-                             title="Target", content="target content", tags=["tgt_tag"])
+
+        src = KnowledgeEntry(
+            id="merge_src_f2",
+            domain=DomainType.CUSTOM,
+            category=KnowledgeCategory.GUIDE,
+            title="Source",
+            content="source content",
+            tags=["src_tag"],
+        )
+        tgt = KnowledgeEntry(
+            id="merge_tgt_f2",
+            domain=DomainType.CUSTOM,
+            category=KnowledgeCategory.GUIDE,
+            title="Target",
+            content="target content",
+            tags=["tgt_tag"],
+        )
         self.dk.create_entry(src)
         self.dk.create_entry(tgt)
         result = self.dk.merge_entries("merge_src_f2", "merge_tgt_f2")
@@ -778,9 +867,11 @@ class TestDomainKnowledge:
 
 # ── 10. Encryption ──
 
+
 class TestEncryption:
     def setup_method(self):
         from pangu.memory import encryption
+
         self.mod = encryption
         # Reset global state
         self.mod._fernet = None
@@ -825,9 +916,11 @@ class TestEncryption:
 
 # ── 11. EnhancedEvaluation ──
 
+
 class TestEvaluationCache:
     def setup_method(self):
         from pangu.memory.enhanced_evaluation import EvaluationCache
+
         self.EvaluationCache = EvaluationCache
         self.tmpdir = tempfile.mkdtemp()
         self.cache = EvaluationCache(cache_path=f"{self.tmpdir}/cache.jsonl")
@@ -853,6 +946,7 @@ class TestEvaluationCache:
 class TestEnhancedContradictionDetector:
     def setup_method(self):
         from pangu.memory.enhanced_evaluation import EnhancedContradictionDetector
+
         self.detector = EnhancedContradictionDetector()
 
     def test_detect_empty(self):
@@ -894,6 +988,7 @@ class TestEnhancedContradictionDetector:
 
     def test_cached_result(self):
         from pangu.memory.enhanced_evaluation import EvaluationCache
+
         self.detector.cache = EvaluationCache(cache_path=f"{tempfile.mkdtemp()}/cache.jsonl")
         drawers = [_d(id="a", content="内容A"), _d(id="b", content="内容B")]
         self.detector.detect_contradictions(drawers)
@@ -904,6 +999,7 @@ class TestEnhancedContradictionDetector:
 class TestTrajectoryTracker:
     def setup_method(self):
         from pangu.memory.enhanced_evaluation import TrajectoryTracker
+
         self.tracker = TrajectoryTracker()
 
     def test_track_empty(self):
@@ -914,8 +1010,12 @@ class TestTrajectoryTracker:
     def test_track_with_events(self):
         base = datetime(2025, 1, 1)
         drawers = [
-            _d(id=f"e{i}", content=f"event {i}", importance=float(3 - i),
-               created_at=(base + timedelta(days=i)).isoformat())
+            _d(
+                id=f"e{i}",
+                content=f"event {i}",
+                importance=float(3 - i),
+                created_at=(base + timedelta(days=i)).isoformat(),
+            )
             for i in range(5)
         ]
         result = self.tracker.track(drawers)
@@ -932,8 +1032,24 @@ class TestTrajectoryTracker:
 
     def test_detect_regressions(self):
         events = [
-            {"id": "a", "content": "", "importance": 5.0, "timestamp": "2025-01-01", "wing": "w", "room": "r", "tags": []},
-            {"id": "b", "content": "", "importance": 1.0, "timestamp": "2025-01-02", "wing": "w", "room": "r", "tags": []},
+            {
+                "id": "a",
+                "content": "",
+                "importance": 5.0,
+                "timestamp": "2025-01-01",
+                "wing": "w",
+                "room": "r",
+                "tags": [],
+            },
+            {
+                "id": "b",
+                "content": "",
+                "importance": 1.0,
+                "timestamp": "2025-01-02",
+                "wing": "w",
+                "room": "r",
+                "tags": [],
+            },
         ]
         regs = self.tracker._detect_regressions(events)
         assert len(regs) == 1

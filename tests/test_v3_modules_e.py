@@ -1,5 +1,5 @@
 """Pangu v3.0 模块测试 — 第五批 3 个记忆子系统"""
-import pytest
+
 from pangu.core.palace import Drawer
 
 
@@ -9,9 +9,11 @@ def _d(id="t1", content="test content", wing="test_wing", importance=3.0, tags=N
 
 # ── 1. MemoryDiffEngine ──
 
+
 class TestMemoryDiffEngine:
     def setup_method(self):
         from pangu.memory.memory_diff import MemoryDiffEngine
+
         self.engine = MemoryDiffEngine()
 
     def test_diff_content_empty(self):
@@ -103,6 +105,7 @@ class TestMemoryDiffEngine:
 
     def test_get_diff_engine_singleton(self):
         from pangu.memory.memory_diff import get_diff_engine
+
         e1 = get_diff_engine()
         e2 = get_diff_engine()
         assert e1 is e2
@@ -110,9 +113,11 @@ class TestMemoryDiffEngine:
 
 # ── 2. MetricsCollector & StartupValidator ──
 
+
 class TestMetricsCollector:
     def setup_method(self):
         from pangu.memory.production import MetricsCollector
+
         self.mc = MetricsCollector()
 
     def test_record_request(self):
@@ -179,6 +184,7 @@ class TestMetricsCollector:
 class TestStartupValidator:
     def test_validate_empty(self):
         from pangu.memory.production import StartupValidator
+
         sv = StartupValidator()
         all_ok, results = sv.validate()
         assert all_ok is True
@@ -186,6 +192,7 @@ class TestStartupValidator:
 
     def test_validate_passing_check(self):
         from pangu.memory.production import StartupValidator
+
         sv = StartupValidator()
         sv.check("always_pass", lambda: True, "should pass")
         all_ok, results = sv.validate()
@@ -194,6 +201,7 @@ class TestStartupValidator:
 
     def test_validate_failing_check(self):
         from pangu.memory.production import StartupValidator
+
         sv = StartupValidator()
         sv.check("always_fail", lambda: False, "should fail")
         all_ok, results = sv.validate()
@@ -202,6 +210,7 @@ class TestStartupValidator:
 
     def test_validate_error_in_check(self):
         from pangu.memory.production import StartupValidator
+
         sv = StartupValidator()
         sv.check("raises", lambda: (_ for _ in ()).throw(ValueError("boom")), "will error")
         all_ok, results = sv.validate()
@@ -210,6 +219,7 @@ class TestStartupValidator:
 
     def test_default_startup_checks(self):
         from pangu.memory.production import default_startup_checks
+
         sv = default_startup_checks()
         all_ok, results = sv.validate()
         assert len(results) >= 3
@@ -218,6 +228,7 @@ class TestStartupValidator:
 
     def test_check_environment(self):
         from pangu.memory.production import check_environment
+
         env = check_environment()
         assert "python" in env
         assert "version" in env["python"]
@@ -228,9 +239,11 @@ class TestStartupValidator:
 
 # ── 3. ContextInjectionEngine ──
 
+
 class TestContextInjectionEngine:
     def setup_method(self):
         from pangu.memory.context_injection import ContextInjectionEngine
+
         self.engine = ContextInjectionEngine()
 
     def test_inject_context_empty_drawers(self):
@@ -320,6 +333,7 @@ class TestContextInjectionEngine:
 
     def test_score_recency_recent(self):
         from datetime import datetime, timedelta
+
         d = _d("m1", "test")
         d.updated_at = (datetime.now() - timedelta(days=1)).isoformat()
         score = self.engine.score_recency(d)

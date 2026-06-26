@@ -68,6 +68,7 @@ class MemoryJudge:
         if self._llm_engine is None:
             try:
                 from ..core.llm import LLMEngine
+
                 self._llm_engine = LLMEngine(self.config)
             except ImportError:
                 self._llm_engine = None
@@ -91,13 +92,15 @@ class MemoryJudge:
         result = self._parse_reply(reply)
 
         # 记录判断历史
-        self._history.append({
-            "task_type": task_type,
-            "agent_id": agent_id,
-            "verdict": result.verdict.value,
-            "confidence": result.confidence,
-            "ts": result.timestamp,
-        })
+        self._history.append(
+            {
+                "task_type": task_type,
+                "agent_id": agent_id,
+                "verdict": result.verdict.value,
+                "confidence": result.confidence,
+                "ts": result.timestamp,
+            }
+        )
         if len(self._history) > 50:
             self._history = self._history[-50:]
 
@@ -126,9 +129,7 @@ class MemoryJudge:
             return None
 
         try:
-            resp = self.llm_engine.chat([
-                {"role": "user", "content": prompt}
-            ])
+            resp = self.llm_engine.chat([{"role": "user", "content": prompt}])
             return resp.content.strip() if resp else None
         except Exception as e:
             logger.debug(f"MemoryJudge LLM call failed: {e}")

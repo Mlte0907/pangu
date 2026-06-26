@@ -18,19 +18,19 @@ class AdaptiveParams:
     """可自适应调整的记忆策略参数"""
 
     # 衰减参数
-    decay_base: float = 0.95       # 基础衰减率 (0.9-0.99)
-    decay_floor: float = 0.15      # 衰减底限 (0.05-0.3)
+    decay_base: float = 0.95  # 基础衰减率 (0.9-0.99)
+    decay_floor: float = 0.15  # 衰减底限 (0.05-0.3)
     touch_boost_short: float = 1.35  # 短期增益 (1.1-1.5)
-    touch_boost_long: float = 1.06   # 长期保护 (1.0-1.2)
+    touch_boost_long: float = 1.06  # 长期保护 (1.0-1.2)
 
     # 搜索参数
-    vector_weight: float = 0.6        # 向量搜索权重 (0.3-0.8)
+    vector_weight: float = 0.6  # 向量搜索权重 (0.3-0.8)
     similarity_threshold: float = 0.25  # 向量相似度阈值 (0.15-0.4)
 
     # 记忆参数
     consolidation_interval: float = 24.0  # 巩固间隔（小时）
-    compression_threshold: int = 100      # 压缩触发阈值
-    min_importance: float = 0.5           # 最低重要性阈值
+    compression_threshold: int = 100  # 压缩触发阈值
+    min_importance: float = 0.5  # 最低重要性阈值
 
     # 去重参数
     dedup_similarity: float = 0.85  # 去重相似度阈值 (0.7-0.95)
@@ -85,12 +85,14 @@ class AdaptiveParamEngine:
 
     def feed_signal(self, signal_type: str, value: float, context: str = "") -> None:
         """输入调整信号"""
-        self._signal_buffer.append({
-            "type": signal_type,
-            "value": value,
-            "context": context,
-            "ts": datetime.now().isoformat(),
-        })
+        self._signal_buffer.append(
+            {
+                "type": signal_type,
+                "value": value,
+                "context": context,
+                "ts": datetime.now().isoformat(),
+            }
+        )
         if len(self._signal_buffer) > 100:
             self._signal_buffer = self._signal_buffer[-100:]
 
@@ -166,13 +168,15 @@ class AdaptiveParamEngine:
         new_params.confidence = min(0.9, 0.5 + len(reasons) * 0.1)
 
         # 记录历史
-        self._history.append({
-            "old": self.params.to_dict(),
-            "new": new_params.to_dict(),
-            "reasons": reasons,
-            "stats": stats,
-            "ts": new_params.last_updated,
-        })
+        self._history.append(
+            {
+                "old": self.params.to_dict(),
+                "new": new_params.to_dict(),
+                "reasons": reasons,
+                "stats": stats,
+                "ts": new_params.last_updated,
+            }
+        )
         if len(self._history) > 50:
             self._history = self._history[-50:]
 

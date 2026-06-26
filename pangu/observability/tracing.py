@@ -7,6 +7,7 @@
 2. 手动埋点：with tracer.start_as_current_span("name"): ...
 3. 导出配置：OTEL_EXPORTER_OTLP_ENDPOINT 环境变量
 """
+
 import logging
 import os
 
@@ -29,16 +30,21 @@ def _init_tracer():
         from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 
         # 创建 provider
-        provider = TracerProvider(resource=trace.Resource.create({
-            "service.name": "pangu",
-            "service.version": "0.1.0",
-        }))
+        provider = TracerProvider(
+            resource=trace.Resource.create(
+                {
+                    "service.name": "pangu",
+                    "service.version": "0.1.0",
+                }
+            )
+        )
 
         # 尝试 OTLP 导出
         endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
         if endpoint:
             try:
                 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
                 exporter = OTLPSpanExporter(endpoint=endpoint)
                 provider.add_span_processor(BatchSpanProcessor(exporter))
                 logger.info(f"OTLP exporter configured: {endpoint}")
@@ -80,6 +86,7 @@ class traced:
         def remember(...):
             ...
     """
+
     def __init__(self, span_name: str = None):
         self.span_name = span_name
 
@@ -102,4 +109,5 @@ class traced:
                     span.set_status(trace.StatusCode.ERROR, str(e))
                     span.record_exception(e)
                     raise
+
         return wrapper

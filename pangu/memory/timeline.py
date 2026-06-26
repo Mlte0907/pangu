@@ -6,6 +6,7 @@
 - 时序查询：查询某时间点前后的记忆
 - 事件跨度分析：计算事件持续时间
 """
+
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ from ..core.palace import Drawer
 @dataclass
 class TimelineEvent:
     """时间线事件"""
+
     id: str
     drawer_id: str
     content: str
@@ -33,6 +35,7 @@ class TimelineEvent:
 @dataclass
 class EventChain:
     """事件链"""
+
     id: str
     events: list[TimelineEvent]
     span: str  # 时间跨度描述
@@ -43,6 +46,7 @@ class EventChain:
 @dataclass
 class CausalLink:
     """因果关联"""
+
     source_id: str
     target_id: str
     confidence: float
@@ -91,11 +95,10 @@ class TimelineEngine:
     def _cosine_sim(a, b) -> float:
         if not a or not b or len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
+        dot = sum(x * y for x, y in zip(a, b, strict=False))
         na = sum(x * x for x in a) ** 0.5
         nb = sum(x * x for x in b) ** 0.5
         return dot / (na * nb) if na and nb else 0.0
-
 
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
@@ -106,13 +109,13 @@ class TimelineEngine:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
 
-    def build_timeline(self, drawers: list[Drawer],
-                       wing: str = None) -> list[TimelineEvent]:
+    def build_timeline(self, drawers: list[Drawer], wing: str = None) -> list[TimelineEvent]:
         """构建时间线
 
         Args:
@@ -132,22 +135,23 @@ class TimelineEngine:
             except (ValueError, TypeError):
                 ts = datetime.now()
 
-            events.append(TimelineEvent(
-                id=f"evt_{d.id}",
-                drawer_id=d.id,
-                content=d.content,
-                timestamp=ts.isoformat(),
-                wing=d.wing,
-                room=d.room,
-                importance=d.importance,
-                tags=d.tags or [],
-            ))
+            events.append(
+                TimelineEvent(
+                    id=f"evt_{d.id}",
+                    drawer_id=d.id,
+                    content=d.content,
+                    timestamp=ts.isoformat(),
+                    wing=d.wing,
+                    room=d.room,
+                    importance=d.importance,
+                    tags=d.tags or [],
+                )
+            )
 
         events.sort(key=lambda e: e.timestamp)
         return events
 
-    def _check_event_pair_causal(self, a: TimelineEvent, b: TimelineEvent,
-                                  min_confidence: float) -> CausalLink | None:
+    def _check_event_pair_causal(self, a: TimelineEvent, b: TimelineEvent, min_confidence: float) -> CausalLink | None:
         """检查两个事件对之间的因果关系"""
         try:
             ta = datetime.fromisoformat(a.timestamp)
@@ -175,8 +179,7 @@ class TimelineEngine:
             )
         return None
 
-    def find_causal_links(self, events: list[TimelineEvent],
-                          min_confidence: float = 0.5) -> list[CausalLink]:
+    def find_causal_links(self, events: list[TimelineEvent], min_confidence: float = 0.5) -> list[CausalLink]:
         """发现事件间的因果关系
 
         Args:
@@ -210,8 +213,7 @@ class TimelineEngine:
 
         return max_conf
 
-    def _describe_causal(self, a: TimelineEvent, b: TimelineEvent,
-                         confidence: float) -> str:
+    def _describe_causal(self, a: TimelineEvent, b: TimelineEvent, confidence: float) -> str:
         """描述因果关系"""
         if confidence >= 0.8:
             return f"强烈因果：'{a.content[:30]}...' 很可能导致了 '{b.content[:30]}...'"
@@ -231,8 +233,7 @@ class TimelineEngine:
             pass
         return current_confidence
 
-    def build_event_chain(self, events: list[TimelineEvent],
-                          max_gap_hours: float = 72) -> list[EventChain]:
+    def build_event_chain(self, events: list[TimelineEvent], max_gap_hours: float = 72) -> list[EventChain]:
         """构建事件链（将时间相近的事件分组）
 
         Args:
@@ -282,9 +283,7 @@ class TimelineEngine:
         if len(events) > 5:
             summary += f" ... (共 {len(events)} 个事件)"
 
-        chain_id = hex_digest(
-            "".join(e.drawer_id for e in events)
-        )[:12]
+        chain_id = hex_digest("".join(e.drawer_id for e in events))[:12]
 
         return EventChain(
             id=chain_id,
@@ -293,10 +292,15 @@ class TimelineEngine:
             summary=summary,
         )
 
-    def query_timeline(self, events: list[TimelineEvent],
-                       start: str = None, end: str = None,
-                       wing: str = None, room: str = None,
-                       tags: list[str] = None) -> list[TimelineEvent]:
+    def query_timeline(
+        self,
+        events: list[TimelineEvent],
+        start: str = None,
+        end: str = None,
+        wing: str = None,
+        room: str = None,
+        tags: list[str] = None,
+    ) -> list[TimelineEvent]:
         """时序查询
 
         Args:
@@ -399,11 +403,13 @@ class TimelineEngine:
                 burst_days.append({"date": day, "count": count})
 
         if burst_days:
-            patterns.append({
-                "type": "burst",
-                "description": f"发现 {len(burst_days)} 个突发日（事件数远超平均）",
-                "details": burst_days[:5],
-            })
+            patterns.append(
+                {
+                    "type": "burst",
+                    "description": f"发现 {len(burst_days)} 个突发日（事件数远超平均）",
+                    "details": burst_days[:5],
+                }
+            )
 
         # 检测活跃时段
         hour_counts = defaultdict(int)
@@ -416,10 +422,12 @@ class TimelineEngine:
 
         if hour_counts:
             active_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-            patterns.append({
-                "type": "active_hours",
-                "description": "最活跃时段",
-                "details": [{"hour": h, "count": c} for h, c in active_hours],
-            })
+            patterns.append(
+                {
+                    "type": "active_hours",
+                    "description": "最活跃时段",
+                    "details": [{"hour": h, "count": c} for h, c in active_hours],
+                }
+            )
 
         return patterns

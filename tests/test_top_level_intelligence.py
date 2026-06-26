@@ -7,9 +7,11 @@
 4. 跨领域迁移 → 发现跨域关联 → 知识迁移
 5. 推理可视化 → 推理 → 展示推理过程
 """
+
 import pytest
-from pangu.core.palace import Drawer
+
 from pangu.core.config import PanguConfig
+from pangu.core.palace import Drawer
 
 
 @pytest.fixture
@@ -20,26 +22,60 @@ def config():
 @pytest.fixture
 def sample_drawers():
     return [
-        Drawer(id="1", content="因为Python是AI首选语言，所以我们决定使用Python", wing="tech",
-               importance=4.0, tags=["python", "ai", "language"]),
-        Drawer(id="2", content="ONNX推理延迟0.002ms，性能优秀", wing="tech",
-               importance=3.5, tags=["onnx", "perf", "inference"]),
-        Drawer(id="3", content="FAISS向量搜索支持十亿级规模", wing="tech",
-               importance=3.0, tags=["faiss", "vector", "search"]),
-        Drawer(id="4", content="盘古记忆系统架构设计文档", wing="system",
-               importance=4.5, tags=["pangu", "arch", "design"]),
-        Drawer(id="5", content="这个功能有问题，需要紧急修复", wing="tech",
-               importance=1.0, tags=["bug", "fix", "urgent"]),
-        Drawer(id="6", content="团队协作提升了开发效率30%", wing="management",
-               importance=3.8, tags=["team", "efficiency", "process"]),
-        Drawer(id="7", content="因为测试覆盖不足，导致生产事故", wing="tech",
-               importance=2.0, tags=["testing", "incident", "quality"]),
-        Drawer(id="8", content="机器学习模型需要定期重训练", wing="ai",
-               importance=3.2, tags=["ml", "retrain", "maintenance"]),
-        Drawer(id="9", content="API设计遵循RESTful规范", wing="tech",
-               importance=2.8, tags=["api", "restful", "design"]),
-        Drawer(id="10", content="用户反馈系统体验很好", wing="product",
-                importance=4.0, tags=["feedback", "ux", "positive"]),
+        Drawer(
+            id="1",
+            content="因为Python是AI首选语言，所以我们决定使用Python",
+            wing="tech",
+            importance=4.0,
+            tags=["python", "ai", "language"],
+        ),
+        Drawer(
+            id="2",
+            content="ONNX推理延迟0.002ms，性能优秀",
+            wing="tech",
+            importance=3.5,
+            tags=["onnx", "perf", "inference"],
+        ),
+        Drawer(
+            id="3",
+            content="FAISS向量搜索支持十亿级规模",
+            wing="tech",
+            importance=3.0,
+            tags=["faiss", "vector", "search"],
+        ),
+        Drawer(
+            id="4", content="盘古记忆系统架构设计文档", wing="system", importance=4.5, tags=["pangu", "arch", "design"]
+        ),
+        Drawer(
+            id="5", content="这个功能有问题，需要紧急修复", wing="tech", importance=1.0, tags=["bug", "fix", "urgent"]
+        ),
+        Drawer(
+            id="6",
+            content="团队协作提升了开发效率30%",
+            wing="management",
+            importance=3.8,
+            tags=["team", "efficiency", "process"],
+        ),
+        Drawer(
+            id="7",
+            content="因为测试覆盖不足，导致生产事故",
+            wing="tech",
+            importance=2.0,
+            tags=["testing", "incident", "quality"],
+        ),
+        Drawer(
+            id="8",
+            content="机器学习模型需要定期重训练",
+            wing="ai",
+            importance=3.2,
+            tags=["ml", "retrain", "maintenance"],
+        ),
+        Drawer(
+            id="9", content="API设计遵循RESTful规范", wing="tech", importance=2.8, tags=["api", "restful", "design"]
+        ),
+        Drawer(
+            id="10", content="用户反馈系统体验很好", wing="product", importance=4.0, tags=["feedback", "ux", "positive"]
+        ),
     ]
 
 
@@ -69,11 +105,11 @@ class TestEmotionalIntelligencePipeline:
 
         # 记录一些历史
         from pangu.memory.emotional_intelligence import EmotionResult, EmotionType
+
         for _ in range(5):
-            ei.record_emotion("很好", EmotionResult(
-                emotion=EmotionType.POSITIVE, intensity=0.8,
-                keywords=["好"], confidence=0.8
-            ))
+            ei.record_emotion(
+                "很好", EmotionResult(emotion=EmotionType.POSITIVE, intensity=0.8, keywords=["好"], confidence=0.8)
+            )
 
         # 预测情绪
         prediction = ei.predict_emotion("继续开发")
@@ -197,9 +233,9 @@ class TestEndToEndIntelligence:
 
     def test_full_intelligence_cycle(self, config, sample_drawers):
         """完整智能循环：情感→学习→创造→迁移→推理"""
-        from pangu.memory.emotional_intelligence import EmotionalIntelligence
         from pangu.memory.autonomous_learning import AutonomousLearning
         from pangu.memory.creative_thinking import CreativeThinking
+        from pangu.memory.emotional_intelligence import EmotionalIntelligence
 
         # 1. 情感智能：分析用户情绪
         ei = EmotionalIntelligence(config)

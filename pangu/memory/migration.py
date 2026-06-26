@@ -6,6 +6,7 @@
 - 增量备份与恢复
 - 跨实例迁移
 """
+
 import json
 import os
 import zipfile
@@ -41,6 +42,7 @@ class MemoryExporter:
         palace = None
         try:
             from ..core.palace import Palace
+
             palace = Palace(self.config.palace_path)
         except Exception:
             pass
@@ -184,12 +186,14 @@ class BackupManager:
         backups = []
         for f in sorted(self.backup_dir.glob("*.zip"), reverse=True):
             stat = f.stat()
-            backups.append({
-                "name": f.stem,
-                "path": str(f),
-                "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            })
+            backups.append(
+                {
+                    "name": f.stem,
+                    "path": str(f),
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                }
+            )
         return backups
 
     def restore_backup(self, backup_name: str, merge: bool = False) -> dict:

@@ -10,6 +10,7 @@
 - 健康评分
 - 异常检测
 """
+
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -21,6 +22,7 @@ from ..core.palace import Drawer
 @dataclass
 class MemoryAnalytics:
     """记忆分析报告"""
+
     # 基本统计
     total_memories: int
     total_wings: int
@@ -101,14 +103,12 @@ class MemoryAnalyzer:
         wing_dist = dict(Counter(d.wing for d in drawers))
         room_dist = dict(Counter(f"{d.wing}/{d.room}" for d in drawers))
         hall_dist = dict(Counter(d.hall for d in drawers))
-        tag_dist = dict(Counter(
-            tag for d in drawers for tag in (d.tags or [])
-        ))
+        tag_dist = dict(Counter(tag for d in drawers for tag in (d.tags or [])))
         return wing_dist, room_dist, hall_dist, tag_dist
 
-    def analyze(self, drawers: list[Drawer],
-                wiki_page_count: int = 0,
-                access_data: dict[str, int] = None) -> MemoryAnalytics:
+    def analyze(
+        self, drawers: list[Drawer], wiki_page_count: int = 0, access_data: dict[str, int] = None
+    ) -> MemoryAnalytics:
         now = datetime.now()
 
         wings = set(d.wing for d in drawers)
@@ -122,25 +122,18 @@ class MemoryAnalyzer:
         high = sum(1 for d in drawers if d.importance >= 4.0)
         medium = sum(1 for d in drawers if 2.0 <= d.importance < 4.0)
         low = sum(1 for d in drawers if d.importance < 2.0)
-        avg_imp = (sum(d.importance for d in drawers) / len(drawers)
-                   if drawers else 0.0)
+        avg_imp = sum(d.importance for d in drawers) / len(drawers) if drawers else 0.0
 
-        counts_24h, counts_7d, counts_30d, oldest_days, newest_hours = (
-            self._analyze_time_ranges(drawers, now)
-        )
+        counts_24h, counts_7d, counts_30d, oldest_days, newest_hours = self._analyze_time_ranges(drawers, now)
 
         content_lengths = [len(d.content) for d in drawers]
-        avg_content_len = (sum(content_lengths) // len(content_lengths)
-                           if content_lengths else 0)
-        avg_tags = (sum(len(d.tags or []) for d in drawers) / len(drawers)
-                    if drawers else 0.0)
+        avg_content_len = sum(content_lengths) // len(content_lengths) if content_lengths else 0
+        avg_tags = sum(len(d.tags or []) for d in drawers) / len(drawers) if drawers else 0.0
 
         top_tags = sorted(tag_dist.items(), key=lambda x: x[1], reverse=True)[:10]
         top_wings = sorted(wing_dist.items(), key=lambda x: x[1], reverse=True)[:5]
 
-        health = self._health_assessment(
-            drawers, wing_dist, access_data, avg_imp,
-            oldest_days, newest_hours, avg_tags)
+        health = self._health_assessment(drawers, wing_dist, access_data, avg_imp, oldest_days, newest_hours, avg_tags)
 
         return MemoryAnalytics(
             total_memories=len(drawers),
@@ -168,10 +161,16 @@ class MemoryAnalyzer:
             recommendations=health["recommendations"],
         )
 
-    def _health_assessment(self, drawers: list[Drawer],
-                           wing_dist: dict, access_data: dict,
-                           avg_imp: float, oldest_days: int,
-                           newest_hours: float, avg_tags: float) -> dict:
+    def _health_assessment(
+        self,
+        drawers: list[Drawer],
+        wing_dist: dict,
+        access_data: dict,
+        avg_imp: float,
+        oldest_days: int,
+        newest_hours: float,
+        avg_tags: float,
+    ) -> dict:
         """评估记忆系统健康度"""
         score = 100.0
         issues = []
@@ -250,8 +249,7 @@ class MemoryAnalyzer:
             "recommendations": recommendations,
         }
 
-    def growth_trend(self, drawers: list[Drawer],
-                     days: int = 30) -> list[dict]:
+    def growth_trend(self, drawers: list[Drawer], days: int = 30) -> list[dict]:
         """分析记忆增长趋势"""
         now = datetime.now()
         daily_counts = defaultdict(int)
@@ -267,15 +265,16 @@ class MemoryAnalyzer:
         trend = []
         for i in range(days - 1, -1, -1):
             day = (now - timedelta(days=i)).strftime("%Y-%m-%d")
-            trend.append({
-                "date": day,
-                "count": daily_counts.get(day, 0),
-            })
+            trend.append(
+                {
+                    "date": day,
+                    "count": daily_counts.get(day, 0),
+                }
+            )
 
         return trend
 
-    def activity_heatmap(self, drawers: list[Drawer],
-                         access_data: dict[str, int]) -> dict:
+    def activity_heatmap(self, drawers: list[Drawer], access_data: dict[str, int]) -> dict:
         """生成活跃度热力图数据"""
         hour_counts = defaultdict(int)
         weekday_counts = defaultdict(int)
@@ -320,11 +319,13 @@ class MemoryAnalyzer:
                 recent_24h += 1
 
         if len(drawers) > 10 and recent_24h > len(drawers) * 0.5:
-            anomalies.append({
-                "type": "surge",
-                "description": f"过去 24 小时新增 {recent_24h} 条记忆，占总量的 {recent_24h/len(drawers)*100:.0f}%",
-                "severity": "warning",
-            })
+            anomalies.append(
+                {
+                    "type": "surge",
+                    "description": f"过去 24 小时新增 {recent_24h} 条记忆，占总量的 {recent_24h / len(drawers) * 100:.0f}%",
+                    "severity": "warning",
+                }
+            )
 
         # 检测内容完全相同的记忆
         content_map = defaultdict(list)
@@ -332,31 +333,37 @@ class MemoryAnalyzer:
             content_map[d.content.strip()].append(d.id)
         exact_dups = {k: v for k, v in content_map.items() if len(v) > 1}
         if exact_dups:
-            anomalies.append({
-                "type": "exact_duplicate",
-                "description": f"发现 {len(exact_dups)} 组完全相同的记忆",
-                "severity": "warning",
-                "details": {k: v for k, v in list(exact_dups.items())[:5]},
-            })
+            anomalies.append(
+                {
+                    "type": "exact_duplicate",
+                    "description": f"发现 {len(exact_dups)} 组完全相同的记忆",
+                    "severity": "warning",
+                    "details": {k: v for k, v in list(exact_dups.items())[:5]},
+                }
+            )
 
         # 检测异常高重要性
         very_high = [d.id for d in drawers if d.importance > 9.0]
         if very_high:
-            anomalies.append({
-                "type": "high_importance",
-                "description": f"发现 {len(very_high)} 条异常高重要性记忆（> 9.0）",
-                "severity": "info",
-            })
+            anomalies.append(
+                {
+                    "type": "high_importance",
+                    "description": f"发现 {len(very_high)} 条异常高重要性记忆（> 9.0）",
+                    "severity": "info",
+                }
+            )
 
         # 检测空洞
         empty_content = [d.id for d in drawers if not d.content.strip()]
         if empty_content:
-            anomalies.append({
-                "type": "empty_content",
-                "description": f"发现 {len(empty_content)} 条空内容记忆",
-                "severity": "warning",
-                "details": empty_content[:10],
-            })
+            anomalies.append(
+                {
+                    "type": "empty_content",
+                    "description": f"发现 {len(empty_content)} 条空内容记忆",
+                    "severity": "warning",
+                    "details": empty_content[:10],
+                }
+            )
 
         return anomalies
 

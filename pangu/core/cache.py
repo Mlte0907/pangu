@@ -28,6 +28,7 @@ from .llm import LLMResponse
 @dataclass
 class CachedResponse:
     """缓存条目"""
+
     key: str
     provider: str
     model: str
@@ -151,9 +152,7 @@ class PersistentCache:
             return 0
         cutoff = time.time() - self.ttl_seconds
         conn = self._get_conn()
-        cursor = conn.execute(
-            "DELETE FROM llm_cache WHERE created_at < ?", (cutoff,)
-        )
+        cursor = conn.execute("DELETE FROM llm_cache WHERE created_at < ?", (cutoff,))
         return cursor.rowcount
 
     def _check_disk_size(self) -> None:
@@ -161,9 +160,7 @@ class PersistentCache:
         if self.max_disk_bytes <= 0:
             return
         conn = self._get_conn()
-        total = conn.execute(
-            "SELECT COALESCE(SUM(disk_size), 0) FROM llm_cache"
-        ).fetchone()[0]
+        total = conn.execute("SELECT COALESCE(SUM(disk_size), 0) FROM llm_cache").fetchone()[0]
         if total <= self.max_disk_bytes:
             return
         # 需要清理的字节数
@@ -271,9 +268,17 @@ class PersistentCache:
                 created_at, last_accessed, hit_count, disk_size)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?, ?, 0, ?)""",
             (
-                key, provider, model, request_json, content, usage_json,
-                prompt_tokens, completion_tokens,
-                now, now, size,
+                key,
+                provider,
+                model,
+                request_json,
+                content,
+                usage_json,
+                prompt_tokens,
+                completion_tokens,
+                now,
+                now,
+                size,
             ),
         )
 
@@ -326,10 +331,7 @@ class PersistentCache:
             "oldest_age_hours": round(age_hours, 2),
             "ttl_seconds": self.ttl_seconds,
             "max_disk_bytes": self.max_disk_bytes,
-            "disk_usage_pct": (
-                round(bytes_used / self.max_disk_bytes * 100, 2)
-                if self.max_disk_bytes > 0 else 0.0
-            ),
+            "disk_usage_pct": (round(bytes_used / self.max_disk_bytes * 100, 2) if self.max_disk_bytes > 0 else 0.0),
         }
 
     def metrics(self) -> dict[str, Any]:

@@ -7,16 +7,13 @@
 """
 
 import hashlib
-import json
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
 
 from ..core.config import PanguConfig
-from ..memory.working_memory import get_working_memory
 from ..memory.attention import get_attention_system
+from ..memory.working_memory import get_working_memory
 
 logger = logging.getLogger("pangu.memory.world_model")
 
@@ -31,10 +28,10 @@ class Scenario:
     trigger: str
     description: str
     probability: float
-    causal_path: List[str] = field(default_factory=list)
+    causal_path: list[str] = field(default_factory=list)
     severity: float = 0.5
     estimated_impact: str = ""
-    suggested_actions: List[dict] = field(default_factory=list)
+    suggested_actions: list[dict] = field(default_factory=list)
     matched: bool = False
 
     def hash_key(self) -> str:
@@ -45,7 +42,7 @@ class Scenario:
 class Plan:
     scenario_id: str
     description: str
-    suggested_actions: List[dict] = field(default_factory=list)
+    suggested_actions: list[dict] = field(default_factory=list)
     estimated_effect: str = ""
 
 
@@ -61,12 +58,12 @@ class PredictiveWorldModel:
 
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
-        self._scenario_cache: Dict[str, List[Scenario]] = {}
-        self._prediction_history: List[dict] = []
-        self._bayesian_weights: Dict[str, float] = {}
-        self._plan_cache: Dict[str, Plan] = {}
+        self._scenario_cache: dict[str, list[Scenario]] = {}
+        self._prediction_history: list[dict] = []
+        self._bayesian_weights: dict[str, float] = {}
+        self._plan_cache: dict[str, Plan] = {}
 
-    def forecast(self) -> List[Scenario]:
+    def forecast(self) -> list[Scenario]:
         """基于当前状态预测未来情景"""
         current_state = self._snapshot_current_state()
         state_hash = self._hash_state(current_state)
@@ -74,7 +71,7 @@ class PredictiveWorldModel:
         if state_hash in self._scenario_cache:
             return self._scenario_cache[state_hash]
 
-        scenarios: List[Scenario] = []
+        scenarios: list[Scenario] = []
         scenarios.extend(self._forecast_wm_pressure(current_state))
         scenarios.extend(self._forecast_attention_shift(current_state))
         scenarios.extend(self._forecast_memory_trends(current_state))
@@ -86,7 +83,7 @@ class PredictiveWorldModel:
             oldest = next(iter(self._scenario_cache))
             del self._scenario_cache[oldest]
 
-        return scenarios[:TOP_SCENARIOS * 2]
+        return scenarios[: TOP_SCENARIOS * 2]
 
     def generate_plan(self, scenario: Scenario) -> Plan:
         """为指定情景生成应对计划"""
@@ -97,7 +94,7 @@ class PredictiveWorldModel:
             estimated_effect=scenario.estimated_impact,
         )
 
-    def match_event(self, event_type: str, event_data: dict) -> Optional[Scenario]:
+    def match_event(self, event_type: str, event_data: dict) -> Scenario | None:
         """将实际事件与预测情景匹配"""
         for scenarios in list(self._scenario_cache.values()):
             for s in scenarios:
@@ -157,7 +154,7 @@ class PredictiveWorldModel:
 
         return state
 
-    def _forecast_wm_pressure(self, state: dict) -> List[Scenario]:
+    def _forecast_wm_pressure(self, state: dict) -> list[Scenario]:
         """预测工作记忆压力"""
         scenarios = []
         wm = state.get("working_memory", {})
@@ -201,7 +198,7 @@ class PredictiveWorldModel:
 
         return scenarios
 
-    def _forecast_attention_shift(self, state: dict) -> List[Scenario]:
+    def _forecast_attention_shift(self, state: dict) -> list[Scenario]:
         """预测注意力策略偏移"""
         scenarios = []
         attention = state.get("attention", {})
@@ -242,7 +239,7 @@ class PredictiveWorldModel:
 
         return scenarios
 
-    def _forecast_memory_trends(self, state: dict) -> List[Scenario]:
+    def _forecast_memory_trends(self, state: dict) -> list[Scenario]:
         """预测记忆增长趋势"""
         scenarios = []
         wm = state.get("working_memory", {})

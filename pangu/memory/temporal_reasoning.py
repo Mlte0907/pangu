@@ -6,9 +6,10 @@
 3. 时间查询：按时间范围查询记忆
 4. 时效性评估：评估记忆的时效性和新鲜度
 """
+
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 logger = logging.getLogger("pangu.memory.temporal_reasoning")
@@ -17,6 +18,7 @@ logger = logging.getLogger("pangu.memory.temporal_reasoning")
 @dataclass
 class TimeEvent:
     """时间事件"""
+
     memory_id: str
     content: str
     timestamp: str
@@ -28,6 +30,7 @@ class TimeEvent:
 @dataclass
 class TemporalRelation:
     """时间关系"""
+
     before_id: str
     after_id: str
     relation: str  # before / after / during / caused_by
@@ -38,11 +41,11 @@ class TemporalReasoning:
     """时间推理引擎"""
 
     TIME_PATTERNS = [
-        (r'(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?', "%Y-%m-%d"),
-        (r'(\d{1,2})[月/-](\d{1,2})[日]?', None),
-        (r'(\d{4})年(\d{1,2})月', "%Y-%m"),
-        (r'(昨天|今天|前天|明天|后天)', None),
-        (r'(\d+)(天|周|月|年)(前|后)', None),
+        (r"(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?", "%Y-%m-%d"),
+        (r"(\d{1,2})[月/-](\d{1,2})[日]?", None),
+        (r"(\d{4})年(\d{1,2})月", "%Y-%m"),
+        (r"(昨天|今天|前天|明天|后天)", None),
+        (r"(\d+)(天|周|月|年)(前|后)", None),
     ]
 
     TEMPORAL_WORDS = {
@@ -62,14 +65,16 @@ class TemporalReasoning:
         for d in drawers:
             ts = self._parse_time(d.content)
             if ts:
-                events.append(TimeEvent(
-                    memory_id=d.id,
-                    content=d.content[:100],
-                    timestamp=ts.isoformat(),
-                    wing=d.wing,
-                    importance=d.importance,
-                    time_parsed=ts,
-                ))
+                events.append(
+                    TimeEvent(
+                        memory_id=d.id,
+                        content=d.content[:100],
+                        timestamp=ts.isoformat(),
+                        wing=d.wing,
+                        importance=d.importance,
+                        time_parsed=ts,
+                    )
+                )
 
         events.sort(key=lambda e: e.time_parsed or datetime.min)
         return events
@@ -95,22 +100,26 @@ class TemporalReasoning:
     def _check_cause_relations(self, d1, d2, c1: str, c2: str, relations: list):
         for cause_word in self.TEMPORAL_WORDS["cause"]:
             if cause_word in c1 and any(w in c2 for w in ["所以", "因此", "导致"]):
-                relations.append(TemporalRelation(
-                    before_id=d1.id,
-                    after_id=d2.id,
-                    relation="caused_by",
-                    confidence=0.7,
-                ))
+                relations.append(
+                    TemporalRelation(
+                        before_id=d1.id,
+                        after_id=d2.id,
+                        relation="caused_by",
+                        confidence=0.7,
+                    )
+                )
 
     def _check_before_relations(self, d1, d2, c2: str, relations: list):
         for before_word in self.TEMPORAL_WORDS["before"]:
             if before_word in c2 and d1.content[:20] in c2:
-                relations.append(TemporalRelation(
-                    before_id=d1.id,
-                    after_id=d2.id,
-                    relation="before",
-                    confidence=0.6,
-                ))
+                relations.append(
+                    TemporalRelation(
+                        before_id=d1.id,
+                        after_id=d2.id,
+                        relation="before",
+                        confidence=0.6,
+                    )
+                )
 
     def _is_in_time_range(self, drawer, start_dt, end_dt) -> bool:
         ts = self._parse_time(drawer.content)
@@ -122,8 +131,7 @@ class TemporalReasoning:
             return False
         return True
 
-    def query_by_time_range(self, drawers: list, start: str = None,
-                            end: str = None) -> list:
+    def query_by_time_range(self, drawers: list, start: str = None, end: str = None) -> list:
         """按时间范围查询记忆"""
         start_dt = self._parse_time_string(start) if start else None
         end_dt = self._parse_time_string(end) if end else None
@@ -168,13 +176,17 @@ class TemporalReasoning:
         now = datetime.now()
 
         # 相对时间
-        m = re.search(r'(\d+)(天|周|月|年)(前|后)', text)
+        m = re.search(r"(\d+)(天|周|月|年)(前|后)", text)
         if m:
             num = int(m.group(1))
             unit = m.group(2)
             direction = m.group(3)
-            delta_map = {"天": timedelta(days=num), "周": timedelta(weeks=num),
-                         "月": timedelta(days=num * 30), "年": timedelta(days=num * 365)}
+            delta_map = {
+                "天": timedelta(days=num),
+                "周": timedelta(weeks=num),
+                "月": timedelta(days=num * 30),
+                "年": timedelta(days=num * 365),
+            }
             delta = delta_map.get(unit, timedelta())
             return now - delta if direction == "前" else now + delta
 
@@ -189,7 +201,7 @@ class TemporalReasoning:
             return now + timedelta(days=1)
 
         # 绝对日期
-        m = re.search(r'(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})', text)
+        m = re.search(r"(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})", text)
         if m:
             try:
                 return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))

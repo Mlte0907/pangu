@@ -7,6 +7,7 @@
 4. 时效推荐：推荐近期重要但可能被遗忘的记忆
 5. 跨域推荐：推荐不同领域但相关的记忆
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,7 @@ logger = logging.getLogger("pangu.memory.recommendation")
 @dataclass
 class MemoryRecommendation:
     """记忆推荐"""
+
     memory_id: str
     content_preview: str
     wing: str
@@ -36,8 +38,9 @@ class RecommendationEngine:
     def recommend_by_context(self, context: str, drawers: list, top_k: int = 5) -> list[MemoryRecommendation]:
         """基于上下文推荐"""
         import re
+
         keywords = set()
-        for segment in re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]+', context):
+        for segment in re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]+", context):
             keywords.add(segment.lower())
 
         scored = []
@@ -59,14 +62,16 @@ class RecommendationEngine:
 
         results = []
         for d, score in scored[:top_k]:
-            results.append(MemoryRecommendation(
-                memory_id=d.id,
-                content_preview=d.content[:80],
-                wing=d.wing,
-                score=min(1.0, score / 10),
-                reason="上下文关键词匹配",
-                category="context",
-            ))
+            results.append(
+                MemoryRecommendation(
+                    memory_id=d.id,
+                    content_preview=d.content[:80],
+                    wing=d.wing,
+                    score=min(1.0, score / 10),
+                    reason="上下文关键词匹配",
+                    category="context",
+                )
+            )
 
         return results
 
@@ -101,14 +106,16 @@ class RecommendationEngine:
         results = []
         for d, score in scored[:top_k]:
             overlap_tags = target_tags & set(d.tags)
-            results.append(MemoryRecommendation(
-                memory_id=d.id,
-                content_preview=d.content[:80],
-                wing=d.wing,
-                score=min(1.0, score / 10),
-                reason=f"共享标签: {', '.join(list(overlap_tags)[:3])}",
-                category="similar",
-            ))
+            results.append(
+                MemoryRecommendation(
+                    memory_id=d.id,
+                    content_preview=d.content[:80],
+                    wing=d.wing,
+                    score=min(1.0, score / 10),
+                    reason=f"共享标签: {', '.join(list(overlap_tags)[:3])}",
+                    category="similar",
+                )
+            )
 
         return results
 
@@ -118,7 +125,7 @@ class RecommendationEngine:
         scored = []
 
         for d in drawers:
-            if hasattr(d, 'created_at') and d.created_at:
+            if hasattr(d, "created_at") and d.created_at:
                 try:
                     created = datetime.fromisoformat(d.created_at)
                     age_days = (now - created).days
@@ -133,14 +140,16 @@ class RecommendationEngine:
 
         results = []
         for d, score, reason in scored[:top_k]:
-            results.append(MemoryRecommendation(
-                memory_id=d.id,
-                content_preview=d.content[:80],
-                wing=d.wing,
-                score=round(score, 3),
-                reason=reason,
-                category="timely",
-            ))
+            results.append(
+                MemoryRecommendation(
+                    memory_id=d.id,
+                    content_preview=d.content[:80],
+                    wing=d.wing,
+                    score=round(score, 3),
+                    reason=reason,
+                    category="timely",
+                )
+            )
 
         return results
 
@@ -157,14 +166,16 @@ class RecommendationEngine:
 
         results = []
         for d, score in scored[:top_k]:
-            results.append(MemoryRecommendation(
-                memory_id=d.id,
-                content_preview=d.content[:80],
-                wing=d.wing,
-                score=round(score, 3),
-                reason=f"来自 {d.wing} 领域的新视角",
-                category="cross_domain",
-            ))
+            results.append(
+                MemoryRecommendation(
+                    memory_id=d.id,
+                    content_preview=d.content[:80],
+                    wing=d.wing,
+                    score=round(score, 3),
+                    reason=f"来自 {d.wing} 领域的新视角",
+                    category="cross_domain",
+                )
+            )
 
         return results
 
@@ -202,14 +213,16 @@ class RecommendationEngine:
 
         results = []
         for d, score in scored[:top_k]:
-            results.append(MemoryRecommendation(
-                memory_id=d.id,
-                content_preview=d.content[:80],
-                wing=d.wing,
-                score=min(1.0, score / 10),
-                reason=f"共享 {score} 个关键词",
-                category="related",
-            ))
+            results.append(
+                MemoryRecommendation(
+                    memory_id=d.id,
+                    content_preview=d.content[:80],
+                    wing=d.wing,
+                    score=min(1.0, score / 10),
+                    reason=f"共享 {score} 个关键词",
+                    category="related",
+                )
+            )
 
         return results
 
@@ -225,16 +238,22 @@ class RecommendationEngine:
     def _format_results(self, unique: list, top_k: int) -> dict:
         return {
             "recommendations": [
-                {"id": r.memory_id, "preview": r.content_preview,
-                 "wing": r.wing, "score": r.score, "reason": r.reason,
-                 "category": r.category}
-                for r in unique[:top_k * 3]
+                {
+                    "id": r.memory_id,
+                    "preview": r.content_preview,
+                    "wing": r.wing,
+                    "score": r.score,
+                    "reason": r.reason,
+                    "category": r.category,
+                }
+                for r in unique[: top_k * 3]
             ],
             "count": min(len(unique), top_k * 3),
         }
 
-    def get_full_recommendations(self, context: str = "", memory_id: str = "",
-                                 drawers: list = None, top_k: int = 3) -> dict:
+    def get_full_recommendations(
+        self, context: str = "", memory_id: str = "", drawers: list = None, top_k: int = 3
+    ) -> dict:
         """获取综合推荐"""
         if not drawers:
             return {"recommendations": [], "count": 0}
@@ -256,11 +275,13 @@ class RecommendationEngine:
         unique = self._deduplicate_recommendations(all_recs)
         unique.sort(key=lambda r: r.score, reverse=True)
 
-        self._recommendation_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "context": context[:50] if context else "",
-            "recommended": len(unique[:top_k * 3]),
-        })
+        self._recommendation_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "context": context[:50] if context else "",
+                "recommended": len(unique[: top_k * 3]),
+            }
+        )
 
         return self._format_results(unique, top_k)
 
@@ -282,14 +303,16 @@ class RecommendationEngine:
         scored.sort(key=lambda x: x[1], reverse=True)
         results = []
         for d, score in scored[:2]:
-            results.append(MemoryRecommendation(
-                memory_id=d.id,
-                content_preview=d.content[:80],
-                wing=d.wing,
-                score=round(score, 3),
-                reason=f"来自 {d.wing} 领域的新视角",
-                category="cross_domain",
-            ))
+            results.append(
+                MemoryRecommendation(
+                    memory_id=d.id,
+                    content_preview=d.content[:80],
+                    wing=d.wing,
+                    score=round(score, 3),
+                    reason=f"来自 {d.wing} 领域的新视角",
+                    category="cross_domain",
+                )
+            )
         return results
 
     def record_feedback(self, user_id: str, memory_id: str, liked: bool) -> None:

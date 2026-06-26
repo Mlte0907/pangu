@@ -7,6 +7,7 @@
 4. 时效性解释：为什么这条记忆被排在前面
 5. 综合解释：一句话总结匹配原因
 """
+
 import logging
 import re
 from dataclasses import dataclass, field
@@ -19,25 +20,93 @@ logger = logging.getLogger("pangu.memory.search_explainer")
 @dataclass
 class SearchExplanation:
     """单条搜索结果的解释"""
+
     memory_id: str
-    summary: str                           # 一句话总结
+    summary: str  # 一句话总结
     match_reasons: list[str] = field(default_factory=list)  # 匹配原因列表
     matched_keywords: list[str] = field(default_factory=list)  # 命中的关键词
-    match_type: str = "keyword"            # keyword / semantic / context / tag
-    confidence: float = 0.0                # 解释置信度 0-1
+    match_type: str = "keyword"  # keyword / semantic / context / tag
+    confidence: float = 0.0  # 解释置信度 0-1
 
 
 class SearchExplainer:
     """搜索结果解释引擎"""
 
     def __init__(self):
-        self._stopwords = {"的", "了", "是", "在", "我", "有", "和", "就", "不", "人", "都", "一",
-                           "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有",
-                           "看", "好", "自己", "这", "那", "什么", "怎么", "如何", "可以", "吗",
-                           "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-                           "have", "has", "had", "do", "does", "did", "will", "would", "could",
-                           "should", "may", "might", "can", "shall", "of", "in", "to", "for",
-                           "with", "on", "at", "from", "by", "as", "or", "and", "not", "but"}
+        self._stopwords = {
+            "的",
+            "了",
+            "是",
+            "在",
+            "我",
+            "有",
+            "和",
+            "就",
+            "不",
+            "人",
+            "都",
+            "一",
+            "一个",
+            "上",
+            "也",
+            "很",
+            "到",
+            "说",
+            "要",
+            "去",
+            "你",
+            "会",
+            "着",
+            "没有",
+            "看",
+            "好",
+            "自己",
+            "这",
+            "那",
+            "什么",
+            "怎么",
+            "如何",
+            "可以",
+            "吗",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "shall",
+            "of",
+            "in",
+            "to",
+            "for",
+            "with",
+            "on",
+            "at",
+            "from",
+            "by",
+            "as",
+            "or",
+            "and",
+            "not",
+            "but",
+        }
 
     def explain(
         self,
@@ -125,8 +194,8 @@ class SearchExplainer:
         """提取关键词（去停用词）"""
         words = text.lower().split()
         keywords = [w for w in words if len(w) >= 2 and w not in self._stopwords]
-        cn_words = re.findall(r'[\u4e00-\u9fff]{2,}', text.lower())
-        en_words = re.findall(r'[a-zA-Z0-9_]{3,}', text.lower())
+        cn_words = re.findall(r"[\u4e00-\u9fff]{2,}", text.lower())
+        en_words = re.findall(r"[a-zA-Z0-9_]{3,}", text.lower())
         return list(set(keywords + cn_words + en_words))
 
     def _explain_keyword_match(self, query: str, content: str) -> tuple[list[str], list[str]]:
@@ -181,7 +250,7 @@ class SearchExplainer:
         if vec_rank and vec_rank <= 3:
             parts.append(f"语义排名第{vec_rank}")
         if kg_rank:
-            parts.append(f"知识图谱关联")
+            parts.append("知识图谱关联")
 
         return "，".join(parts) if parts else ""
 
@@ -196,6 +265,7 @@ class SearchExplainer:
         try:
             if isinstance(created, str):
                 from datetime import datetime
+
                 dt = datetime.fromisoformat(created)
                 days_old = (datetime.now() - dt).total_seconds() / 86400
             else:
@@ -206,7 +276,7 @@ class SearchExplainer:
             elif days_old < 7:
                 return f"{int(days_old)}天前创建"
             elif days_old < 30:
-                return f"近一个月"
+                return "近一个月"
             return ""
         except Exception:
             return ""
@@ -214,7 +284,7 @@ class SearchExplainer:
     def _generate_summary(self, query: str, keywords: list[str], reasons: list[str], content: str) -> str:
         """生成一句话总结"""
         if not reasons:
-            return f"与查询 \"{query[:20]}\" 语义相关"
+            return f'与查询 "{query[:20]}" 语义相关'
 
         if keywords:
             return f"匹配关键词 {', '.join(keywords[:3])}，{reasons[0]}"

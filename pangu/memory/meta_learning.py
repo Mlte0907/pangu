@@ -7,6 +7,7 @@
 4. 效果反馈：学习哪些策略有效、哪些无效
 5. 自我改进：持续自我改进，形成正反馈循环
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,7 @@ logger = logging.getLogger("pangu.memory.meta_learning")
 @dataclass
 class LearningStrategy:
     """学习策略"""
+
     name: str
     params: dict
     success_rate: float
@@ -28,6 +30,7 @@ class LearningStrategy:
 @dataclass
 class PerformanceObservation:
     """性能观察"""
+
     module: str
     metric: str
     value: float
@@ -75,16 +78,22 @@ class MetaLearningEngine:
 
         for name, params in self.DEFAULT_STRATEGIES.items():
             self._strategies[name] = LearningStrategy(
-                name=name, params=params,
-                success_rate=0.5, total_uses=0, successful_uses=0,
+                name=name,
+                params=params,
+                success_rate=0.5,
+                total_uses=0,
+                successful_uses=0,
                 last_used="",
             )
 
     def observe(self, module: str, metric: str, value: float, context: str = "") -> None:
         """记录性能观察"""
         obs = PerformanceObservation(
-            module=module, metric=metric, value=value,
-            timestamp=datetime.now().isoformat(), context=context,
+            module=module,
+            metric=metric,
+            value=value,
+            timestamp=datetime.now().isoformat(),
+            context=context,
         )
         self._observations.append(obs)
 
@@ -105,10 +114,7 @@ class MetaLearningEngine:
 
     def recommend_strategy(self, task_type: str = "search") -> dict:
         """推荐最优策略"""
-        candidates = [
-            (name, s) for name, s in self._strategies.items()
-            if task_type in name or task_type == "all"
-        ]
+        candidates = [(name, s) for name, s in self._strategies.items() if task_type in name or task_type == "all"]
 
         if not candidates:
             candidates = list(self._strategies.items())
@@ -130,7 +136,7 @@ class MetaLearningEngine:
             module_metrics.setdefault(obs.module, {}).setdefault(obs.metric, []).append(obs.value)
 
         adjustments = []
-        for module, metrics in module_metrics.items():
+        for _module, metrics in module_metrics.items():
             for metric, values in metrics.items():
                 avg = sum(values) / len(values)
                 if "search" in metric and avg < 0.3:
@@ -249,24 +255,25 @@ class MetaLearningEngine:
         """自重构检测 — 基于策略表现判断是否需要调整配置"""
         actions = []
 
-        low_perf = [
-            (name, s) for name, s in self._strategies.items()
-            if s.total_uses >= 5 and s.success_rate < 0.3
-        ]
+        low_perf = [(name, s) for name, s in self._strategies.items() if s.total_uses >= 5 and s.success_rate < 0.3]
         for name, s in low_perf:
-            actions.append({
-                "strategy": name,
-                "action": "reduce_frequency",
-                "reason": f"low_success_rate({s.success_rate:.3f}, uses={s.total_uses})",
-            })
+            actions.append(
+                {
+                    "strategy": name,
+                    "action": "reduce_frequency",
+                    "reason": f"low_success_rate({s.success_rate:.3f}, uses={s.total_uses})",
+                }
+            )
 
         unused = [name for name, s in self._strategies.items() if s.total_uses == 0]
         if len(unused) > 2:
-            actions.append({
-                "action": "review_unused_strategies",
-                "strategies": unused,
-                "reason": f"{len(unused)} strategies never used",
-            })
+            actions.append(
+                {
+                    "action": "review_unused_strategies",
+                    "strategies": unused,
+                    "reason": f"{len(unused)} strategies never used",
+                }
+            )
 
         recent = self._observations[-20:] if self._observations else []
         if recent:
@@ -276,11 +283,13 @@ class MetaLearningEngine:
                     module_failures[obs.module] = module_failures.get(obs.module, 0) + 1
             for module, count in module_failures.items():
                 if count >= 3:
-                    actions.append({
-                        "module": module,
-                        "action": "investigate",
-                        "reason": f"{count} low-value observations",
-                    })
+                    actions.append(
+                        {
+                            "module": module,
+                            "action": "investigate",
+                            "reason": f"{count} low-value observations",
+                        }
+                    )
 
         status = "reconfig_needed" if actions else "stable"
         return {"status": status, "actions": actions}

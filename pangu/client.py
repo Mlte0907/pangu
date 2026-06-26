@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """盘古记忆客户端 — 外部系统交互封装（伏羲移植）"""
+
 import hashlib
 import hmac
 import json
@@ -102,13 +103,16 @@ def cmd_memory(args):
                 else:
                     text_parts.append(p)
 
-        result = pangu_post("/api/v2/memories", {
-            "text": " ".join(text_parts) if text_parts else text,
-            "importance": imp,
-            "tags": tags,
-            "wing": "default",
-            "room": "general",
-        })
+        result = pangu_post(
+            "/api/v2/memories",
+            {
+                "text": " ".join(text_parts) if text_parts else text,
+                "importance": imp,
+                "tags": tags,
+                "wing": "default",
+                "room": "general",
+            },
+        )
         print(f"  已写入: {json.dumps(result, ensure_ascii=False)[:200]}")
 
     elif sub == "context":

@@ -3,14 +3,15 @@
 提供 WebSocket 连接管理、实时记忆变更推送、
 记忆事件流（create/update/delete）和心跳保活。
 """
+
 import asyncio
 import json
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -19,6 +20,7 @@ logger = logging.getLogger("pangu.websocket")
 
 class EventType(str, Enum):
     """记忆事件类型"""
+
     MEMORY_CREATE = "memory_create"
     MEMORY_UPDATE = "memory_update"
     MEMORY_DELETE = "memory_delete"
@@ -32,6 +34,7 @@ class EventType(str, Enum):
 @dataclass
 class ConnectionInfo:
     """WebSocket 连接信息"""
+
     conn_id: str
     ws: WebSocket
     client_id: str
@@ -44,6 +47,7 @@ class ConnectionInfo:
 @dataclass
 class MemoryEvent:
     """记忆事件"""
+
     event_type: EventType
     data: dict
     timestamp: float = field(default_factory=time.time)
@@ -141,7 +145,7 @@ class MemoryStreamServer:
         # 记录事件历史
         self._event_history.append(event)
         if len(self._event_history) > self._max_history:
-            self._event_history = self._event_history[-self._max_history:]
+            self._event_history = self._event_history[-self._max_history :]
 
         # 触发事件回调
         for cb in self._event_callbacks.get(event.event_type, []):
@@ -284,6 +288,7 @@ class MemoryStreamServer:
 
 
 # ── 辅助工具函数 ──
+
 
 def create_memory_event(event_type: str, data: dict) -> MemoryEvent:
     """快速创建记忆事件"""

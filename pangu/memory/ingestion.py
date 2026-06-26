@@ -26,6 +26,7 @@ def _embed_text(text: str) -> list[float] | None:
     """ONNX 优先嵌入，保证语义向量质量"""
     try:
         from pangu.memory.onnx_embedder import get_onnx_embedder
+
         onnx = get_onnx_embedder()
         if onnx.is_available:
             vec = onnx.embed(text)
@@ -109,6 +110,7 @@ def remember(
     # 脱敏处理
     try:
         from pangu.memory.sanitizer import MemorySanitizer
+
         raw_text, _ = MemorySanitizer.sanitize(raw_text, level="standard")
     except Exception:
         pass
@@ -116,7 +118,8 @@ def remember(
     # 加密处理（可选）
     stored_text = raw_text
     try:
-        from pangu.memory.encryption import is_enabled, encrypt
+        from pangu.memory.encryption import encrypt, is_enabled
+
         if is_enabled():
             stored_text = encrypt(raw_text)
     except Exception:
@@ -178,6 +181,7 @@ def remember(
     # Wikilink 实体链接提取
     try:
         from pangu.memory.wikilink import extract_entity_links
+
         links = extract_entity_links(raw_text, item_id, existing_drawers or [])
         if links:
             drawer.metadata["wikilinks"] = links
@@ -188,6 +192,7 @@ def remember(
     if not _skip_index_update:
         try:
             from pangu.memory.vector_index import get_vector_index
+
             idx = get_vector_index()
             emb = drawer.metadata.get("embedding")
             if emb:
@@ -199,6 +204,7 @@ def remember(
     # 神经记忆编码（海马体-新皮层双系统）
     try:
         from pangu.memory.neural_memory import get_neural_engine
+
         engine = get_neural_engine()
         engine.encode(drawer)
         logger.debug(f"Neural encoding: {item_id[:8]}")
@@ -209,11 +215,16 @@ def remember(
     if existing_drawers and len(existing_drawers) >= 3:
         try:
             from pangu.memory.conflict import ConflictDetector
+
             detector = ConflictDetector()
             conflicts = detector.detect_conflicts([drawer] + existing_drawers[-20:])
             if conflicts:
                 drawer.metadata["conflicts"] = [
-                    {"id": c.id, "severity": c.severity.value, "with": c.memory_a if c.memory_b == item_id else c.memory_b}
+                    {
+                        "id": c.id,
+                        "severity": c.severity.value,
+                        "with": c.memory_a if c.memory_b == item_id else c.memory_b,
+                    }
                     for c in conflicts[:3]
                 ]
                 logger.info(f"Conflict detected for {item_id[:8]}: {len(conflicts)} conflicts")
@@ -226,7 +237,8 @@ def remember(
 
 def _decrypt_content(drawer: Drawer) -> Drawer | None:
     """解密 drawer 内容，返回新 Drawer 或 None（不需要解密时）"""
-    from pangu.memory.encryption import is_enabled, decrypt
+    from pangu.memory.encryption import decrypt, is_enabled
+
     if not is_enabled() or not drawer.content:
         return None
     decrypted = decrypt(drawer.content)
@@ -423,6 +435,7 @@ def _embed_batch(texts: list[str]) -> list[list[float] | None]:
     """ONNX 批量嵌入，降级到逐条"""
     try:
         from pangu.memory.onnx_embedder import get_onnx_embedder
+
         onnx = get_onnx_embedder()
         if onnx.is_available:
             results = onnx.embed_batch(texts)
@@ -470,10 +483,11 @@ def ingest_batch(
     if results:
         try:
             from pangu.memory.vector_index import get_vector_index
+
             idx = get_vector_index()
             vectors = [d.metadata.get("embedding") for _, d in results]
             ids = [rid for rid, _ in results]
-            valid = [(v, i) for v, i in zip(vectors, ids) if v]
+            valid = [(v, i) for v, i in zip(vectors, ids, strict=False) if v]
             if valid:
                 added = idx.add_batch([v for v, _ in valid], [i for _, i in valid])
                 logger.debug(f"Vector index batch update: {added} vectors")

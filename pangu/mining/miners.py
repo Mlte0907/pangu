@@ -1,4 +1,5 @@
 """盘古挖掘模块 — 从各种来源提取记忆"""
+
 import json
 import os
 import re
@@ -13,18 +14,55 @@ class FileMiner:
     """文件挖掘器 — 从项目文件中提取记忆"""
 
     EXTENSIONS = {
-        ".py", ".js", ".ts", ".tsx", ".jsx", ".vue", ".svelte",
-        ".go", ".rs", ".java", ".kt", ".swift",
-        ".md", ".txt", ".rst", ".yml", ".yaml", ".toml", ".json",
-        ".html", ".css", ".scss", ".less",
-        ".sql", ".sh", ".bash", ".zsh", ".fish",
-        ".c", ".cpp", ".h", ".hpp", ".cs",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".vue",
+        ".svelte",
+        ".go",
+        ".rs",
+        ".java",
+        ".kt",
+        ".swift",
+        ".md",
+        ".txt",
+        ".rst",
+        ".yml",
+        ".yaml",
+        ".toml",
+        ".json",
+        ".html",
+        ".css",
+        ".scss",
+        ".less",
+        ".sql",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
     }
 
     SKIP_DIRS = {
-        "node_modules", ".git", "__pycache__", ".venv", "venv",
-        "dist", "build", ".next", ".nuxt", "target",
-        ".mypy_cache", ".pytest_cache", ".ruff_cache",
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        "target",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
     }
 
     def __init__(self, config: PanguConfig = None):
@@ -132,10 +170,7 @@ class ConvoMiner:
                 content = data.get("content", "")
 
                 if isinstance(content, list):
-                    content = " ".join(
-                        item.get("text", "") for item in content
-                        if isinstance(item, dict)
-                    )
+                    content = " ".join(item.get("text", "") for item in content if isinstance(item, dict))
 
                 if content.strip():
                     drawer = Drawer(
@@ -312,18 +347,20 @@ class OpenClawMiner:
             for session_key, meta in index.items():
                 session_id = meta.get("sessionId", "")
                 jsonl_file = session_dir / f"{session_id}.jsonl"
-                sessions.append({
-                    "agent_id": agent_dir.name,
-                    "session_key": session_key,
-                    "session_id": session_id,
-                    "updated_at": meta.get("updatedAt", 0),
-                    "model": meta.get("model", ""),
-                    "total_tokens": meta.get("totalTokens", 0),
-                    "input_tokens": meta.get("inputTokens", 0),
-                    "output_tokens": meta.get("outputTokens", 0),
-                    "kind": meta.get("kind", "direct"),
-                    "jsonl_path": str(jsonl_file) if jsonl_file.exists() else None,
-                })
+                sessions.append(
+                    {
+                        "agent_id": agent_dir.name,
+                        "session_key": session_key,
+                        "session_id": session_id,
+                        "updated_at": meta.get("updatedAt", 0),
+                        "model": meta.get("model", ""),
+                        "total_tokens": meta.get("totalTokens", 0),
+                        "input_tokens": meta.get("inputTokens", 0),
+                        "output_tokens": meta.get("outputTokens", 0),
+                        "kind": meta.get("kind", "direct"),
+                        "jsonl_path": str(jsonl_file) if jsonl_file.exists() else None,
+                    }
+                )
 
         # 按更新时间降序
         sessions.sort(key=lambda s: s["updated_at"], reverse=True)

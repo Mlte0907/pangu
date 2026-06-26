@@ -7,7 +7,6 @@
 """
 
 import logging
-from datetime import datetime, timedelta
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -77,19 +76,21 @@ class IntentPredictor:
 
         task_keywords = ["任务", "task", "todo", "待办", "计划", "plan"]
         tasks = [
-            d for d in drawers
-            if any(kw in d.content.lower() or kw in " ".join(t.lower() for t in d.tags)
-                   for kw in task_keywords)
+            d
+            for d in drawers
+            if any(kw in d.content.lower() or kw in " ".join(t.lower() for t in d.tags) for kw in task_keywords)
         ]
 
         for task in tasks[-5:]:
-            tracker["active_tasks"].append({
-                "id": task.id[:8],
-                "preview": task.content[:50],
-                "wing": task.wing,
-                "importance": task.importance,
-                "created_at": task.created_at,
-            })
+            tracker["active_tasks"].append(
+                {
+                    "id": task.id[:8],
+                    "preview": task.content[:50],
+                    "wing": task.wing,
+                    "importance": task.importance,
+                    "created_at": task.created_at,
+                }
+            )
 
         total = len(tasks)
         completed = min(total, len(drawers) // 3)
@@ -98,8 +99,7 @@ class IntentPredictor:
 
         return tracker
 
-    def suggest_next(self, drawers: list[Drawer], intent_model: dict,
-                     task_chain: dict) -> list[dict]:
+    def suggest_next(self, drawers: list[Drawer], intent_model: dict, task_chain: dict) -> list[dict]:
         """上下文感知建议 — 基于当前上下文生成智能建议
 
         Args:
@@ -111,38 +111,48 @@ class IntentPredictor:
 
         intent = intent_model.get("intent", "unknown")
         if intent == "information_seeking":
-            suggestions.append({
-                "type": "next_action",
-                "content": "考虑深入探索相关主题",
-                "confidence": 0.6,
-            })
+            suggestions.append(
+                {
+                    "type": "next_action",
+                    "content": "考虑深入探索相关主题",
+                    "confidence": 0.6,
+                }
+            )
         elif intent == "content_creation":
-            suggestions.append({
-                "type": "next_action",
-                "content": "建议保存当前进度并记录灵感",
-                "confidence": 0.5,
-            })
+            suggestions.append(
+                {
+                    "type": "next_action",
+                    "content": "建议保存当前进度并记录灵感",
+                    "confidence": 0.5,
+                }
+            )
         elif intent == "analysis":
-            suggestions.append({
-                "type": "next_action",
-                "content": "可以运行知识综合发现更多洞察",
-                "confidence": 0.55,
-            })
+            suggestions.append(
+                {
+                    "type": "next_action",
+                    "content": "可以运行知识综合发现更多洞察",
+                    "confidence": 0.55,
+                }
+            )
 
         active = task_chain.get("active_tasks", [])
         if len(active) > 3:
-            suggestions.append({
-                "type": "task_overload",
-                "content": "当前有较多进行中任务，建议专注完成其一",
-                "confidence": 0.7,
-            })
+            suggestions.append(
+                {
+                    "type": "task_overload",
+                    "content": "当前有较多进行中任务，建议专注完成其一",
+                    "confidence": 0.7,
+                }
+            )
 
         if not suggestions:
-            suggestions.append({
-                "type": "general",
-                "content": "没有明显的行为模式，建议浏览最近记忆",
-                "confidence": 0.3,
-            })
+            suggestions.append(
+                {
+                    "type": "general",
+                    "content": "没有明显的行为模式，建议浏览最近记忆",
+                    "confidence": 0.3,
+                }
+            )
 
         return suggestions
 

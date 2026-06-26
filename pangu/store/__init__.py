@@ -1,4 +1,5 @@
 """盘古存储模块"""
+
 from .migrations import (
     get_available_migrations,
     get_schema_version,

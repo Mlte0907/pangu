@@ -7,11 +7,11 @@
 4. 操作统计：统计各类型操作的频率和性能
 5. 审计查询：按时间/操作类型/用户查询审计日志
 """
+
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 logger = logging.getLogger("pangu.memory.audit_analytics")
 
@@ -19,6 +19,7 @@ logger = logging.getLogger("pangu.memory.audit_analytics")
 @dataclass
 class AuditEntry:
     """审计条目"""
+
     entry_id: str
     timestamp: str
     operation: str  # create / read / update / delete / search / backup
@@ -37,8 +38,15 @@ class AuditAnalytics:
         self._entries: list[AuditEntry] = []
         self._max_entries = 10000
 
-    def log(self, operation: str, target_id: str = "", user_id: str = "system",
-            details: dict = None, duration_ms: float = 0, success: bool = True) -> AuditEntry:
+    def log(
+        self,
+        operation: str,
+        target_id: str = "",
+        user_id: str = "system",
+        details: dict = None,
+        duration_ms: float = 0,
+        success: bool = True,
+    ) -> AuditEntry:
         """记录审计条目"""
         entry = AuditEntry(
             entry_id=f"audit_{len(self._entries)}_{int(time.time())}",
@@ -53,7 +61,7 @@ class AuditAnalytics:
         self._entries.append(entry)
 
         if len(self._entries) > self._max_entries:
-            self._entries = self._entries[-self._max_entries:]
+            self._entries = self._entries[-self._max_entries :]
 
         return entry
 
@@ -61,8 +69,7 @@ class AuditAnalytics:
         """便捷日志记录"""
         return self.log(operation, target_id, **kwargs)
 
-    def get_entries(self, operation: str = None, user_id: str = None,
-                    limit: int = 50) -> list[dict]:
+    def get_entries(self, operation: str = None, user_id: str = None, limit: int = 50) -> list[dict]:
         """查询审计条目"""
         filtered = self._entries
 
@@ -72,9 +79,15 @@ class AuditAnalytics:
             filtered = [e for e in filtered if e.user_id == user_id]
 
         return [
-            {"id": e.entry_id, "timestamp": e.timestamp, "operation": e.operation,
-             "target": e.target_id, "user": e.user_id, "duration_ms": e.duration_ms,
-             "success": e.success}
+            {
+                "id": e.entry_id,
+                "timestamp": e.timestamp,
+                "operation": e.operation,
+                "target": e.target_id,
+                "user": e.user_id,
+                "duration_ms": e.duration_ms,
+                "success": e.success,
+            }
             for e in filtered[-limit:]
         ]
 
@@ -146,12 +159,14 @@ class AuditAnalytics:
             if stats["total"] >= 5:
                 fail_rate = stats["failed"] / stats["total"]
                 if fail_rate > 0.5:
-                    anomalies.append({
-                        "type": "high_fail_rate",
-                        "user": user,
-                        "fail_rate": round(fail_rate, 3),
-                        "detail": f"失败率 {fail_rate:.0%} ({stats['failed']}/{stats['total']})",
-                    })
+                    anomalies.append(
+                        {
+                            "type": "high_fail_rate",
+                            "user": user,
+                            "fail_rate": round(fail_rate, 3),
+                            "detail": f"失败率 {fail_rate:.0%} ({stats['failed']}/{stats['total']})",
+                        }
+                    )
         return anomalies
 
     def _detect_recent_anomalies(self, recent: list) -> list[dict]:
@@ -159,19 +174,23 @@ class AuditAnalytics:
         anomalies = []
         delete_count = sum(1 for e in recent if e.operation == "delete")
         if delete_count > 5:
-            anomalies.append({
-                "type": "high_delete_rate",
-                "detail": f"最近 20 操作中有 {delete_count} 次删除",
-                "count": delete_count,
-            })
+            anomalies.append(
+                {
+                    "type": "high_delete_rate",
+                    "detail": f"最近 20 操作中有 {delete_count} 次删除",
+                    "count": delete_count,
+                }
+            )
 
         slow_ops = [e for e in recent if e.duration_ms > 1000]
         if len(slow_ops) > 3:
-            anomalies.append({
-                "type": "slow_operations",
-                "detail": f"最近有 {len(slow_ops)} 个慢操作 (>1000ms)",
-                "count": len(slow_ops),
-            })
+            anomalies.append(
+                {
+                    "type": "slow_operations",
+                    "detail": f"最近有 {len(slow_ops)} 个慢操作 (>1000ms)",
+                    "count": len(slow_ops),
+                }
+            )
         return anomalies
 
     def detect_anomalies(self) -> list[dict]:

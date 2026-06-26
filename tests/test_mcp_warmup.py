@@ -61,9 +61,7 @@ class TestMCPServerWarmup:
         """配置完整时调度预热任务"""
         cfg = _make_server_config(
             llm_cache_warmup_on_start=True,
-            warmup_prompts=[
-                {"messages": [{"role": "user", "content": "hi"}], "temperature": 0}
-            ],
+            warmup_prompts=[{"messages": [{"role": "user", "content": "hi"}], "temperature": 0}],
         )
         # 在运行中的事件循环中构造
         server = MCPServer(cfg)

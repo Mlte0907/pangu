@@ -1,14 +1,15 @@
 """盘古性能回归检测 — 自动对比基准，检测性能退化"""
+
 import json
-import time
 import statistics
+import time
 from datetime import datetime
 from pathlib import Path
 
-from pangu.memory.layers import MemoryStack
-from pangu.memory.retrieval import recall
-from pangu.memory.onnx_embedder import ONNXEmbedder
 from pangu.core.config import PanguConfig
+from pangu.memory.layers import MemoryStack
+from pangu.memory.onnx_embedder import ONNXEmbedder
+from pangu.memory.retrieval import recall
 
 
 class PerformanceRegression:
@@ -94,19 +95,23 @@ class PerformanceRegression:
             change = (current_val - baseline_val) / baseline_val
 
             if change > threshold:
-                regressions.append({
-                    "metric": key,
-                    "baseline": baseline_val,
-                    "current": current_val,
-                    "change": f"+{change:.1%}",
-                })
+                regressions.append(
+                    {
+                        "metric": key,
+                        "baseline": baseline_val,
+                        "current": current_val,
+                        "change": f"+{change:.1%}",
+                    }
+                )
             elif change < -threshold:
-                improvements.append({
-                    "metric": key,
-                    "baseline": baseline_val,
-                    "current": current_val,
-                    "change": f"{change:.1%}",
-                })
+                improvements.append(
+                    {
+                        "metric": key,
+                        "baseline": baseline_val,
+                        "current": current_val,
+                        "change": f"{change:.1%}",
+                    }
+                )
 
         return {
             "status": "regression" if regressions else ("improvement" if improvements else "stable"),

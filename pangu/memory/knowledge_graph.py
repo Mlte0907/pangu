@@ -8,6 +8,7 @@
 5. 边质量评分
 6. 边类型自动推断
 """
+
 import logging
 import sqlite3
 from collections import deque
@@ -93,8 +94,7 @@ class KnowledgeGraph:
 
     # ── 实体操作 ──
 
-    def add_entity(self, id: str, name: str, entity_type: str,
-                   description: str = "") -> dict:
+    def add_entity(self, id: str, name: str, entity_type: str, description: str = "") -> dict:
         """添加实体"""
         with self._conn() as conn:
             conn.execute(
@@ -114,9 +114,7 @@ class KnowledgeGraph:
         """列出实体"""
         with self._conn() as conn:
             if entity_type:
-                rows = conn.execute(
-                    "SELECT * FROM entities WHERE type = ? ORDER BY name", (entity_type,)
-                ).fetchall()
+                rows = conn.execute("SELECT * FROM entities WHERE type = ? ORDER BY name", (entity_type,)).fetchall()
             else:
                 rows = conn.execute("SELECT * FROM entities ORDER BY type, name").fetchall()
             return [dict(r) for r in rows]
@@ -130,10 +128,17 @@ class KnowledgeGraph:
 
     # ── 关系操作 ──
 
-    def add_relation(self, id: str, subject_id: str, predicate: str,
-                     object_id: str, valid_from: str = None,
-                     valid_until: str = None, confidence: float = 1.0,
-                     source: str = "") -> dict:
+    def add_relation(
+        self,
+        id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        valid_from: str = None,
+        valid_until: str = None,
+        confidence: float = 1.0,
+        source: str = "",
+    ) -> dict:
         """添加关系"""
         with self._conn() as conn:
             conn.execute(
@@ -141,8 +146,17 @@ class KnowledgeGraph:
                    (id, subject_id, predicate, object_id, valid_from, valid_until,
                     confidence, source, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (id, subject_id, predicate, object_id, valid_from, valid_until,
-                 confidence, source, datetime.now().isoformat()),
+                (
+                    id,
+                    subject_id,
+                    predicate,
+                    object_id,
+                    valid_from,
+                    valid_until,
+                    confidence,
+                    source,
+                    datetime.now().isoformat(),
+                ),
             )
         return self.get_relation(id)
 
@@ -152,8 +166,9 @@ class KnowledgeGraph:
             row = conn.execute("SELECT * FROM relations WHERE id = ?", (id,)).fetchone()
             return dict(row) if row else None
 
-    def _build_relation_conditions(self, subject_id: str = None, object_id: str = None,
-                                    predicate: str = None, at_time: str = None) -> list:
+    def _build_relation_conditions(
+        self, subject_id: str = None, object_id: str = None, predicate: str = None, at_time: str = None
+    ) -> list:
         """构建关系查询条件"""
         conditions = []
         params = []
@@ -178,12 +193,11 @@ class KnowledgeGraph:
         conditions.append("(valid_until IS NULL OR valid_until >= ?)")
         params.append(at_time)
 
-    def query_relations(self, subject_id: str = None, object_id: str = None,
-                        predicate: str = None, at_time: str = None) -> list[dict]:
+    def query_relations(
+        self, subject_id: str = None, object_id: str = None, predicate: str = None, at_time: str = None
+    ) -> list[dict]:
         """查询关系"""
-        conditions, params = self._build_relation_conditions(
-            subject_id, object_id, predicate, at_time
-        )
+        conditions, params = self._build_relation_conditions(subject_id, object_id, predicate, at_time)
         where = " AND ".join(conditions) if conditions else "1=1"
 
         with self._conn() as conn:
@@ -269,9 +283,7 @@ class KnowledgeGraph:
         with self._conn() as conn:
             entity_count = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
             relation_count = conn.execute("SELECT COUNT(*) FROM relations").fetchone()[0]
-            active_relations = conn.execute(
-                "SELECT COUNT(*) FROM relations WHERE valid_until IS NULL"
-            ).fetchone()[0]
+            active_relations = conn.execute("SELECT COUNT(*) FROM relations WHERE valid_until IS NULL").fetchone()[0]
 
         return {
             "entities": entity_count,
@@ -447,7 +459,8 @@ class KnowledgeGraph:
                 existing_pairs.add((r["subject_id"], r["object_id"]))
 
         new_candidates = [
-            c for c in candidates
+            c
+            for c in candidates
             if (c["source_id"], c["target_id"]) not in existing_pairs
             and (c["target_id"], c["source_id"]) not in existing_pairs
         ]
@@ -565,9 +578,7 @@ class KnowledgeGraph:
                     ).fetchall()
             else:
                 with self._conn() as conn:
-                    rows = conn.execute(
-                        "SELECT * FROM relations ORDER BY confidence DESC LIMIT 50"
-                    ).fetchall()
+                    rows = conn.execute("SELECT * FROM relations ORDER BY confidence DESC LIMIT 50").fetchall()
 
             edges = []
             for r in rows:
@@ -601,10 +612,25 @@ class KnowledgeGraph:
         target_desc = target.get("description", "")
 
         depend_keywords = [
-            "依赖", "需要", "前提", "基于", "取决于",
-            "必需", "必要条件", "依赖项", "所依赖", "的前提",
-            "依赖关系", "前置条件", "先决条件", "所需", "必备",
-            "requires", "depends", "based on", "prerequisite",
+            "依赖",
+            "需要",
+            "前提",
+            "基于",
+            "取决于",
+            "必需",
+            "必要条件",
+            "依赖项",
+            "所依赖",
+            "的前提",
+            "依赖关系",
+            "前置条件",
+            "先决条件",
+            "所需",
+            "必备",
+            "requires",
+            "depends",
+            "based on",
+            "prerequisite",
         ]
 
         kw_score = 0.0
@@ -684,9 +710,7 @@ class KnowledgeGraph:
                 return {"total_edges": 0, "by_type": {}, "related_to_pct": 0, "depends_on_quality": {}}
 
             by_type = {}
-            rows = conn.execute(
-                "SELECT predicate, COUNT(*) AS cnt FROM relations GROUP BY predicate"
-            ).fetchall()
+            rows = conn.execute("SELECT predicate, COUNT(*) AS cnt FROM relations GROUP BY predicate").fetchall()
             for r in rows:
                 by_type[r["predicate"]] = r["cnt"]
 
@@ -694,9 +718,7 @@ class KnowledgeGraph:
             related_to_pct = round(related_to_cnt / total_cnt * 100, 1) if total_cnt > 0 else 0
 
             depends_on_quality = {}
-            dep_rows = conn.execute(
-                "SELECT confidence FROM relations WHERE predicate='depends_on'"
-            ).fetchall()
+            dep_rows = conn.execute("SELECT confidence FROM relations WHERE predicate='depends_on'").fetchall()
             if dep_rows:
                 high = sum(1 for r in dep_rows if r["confidence"] >= 0.7)
                 medium = sum(1 for r in dep_rows if 0.5 <= r["confidence"] < 0.7)
@@ -740,11 +762,36 @@ class KnowledgeGraph:
     ) -> str:
         """推断边类型（从伏羲移植）"""
         cause_keywords = [
-            "因为", "导致", "造成", "原因", "所以", "因此", "结果",
-            "引起", "致使", "由于", "使得", "结果是",
-            "引发", "触发", "从而", "以致", "进而", "随之",
-            "之所以", "是因为", "归因于", "源自", "源于", "究其原因",
-            "thus", "because", "cause", "result", "lead to", "therefore",
+            "因为",
+            "导致",
+            "造成",
+            "原因",
+            "所以",
+            "因此",
+            "结果",
+            "引起",
+            "致使",
+            "由于",
+            "使得",
+            "结果是",
+            "引发",
+            "触发",
+            "从而",
+            "以致",
+            "进而",
+            "随之",
+            "之所以",
+            "是因为",
+            "归因于",
+            "源自",
+            "源于",
+            "究其原因",
+            "thus",
+            "because",
+            "cause",
+            "result",
+            "lead to",
+            "therefore",
         ]
         if any(kw in source_text for kw in cause_keywords):
             return "causes"
@@ -753,33 +800,84 @@ class KnowledgeGraph:
             return "temporal"
 
         depend_keywords = [
-            "依赖", "需要", "前提", "基于", "取决于",
-            "必需", "必要条件", "依赖项", "所依赖", "的前提",
-            "requires", "depends", "based on", "prerequisite",
+            "依赖",
+            "需要",
+            "前提",
+            "基于",
+            "取决于",
+            "必需",
+            "必要条件",
+            "依赖项",
+            "所依赖",
+            "的前提",
+            "requires",
+            "depends",
+            "based on",
+            "prerequisite",
         ]
         if any(kw in target_text for kw in depend_keywords):
             return "depends_on"
 
         enable_keywords = [
-            "使得", "促成", "实现", "达到", "允许", "赋能",
-            "enable", "achieve", "realize", "allow", "facilitate",
+            "使得",
+            "促成",
+            "实现",
+            "达到",
+            "允许",
+            "赋能",
+            "enable",
+            "achieve",
+            "realize",
+            "allow",
+            "facilitate",
         ]
         if any(kw in source_text for kw in enable_keywords):
             return "enables"
 
         refine_keywords = [
-            "进一步", "细化", "补充", "详细说明", "具体来说", "深入",
-            "完善", "优化", "改进", "修正", "更新", "迭代",
-            "深化", "扩展", "升级", "新版", "重写", "修订",
-            "refine", "elaborate", "detail", "improve", "optimize",
-            "revise", "enhance", "extend", "upgrade", "rewrite",
+            "进一步",
+            "细化",
+            "补充",
+            "详细说明",
+            "具体来说",
+            "深入",
+            "完善",
+            "优化",
+            "改进",
+            "修正",
+            "更新",
+            "迭代",
+            "深化",
+            "扩展",
+            "升级",
+            "新版",
+            "重写",
+            "修订",
+            "refine",
+            "elaborate",
+            "detail",
+            "improve",
+            "optimize",
+            "revise",
+            "enhance",
+            "extend",
+            "upgrade",
+            "rewrite",
         ]
         if any(kw in source_text for kw in refine_keywords):
             return "refines"
 
         contradict_keywords = [
-            "但是", "然而", "不过", "可是", "却",
-            "but", "however", "yet", "though", "nevertheless",
+            "但是",
+            "然而",
+            "不过",
+            "可是",
+            "却",
+            "but",
+            "however",
+            "yet",
+            "though",
+            "nevertheless",
         ]
         if any(kw in source_text + target_text for kw in contradict_keywords):
             return "contradicts"
@@ -795,15 +893,26 @@ class KnowledgeGraph:
         - 人名/代号（羲和/玄女/轩辕）→ agent
         - 动词关系（使用/部署/集成/修复）→ 对应关系类型
         """
-        import re
         from pangu.core.hashing import hex_digest
 
         # 实体类型识别规则
         ENTITY_PATTERNS = {
             "technology": [
-                "Python", "ONNX", "SQLite", "FastAPI", "uvicorn", "Docker",
-                "Redis", "PostgreSQL", "MySQL", "MongoDB", "ChromaDB",
-                "PyTorch", "TensorFlow", "HuggingFace", " sentence-transformers",
+                "Python",
+                "ONNX",
+                "SQLite",
+                "FastAPI",
+                "uvicorn",
+                "Docker",
+                "Redis",
+                "PostgreSQL",
+                "MySQL",
+                "MongoDB",
+                "ChromaDB",
+                "PyTorch",
+                "TensorFlow",
+                "HuggingFace",
+                " sentence-transformers",
             ],
             "system": ["盘古", "伏羲", "OpenClaw", "Claude", "MCP"],
             "agent": ["羲和", "玄女", "轩辕", "主人"],
@@ -834,10 +943,12 @@ class KnowledgeGraph:
 
     def _find_and_create_relations(self, found_entities, content, drawer_id):
         import re
+
         from pangu.core.hashing import hex_digest
+
         count = 0
-        for i, (eid_a, name_a) in enumerate(found_entities):
-            for eid_b, name_b in found_entities[i+1:]:
+        for i, (eid_a, _name_a) in enumerate(found_entities):
+            for eid_b, name_b in found_entities[i + 1 :]:
                 for pattern, predicate in self._RELATION_PATTERNS:
                     if re.search(pattern.replace(r"(\w+)", f".*{re.escape(name_b)}.*"), content):
                         rid = f"rel-{hex_digest(f'{eid_a}-{eid_b}-{predicate}')[:12]}"
@@ -857,12 +968,10 @@ class KnowledgeGraph:
             迁移结果
         """
         # 查找源领域的实体
-        source_entities = self.list_entities(entity_type="technology") + \
-                         self.list_entities(entity_type="concept")
+        source_entities = self.list_entities(entity_type="technology") + self.list_entities(entity_type="concept")
 
         # 查找目标领域的实体
-        target_entities = self.list_entities(entity_type="technology") + \
-                         self.list_entities(entity_type="concept")
+        target_entities = self.list_entities(entity_type="technology") + self.list_entities(entity_type="concept")
 
         # 查找跨领域关联
         transfers = []
@@ -927,9 +1036,11 @@ class KnowledgeGraph:
             if sr["object_id"] != entity_id:
                 similar_entity = self.get_entity(sr["object_id"])
                 if similar_entity:
-                    results.append({
-                        "entity": similar_entity["name"],
-                        "relation": rel["predicate"],
-                        "confidence": rel.get("confidence", 1.0),
-                    })
+                    results.append(
+                        {
+                            "entity": similar_entity["name"],
+                            "relation": rel["predicate"],
+                            "confidence": rel.get("confidence", 1.0),
+                        }
+                    )
         return results

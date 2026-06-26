@@ -11,14 +11,11 @@
 6. 调用 remember() 入库
 """
 
-import hashlib
 import json
 import logging
-import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from pangu.core.config import PanguConfig
 from pangu.core.palace import Drawer
@@ -45,7 +42,7 @@ class ConversationParser:
             logger.error(f"Failed to parse session {file_path}: {e}")
         return messages
 
-    def _parse_line(self, line: str) -> Optional[dict]:
+    def _parse_line(self, line: str) -> dict | None:
         line = line.strip()
         if not line:
             return None
@@ -67,7 +64,7 @@ class ConversationParser:
                         text_parts.append(f"[工具调用: {tool_name}]")
         return " ".join(text_parts)
 
-    def _extract_message(self, data: dict) -> Optional[dict]:
+    def _extract_message(self, data: dict) -> dict | None:
         """从 JSONL 行中提取消息"""
         if data.get("type") != "message":
             return None
@@ -95,30 +92,71 @@ class ImportanceFilter:
     # 高重要性关键词
     HIGH_KEYWORDS = {
         # 决策相关
-        "决定", "确认", "批准", "同意", "拒绝", "取消",
-        "优先级", "P0", "P1", "P2", "紧急", "重要",
+        "决定",
+        "确认",
+        "批准",
+        "同意",
+        "拒绝",
+        "取消",
+        "优先级",
+        "P0",
+        "P1",
+        "P2",
+        "紧急",
+        "重要",
         # 任务相关
-        "任务", "完成", "进行中", "待处理", "阻塞", "卡点",
-        "交付", "验收", "上线", "发布",
+        "任务",
+        "完成",
+        "进行中",
+        "待处理",
+        "阻塞",
+        "卡点",
+        "交付",
+        "验收",
+        "上线",
+        "发布",
         # 技术相关
-        "bug", "修复", "问题", "错误", "失败", "成功",
-        "部署", "配置", "架构", "设计", "方案",
+        "bug",
+        "修复",
+        "问题",
+        "错误",
+        "失败",
+        "成功",
+        "部署",
+        "配置",
+        "架构",
+        "设计",
+        "方案",
         # 规则相关
-        "必须", "禁止", "不能", "需要", "要求",
-        "铁律", "规矩", "约束", "规则",
+        "必须",
+        "禁止",
+        "不能",
+        "需要",
+        "要求",
+        "铁律",
+        "规矩",
+        "约束",
+        "规则",
     }
 
     # 低重要性关键词（会降低重要性）
     LOW_KEYWORDS = {
-        "测试", "试试", "看看", "随便",
-        "hello", "hi", "ok", "好的", "收到",
+        "测试",
+        "试试",
+        "看看",
+        "随便",
+        "hello",
+        "hi",
+        "ok",
+        "好的",
+        "收到",
     }
 
     # 角色权重
     ROLE_WEIGHTS = {
-        "user": 1.0,      # 用户消息
+        "user": 1.0,  # 用户消息
         "assistant": 0.8,  # AI 回复
-        "toolResult": 0.3, # 工具结果（通常不重要）
+        "toolResult": 0.3,  # 工具结果（通常不重要）
     }
 
     def calculate_importance(
@@ -171,21 +209,55 @@ class CategoryClassifier:
     # Wing 映射规则
     WING_RULES = {
         "tech": [
-            "代码", "bug", "修复", "部署", "配置", "架构",
-            "API", "服务器", "数据库", "向量", "嵌入",
-            "python", "javascript", "docker", "git",
+            "代码",
+            "bug",
+            "修复",
+            "部署",
+            "配置",
+            "架构",
+            "API",
+            "服务器",
+            "数据库",
+            "向量",
+            "嵌入",
+            "python",
+            "javascript",
+            "docker",
+            "git",
         ],
         "product": [
-            "需求", "功能", "用户", "体验", "产品",
-            "PRD", "优先级", "迭代", "版本", "发布",
+            "需求",
+            "功能",
+            "用户",
+            "体验",
+            "产品",
+            "PRD",
+            "优先级",
+            "迭代",
+            "版本",
+            "发布",
         ],
         "project": [
-            "任务", "计划", "进度", "里程碑", "交付",
-            "项目", "排期", "工时", "阻塞",
+            "任务",
+            "计划",
+            "进度",
+            "里程碑",
+            "交付",
+            "项目",
+            "排期",
+            "工时",
+            "阻塞",
         ],
         "team": [
-            "会议", "讨论", "决策", "分工", "协作",
-            "@", "玄女", "轩辕", "羲和",
+            "会议",
+            "讨论",
+            "决策",
+            "分工",
+            "协作",
+            "@",
+            "玄女",
+            "轩辕",
+            "羲和",
         ],
     }
 
@@ -276,12 +348,14 @@ class AutoCollector:
                 last_processed = self._processed.get(str(file_path), 0)
 
                 if mtime > last_processed:
-                    sessions.append({
-                        "path": str(file_path),
-                        "agent": session_dir.parent.name,
-                        "mtime": mtime,
-                        "last_processed": last_processed,
-                    })
+                    sessions.append(
+                        {
+                            "path": str(file_path),
+                            "agent": session_dir.parent.name,
+                            "mtime": mtime,
+                            "last_processed": last_processed,
+                        }
+                    )
 
         return sessions
 
@@ -332,6 +406,7 @@ class AutoCollector:
 
             # 去重检查（blake2b 哈希）
             from pangu.core.hashing import hex_digest
+
             content_hash = hex_digest(content)
             if any(d.metadata.get("content_hash") == content_hash for d in existing_drawers):
                 continue
@@ -351,13 +426,15 @@ class AutoCollector:
                 drawer.metadata["collected_at"] = datetime.now().isoformat()
                 existing_drawers.append(drawer)
 
-                results.append({
-                    "id": item_id,
-                    "wing": wing,
-                    "room": room,
-                    "importance": importance,
-                    "content_preview": content[:100],
-                })
+                results.append(
+                    {
+                        "id": item_id,
+                        "wing": wing,
+                        "room": room,
+                        "importance": importance,
+                        "content_preview": content[:100],
+                    }
+                )
                 logger.info(f"Collected: {item_id[:8]} from {agent} (importance={importance:.2f})")
             except Exception as e:
                 logger.error(f"Failed to collect memory: {e}")
@@ -412,10 +489,7 @@ class AutoCollector:
                 with open(drawers_file, encoding="utf-8") as f:
                     drawers = json.load(f)
                 total_memories = len(drawers)
-                auto_collected = sum(
-                    1 for d in drawers
-                    if d.get("tags") and "auto_collected" in d["tags"]
-                )
+                auto_collected = sum(1 for d in drawers if d.get("tags") and "auto_collected" in d["tags"])
             except Exception:
                 pass
 
@@ -431,8 +505,7 @@ def run_collection():
     """运行一次采集"""
     collector = AutoCollector()
     stats = collector.collect_all()
-    print(f"采集完成: 扫描 {stats['sessions_scanned']} 个会话, "
-          f"采集 {stats['memories_collected']} 条记忆")
+    print(f"采集完成: 扫描 {stats['sessions_scanned']} 个会话, 采集 {stats['memories_collected']} 条记忆")
     if stats["by_agent"]:
         for agent, count in stats["by_agent"].items():
             print(f"  - {agent}: {count} 条")

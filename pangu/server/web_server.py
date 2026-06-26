@@ -3,6 +3,7 @@
 盘古定位为专业的记忆系统，API 只提供记忆管理功能。
 不包含 Agent 执行功能（问答、对话、任务执行等）。
 上层 Agent 框架应通过 MCP 接口调用记忆检索结果后自行实现推理。"""
+
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from ..wiki.engine import WikiEngine
 
 # ── Pydantic 模型 ──
 
+
 class MemoryCreate(BaseModel):
     content: str
     wing: str = "default"
@@ -31,6 +33,7 @@ class MemoryCreate(BaseModel):
     importance: float = 3.0
     tags: list[str] = []
 
+
 class WikiPageCreate(BaseModel):
     title: str
     wing: str = "default"
@@ -38,17 +41,20 @@ class WikiPageCreate(BaseModel):
     summary: str = ""
     tags: list[str] = []
 
+
 class SearchQuery(BaseModel):
     query: str
     wing: str = None
     room: str = None
     n_results: int = 10
 
+
 class EntityCreate(BaseModel):
     id: str
     name: str
     type: str = "concept"
     description: str = ""
+
 
 class RelationCreate(BaseModel):
     id: str
@@ -61,6 +67,7 @@ class RelationCreate(BaseModel):
 
 
 # ── 创建应用 ──
+
 
 def create_app(config: PanguConfig = None) -> FastAPI:
     config = config or PanguConfig.load()
@@ -221,10 +228,7 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     @app.post("/api/wiki/generate")
     async def auto_generate_wiki(title: str = Form(...), wing: str = Form("default")):
         drawers = memory.get_drawers()
-        memories = [
-            {"content": d.content, "wing": d.wing, "room": d.room}
-            for d in drawers if d.wing == wing
-        ]
+        memories = [{"content": d.content, "wing": d.wing, "room": d.room} for d in drawers if d.wing == wing]
         page = await wiki.auto_generate_page(llm, title, wing, memories)
         return {"status": "generated", "page": page.to_dict()}
 
@@ -290,14 +294,20 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     @app.post("/api/export")
     async def export_data(format: str = Form("json"), wing: str = Form(None)):
         from ..memory.migration import MemoryExporter
+
         exporter = MemoryExporter(config)
-        output = f"/tmp/pangu_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format}" if format != "zip" else f"/tmp/pangu_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        output = (
+            f"/tmp/pangu_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format}"
+            if format != "zip"
+            else f"/tmp/pangu_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        )
         result = exporter.export_all(output, format)
         return {"status": "exported", "path": result}
 
     @app.post("/api/import")
     async def import_data(file_path: str = Form(...), merge: bool = Form(True)):
         from ..memory.migration import MemoryImporter
+
         importer = MemoryImporter(config)
         stats = importer.import_from_file(file_path, merge=merge)
         return stats
@@ -305,12 +315,14 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     @app.get("/api/backups")
     async def list_backups():
         from ..memory.migration import BackupManager
+
         manager = BackupManager(config)
         return {"backups": manager.list_backups()}
 
     @app.post("/api/backups")
     async def create_backup(label: str = Form(None)):
         from ..memory.migration import BackupManager
+
         manager = BackupManager(config)
         path = manager.create_backup(label=label)
         return {"status": "backup_created", "path": path}
@@ -318,14 +330,18 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     @app.post("/api/backups/{backup_name}/restore")
     async def restore_backup(backup_name: str, merge: bool = Form(False)):
         from ..memory.migration import BackupManager
+
         manager = BackupManager(config)
         result = manager.restore_backup(backup_name, merge=merge)
         return result
 
     # 多模态
     @app.post("/api/multimodal/extract-file")
-    async def extract_multimodal(file_path: str = Form(...), wing: str = Form("default"), room: str = Form(None), tags: str = Form("")):
+    async def extract_multimodal(
+        file_path: str = Form(...), wing: str = Form("default"), room: str = Form(None), tags: str = Form("")
+    ):
         from ..memory.multimodal import MultimodalExtractor
+
         extractor = MultimodalExtractor()
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
         mm = extractor.extract_from_file(file_path, wing=wing, room=room, tags=tag_list)
@@ -333,7 +349,7 @@ def create_app(config: PanguConfig = None) -> FastAPI:
 
     @app.get("/api/search/cache-stats")
     async def get_search_cache_stats():
-        embedder = getattr(search.semantic, '_embedder', None)
+        embedder = getattr(search.semantic, "_embedder", None)
         if embedder:
             return embedder.cache_stats()
         return {"status": "embedder not initialized"}
@@ -342,6 +358,7 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     @app.get("/api/plugins")
     async def list_plugins():
         from ..plugins import PluginManager
+
         mgr = PluginManager()
         return {"plugins": mgr.list_plugins()}
 
@@ -369,21 +386,28 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     @app.post("/api/kg/relations")
     async def add_relation(data: RelationCreate):
         rel = kg.add_relation(
-            id=data.id, subject_id=data.subject_id,
-            predicate=data.predicate, object_id=data.object_id,
-            valid_from=data.valid_from, valid_until=data.valid_until,
+            id=data.id,
+            subject_id=data.subject_id,
+            predicate=data.predicate,
+            object_id=data.object_id,
+            valid_from=data.valid_from,
+            valid_until=data.valid_until,
             confidence=data.confidence,
         )
         return {"relation": rel}
 
     @app.get("/api/kg/relations")
     async def query_relations(
-        subject_id: str = None, object_id: str = None,
-        predicate: str = None, at_time: str = None,
+        subject_id: str = None,
+        object_id: str = None,
+        predicate: str = None,
+        at_time: str = None,
     ):
         relations = kg.query_relations(
-            subject_id=subject_id, object_id=object_id,
-            predicate=predicate, at_time=at_time,
+            subject_id=subject_id,
+            object_id=object_id,
+            predicate=predicate,
+            at_time=at_time,
         )
         return {"relations": relations}
 

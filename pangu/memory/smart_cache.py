@@ -7,10 +7,11 @@
 4. 缓存统计：命中率、驱逐率、内存使用统计
 5. 缓存穿透防护：防止不存在的数据反复查询
 """
+
 import logging
 import time
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger("pangu.memory.smart_cache")
 
@@ -18,6 +19,7 @@ logger = logging.getLogger("pangu.memory.smart_cache")
 @dataclass
 class CacheEntry:
     """缓存条目"""
+
     key: str
     value: any
     created_at: float
@@ -80,8 +82,12 @@ class SmartCache:
                 self._evict_lfu()
 
         entry = CacheEntry(
-            key=key, value=value, created_at=now,
-            last_accessed=now, ttl=ttl, size_bytes=size,
+            key=key,
+            value=value,
+            created_at=now,
+            last_accessed=now,
+            ttl=ttl,
+            size_bytes=size,
         )
         self._entries[key] = entry
         self._current_memory += size
@@ -144,8 +150,7 @@ class SmartCache:
     def cleanup_expired(self) -> int:
         """清理过期条目"""
         now = time.time()
-        expired = [k for k, e in self._entries.items()
-                   if now - e.created_at > e.ttl]
+        expired = [k for k, e in self._entries.items() if now - e.created_at > e.ttl]
         for k in expired:
             self._remove(k)
         return len(expired)

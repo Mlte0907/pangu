@@ -7,15 +7,15 @@
 4. Webhook 回调：事件触发外部 HTTP 回调
 5. 事件统计：事件频率和分布分析
 """
+
 import json
 import logging
-import threading
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
 
 logger = logging.getLogger("pangu.memory.memory_events")
 
@@ -41,6 +41,7 @@ MEMORY_EVENT_TYPES = [
 @dataclass
 class MemoryEvent:
     """记忆事件"""
+
     event_id: str
     event_type: str
     memory_id: str
@@ -52,16 +53,18 @@ class MemoryEvent:
 @dataclass
 class EventSubscription:
     """事件订阅"""
+
     sub_id: str
     event_type: str
     callback: Callable
-    filter_fn: Optional[Callable] = None
+    filter_fn: Callable | None = None
     active: bool = True
 
 
 @dataclass
 class WebhookConfig:
     """Webhook 配置"""
+
     url: str
     event_types: list[str]
     secret: str = ""
@@ -99,8 +102,7 @@ class MemoryEventStream:
         except Exception as e:
             logger.error(f"Event handler error: {e}")
 
-    def emit(self, event_type: str, memory_id: str = "",
-             data: dict = None, source: str = "pangu") -> MemoryEvent:
+    def emit(self, event_type: str, memory_id: str = "", data: dict = None, source: str = "pangu") -> MemoryEvent:
         """发布记忆事件"""
         event = MemoryEvent(
             event_id=f"evt_{len(self._event_history)}_{int(time.time())}",
@@ -115,15 +117,14 @@ class MemoryEventStream:
         self._event_counts[event_type] += 1
 
         if len(self._event_history) > self._max_history:
-            self._event_history = self._event_history[-self._max_history:]
+            self._event_history = self._event_history[-self._max_history :]
 
         for sub in self._subscriptions.values():
             self._dispatch_to_subscriber(sub, event)
 
         return event
 
-    def subscribe(self, event_type: str, callback: Callable,
-                  filter_fn: Callable = None) -> str:
+    def subscribe(self, event_type: str, callback: Callable, filter_fn: Callable = None) -> str:
         """订阅事件"""
         sub_id = self._gen_id()
         self._subscriptions[sub_id] = EventSubscription(
@@ -160,8 +161,14 @@ class MemoryEventStream:
             events = [e for e in events if e.event_type == event_type]
 
         return [
-            {"id": e.event_id, "type": e.event_type, "memory_id": e.memory_id,
-             "timestamp": e.timestamp, "source": e.source, "data": e.data}
+            {
+                "id": e.event_id,
+                "type": e.event_type,
+                "memory_id": e.memory_id,
+                "timestamp": e.timestamp,
+                "source": e.source,
+                "data": e.data,
+            }
             for e in events[-limit:]
         ]
 
@@ -188,8 +195,14 @@ class MemoryEventStream:
                 existing = []
 
         new_events = [
-            {"id": e.event_id, "type": e.event_type, "memory_id": e.memory_id,
-             "data": e.data, "timestamp": e.timestamp, "source": e.source}
+            {
+                "id": e.event_id,
+                "type": e.event_type,
+                "memory_id": e.memory_id,
+                "data": e.data,
+                "timestamp": e.timestamp,
+                "source": e.source,
+            }
             for e in self._event_history[-200:]
         ]
 
@@ -225,11 +238,9 @@ class MemoryEventStream:
 
         return replayed
 
-    def emit_memory_write(self, memory_id: str, content: str = "",
-                          wing: str = "") -> MemoryEvent:
+    def emit_memory_write(self, memory_id: str, content: str = "", wing: str = "") -> MemoryEvent:
         """便捷：发布记忆写入事件"""
-        return self.emit("memory.write", memory_id,
-                         {"content": content[:100], "wing": wing})
+        return self.emit("memory.write", memory_id, {"content": content[:100], "wing": wing})
 
     def emit_memory_delete(self, memory_id: str) -> MemoryEvent:
         """便捷：发布记忆删除事件"""

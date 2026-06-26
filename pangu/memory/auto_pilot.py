@@ -7,9 +7,9 @@
 4. 自动维护：定期执行融合、衰减、压缩
 5. 自动报告：每日自动生成记忆使用报告
 """
+
 import json
 import logging
-import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -117,8 +117,7 @@ class AutoPilot:
 
         return {"tagged": tagged, "total": len(drawers)}
 
-    def auto_suggest(self, context: str = "", drawers: list[Drawer] = None,
-                     limit: int = 5) -> dict:
+    def auto_suggest(self, context: str = "", drawers: list[Drawer] = None, limit: int = 5) -> dict:
         """自动推荐：基于当前上下文主动推送相关记忆"""
         if not context and not drawers:
             return {"suggestions": [], "reason": "no context"}
@@ -139,7 +138,7 @@ class AutoPilot:
                     score += 0.3
 
             # 标签匹配
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 if tag.lower() in context.lower():
                     score += 0.2
 
@@ -147,20 +146,23 @@ class AutoPilot:
             score += (d.importance or 0) * 0.1
 
             if score > 0.2:
-                suggestions.append({
-                    "id": d.id,
-                    "content": (d.content or "")[:100],
-                    "wing": d.wing,
-                    "importance": d.importance,
-                    "score": round(score, 3),
-                    "reason": self._generate_reason(d, context),
-                })
+                suggestions.append(
+                    {
+                        "id": d.id,
+                        "content": (d.content or "")[:100],
+                        "wing": d.wing,
+                        "importance": d.importance,
+                        "score": round(score, 3),
+                        "reason": self._generate_reason(d, context),
+                    }
+                )
 
         suggestions.sort(key=lambda x: -x["score"])
 
         # 解密内容
         try:
             import importlib
+
             encryption_mod = importlib.import_module("pangu.memory.encryption")
             decrypt = encryption_mod.decrypt
             for s in suggestions:
@@ -181,6 +183,7 @@ class AutoPilot:
 
         try:
             from .autonomous import get_autonomous_engine
+
             engine = get_autonomous_engine(self.config)
             cycle = engine.run_cycle()
             results["maintenance"] = {

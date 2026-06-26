@@ -7,16 +7,14 @@
 4. 视频摘要：基于元数据+帧分析生成文字描述
 5. CLIP 帧嵌入：对关键帧做 CLIP 向量化
 """
+
 import json
 import logging
-import os
 import subprocess
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.video_engine")
 
@@ -47,46 +45,48 @@ class VideoMemoryEngine:
         }
 
         try:
-            cmd = [
-                self._ffprobe, "-v", "quiet",
-                "-print_format", "json",
-                "-show_format", "-show_streams",
-                str(path)
-            ]
+            cmd = [self._ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", str(path)]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 data = json.loads(result.stdout)
                 fmt = data.get("format", {})
-                meta.update({
-                    "duration": float(fmt.get("duration", 0)),
-                    "duration_str": self._format_duration(float(fmt.get("duration", 0))),
-                    "bitrate": int(fmt.get("bit_rate", 0)),
-                    "format_name": fmt.get("format_long_name", ""),
-                    "nb_streams": int(fmt.get("nb_streams", 0)),
-                })
+                meta.update(
+                    {
+                        "duration": float(fmt.get("duration", 0)),
+                        "duration_str": self._format_duration(float(fmt.get("duration", 0))),
+                        "bitrate": int(fmt.get("bit_rate", 0)),
+                        "format_name": fmt.get("format_long_name", ""),
+                        "nb_streams": int(fmt.get("nb_streams", 0)),
+                    }
+                )
 
                 for stream in data.get("streams", []):
                     if stream.get("codec_type") == "video":
-                        meta.update({
-                            "video_codec": stream.get("codec_name", ""),
-                            "width": int(stream.get("width", 0)),
-                            "height": int(stream.get("height", 0)),
-                            "fps": self._parse_fps(stream.get("r_frame_rate", "0/1")),
-                            "video_bitrate": int(stream.get("bit_rate", 0)),
-                        })
+                        meta.update(
+                            {
+                                "video_codec": stream.get("codec_name", ""),
+                                "width": int(stream.get("width", 0)),
+                                "height": int(stream.get("height", 0)),
+                                "fps": self._parse_fps(stream.get("r_frame_rate", "0/1")),
+                                "video_bitrate": int(stream.get("bit_rate", 0)),
+                            }
+                        )
                     elif stream.get("codec_type") == "audio":
-                        meta.update({
-                            "audio_codec": stream.get("codec_name", ""),
-                            "audio_channels": int(stream.get("channels", 0)),
-                            "audio_sample_rate": int(stream.get("sample_rate", 0)),
-                        })
+                        meta.update(
+                            {
+                                "audio_codec": stream.get("codec_name", ""),
+                                "audio_channels": int(stream.get("channels", 0)),
+                                "audio_sample_rate": int(stream.get("sample_rate", 0)),
+                            }
+                        )
         except Exception as e:
             logger.warning(f"ffprobe failed: {e}")
 
         return meta
 
-    def extract_keyframes(self, video_path: str, output_dir: str = None,
-                          count: int = 5, interval: str = None) -> list[str]:
+    def extract_keyframes(
+        self, video_path: str, output_dir: str = None, count: int = 5, interval: str = None
+    ) -> list[str]:
         """提取关键帧"""
         path = Path(video_path).expanduser()
         if not path.exists():
@@ -105,17 +105,22 @@ class VideoMemoryEngine:
         out_dir = Path(output_dir or tempfile.mkdtemp(prefix="pangu_video_"))
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        pattern = str(out_dir / f"frame_%03d.jpg")
+        pattern = str(out_dir / "frame_%03d.jpg")
         try:
             cmd = [
-                self._ffmpeg, "-y",
-                "-i", str(path),
-                "-vf", f"fps=1/{interval_sec}",
-                "-vframes", str(count),
-                "-q:v", "2",
+                self._ffmpeg,
+                "-y",
+                "-i",
+                str(path),
+                "-vf",
+                f"fps=1/{interval_sec}",
+                "-vframes",
+                str(count),
+                "-q:v",
+                "2",
                 pattern,
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             frames = sorted(out_dir.glob("frame_*.jpg"))
             return [str(f) for f in frames]
         except Exception as e:
@@ -133,10 +138,17 @@ class VideoMemoryEngine:
 
         try:
             cmd = [
-                self._ffmpeg, "-y",
-                "-i", str(path),
-                "-vn", "-acodec", "pcm_s16le",
-                "-ar", "16000", "-ac", "1",
+                self._ffmpeg,
+                "-y",
+                "-i",
+                str(path),
+                "-vn",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
                 output_path,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -146,8 +158,7 @@ class VideoMemoryEngine:
             logger.warning(f"Audio extraction failed: {e}")
         return ""
 
-    def generate_thumbnail(self, video_path: str, output_path: str = None,
-                           timestamp: str = "00:00:05") -> str:
+    def generate_thumbnail(self, video_path: str, output_path: str = None, timestamp: str = "00:00:05") -> str:
         """生成视频缩略图"""
         path = Path(video_path).expanduser()
         if not path.exists():
@@ -158,11 +169,16 @@ class VideoMemoryEngine:
 
         try:
             cmd = [
-                self._ffmpeg, "-y",
-                "-ss", timestamp,
-                "-i", str(path),
-                "-vframes", "1",
-                "-q:v", "2",
+                self._ffmpeg,
+                "-y",
+                "-ss",
+                timestamp,
+                "-i",
+                str(path),
+                "-vframes",
+                "1",
+                "-q:v",
+                "2",
                 output_path,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -172,9 +188,15 @@ class VideoMemoryEngine:
             logger.warning(f"Thumbnail extraction failed: {e}")
         return ""
 
-    def ingest_video(self, video_path: str, wing: str = "default",
-                     description: str = "", tags: list[str] = None,
-                     extract_frames: bool = True, auto_store: bool = True) -> dict:
+    def ingest_video(
+        self,
+        video_path: str,
+        wing: str = "default",
+        description: str = "",
+        tags: list[str] = None,
+        extract_frames: bool = True,
+        auto_store: bool = True,
+    ) -> dict:
         """从视频提取记忆并入库"""
         path = Path(video_path).expanduser().resolve()
         if not path.exists():
@@ -209,21 +231,25 @@ class VideoMemoryEngine:
         if frame_paths:
             try:
                 from pangu.memory.image_engine import get_image_engine
+
                 img_engine = get_image_engine(self.config)
                 for fp in frame_paths:
                     analysis = img_engine.embed_image(fp)
-                    frame_analysis.append({
-                        "file": fp,
-                        "embedding_dim": analysis.get("embedding_dim", 0),
-                        "colors": analysis.get("dominant_colors", []),
-                        "description": analysis.get("content", "")[:100],
-                    })
+                    frame_analysis.append(
+                        {
+                            "file": fp,
+                            "embedding_dim": analysis.get("embedding_dim", 0),
+                            "colors": analysis.get("dominant_colors", []),
+                            "description": analysis.get("content", "")[:100],
+                        }
+                    )
                 # 聚合帧描述
                 all_colors = []
                 for fa in frame_analysis:
                     all_colors.extend(fa.get("colors", []))
                 if all_colors:
                     from collections import Counter
+
                     top_colors = [c for c, _ in Counter(all_colors).most_common(3)]
                     content += f"\n主色调: {', '.join(top_colors)}"
             except Exception as e:
@@ -247,6 +273,7 @@ class VideoMemoryEngine:
 
         if auto_store:
             from ..memory.ingestion import remember
+
             importance = min(1.0, 0.5 + meta.get("duration", 0) / 600)
             item_id, drawer = remember(
                 raw_text=content[:1000],

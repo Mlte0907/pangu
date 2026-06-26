@@ -6,13 +6,12 @@
 - 事件过滤（只推送重要事件）
 - 推送限流（防止刷屏）
 """
+
 import hashlib
 import hmac
-import json
 import logging
 import time
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger("pangu.memory.feishu_webhook")
 
@@ -22,8 +21,12 @@ class FeishuWebhook:
 
     # 只推送这些事件类型
     PUSH_EVENT_TYPES = {
-        "memory.write", "memory.collect", "memory.quality_fix",
-        "memory.delete", "memory.consolidate", "memory.forget",
+        "memory.write",
+        "memory.collect",
+        "memory.quality_fix",
+        "memory.delete",
+        "memory.consolidate",
+        "memory.forget",
     }
 
     def __init__(self, webhook_url: str = "", secret: str = ""):
@@ -38,6 +41,7 @@ class FeishuWebhook:
         string_to_sign = f"{timestamp}\n{self.secret}"
         hmac_code = hmac.new(string_to_sign.encode(), digestmod=hashlib.sha256).digest()
         import base64
+
         return base64.b64encode(hmac_code).decode()
 
     def _should_push(self, event_type: str) -> bool:
@@ -53,6 +57,7 @@ class FeishuWebhook:
             return {"ok": False, "error": "webhook_url not configured"}
 
         import httpx
+
         timestamp = str(int(time.time()))
         payload = {
             "msg_type": "text",
@@ -76,6 +81,7 @@ class FeishuWebhook:
             return {"ok": False, "error": "webhook_url not configured"}
 
         import httpx
+
         timestamp = str(int(time.time()))
 
         elements = [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(content_lines)}}]
@@ -111,9 +117,12 @@ class FeishuWebhook:
             return {"ok": False, "error": "rate limited"}
 
         icons = {
-            "memory.write": "📝", "memory.collect": "📥",
-            "memory.quality_fix": "✨", "memory.delete": "🗑️",
-            "memory.consolidate": "🔄", "memory.forget": "🧹",
+            "memory.write": "📝",
+            "memory.collect": "📥",
+            "memory.quality_fix": "✨",
+            "memory.delete": "🗑️",
+            "memory.consolidate": "🔄",
+            "memory.forget": "🧹",
         }
         icon = icons.get(event_type, "📌")
         time_str = datetime.now().strftime("%H:%M:%S")

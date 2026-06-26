@@ -9,13 +9,13 @@
 设计理念：纯大脑能力，只做加速，不改变记忆语义。
 """
 
-import hashlib
 import logging
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import numpy as np
 
@@ -32,6 +32,7 @@ T = TypeVar("T")
 @dataclass
 class _HNSWNode:
     """HNSW 图节点"""
+
     id: str
     vector: np.ndarray
     layer: int
@@ -101,9 +102,7 @@ class HNSWVectorIndex:
             return np.zeros(matrix.shape[0])
         return normalized @ (query / q_norm)
 
-    def _search_layer(
-        self, query: np.ndarray, entry_ids: list[str], ef: int, layer: int
-    ) -> list[str]:
+    def _search_layer(self, query: np.ndarray, entry_ids: list[str], ef: int, layer: int) -> list[str]:
         """在指定层搜索最近邻（贪心 + 候选集扩展）"""
         if not entry_ids:
             return []
@@ -171,7 +170,7 @@ class HNSWVectorIndex:
             return
 
         # 从最高层向下搜索，找到插入点
-        entry = self._nodes[self._entry_point]
+        self._nodes[self._entry_point]
         current = [self._entry_point]
 
         for layer in range(self._max_node_layer, level, -1):
@@ -180,7 +179,7 @@ class HNSWVectorIndex:
         for layer in range(min(level, self._max_node_layer), -1, -1):
             candidates = self._search_layer(vec, current, ef=self.ef_construction, layer=layer)
             self._connect_node(item_id, candidates, layer)
-            current = candidates[:self.M]
+            current = candidates[: self.M]
 
         if level > self._max_node_layer:
             self._max_node_layer = level
@@ -212,10 +211,13 @@ class HNSWVectorIndex:
         """连接节点到候选邻居"""
         node = self._nodes[node_id]
         vec = node.vector
-        scored = [(cid, self._cosine_sim(vec, self._nodes[cid].vector))
-                  for cid in candidates if cid != node_id and cid in self._nodes]
+        scored = [
+            (cid, self._cosine_sim(vec, self._nodes[cid].vector))
+            for cid in candidates
+            if cid != node_id and cid in self._nodes
+        ]
         scored.sort(key=lambda x: x[1], reverse=True)
-        neighbors = [cid for cid, _ in scored[:self.M]]
+        neighbors = [cid for cid, _ in scored[: self.M]]
         node.neighbors[layer] = neighbors
 
         self._connect_reverse(node_id, neighbors, layer)
@@ -223,7 +225,7 @@ class HNSWVectorIndex:
     def add_batch(self, ids: list[str], vectors: list[list[float]]) -> int:
         """批量添加向量"""
         count = 0
-        for item_id, vec in zip(ids, vectors):
+        for item_id, vec in zip(ids, vectors, strict=False):
             try:
                 self.add(item_id, vec)
                 count += 1
@@ -284,10 +286,7 @@ class HNSWVectorIndex:
         layers = {}
         for node in self._nodes.values():
             layers[node.layer] = layers.get(node.layer, 0) + 1
-        total_edges = sum(
-            sum(len(nbrs) for nbrs in node.neighbors.values())
-            for node in self._nodes.values()
-        )
+        total_edges = sum(sum(len(nbrs) for nbrs in node.neighbors.values()) for node in self._nodes.values())
         return {
             "size": self._size,
             "dim": self.dim,
@@ -297,9 +296,7 @@ class HNSWVectorIndex:
             "M": self.M,
             "ef_construction": self.ef_construction,
             "ef_search": self.ef_search,
-            "memory_mb": round(
-                self._size * (self.dim * 4 + 64) / 1024 / 1024, 2
-            ) if self._size > 0 else 0,
+            "memory_mb": round(self._size * (self.dim * 4 + 64) / 1024 / 1024, 2) if self._size > 0 else 0,
         }
 
 
@@ -621,10 +618,10 @@ class BatchProcessor:
         results: list[list[float]] = []
 
         # 尝试批量推理
-        if hasattr(embed_fn, '__self__') and hasattr(embed_fn.__self__, 'embed_batch'):
+        if hasattr(embed_fn, "__self__") and hasattr(embed_fn.__self__, "embed_batch"):
             embedder = embed_fn.__self__
             for i in range(0, len(texts), batch_size):
-                batch = texts[i:i + batch_size]
+                batch = texts[i : i + batch_size]
                 try:
                     vecs = embedder.embed_batch(batch)
                     results.extend(vecs)
@@ -677,8 +674,7 @@ class BatchProcessor:
                 "total_flushed": self._total_flushed,
                 "total_flush_calls": self._total_flush_calls,
                 "avg_batch_size": (
-                    round(self._total_flushed / self._total_flush_calls, 1)
-                    if self._total_flush_calls > 0 else 0
+                    round(self._total_flushed / self._total_flush_calls, 1) if self._total_flush_calls > 0 else 0
                 ),
             }
 
@@ -739,8 +735,11 @@ class PerformanceOptimizer:
         """初始化 Drawer 对象池"""
         if factory is None:
             from ..core.palace import Drawer
-            factory = lambda: Drawer(id="", content="", wing="default", room="default")
+
+            def factory():
+                return Drawer(id="", content="", wing="default", room="default")
         if reset is None:
+
             def reset(d):
                 d.id = ""
                 d.content = ""
@@ -769,6 +768,7 @@ class PerformanceOptimizer:
         优先从缓存命中，未命中则走 HNSW 搜索。
         """
         from pangu.core.hashing import hex_digest
+
         cache_key = hex_digest(np.array(query_vec).tobytes())
 
         if use_arc_cache:

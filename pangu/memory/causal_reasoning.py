@@ -6,9 +6,9 @@
 3. 因果图构建：构建因果关系图
 4. 根因分析：找到问题的根本原因
 """
+
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 
 logger = logging.getLogger("pangu.memory.causal_reasoning")
 
@@ -23,6 +23,7 @@ CAUSAL_MARKERS = {
 @dataclass
 class CausalLink:
     """因果链接"""
+
     cause_id: str
     effect_id: str
     cause_text: str
@@ -35,6 +36,7 @@ class CausalLink:
 @dataclass
 class CausalChain:
     """因果链"""
+
     chain_id: str
     links: list[CausalLink]
     root_cause: str
@@ -46,6 +48,7 @@ class CausalChain:
 @dataclass
 class CounterfactualResult:
     """反事实推理结果"""
+
     original_cause: str
     counterfactual: str
     predicted_effect: str
@@ -64,7 +67,7 @@ class CausalReasoningEngine:
     def _check_effect_match(self, d1, drawers: list) -> list[CausalLink]:
         """检查 d1 作为原因时与所有潜在效果的匹配"""
         links = []
-        for j, d2 in enumerate(drawers):
+        for _j, d2 in enumerate(drawers):
             if d1.id == d2.id:
                 continue
             c2 = d2.content.lower()
@@ -143,14 +146,16 @@ class CausalReasoningEngine:
             if chain_key not in visited_chains and len(chain_links) >= 2:
                 visited_chains.add(chain_key)
                 confidences = [l.confidence for l in chain_links]
-                chains.append(CausalChain(
-                    chain_id=f"chain_{len(chains)}",
-                    links=chain_links,
-                    root_cause=chain_links[0].cause_text,
-                    final_effect=chain_links[-1].effect_text,
-                    chain_length=len(chain_links),
-                    overall_confidence=sum(confidences) / len(confidences),
-                ))
+                chains.append(
+                    CausalChain(
+                        chain_id=f"chain_{len(chains)}",
+                        links=chain_links,
+                        root_cause=chain_links[0].cause_text,
+                        final_effect=chain_links[-1].effect_text,
+                        chain_length=len(chain_links),
+                        overall_confidence=sum(confidences) / len(confidences),
+                    )
+                )
 
         self._causal_chains = chains
         return chains
@@ -198,12 +203,14 @@ class CausalReasoningEngine:
 
         for link in self._causal_links:
             if any(kw in effect_text for kw in link.effect_text.split()):
-                potential_causes.append({
-                    "cause": link.cause_text,
-                    "confidence": link.confidence,
-                    "relation": link.relation_type,
-                    "id": link.cause_id,
-                })
+                potential_causes.append(
+                    {
+                        "cause": link.cause_text,
+                        "confidence": link.confidence,
+                        "relation": link.relation_type,
+                        "id": link.cause_id,
+                    }
+                )
 
         potential_causes.sort(key=lambda x: x["confidence"], reverse=True)
 
@@ -229,11 +236,11 @@ class CausalReasoningEngine:
             "total_chains": len(self._causal_chains),
             "avg_chain_length": (
                 sum(c.chain_length for c in self._causal_chains) / len(self._causal_chains)
-                if self._causal_chains else 0
+                if self._causal_chains
+                else 0
             ),
             "avg_confidence": (
-                sum(l.confidence for l in self._causal_links) / len(self._causal_links)
-                if self._causal_links else 0
+                sum(l.confidence for l in self._causal_links) / len(self._causal_links) if self._causal_links else 0
             ),
             "direct_relations": sum(1 for l in self._causal_links if l.relation_type == "direct"),
             "indirect_relations": sum(1 for l in self._causal_links if l.relation_type == "indirect"),

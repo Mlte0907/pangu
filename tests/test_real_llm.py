@@ -40,10 +40,7 @@ _PROVIDERS = [
 
 def _configured_providers() -> list[tuple[str, str, str]]:
     """返回所有配置了 key 的 provider 列表"""
-    return [
-        (p, k, m) for p, k, m in _PROVIDERS
-        if os.environ.get(k) and os.environ[k].strip()
-    ]
+    return [(p, k, m) for p, k, m in _PROVIDERS if os.environ.get(k) and os.environ[k].strip()]
 
 
 def _first_provider() -> tuple[str, str, str]:
@@ -61,6 +58,7 @@ pytestmark = pytest.mark.integration
 # ─────────────────────────────────────────────────────
 # 1. 基础连通性
 # ─────────────────────────────────────────────────────
+
 
 class TestRealLLMConnectivity:
     """真实 LLM 端到端连通性测试"""
@@ -133,9 +131,7 @@ class TestRealLLMConnectivity:
         if resp.content.startswith("[LMM") or "失败" in resp.content:
             pytest.skip(f"{provider} 不可用")
         # 应包含中文字符
-        assert any('\u4e00' <= c <= '\u9fff' for c in resp.content), (
-            f"未检测到中文: {resp.content!r}"
-        )
+        assert any("\u4e00" <= c <= "\u9fff" for c in resp.content), f"未检测到中文: {resp.content!r}"
         assert len(resp.content) <= 100
         print(f"\n[中文] {resp.content!r}")
 
@@ -173,6 +169,7 @@ class TestRealLLMConnectivity:
 # 2. 性能基线
 # ─────────────────────────────────────────────────────
 
+
 class TestRealLLMPerformance:
     """真实 LLM 性能基线（记录，不强制断言）"""
 
@@ -209,7 +206,7 @@ class TestRealLLMPerformance:
         for i in range(n):
             start = time.time()
             resp = await engine.chat(
-                messages=[{"role": "user", "content": f"回复数字 {i+1}"}],
+                messages=[{"role": "user", "content": f"回复数字 {i + 1}"}],
                 max_tokens=20,
             )
             if resp.content.startswith("[LMM"):
@@ -221,15 +218,13 @@ class TestRealLLMPerformance:
 
         avg = sum(latencies) / len(latencies)
         p95 = sorted(latencies)[int(len(latencies) * 0.95)]
-        print(
-            f"\n[Perf {provider}] n={len(latencies)} avg={avg:.0f}ms p95={p95:.0f}ms "
-            f"raw={latencies}"
-        )
+        print(f"\n[Perf {provider}] n={len(latencies)} avg={avg:.0f}ms p95={p95:.0f}ms raw={latencies}")
 
 
 # ─────────────────────────────────────────────────────
 # 3. 错误处理
 # ─────────────────────────────────────────────────────
+
 
 class TestRealLLMErrorHandling:
     """真实错误场景测试"""
@@ -265,6 +260,7 @@ class TestRealLLMErrorHandling:
 # ─────────────────────────────────────────────────────
 # 4. 记忆处理专用方法
 # ─────────────────────────────────────────────────────
+
 
 class TestRealLLMMemoryMethods:
     """记忆处理专用方法的真实测试"""
@@ -364,16 +360,20 @@ class TestRealLLMMemoryMethods:
 # 5. Provider 矩阵测试
 # ─────────────────────────────────────────────────────
 
+
 class TestRealLLMProviderMatrix:
     """对所有配置了 key 的 provider 运行最小烟雾测试"""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("provider,env_key,model", [
-        ("zhipu", "ZHIPU_API_KEY", "glm-4-flash"),
-        ("openai", "OPENAI_API_KEY", "gpt-4o-mini"),
-        ("deepseek", "DEEPSEEK_API_KEY", "deepseek-chat"),
-        ("qwen", "DASHSCOPE_API_KEY", "qwen-turbo"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,env_key,model",
+        [
+            ("zhipu", "ZHIPU_API_KEY", "glm-4-flash"),
+            ("openai", "OPENAI_API_KEY", "gpt-4o-mini"),
+            ("deepseek", "DEEPSEEK_API_KEY", "deepseek-chat"),
+            ("qwen", "DASHSCOPE_API_KEY", "qwen-turbo"),
+        ],
+    )
     async def test_provider_smoke(self, provider, env_key, model):
         """单 provider 烟雾测试"""
         if not os.environ.get(env_key):
@@ -401,6 +401,7 @@ class TestRealLLMProviderMatrix:
 # 6. 智谱专享（推荐）
 # ─────────────────────────────────────────────────────
 
+
 class TestZhipuGLM:
     """智谱 GLM 专项测试（推荐使用，国内最便宜）"""
 
@@ -410,11 +411,14 @@ class TestZhipuGLM:
             pytest.skip("未配置 ZHIPU_API_KEY")
         from pangu.core.config import PanguConfig
         from pangu.core.llm import LLMEngine
-        return LLMEngine(PanguConfig(
-            llm_provider="zhipu",
-            llm_model="glm-4-flash",
-            llm_api_key=os.environ["ZHIPU_API_KEY"],
-        ))
+
+        return LLMEngine(
+            PanguConfig(
+                llm_provider="zhipu",
+                llm_model="glm-4-flash",
+                llm_api_key=os.environ["ZHIPU_API_KEY"],
+            )
+        )
 
     @pytest.mark.asyncio
     async def test_glm4_flash_chinese(self, zhipu_engine):
@@ -424,7 +428,7 @@ class TestZhipuGLM:
             max_tokens=100,
         )
         assert not resp.content.startswith("[LMM")
-        assert any('\u4e00' <= c <= '\u9fff' for c in resp.content)
+        assert any("\u4e00" <= c <= "\u9fff" for c in resp.content)
         print(f"\n[GLM-4-Flash 中文] {resp.content!r}")
 
     @pytest.mark.asyncio
@@ -442,6 +446,7 @@ class TestZhipuGLM:
 # ─────────────────────────────────────────────────────
 # 7. 快速验证脚本
 # ─────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_quick_smoke():
@@ -481,11 +486,11 @@ async def test_quick_smoke():
     if working_engine is None:
         pytest.skip(f"所有配置的 provider 都不通: {[p for p, _, _ in configured]}")
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Provider: {working_provider}")
     print(f"Model: {working_model}")
     print(f"API Key: {working_key[:10]}...{working_key[-4:]}")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
     # 测试 1: 基础对话
     start = time.time()
@@ -513,11 +518,11 @@ async def test_quick_smoke():
     ]
     start = time.time()
     summary = await working_engine.summarize_memories(memories)
-    print(f"\n[3. 摘要] {(time.time()-start)*1000:.0f}ms")
+    print(f"\n[3. 摘要] {(time.time() - start) * 1000:.0f}ms")
     print(f"    {summary!r}")
 
     # 统计
     print(f"\n[统计] 调用次数={working_engine._call_count}, 平均延迟={working_engine.avg_latency_ms:.0f}ms")
-    print(f"{'='*50}\n")
+    print(f"{'=' * 50}\n")
 
     assert not resp1.content.startswith("[LMM"), f"对话失败: {resp1.content}"

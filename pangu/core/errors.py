@@ -1,4 +1,5 @@
 """盘古统一错误码 — 标准化错误响应"""
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -6,6 +7,7 @@ from typing import Any
 @dataclass
 class PanguError:
     """盘古错误"""
+
     code: int
     message: str
     details: Any = None
@@ -77,24 +79,32 @@ class ErrorCode:
 
 def make_error(code: int, message: str, details: Any = None) -> str:
     """创建标准化错误响应"""
-    return json.dumps({
-        "code": code,
-        "error": message,
-        "details": details,
-    }, ensure_ascii=False, indent=2)
+    return json.dumps(
+        {
+            "code": code,
+            "error": message,
+            "details": details,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 def error_memory_not_found(memory_id: str) -> str:
     return make_error(ErrorCode.MEMORY_NOT_FOUND, f"记忆不存在: {memory_id}")
 
+
 def error_invalid_params(param: str) -> str:
     return make_error(ErrorCode.INVALID_PARAMS, f"无效参数: {param}")
+
 
 def error_not_found(resource: str) -> str:
     return make_error(ErrorCode.NOT_FOUND, f"资源不存在: {resource}")
 
+
 def error_already_exists(name: str) -> str:
     return make_error(ErrorCode.ALREADY_EXISTS, f"已存在: {name}")
+
 
 def error_internal(message: str) -> str:
     return make_error(ErrorCode.INTERNAL_ERROR, message)

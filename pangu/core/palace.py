@@ -1,4 +1,5 @@
 """盘古宫殿核心 — Wings/Rooms/Drawers/Halls/Tunnels 管理"""
+
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from pathlib import Path
 @dataclass
 class Drawer:
     """记忆抽屉 — 存储原始记忆片段"""
+
     id: str
     content: str
     wing: str = "default"
@@ -59,6 +61,7 @@ class Drawer:
 @dataclass
 class WikiPage:
     """Wiki 页面 — 由 LMM 从记忆中自动生成的知识页面"""
+
     id: str
     title: str
     wing: str
@@ -233,9 +236,9 @@ class Palace:
         """查找两个 Wing 之间的隧道"""
         tunnels = self.meta.get("tunnels", [])
         return [
-            t for t in tunnels
-            if (t["wing_a"] == wing_a and t["wing_b"] == wing_b)
-            or (t["wing_a"] == wing_b and t["wing_b"] == wing_a)
+            t
+            for t in tunnels
+            if (t["wing_a"] == wing_a and t["wing_b"] == wing_b) or (t["wing_a"] == wing_b and t["wing_b"] == wing_a)
         ]
 
     # ── 统计 ──
@@ -263,11 +266,13 @@ class Palace:
                 edges.append({"from": wing, "to": room_id, "type": "contains"})
 
         for tunnel in self.meta.get("tunnels", []):
-            edges.append({
-                "from": tunnel["wing_a"],
-                "to": tunnel["wing_b"],
-                "type": "tunnel",
-                "room": tunnel["room"],
-            })
+            edges.append(
+                {
+                    "from": tunnel["wing_a"],
+                    "to": tunnel["wing_b"],
+                    "type": "tunnel",
+                    "room": tunnel["room"],
+                }
+            )
 
         return {"nodes": nodes, "edges": edges}

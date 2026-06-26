@@ -10,6 +10,7 @@
 
 不发起真实网络请求 — 使用 mock 避免测试时的网络依赖。
 """
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,6 +24,7 @@ from pangu.core.llm import (
 )
 
 # ── 配置测试 ──
+
 
 class TestLLMConfig:
     """LLM 配置测试"""
@@ -50,6 +52,7 @@ class TestLLMConfig:
 
 
 # ── API Key 处理 ──
+
 
 class TestAPIKeyHandling:
     """API key 处理测试"""
@@ -84,6 +87,7 @@ class TestAPIKeyHandling:
 
 # ── Base URL 处理 ──
 
+
 class TestBaseURLHandling:
     """Base URL 处理测试"""
 
@@ -103,12 +107,21 @@ class TestBaseURLHandling:
 
 # ── Provider 切换 ──
 
+
 class TestProviderSwitching:
     """Provider 切换测试"""
 
-    @pytest.mark.parametrize("provider", [
-        "openai", "deepseek", "openrouter", "zhipu", "qwen", "ollama",
-    ])
+    @pytest.mark.parametrize(
+        "provider",
+        [
+            "openai",
+            "deepseek",
+            "openrouter",
+            "zhipu",
+            "qwen",
+            "ollama",
+        ],
+    )
     def test_all_providers_supported(self, provider):
         """测试所有 provider URL 可获取"""
         cfg = PanguConfig(llm_provider=provider)
@@ -126,6 +139,7 @@ class TestProviderSwitching:
 
 # ── 重试和回退 ──
 
+
 class TestRetryFallback:
     """重试和回退机制测试"""
 
@@ -142,12 +156,12 @@ class TestRetryFallback:
 
         # Mock 失败 N 次后成功
         call_count = 0
+
         async def _mock_chat(*a, **kw):
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                return LLMResponse(content="[LMM 调用失败 (openai): HTTP 500]",
-                                   provider="openai")
+                return LLMResponse(content="[LMM 调用失败 (openai): HTTP 500]", provider="openai")
             return LLMResponse(content="success", provider="openai")
 
         engine._do_chat = _mock_chat
@@ -178,6 +192,7 @@ class TestRetryFallback:
 
 # ── 错误处理 ──
 
+
 class TestErrorHandling:
     """错误处理测试"""
 
@@ -206,13 +221,12 @@ class TestErrorHandling:
             raise Exception("HTTP 500")
 
         engine.client.post = _mock_post
-        result = await engine._call_openai_compatible(
-            "openai", [{"role": "user", "content": "hi"}]
-        )
+        result = await engine._call_openai_compatible("openai", [{"role": "user", "content": "hi"}])
         assert "调用失败" in result.content
 
 
 # ── JSON 提取 ──
+
 
 class TestJSONExtraction:
     """JSON 提取测试"""
@@ -243,6 +257,7 @@ class TestJSONExtraction:
 
 # ── 记忆专用方法（mock LLM） ──
 
+
 class TestMemoryMethods:
     """记忆专用方法测试（mock LLM 调用）"""
 
@@ -265,9 +280,11 @@ class TestMemoryMethods:
     async def test_classify_memory(self):
         """测试记忆分类"""
         engine = LLMEngine()
-        engine.chat = AsyncMock(return_value=LLMResponse(
-            content='{"hall": "hall_facts", "room": "tech", "importance": 4, "tags": ["python"]}'
-        ))
+        engine.chat = AsyncMock(
+            return_value=LLMResponse(
+                content='{"hall": "hall_facts", "room": "tech", "importance": 4, "tags": ["python"]}'
+            )
+        )
         result = await engine.classify_memory("测试内容")
         assert result["hall"] == "hall_facts"
         assert result["importance"] == 4
@@ -292,15 +309,18 @@ class TestMemoryMethods:
     async def test_detect_associations(self):
         """测试关联检测"""
         engine = LLMEngine()
-        engine.chat = AsyncMock(return_value=LLMResponse(
-            content='{"associations": [{"from_idx": 0, "to_idx": 1, "relation": "test", "strength": 0.8}], "clusters": []}'
-        ))
+        engine.chat = AsyncMock(
+            return_value=LLMResponse(
+                content='{"associations": [{"from_idx": 0, "to_idx": 1, "relation": "test", "strength": 0.8}], "clusters": []}'
+            )
+        )
         result = await engine.detect_associations([{"content": "a"}, {"content": "b"}])
         assert len(result["associations"]) == 1
         assert result["associations"][0]["strength"] == 0.8
 
 
 # ── 性能指标 ──
+
 
 class TestLLMMetrics:
     """LLM 性能指标测试"""
@@ -327,6 +347,7 @@ class TestLLMMetrics:
 
 
 # ── 客户端生命周期 ──
+
 
 class TestClientLifecycle:
     """客户端生命周期测试"""

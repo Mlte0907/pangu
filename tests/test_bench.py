@@ -3,6 +3,7 @@
 使用 pytest-benchmark 提供一致的基准报告。
 模块未安装时整体跳过。
 """
+
 import asyncio
 import gc
 import os
@@ -26,24 +27,41 @@ from pangu.memory.working_memory import WMItem, get_working_memory
 
 # ── Fixtures ──
 
+
 def _gen_drawers(n: int) -> list[Drawer]:
     """生成测试用的 Drawer 列表"""
     import random
+
     random.seed(42)
     wings = ["tech", "life", "work", "study", "default"]
     rooms = ["general", "important", "daily", "code", "design"]
     keywords = [
-        "python", "fastapi", "memory", "neural", "transformer", "graph",
-        "database", "indexing", "search", "vector", "embedding", "retrieval",
-        "decay", "consolidation", "knowledge", "wiki", "agent", "llm",
-        "context", "attention", "transformer",
+        "python",
+        "fastapi",
+        "memory",
+        "neural",
+        "transformer",
+        "graph",
+        "database",
+        "indexing",
+        "search",
+        "vector",
+        "embedding",
+        "retrieval",
+        "decay",
+        "consolidation",
+        "knowledge",
+        "wiki",
+        "agent",
+        "llm",
+        "context",
+        "attention",
+        "transformer",
     ]
     drawers = []
     base = datetime.now() - timedelta(days=30)
     for i in range(n):
-        text = f"Memory {i}: " + " ".join(
-            random.choices(keywords, k=random.randint(3, 8))
-        )
+        text = f"Memory {i}: " + " ".join(random.choices(keywords, k=random.randint(3, 8)))
         d = Drawer(
             id=f"drawer_{i:06d}",
             content=text,
@@ -74,6 +92,7 @@ def large_drawers():
 
 # ── 1. 搜索性能 ──
 
+
 class TestSearchBench:
     """搜索性能基准"""
 
@@ -101,6 +120,7 @@ class TestSearchBench:
 
 
 # ── 2. 索引构建性能 ──
+
 
 class TestIndexBench:
     """索引构建性能基准"""
@@ -136,28 +156,31 @@ class TestIndexBench:
 
 # ── 3. 检索性能 ──
 
+
 class TestRetrievalBench:
     """记忆检索性能"""
 
     def test_bench_recall_simple(self, small_drawers, benchmark):
         """简单 recall 性能"""
+
         def _recall():
             return [d for d in small_drawers if "python" in d.content][:10]
+
         result = benchmark(_recall)
         assert isinstance(result, list)
 
     def test_bench_recall_with_filter(self, medium_drawers, benchmark):
         """带过滤的 recall 性能"""
+
         def _recall_filtered():
-            return [
-                d for d in medium_drawers
-                if "neural" in d.content and d.wing == "tech"
-            ][:10]
+            return [d for d in medium_drawers if "neural" in d.content and d.wing == "tech"][:10]
+
         result = benchmark(_recall_filtered)
         assert isinstance(result, list)
 
 
 # ── 4. 衰减性能 ──
+
 
 class TestDecayBench:
     """衰减处理性能"""
@@ -176,6 +199,7 @@ class TestDecayBench:
 
 
 # ── 5. 工作记忆性能 ──
+
 
 class TestWorkingMemoryBench:
     """工作记忆性能"""
@@ -201,6 +225,7 @@ class TestWorkingMemoryBench:
 
 # ── 6. 知识图谱性能 ──
 
+
 class TestKnowledgeGraphBench:
     """知识图谱性能"""
 
@@ -213,7 +238,9 @@ class TestKnowledgeGraphBench:
             def _add():
                 for i in range(100):
                     kg.add_entity(
-                        f"entity_{i}", f"entity_{i}", "concept",
+                        f"entity_{i}",
+                        f"entity_{i}",
+                        "concept",
                         description=f"weight={i}",
                     )
 
@@ -228,7 +255,10 @@ class TestKnowledgeGraphBench:
                 kg.add_entity(f"entity_{i}", f"entity_{i}", "concept")
                 if i > 0:
                     kg.add_relation(
-                        f"rel_{i}", f"entity_{i-1}", "follows", f"entity_{i}",
+                        f"rel_{i}",
+                        f"entity_{i - 1}",
+                        "follows",
+                        f"entity_{i}",
                     )
 
             result = benchmark(kg.find_path, "entity_0", "entity_99", max_depth=10)
@@ -236,6 +266,7 @@ class TestKnowledgeGraphBench:
 
 
 # ── 7. 并发压测 ──
+
 
 class TestConcurrencyBench:
     """并发压测"""
@@ -286,6 +317,7 @@ class TestConcurrencyBench:
 
 # ── 8. 内存分析 ──
 
+
 class TestMemoryBench:
     """内存占用分析"""
 
@@ -303,7 +335,7 @@ class TestMemoryBench:
         tracemalloc.stop()
 
         # 5000 条记忆峰值内存应 < 100MB
-        assert peak < 100 * 1024 * 1024, f"峰值内存 {peak/1024/1024:.1f}MB 超过 100MB"
+        assert peak < 100 * 1024 * 1024, f"峰值内存 {peak / 1024 / 1024:.1f}MB 超过 100MB"
 
     def test_wm_memory(self):
         """工作记忆内存"""
@@ -328,10 +360,7 @@ class TestMemoryBench:
         tracemalloc.start()
 
         idx = VectorIndex(dim=384)
-        vectors = [
-            [float((hash(d.content) >> (j * 4)) & 0xFF) / 255.0 for j in range(384)]
-            for d in medium_drawers
-        ]
+        vectors = [[float((hash(d.content) >> (j * 4)) & 0xFF) / 255.0 for j in range(384)] for d in medium_drawers]
         idx.build(vectors, [d.id for d in medium_drawers])
 
         current, peak = tracemalloc.get_traced_memory()
@@ -342,6 +371,7 @@ class TestMemoryBench:
 
 
 # ── 9. 端到端性能 ──
+
 
 class TestE2EBench:
     """端到端性能"""

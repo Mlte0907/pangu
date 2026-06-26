@@ -7,9 +7,9 @@
 4. 健康报告：综合系统健康评分
 5. 告警：严重错误自动告警
 """
+
 import json
 import logging
-import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -56,7 +56,7 @@ class ErrorMonitor:
         }
         self._errors.append(entry)
         if len(self._errors) > self._max_errors:
-            self._errors = self._errors[-self._max_errors:]
+            self._errors = self._errors[-self._max_errors :]
 
         self._stats[f"{tool_name}:error"] += 1
         self._stats[f"total:{severity}"] += 1
@@ -95,8 +95,9 @@ class ErrorMonitor:
                 tool_errors[tool_name] = count
 
         # 最近错误率
-        recent_errors = [e for e in self._errors if
-                         (datetime.now() - datetime.fromisoformat(e["timestamp"])).total_seconds() < 3600]
+        recent_errors = [
+            e for e in self._errors if (datetime.now() - datetime.fromisoformat(e["timestamp"])).total_seconds() < 3600
+        ]
 
         return {
             "total_errors": total_errors,

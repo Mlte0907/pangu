@@ -7,12 +7,9 @@
 4. 音频：元数据提取（时长/格式）
 5. 自动入库：提取后自动存入 Palace 记忆
 """
-import hashlib
-import json
+
 import logging
-import os
 import re
-from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
@@ -27,17 +24,41 @@ class MultimodalPipeline:
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
         self._text_extensions = {
-            ".txt", ".md", ".py", ".js", ".ts", ".java", ".go", ".rs",
-            ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".css",
-            ".sql", ".sh", ".bash", ".csv", ".log", ".ini", ".cfg",
+            ".txt",
+            ".md",
+            ".py",
+            ".js",
+            ".ts",
+            ".java",
+            ".go",
+            ".rs",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".xml",
+            ".html",
+            ".css",
+            ".sql",
+            ".sh",
+            ".bash",
+            ".csv",
+            ".log",
+            ".ini",
+            ".cfg",
         }
         self._image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
         self._doc_extensions = {".pdf"}
         self._audio_extensions = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac"}
 
-    def ingest_file(self, file_path: str, wing: str = "default",
-                    description: str = "", tags: list[str] = None,
-                    auto_store: bool = True) -> dict:
+    def ingest_file(
+        self,
+        file_path: str,
+        wing: str = "default",
+        description: str = "",
+        tags: list[str] = None,
+        auto_store: bool = True,
+    ) -> dict:
         """从文件提取多模态记忆并入库"""
         path = Path(file_path).expanduser().resolve()
         if not path.exists():
@@ -67,15 +88,16 @@ class MultimodalPipeline:
         result["file"] = str(path)
         return result
 
-    def ingest_url(self, url: str, wing: str = "default",
-                   description: str = "", tags: list[str] = None,
-                   auto_store: bool = True) -> dict:
+    def ingest_url(
+        self, url: str, wing: str = "default", description: str = "", tags: list[str] = None, auto_store: bool = True
+    ) -> dict:
         """从 URL 抓取网页内容并存入记忆"""
         import httpx
 
         try:
-            resp = httpx.get(url, timeout=15, follow_redirects=True,
-                             headers={"User-Agent": "Pangu/3.3 Memory Collector"})
+            resp = httpx.get(
+                url, timeout=15, follow_redirects=True, headers={"User-Agent": "Pangu/3.3 Memory Collector"}
+            )
             content_type = resp.headers.get("content-type", "")
 
             if "html" in content_type or "text" in content_type:
@@ -119,9 +141,15 @@ class MultimodalPipeline:
         except Exception as e:
             return {"error": f"URL抓取失败: {e}", "url": url}
 
-    def ingest_text(self, text: str, wing: str = "default",
-                    description: str = "", tags: list[str] = None,
-                    modality: str = "text", auto_store: bool = True) -> dict:
+    def ingest_text(
+        self,
+        text: str,
+        wing: str = "default",
+        description: str = "",
+        tags: list[str] = None,
+        modality: str = "text",
+        auto_store: bool = True,
+    ) -> dict:
         """直接存入文本记忆"""
         content = f"{description}\n\n{text}" if description else text
         result = {
@@ -142,6 +170,7 @@ class MultimodalPipeline:
         """提取文本文件内容"""
         try:
             import chardet
+
             raw = path.read_bytes()
             detected = chardet.detect(raw)
             encoding = detected.get("encoding", "utf-8") or "utf-8"
@@ -170,13 +199,14 @@ class MultimodalPipeline:
         width, height = 0, 0
         try:
             from PIL import Image
+
             with Image.open(path) as img:
                 width, height = img.size
         except Exception:
             pass
 
         stat = path.stat()
-        desc = description or f"图片 {path.name} ({width}x{height}, {stat.st_size/1024:.1f}KB)"
+        desc = description or f"图片 {path.name} ({width}x{height}, {stat.st_size / 1024:.1f}KB)"
 
         return {
             "modality": "image",
@@ -192,6 +222,7 @@ class MultimodalPipeline:
         """提取 PDF 文本"""
         try:
             from pypdf import PdfReader
+
             reader = PdfReader(str(path))
             texts = []
             for page in reader.pages[:20]:
@@ -222,7 +253,7 @@ class MultimodalPipeline:
     def _extract_audio(self, path: Path, description: str, tags: list[str]) -> dict:
         """提取音频元数据"""
         stat = path.stat()
-        desc = description or f"音频文件 {path.name} ({stat.st_size/1024:.1f}KB, {path.suffix.upper()})"
+        desc = description or f"音频文件 {path.name} ({stat.st_size / 1024:.1f}KB, {path.suffix.upper()})"
         return {
             "modality": "audio",
             "content": desc,
@@ -235,7 +266,7 @@ class MultimodalPipeline:
     def _extract_generic(self, path: Path, description: str, tags: list[str]) -> dict:
         """通用文件提取"""
         stat = path.stat()
-        desc = description or f"文件 {path.name} ({stat.st_size/1024:.1f}KB, {path.suffix.upper()})"
+        desc = description or f"文件 {path.name} ({stat.st_size / 1024:.1f}KB, {path.suffix.upper()})"
         return {
             "modality": "file",
             "content": desc,
@@ -246,15 +277,15 @@ class MultimodalPipeline:
 
     def _extract_text_from_html(self, html: str) -> str:
         """从 HTML 提取纯文本"""
-        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<[^>]+>', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+        text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
         return text[:3000]
 
     def _extract_title(self, html: str) -> str:
         """提取 HTML title"""
-        match = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
+        match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
         return match.group(1).strip()[:200] if match else ""
 
     def _store_memory(self, result: dict, wing: str) -> Drawer:

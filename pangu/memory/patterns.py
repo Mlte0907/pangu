@@ -8,6 +8,7 @@
 - 关联模式：发现经常一起出现的记忆主题
 - 异常模式：发现偏离常规的记忆行为
 """
+
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -20,6 +21,7 @@ from ..core.palace import Drawer
 @dataclass
 class DiscoveredPattern:
     """发现的模式"""
+
     id: str
     pattern_type: str  # frequency, sequence, association, anomaly
     description: str
@@ -45,50 +47,52 @@ class PatternEngine:
         patterns.sort(key=lambda p: p.confidence, reverse=True)
         return patterns
 
-    def find_frequency_patterns(self, drawers: list[Drawer],
-                                min_count: int = 3) -> list[DiscoveredPattern]:
+    def find_frequency_patterns(self, drawers: list[Drawer], min_count: int = 3) -> list[DiscoveredPattern]:
         """发现频率模式：频繁出现的标签/主题组合"""
         patterns = []
 
         # 标签频率
         tag_counter = Counter()
         for d in drawers:
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 tag_counter[tag] += 1
 
         for tag, count in tag_counter.most_common():
             if count >= min_count:
                 evidence = [d.id for d in drawers if tag in (d.tags or [])]
-                patterns.append(DiscoveredPattern(
-                    id=f"freq_tag_{tag}",
-                    pattern_type="frequency",
-                    description=f"标签 '{tag}' 出现 {count} 次（{count/len(drawers)*100:.1f}%）",
-                    evidence=evidence[:5],
-                    confidence=min(1.0, count / 10),
-                    frequency=count,
-                    metadata={"tag": tag, "percentage": round(count/len(drawers)*100, 1)},
-                ))
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"freq_tag_{tag}",
+                        pattern_type="frequency",
+                        description=f"标签 '{tag}' 出现 {count} 次（{count / len(drawers) * 100:.1f}%）",
+                        evidence=evidence[:5],
+                        confidence=min(1.0, count / 10),
+                        frequency=count,
+                        metadata={"tag": tag, "percentage": round(count / len(drawers) * 100, 1)},
+                    )
+                )
 
         # Wing/Room 频率
         room_counter = Counter(f"{d.wing}/{d.room}" for d in drawers)
         for room, count in room_counter.most_common(5):
             if count >= min_count:
-                evidence = [d.id for d in drawers
-                            if f"{d.wing}/{d.room}" == room]
-                patterns.append(DiscoveredPattern(
-                    id=f"freq_room_{room.replace('/', '_')}",
-                    pattern_type="frequency",
-                    description=f"Room '{room}' 聚集了 {count} 条记忆",
-                    evidence=evidence[:5],
-                    confidence=min(1.0, count / max(10, len(drawers))),
-                    frequency=count,
-                ))
+                evidence = [d.id for d in drawers if f"{d.wing}/{d.room}" == room]
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"freq_room_{room.replace('/', '_')}",
+                        pattern_type="frequency",
+                        description=f"Room '{room}' 聚集了 {count} 条记忆",
+                        evidence=evidence[:5],
+                        confidence=min(1.0, count / max(10, len(drawers))),
+                        frequency=count,
+                    )
+                )
 
         return patterns
 
-    def find_association_patterns(self, drawers: list[Drawer],
-                                  min_cooccurrence: int = 2,
-                                  min_confidence: float = 0.3) -> list[DiscoveredPattern]:
+    def find_association_patterns(
+        self, drawers: list[Drawer], min_cooccurrence: int = 2, min_confidence: float = 0.3
+    ) -> list[DiscoveredPattern]:
         """发现关联模式：经常一起出现的标签/主题"""
         patterns = []
 
@@ -107,36 +111,38 @@ class PatternEngine:
                 support = count / len(drawers)
                 confidence = min(1.0, support * 5)
                 if confidence >= min_confidence:
-                    patterns.append(DiscoveredPattern(
-                        id=f"assoc_{t1}_{t2}",
-                        pattern_type="association",
-                        description=f"标签 '{t1}' 和 '{t2}' 经常一起出现（{count} 次）",
-                        evidence=list(tag_memories[t1] & tag_memories[t2])[:5],
-                        confidence=round(confidence, 4),
-                        frequency=count,
-                        metadata={"tags": [t1, t2], "cooccurrence": count},
-                    ))
+                    patterns.append(
+                        DiscoveredPattern(
+                            id=f"assoc_{t1}_{t2}",
+                            pattern_type="association",
+                            description=f"标签 '{t1}' 和 '{t2}' 经常一起出现（{count} 次）",
+                            evidence=list(tag_memories[t1] & tag_memories[t2])[:5],
+                            confidence=round(confidence, 4),
+                            frequency=count,
+                            metadata={"tags": [t1, t2], "cooccurrence": count},
+                        )
+                    )
 
         # Wing 跨空间关联
         if len(set(d.wing for d in drawers)) > 1:
-            import re
             wing_pairs, wing_evidence = self._find_wing_cross_pairs(drawers)
 
             for (w1, w2), count in wing_pairs.most_common(5):
                 if count >= min_cooccurrence:
-                    patterns.append(DiscoveredPattern(
-                        id=f"cross_wing_{w1}_{w2}",
-                        pattern_type="association",
-                        description=f"Wing '{w1}' 和 '{w2}' 存在 {count} 次内容关联",
-                        evidence=list(set(wing_evidence[(w1, w2)]))[:5],
-                        confidence=min(1.0, count / 20),
-                        frequency=count,
-                    ))
+                    patterns.append(
+                        DiscoveredPattern(
+                            id=f"cross_wing_{w1}_{w2}",
+                            pattern_type="association",
+                            description=f"Wing '{w1}' 和 '{w2}' 存在 {count} 次内容关联",
+                            evidence=list(set(wing_evidence[(w1, w2)]))[:5],
+                            confidence=min(1.0, count / 20),
+                            frequency=count,
+                        )
+                    )
 
         return patterns
 
-    def find_sequence_patterns(self, drawers: list[Drawer],
-                               min_sequence: int = 2) -> list[DiscoveredPattern]:
+    def find_sequence_patterns(self, drawers: list[Drawer], min_sequence: int = 2) -> list[DiscoveredPattern]:
         """发现序列模式：事件发生的先后顺序规律"""
         patterns = []
 
@@ -148,34 +154,38 @@ class PatternEngine:
 
         for (t1, t2), count in tag_sequences.most_common(10):
             if count >= min_sequence:
-                patterns.append(DiscoveredPattern(
-                    id=f"seq_{t1}_{t2}",
-                    pattern_type="sequence",
-                    description=f"标签 '{t1}' 后经常出现 '{t2}'（{count} 次）",
-                    evidence=[],
-                    confidence=min(1.0, count / 5),
-                    frequency=count,
-                    metadata={"from": t1, "to": t2},
-                ))
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"seq_{t1}_{t2}",
+                        pattern_type="sequence",
+                        description=f"标签 '{t1}' 后经常出现 '{t2}'（{count} 次）",
+                        evidence=[],
+                        confidence=min(1.0, count / 5),
+                        frequency=count,
+                        metadata={"from": t1, "to": t2},
+                    )
+                )
 
         # 统计相邻 Room 序列
         room_sequences = Counter()
         for i in range(len(sorted_drawers) - 1):
             r1 = f"{sorted_drawers[i].wing}/{sorted_drawers[i].room}"
-            r2 = f"{sorted_drawers[i+1].wing}/{sorted_drawers[i+1].room}"
+            r2 = f"{sorted_drawers[i + 1].wing}/{sorted_drawers[i + 1].room}"
             if r1 != r2:
                 room_sequences[(r1, r2)] += 1
 
         for (r1, r2), count in room_sequences.most_common(5):
             if count >= min_sequence:
-                patterns.append(DiscoveredPattern(
-                    id=f"seq_room_{r1}_{r2}".replace("/", "_"),
-                    pattern_type="sequence",
-                    description=f"Room '{r1}' 后常跟随 '{r2}'（{count} 次）",
-                    evidence=[],
-                    confidence=min(1.0, count / 5),
-                    frequency=count,
-                ))
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"seq_room_{r1}_{r2}".replace("/", "_"),
+                        pattern_type="sequence",
+                        description=f"Room '{r1}' 后常跟随 '{r2}'（{count} 次）",
+                        evidence=[],
+                        confidence=min(1.0, count / 5),
+                        frequency=count,
+                    )
+                )
 
         return patterns
 
@@ -193,16 +203,22 @@ class PatternEngine:
 
         for d in drawers:
             if abs(len(d.content) - avg_len) > 3 * std_len:
-                patterns.append(DiscoveredPattern(
-                    id=f"anomaly_len_{d.id}",
-                    pattern_type="anomaly",
-                    description=f"记忆 '{d.id}' 内容长度异常（{len(d.content)} 字符，"
-                                f"平均 {avg_len:.0f}±{std_len:.0f}）",
-                    evidence=[d.id],
-                    confidence=0.6,
-                    metadata={"memory_id": d.id, "length": len(d.content),
-                              "avg": round(avg_len), "std": round(std_len)},
-                ))
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"anomaly_len_{d.id}",
+                        pattern_type="anomaly",
+                        description=f"记忆 '{d.id}' 内容长度异常（{len(d.content)} 字符，"
+                        f"平均 {avg_len:.0f}±{std_len:.0f}）",
+                        evidence=[d.id],
+                        confidence=0.6,
+                        metadata={
+                            "memory_id": d.id,
+                            "length": len(d.content),
+                            "avg": round(avg_len),
+                            "std": round(std_len),
+                        },
+                    )
+                )
 
         # 重要性异常
         importances = [d.importance for d in drawers]
@@ -212,8 +228,7 @@ class PatternEngine:
 
         # 时间分布异常
         try:
-            dates = [datetime.fromisoformat(d.created_at)
-                     for d in drawers if d.created_at]
+            dates = [datetime.fromisoformat(d.created_at) for d in drawers if d.created_at]
             if dates:
                 patterns.extend(self._detect_time_bursts(dates))
         except (ValueError, TypeError):
@@ -230,19 +245,21 @@ class PatternEngine:
         avg_per_day = sum(day_counts.values()) / len(day_counts)
         for day, count in day_counts.items():
             if count >= avg_per_day * 3 and count >= 3:
-                patterns.append(DiscoveredPattern(
-                    id=f"anomaly_burst_{day}",
-                    pattern_type="anomaly",
-                    description=f"日期 {day} 出现记忆爆发（{count} 条，日均 {avg_per_day:.1f}）",
-                    evidence=[],
-                    confidence=0.7,
-                    metadata={"date": day, "count": count,
-                              "avg": round(avg_per_day, 1)},
-                ))
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"anomaly_burst_{day}",
+                        pattern_type="anomaly",
+                        description=f"日期 {day} 出现记忆爆发（{count} 条，日均 {avg_per_day:.1f}）",
+                        evidence=[],
+                        confidence=0.7,
+                        metadata={"date": day, "count": count, "avg": round(avg_per_day, 1)},
+                    )
+                )
         return patterns
 
-    def _detect_importance_anomalies(self, drawers: list[Drawer], avg_imp: float,
-                                     std_imp: float) -> list[DiscoveredPattern]:
+    def _detect_importance_anomalies(
+        self, drawers: list[Drawer], avg_imp: float, std_imp: float
+    ) -> list[DiscoveredPattern]:
         patterns = []
         if std_imp <= 0:
             return patterns
@@ -250,16 +267,17 @@ class PatternEngine:
             z_score = (d.importance - avg_imp) / std_imp
             if abs(z_score) > 2.5:
                 direction = "高" if z_score > 0 else "低"
-                patterns.append(DiscoveredPattern(
-                    id=f"anomaly_imp_{d.id}",
-                    pattern_type="anomaly",
-                    description=f"记忆 '{d.id}' 重要性异常偏{direction}"
-                                f"（{d.importance}，平均 {avg_imp:.1f}±{std_imp:.1f}）",
-                    evidence=[d.id],
-                    confidence=0.5,
-                    metadata={"memory_id": d.id, "importance": d.importance,
-                              "z_score": round(z_score, 2)},
-                ))
+                patterns.append(
+                    DiscoveredPattern(
+                        id=f"anomaly_imp_{d.id}",
+                        pattern_type="anomaly",
+                        description=f"记忆 '{d.id}' 重要性异常偏{direction}"
+                        f"（{d.importance}，平均 {avg_imp:.1f}±{std_imp:.1f}）",
+                        evidence=[d.id],
+                        confidence=0.5,
+                        metadata={"memory_id": d.id, "importance": d.importance, "z_score": round(z_score, 2)},
+                    )
+                )
         return patterns
 
     def pattern_stats(self, patterns: list[DiscoveredPattern]) -> dict:
@@ -268,9 +286,7 @@ class PatternEngine:
         return {
             "total_patterns": len(patterns),
             "by_type": dict(type_counts),
-            "avg_confidence": round(
-                sum(p.confidence for p in patterns) / len(patterns), 4
-            ) if patterns else 0.0,
+            "avg_confidence": round(sum(p.confidence for p in patterns) / len(patterns), 4) if patterns else 0.0,
             "high_confidence": sum(1 for p in patterns if p.confidence >= 0.7),
             "medium_confidence": sum(1 for p in patterns if 0.3 <= p.confidence < 0.7),
             "low_confidence": sum(1 for p in patterns if p.confidence < 0.3),
@@ -302,7 +318,6 @@ class PatternEngine:
         return insights
 
     def _find_wing_cross_pairs(self, drawers):
-        import re
         wing_pairs = Counter()
         wing_evidence = defaultdict(list)
         for i in range(len(drawers)):
@@ -313,10 +328,9 @@ class PatternEngine:
 
     def _check_wing_pair(self, drawers, i, j, wing_pairs, wing_evidence):
         import re
-        words_i = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                  drawers[i].content.lower()))
-        words_j = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                  drawers[j].content.lower()))
+
+        words_i = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", drawers[i].content.lower()))
+        words_j = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", drawers[j].content.lower()))
         overlap = len(words_i & words_j)
         if overlap >= 2:
             key = tuple(sorted([drawers[i].wing, drawers[j].wing]))

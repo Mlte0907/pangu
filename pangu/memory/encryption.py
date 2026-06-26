@@ -12,7 +12,7 @@
 - 首次启动自动生成密钥并保存到 ~/.pangu/.encryption_key
 - 支持环境变量 PANGU_ENCRYPTION_KEY 覆盖
 """
-import base64
+
 import logging
 import os
 from pathlib import Path

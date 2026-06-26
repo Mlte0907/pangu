@@ -1,4 +1,5 @@
 """盘古 REST API 路由 — /api/v2/memories（伏羲移植）"""
+
 import asyncio
 import logging
 from datetime import datetime
@@ -39,6 +40,7 @@ router = APIRouter(tags=["memories"])
 
 # ── 请求/响应模型 ──
 
+
 class MemoryCreateRequest(BaseModel):
     text: str = Field(..., description="记忆文本内容")
     wing: str = Field(default="default", description="Wing 名称")
@@ -49,7 +51,9 @@ class MemoryCreateRequest(BaseModel):
     author: str = Field(default="", description="写入者 agent_id")
     created_by: str = Field(default="system", description="创建者")
     # ABAC 字段
-    classification: int = Field(default=1, ge=0, le=3, description="密级 0=public,1=internal,2=confidential,3=top_secret")
+    classification: int = Field(
+        default=1, ge=0, le=3, description="密级 0=public,1=internal,2=confidential,3=top_secret"
+    )
     visibility: str = Field(default="tenant", description="public|tenant|private")
 
 
@@ -87,12 +91,14 @@ class ApiResponse(BaseModel):
 
 # ── ABAC 辅助函数 ──
 
+
 def _memory_stack(request: Request) -> MemoryStack:
     """从 app.state 拿 MemoryStack 实例。"""
     stack = getattr(request.app.state, "memory", None)
     if stack is None:
         # 兜底新建（兜底可能没有 v2_db_path 配置）
         from pangu.core.config import PanguConfig
+
         cfg = PanguConfig()
         stack = MemoryStack(config=cfg)
     return stack
@@ -158,6 +164,7 @@ def _abac_evaluate_subject(request: Request, action: str, resource: AbacResource
 
 # ── 路由 ──
 
+
 @router.get("/memories")
 async def list_memories(
     request: Request,
@@ -195,27 +202,31 @@ async def list_memories(
                     filtered.append(d)
             drawers = filtered
         total = len(drawers)
-        drawers = drawers[offset:offset + limit]
+        drawers = drawers[offset : offset + limit]
         items = []
         for d in drawers:
             md = getattr(d, "metadata", None) or {}
-            items.append({
-                "id": getattr(d, "id", ""),
-                "content": getattr(d, "content", ""),
-                "wing": getattr(d, "wing", ""),
-                "room": getattr(d, "room", ""),
-                "importance": getattr(d, "importance", 0.5),
-                "tags": getattr(d, "tags", []),
-                "metadata": md if isinstance(md, dict) else {},
-                "created_at": getattr(d, "created_at", ""),
-            })
-        return ApiResponse.ok({
-            "items": items,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "tenant_id": subject.tenant_id,
-        })
+            items.append(
+                {
+                    "id": getattr(d, "id", ""),
+                    "content": getattr(d, "content", ""),
+                    "wing": getattr(d, "wing", ""),
+                    "room": getattr(d, "room", ""),
+                    "importance": getattr(d, "importance", 0.5),
+                    "tags": getattr(d, "tags", []),
+                    "metadata": md if isinstance(md, dict) else {},
+                    "created_at": getattr(d, "created_at", ""),
+                }
+            )
+        return ApiResponse.ok(
+            {
+                "items": items,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "tenant_id": subject.tenant_id,
+            }
+        )
     except Exception as e:
         return ApiResponse.error(500, str(e))
 
@@ -251,26 +262,30 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
     )
     if drawer is not None:
         drawer.metadata = dict(drawer.metadata or {})
-        drawer.metadata.update({
-            "owner_id": principal.user_id,
-            "tenant_id": subject.tenant_id,
-            "classification": req.classification,
-            "visibility": req.visibility,
-        })
+        drawer.metadata.update(
+            {
+                "owner_id": principal.user_id,
+                "tenant_id": subject.tenant_id,
+                "classification": req.classification,
+                "visibility": req.visibility,
+            }
+        )
         try:
             stack = _memory_stack(request)
             stack.add_drawer(drawer)
         except Exception as e:
             logger.warning(f"add_drawer failed: {e}")
-    return ApiResponse.ok({
-        "id": item_id,
-        "content": drawer.content if drawer else req.text,
-        "wing": req.wing,
-        "room": req.room,
-        "tenant_id": subject.tenant_id,
-        "owner_id": principal.user_id,
-        "policy": decision.policy,
-    })
+    return ApiResponse.ok(
+        {
+            "id": item_id,
+            "content": drawer.content if drawer else req.text,
+            "wing": req.wing,
+            "room": req.room,
+            "tenant_id": subject.tenant_id,
+            "owner_id": principal.user_id,
+            "policy": decision.policy,
+        }
+    )
 
 
 @router.get("/memories/search")
@@ -291,6 +306,7 @@ async def search_memories(
         with open(drawers_file, encoding="utf-8") as f:
             raw = _json.load(f)
         from pangu.core.palace import Drawer as _Drawer
+
         all_drawers = [_Drawer.from_dict(d) for d in raw]
 
         if wing:
@@ -305,24 +321,28 @@ async def search_memories(
             d = drawer_map.get(did)
             if not d:
                 continue
-            results.append({
-                "id": d.id,
-                "content": d.content,
-                "wing": d.wing,
-                "room": d.room,
-                "importance": d.importance,
-                "tags": d.tags,
-                "search_score": round(score, 4),
-            })
+            results.append(
+                {
+                    "id": d.id,
+                    "content": d.content,
+                    "wing": d.wing,
+                    "room": d.room,
+                    "importance": d.importance,
+                    "tags": d.tags,
+                    "search_score": round(score, 4),
+                }
+            )
         return results
 
     try:
         results = await asyncio.to_thread(_do_search)
-        return ApiResponse.ok({
-            "query": q,
-            "results": results,
-            "total": len(results) if results else 0,
-        })
+        return ApiResponse.ok(
+            {
+                "query": q,
+                "results": results,
+                "total": len(results) if results else 0,
+            }
+        )
     except Exception as e:
         return ApiResponse.error(500, str(e))
 
@@ -336,7 +356,8 @@ async def get_stats():
 
         # 搜索统计
         try:
-            from pangu.memory.retrieval import get_search_stats, get_search_history
+            from pangu.memory.retrieval import get_search_history, get_search_stats
+
             stats["search"] = get_search_stats()
             stats["search"]["recent_history"] = get_search_history(limit=5)
         except Exception:
@@ -345,6 +366,7 @@ async def get_stats():
         # 健康检查
         try:
             from pangu.memory.layers import MemoryStack
+
             stack = MemoryStack(config)
             stats["health"] = stack.health_check()
         except Exception:
@@ -353,10 +375,12 @@ async def get_stats():
         # Token 统计
         try:
             from pangu.memory.layers import MemoryStack, _estimate_tokens
+
             stack = MemoryStack(config)
             drawers_file = Path(config.palace_path) / "drawers.json"
             if drawers_file.exists():
                 import json
+
                 with open(drawers_file) as f:
                     drawers = json.load(f)
                 total_tokens = sum(_estimate_tokens(d.get("content", "")) for d in drawers)
@@ -367,6 +391,7 @@ async def get_stats():
         # 生命周期状态（last_consolidation）
         try:
             from pangu.memory.lifecycle import LifecycleManager
+
             lifecycle = LifecycleManager(config)
             stats["consolidation"] = {
                 "last_consolidation": lifecycle._last_consolidation if lifecycle._last_consolidation else None,
@@ -392,20 +417,23 @@ async def get_memory(memory_id: str, request: Request):
         md = {}
     res = _drawer_to_resource(drawer)
     decision = abac_authorize(
-        "memories", "read",
+        "memories",
+        "read",
         resource_loader=lambda ctx: res,
     )(request)
-    return ApiResponse.ok({
-        "id": drawer.id,
-        "content": drawer.content,
-        "wing": drawer.wing,
-        "room": drawer.room,
-        "importance": drawer.importance,
-        "tags": drawer.tags,
-        "metadata": md,
-        "created_at": getattr(drawer, "created_at", ""),
-        "_policy": decision.policy,
-    })
+    return ApiResponse.ok(
+        {
+            "id": drawer.id,
+            "content": drawer.content,
+            "wing": drawer.wing,
+            "room": drawer.room,
+            "importance": drawer.importance,
+            "tags": drawer.tags,
+            "metadata": md,
+            "created_at": getattr(drawer, "created_at", ""),
+            "_policy": decision.policy,
+        }
+    )
 
 
 @router.put("/memories/{memory_id}")
@@ -417,7 +445,8 @@ async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Reque
         return ApiResponse.error(404, f"Memory not found: {memory_id}")
     res = _drawer_to_resource(drawer)
     abac_authorize(
-        "memories", "write",
+        "memories",
+        "write",
         resource_loader=lambda ctx: res,
     )(request)
 
@@ -430,15 +459,17 @@ async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Reque
         drawer.metadata["facts"] = req.facts
     drawer.metadata["updated_at"] = datetime.now().isoformat()
     stack.add_drawer(drawer)
-    return ApiResponse.ok({
-        "id": drawer.id,
-        "content": drawer.content,
-        "wing": drawer.wing,
-        "room": drawer.room,
-        "importance": drawer.importance,
-        "tags": drawer.tags,
-        "metadata": drawer.metadata,
-    })
+    return ApiResponse.ok(
+        {
+            "id": drawer.id,
+            "content": drawer.content,
+            "wing": drawer.wing,
+            "room": drawer.room,
+            "importance": drawer.importance,
+            "tags": drawer.tags,
+            "metadata": drawer.metadata,
+        }
+    )
 
 
 @router.delete("/memories/{memory_id}")
@@ -450,7 +481,8 @@ async def delete_memory(memory_id: str, request: Request):
         return ApiResponse.error(404, f"Memory not found: {memory_id}")
     res = _drawer_to_resource(drawer)
     decision = abac_authorize(
-        "memories", "delete",
+        "memories",
+        "delete",
         resource_loader=lambda ctx: res,
     )(request)
     stack.remove_drawer(memory_id)
@@ -465,11 +497,13 @@ async def get_context(
     """获取上下文记忆"""
     try:
         context = recall_context(budget=budget)
-        return ApiResponse.ok({
-            "context": context,
-            "budget": budget,
-            "item_count": len(context) if context else 0,
-        })
+        return ApiResponse.ok(
+            {
+                "context": context,
+                "budget": budget,
+                "item_count": len(context) if context else 0,
+            }
+        )
     except Exception as e:
         return ApiResponse.error(500, str(e))
 
@@ -479,6 +513,7 @@ async def trigger_decay():
     """触发记忆衰减"""
     try:
         from pangu.memory.decay import decay_batch
+
         all_drawers = recall()
         if all_drawers:
             drawers = [Drawer.from_dict(d) for d in all_drawers]
@@ -511,11 +546,13 @@ async def export_memories(
     """导出记忆数据"""
     try:
         results = recall(wing=wing)
-        return ApiResponse.ok({
-            "format": format,
-            "items": results,
-            "total": len(results) if results else 0,
-            "exported_at": datetime.now().isoformat(),
-        })
+        return ApiResponse.ok(
+            {
+                "format": format,
+                "items": results,
+                "total": len(results) if results else 0,
+                "exported_at": datetime.now().isoformat(),
+            }
+        )
     except Exception as e:
         return ApiResponse.error(500, str(e))

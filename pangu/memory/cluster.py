@@ -5,8 +5,6 @@ import math
 from collections import defaultdict
 from datetime import datetime
 
-from ..core.palace import Drawer
-
 logger = logging.getLogger("pangu.memory.cluster")
 
 
@@ -30,6 +28,7 @@ def deduplicate_results(results: list[dict], threshold: float = 0.9) -> list[dic
 
 
 # ── 基础聚类 ──
+
 
 def cluster_by_tags(results: list[dict]) -> dict[str, list[dict]]:
     """按标签聚类搜索结果"""
@@ -60,7 +59,7 @@ def cluster_by_time(results: list[dict], buckets: int = 3) -> dict[str, list[dic
     timestamps.sort(key=lambda x: x[0])
 
     if len(timestamps) <= buckets:
-        return {f"第{i+1}条": [r] for i, (_, r) in enumerate(timestamps)}
+        return {f"第{i + 1}条": [r] for i, (_, r) in enumerate(timestamps)}
 
     chunk_size = len(timestamps) // buckets
     clusters = {}
@@ -92,22 +91,25 @@ def get_cluster_summary(clusters: dict[str, list[dict]]) -> list[dict]:
     """获取聚类摘要"""
     summary = []
     for name, items in clusters.items():
-        summary.append({
-            "name": name,
-            "count": len(items),
-            "items": items[:3],
-        })
+        summary.append(
+            {
+                "name": name,
+                "count": len(items),
+                "items": items[:3],
+            }
+        )
     return summary
 
 
 # ── 层次聚类 ──
+
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """余弦相似度"""
     n = min(len(a), len(b))
     if n == 0:
         return 0.0
-    dot = sum(x * y for x, y in zip(a[:n], b[:n]))
+    dot = sum(x * y for x, y in zip(a[:n], b[:n], strict=False))
     norm_a = math.sqrt(sum(x * x for x in a[:n]))
     norm_b = math.sqrt(sum(x * x for x in b[:n]))
     if norm_a == 0 or norm_b == 0:
@@ -119,6 +121,7 @@ def _get_embedding(text: str) -> list[float] | None:
     """获取文本嵌入向量"""
     try:
         from ..memory.onnx_embedder import get_onnx_embedder
+
         onnx = get_onnx_embedder()
         if onnx.is_available:
             return onnx.embed(text)
@@ -218,7 +221,7 @@ def hierarchical_cluster(
 
     # 构建结果
     result = []
-    for cluster_id, member_ids in clusters.items():
+    for _cluster_id, member_ids in clusters.items():
         items = [id_map[mid] for mid in member_ids if mid in id_map]
         centroid = items[0].get("content", "")[:20] if items else ""
         # 聚类名称：取最频繁的标签
@@ -227,14 +230,17 @@ def hierarchical_cluster(
             all_tags.extend(item.get("tags", []))
         if all_tags:
             from collections import Counter
+
             name = Counter(all_tags).most_common(1)[0][0]
         else:
-            name = f"聚类{len(result)+1}"
-        result.append({
-            "name": name,
-            "count": len(items),
-            "items": items,
-            "centroid": centroid,
-        })
+            name = f"聚类{len(result) + 1}"
+        result.append(
+            {
+                "name": name,
+                "count": len(items),
+                "items": items,
+                "centroid": centroid,
+            }
+        )
 
     return result

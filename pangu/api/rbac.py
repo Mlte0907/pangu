@@ -23,6 +23,7 @@
     @requires_scope("memories:read")
     async def list_memories(): ...
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable

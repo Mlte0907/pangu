@@ -6,9 +6,10 @@
 3. 基于冲突检测标记矛盾记忆
 4. 自动标记 memory_status: active / stale / conflicted / verified
 """
+
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
@@ -20,7 +21,7 @@ logger = logging.getLogger("pangu.memory.validator")
 class MemoryValidator:
     """记忆验证器"""
 
-    STALE_DAYS = 90         # 超过此天数的事实类记忆标记为 stale
+    STALE_DAYS = 90  # 超过此天数的事实类记忆标记为 stale
     MIN_CONTENT_LENGTH = 20  # 太短的记忆跳过验证
 
     def __init__(self, config: PanguConfig = None):

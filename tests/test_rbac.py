@@ -1,4 +1,5 @@
 """盘古 RBAC 角色权限测试"""
+
 from __future__ import annotations
 
 import pytest
@@ -48,40 +49,48 @@ def _login(client, username, password):
 class TestScopeParsing:
     def test_parse_string(self):
         from pangu.api.rbac import parse_scope
+
         assert parse_scope("a b c") == {"a", "b", "c"}
         assert parse_scope("") == set()
 
     def test_parse_list(self):
         from pangu.api.rbac import parse_scope
+
         assert parse_scope(["a", "b"]) == {"a", "b"}
 
     def test_parse_none(self):
         from pangu.api.rbac import parse_scope
+
         assert parse_scope(None) == set()
 
 
 class TestScopeCheck:
     def test_exact_match(self):
         from pangu.api.rbac import has_scope
+
         assert has_scope("memories:read", "memories:read")
 
     def test_no_match(self):
         from pangu.api.rbac import has_scope
+
         assert not has_scope("memories:read", "memories:write")
 
     def test_super_wildcard(self):
         from pangu.api.rbac import has_scope
+
         assert has_scope("*", "anything:here")
         assert has_scope(["*"], "x")
 
     def test_resource_wildcard(self):
         from pangu.api.rbac import has_scope
+
         assert has_scope("memories:*", "memories:read")
         assert has_scope("memories:*", "memories:delete")
         assert not has_scope("memories:*", "search:query")
 
     def test_empty_denied(self):
         from pangu.api.rbac import has_scope
+
         assert not has_scope("", "memories:read")
         assert not has_scope(None, "memories:read")
 
@@ -89,11 +98,13 @@ class TestScopeCheck:
 class TestRoleResolution:
     def test_builtin_admin(self):
         from pangu.api.rbac import ROLE_PRESETS, resolve_scopes
+
         scopes = resolve_scopes("admin", role_map=ROLE_PRESETS)
         assert "*" in scopes
 
     def test_builtin_operator(self):
         from pangu.api.rbac import ROLE_PRESETS, resolve_scopes
+
         scopes = resolve_scopes("operator", role_map=ROLE_PRESETS)
         assert "memories:read" in scopes
         assert "memories:write" in scopes
@@ -103,6 +114,7 @@ class TestRoleResolution:
 
     def test_builtin_viewer(self):
         from pangu.api.rbac import ROLE_PRESETS, resolve_scopes
+
         scopes = resolve_scopes("viewer", role_map=ROLE_PRESETS)
         assert "memories:read" in scopes
         assert "search:query" in scopes
@@ -111,6 +123,7 @@ class TestRoleResolution:
 
     def test_custom_role_override(self):
         from pangu.api.rbac import resolve_scopes
+
         custom = {"custom_role": ["foo:read", "foo:write"]}
         scopes = resolve_scopes("custom_role", role_map=custom)
         assert scopes == {"foo:read", "foo:write"}
@@ -184,6 +197,7 @@ class TestHTTPRBAC:
         monkeypatch.setenv("PANGU_JWT_DEFAULT_PASSWORD", "")  # 关掉 JWT
         from pangu.api.server import create_app
         from pangu.core.config import config
+
         config.__init__()
         app = create_app()
         client = TestClient(app)

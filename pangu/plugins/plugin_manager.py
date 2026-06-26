@@ -8,6 +8,7 @@
 - StoragePlugin: 自定义记忆存储后端
 - AnalyzerPlugin: 记忆分析与洞察
 """
+
 import importlib
 import logging
 import os
@@ -15,7 +16,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from . import HookPoint, Plugin, PluginContext, PluginInfo
 
@@ -24,8 +24,10 @@ logger = logging.getLogger("pangu.plugins.manager")
 
 # ── 插件类型枚举 ──
 
+
 class PluginType(str, Enum):
     """插件类型"""
+
     MINING = "mining"
     STORAGE = "storage"
     ANALYZER = "analyzer"
@@ -33,6 +35,7 @@ class PluginType(str, Enum):
 
 
 # ── 插件基类 ──
+
 
 class MiningPlugin(Plugin, ABC):
     """挖掘插件基类 — 从外部数据源挖掘记忆"""
@@ -126,9 +129,11 @@ class AnalyzerPlugin(Plugin, ABC):
 
 # ── 插件配置 ──
 
+
 @dataclass
 class PluginConfig:
     """单个插件配置"""
+
     name: str
     enabled: bool = True
     priority: int = 100
@@ -138,6 +143,7 @@ class PluginConfig:
 @dataclass
 class PluginRegistryEntry:
     """插件注册表条目"""
+
     plugin: Plugin
     plugin_type: PluginType
     config: PluginConfig
@@ -145,6 +151,7 @@ class PluginRegistryEntry:
 
 
 # ── 插件管理器 ──
+
 
 class PluginManager:
     """插件管理器 — 管理插件生命周期、配置和钩子
@@ -171,8 +178,7 @@ class PluginManager:
 
     # ── 注册与卸载 ──
 
-    def register(self, plugin: Plugin, plugin_type: PluginType = PluginType.HOOK,
-                 config: PluginConfig = None) -> None:
+    def register(self, plugin: Plugin, plugin_type: PluginType = PluginType.HOOK, config: PluginConfig = None) -> None:
         """注册插件
 
         Args:
@@ -244,21 +250,24 @@ class PluginManager:
     def get_mining_plugins(self) -> list[MiningPlugin]:
         """获取所有已启用的挖掘插件"""
         return [
-            e.plugin for e in self._plugins.values()
+            e.plugin
+            for e in self._plugins.values()
             if e.plugin_type == PluginType.MINING and e.plugin.enabled and isinstance(e.plugin, MiningPlugin)
         ]
 
     def get_storage_plugins(self) -> list[StoragePlugin]:
         """获取所有已启用的存储插件"""
         return [
-            e.plugin for e in self._plugins.values()
+            e.plugin
+            for e in self._plugins.values()
             if e.plugin_type == PluginType.STORAGE and e.plugin.enabled and isinstance(e.plugin, StoragePlugin)
         ]
 
     def get_analyzer_plugins(self) -> list[AnalyzerPlugin]:
         """获取所有已启用的分析器插件"""
         return [
-            e.plugin for e in self._plugins.values()
+            e.plugin
+            for e in self._plugins.values()
             if e.plugin_type == PluginType.ANALYZER and e.plugin.enabled and isinstance(e.plugin, AnalyzerPlugin)
         ]
 
@@ -300,6 +309,7 @@ class PluginManager:
     def _load_configs(self) -> None:
         """从文件加载插件配置"""
         import json
+
         if not self._config_file.exists():
             return
         try:
@@ -318,6 +328,7 @@ class PluginManager:
     def _save_configs(self) -> None:
         """保存插件配置到文件"""
         import json
+
         self._config_dir.mkdir(parents=True, exist_ok=True)
         data = {}
         for name, config in self._configs.items():
@@ -388,12 +399,14 @@ class PluginManager:
                 # 查找 Plugin 子类
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
-                    if (isinstance(attr, type)
-                            and issubclass(attr, Plugin)
-                            and attr is not Plugin
-                            and attr is not MiningPlugin
-                            and attr is not StoragePlugin
-                            and attr is not AnalyzerPlugin):
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, Plugin)
+                        and attr is not Plugin
+                        and attr is not MiningPlugin
+                        and attr is not StoragePlugin
+                        and attr is not AnalyzerPlugin
+                    ):
                         instance = attr()
                         self.register(instance)
                         count += 1

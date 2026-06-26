@@ -1,4 +1,5 @@
 """盘古 ABAC 多租户测试"""
+
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ from pangu.api.abac import (
 class TestSubjectFromPrincipal:
     def test_default_tenant(self):
         from pangu.api.rbac import Principal
+
         p = Principal(user_id="alice", method="jwt", role="operator", scopes={"memories:read"})
         s = Subject.from_principal(p)
         assert s.user_id == "alice"
@@ -90,14 +92,16 @@ class TestPolicyFromDict:
         assert p.rules[0].effect == Effect.ALLOW
 
     def test_full(self):
-        p = policy_from_dict({
-            "name": "y",
-            "priority": 50,
-            "rules": [
-                {"effect": "deny", "description": "t1", "condition": 'act == "admin"'},
-                {"effect": "allow", "description": "t2"},
-            ],
-        })
+        p = policy_from_dict(
+            {
+                "name": "y",
+                "priority": 50,
+                "rules": [
+                    {"effect": "deny", "description": "t1", "condition": 'act == "admin"'},
+                    {"effect": "allow", "description": "t2"},
+                ],
+            }
+        )
         assert p.priority == 50
         assert p.rules[0].condition == 'act == "admin"'
 
@@ -201,17 +205,21 @@ class TestCustomPolicy:
 
     def test_department_based_allow(self):
         """自定义策略：研发部门可写本租户的资源。"""
-        load_policies_from_config([{
-            "name": "rd_can_write_own_tenant",
-            "priority": 25,  # 高于 tenant_isolation
-            "rules": [
+        load_policies_from_config(
+            [
                 {
-                    "effect": "allow",
-                    "description": "研发部写本租户",
-                    "condition": 's.department == "rd" and r.tenant_id == s.tenant_id and act in ("write", "read", "delete")',
-                },
-            ],
-        }])
+                    "name": "rd_can_write_own_tenant",
+                    "priority": 25,  # 高于 tenant_isolation
+                    "rules": [
+                        {
+                            "effect": "allow",
+                            "description": "研发部写本租户",
+                            "condition": 's.department == "rd" and r.tenant_id == s.tenant_id and act in ("write", "read", "delete")',
+                        },
+                    ],
+                }
+            ]
+        )
         # rd 写本租户：rd 策略先 allow，tenant_isolation 不会 deny（同租户），owner 也没匹配
         # 应允许
         ctx1 = RequestContext(
@@ -233,22 +241,25 @@ def abac_app(tmp_path, monkeypatch):
     monkeypatch.setenv("PANGU_JWT_DEFAULT_PASSWORD", "admin-pass-xyz")
     monkeypatch.setenv(
         "PANGU_JWT_USERS",
-        json.dumps({"admin":"admin-pass-xyz","alice":"alice-pwd","bob":"bob-pwd"}),
+        json.dumps({"admin": "admin-pass-xyz", "alice": "alice-pwd", "bob": "bob-pwd"}),
     )
     monkeypatch.setenv(
         "PANGU_JWT_USER_ROLES",
-        json.dumps({"admin":"admin","alice":"operator","bob":"operator"}),
+        json.dumps({"admin": "admin", "alice": "operator", "bob": "operator"}),
     )
     monkeypatch.setenv(
         "PANGU_ABAC_USER_ATTRS",
-        json.dumps({
-            "admin": {"tenant_id": "acme", "clearance": 3, "department": "ops", "groups": ["admins"]},
-            "alice": {"tenant_id": "acme", "clearance": 1, "department": "rd", "groups": ["dev"]},
-            "bob": {"tenant_id": "globex", "clearance": 2, "department": "sales", "groups": ["sales"]},
-        }),
+        json.dumps(
+            {
+                "admin": {"tenant_id": "acme", "clearance": 3, "department": "ops", "groups": ["admins"]},
+                "alice": {"tenant_id": "acme", "clearance": 1, "department": "rd", "groups": ["dev"]},
+                "bob": {"tenant_id": "globex", "clearance": 2, "department": "sales", "groups": ["sales"]},
+            }
+        ),
     )
     from pangu.api.server import create_app
     from pangu.core.config import config
+
     config.__init__()
     app = create_app()
     return app, config
@@ -336,18 +347,23 @@ class TestABACPolicyReload:
         import os
 
         from pangu.core.config import config
+
         # 在 fixture 创建的 app 之外加新策略
-        os.environ["PANGU_ABAC_POLICIES"] = json.dumps([
-            {
-                "name": "rd_global_read",
-                "priority": 35,  # 排在 tenant_isolation 之后
-                "rules": [{
-                    "effect": "allow",
-                    "description": "rd 部门可读所有租户",
-                    "condition": 's.department == "rd" and act == "read"',
-                }],
-            }
-        ])
+        os.environ["PANGU_ABAC_POLICIES"] = json.dumps(
+            [
+                {
+                    "name": "rd_global_read",
+                    "priority": 35,  # 排在 tenant_isolation 之后
+                    "rules": [
+                        {
+                            "effect": "allow",
+                            "description": "rd 部门可读所有租户",
+                            "condition": 's.department == "rd" and act == "read"',
+                        }
+                    ],
+                }
+            ]
+        )
         config.__init__()
         clear_policies()
         register_builtin_policies()

@@ -6,12 +6,11 @@
 3. 优先级调整：根据情绪调整记忆重要性
 4. 情感记忆：记录用户的情感状态
 """
+
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -21,16 +20,18 @@ logger = logging.getLogger("pangu.memory.emotional_intelligence")
 
 class EmotionType(str, Enum):
     """情绪类型"""
-    POSITIVE = "positive"    # 正面
-    NEGATIVE = "negative"    # 负面
-    NEUTRAL = "neutral"      # 中性
-    EXCITED = "excited"      # 兴奋
+
+    POSITIVE = "positive"  # 正面
+    NEGATIVE = "negative"  # 负面
+    NEUTRAL = "neutral"  # 中性
+    EXCITED = "excited"  # 兴奋
     FRUSTRATED = "frustrated"  # 沮丧
 
 
 @dataclass
 class EmotionResult:
     """情感分析结果"""
+
     emotion: EmotionType
     intensity: float  # 0.0-1.0
     keywords: list[str]
@@ -132,12 +133,14 @@ class EmotionalIntelligence:
 
     def record_emotion(self, text: str, emotion: EmotionResult) -> None:
         """记录情感"""
-        self._emotion_history.append({
-            "text": text[:50],
-            "emotion": emotion.emotion.value,
-            "intensity": emotion.intensity,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._emotion_history.append(
+            {
+                "text": text[:50],
+                "emotion": emotion.emotion.value,
+                "intensity": emotion.intensity,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         # 限制历史记录大小
         if len(self._emotion_history) > 100:
             self._emotion_history = self._emotion_history[-100:]

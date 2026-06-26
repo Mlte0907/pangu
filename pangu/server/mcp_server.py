@@ -6,30 +6,16 @@ MCP 工具只提供记忆的存储、检索、组织和管理功能。
 
 上层 Agent 框架通过 MCP 调用这些工具获取记忆数据后，
 自行完成推理、决策和行动。"""
+
 import asyncio
 import json
 import sys
-import time
 
 from ..core.config import PanguConfig
 from ..core.llm import LLMEngine
-from ..core.palace import Drawer, Palace
-from ..memory.adaptive_params import get_adaptive_engine
-from ..memory.attention import AttentionStrategy, get_attention_system
-from ..memory.differential_privacy import DifferentialPrivacy
-from ..memory.distill_enhanced import DistillationTower
-from ..memory.enhanced_evaluation import EnhancedContradictionDetector, TrajectoryTracker
-from ..memory.fts_search import FTS5SearchEngine, get_search_stats, holographic_search
-from ..memory.hologram import get_holographic_encoder
-from ..memory.judge import get_memory_judge
+from ..core.palace import Palace
 from ..memory.knowledge_graph import KnowledgeGraph
 from ..memory.layers import MemoryStack
-from ..memory.reconsolidation import ReconsolidationEngine, ResonanceEngine
-from ..memory.sanitizer import MemorySanitizer
-from ..memory.streaming_index import StreamingIndexer
-from ..memory.vector_index import get_vector_index
-from ..memory.verification import VerificationLoop
-from ..memory.working_memory import WMItem, get_working_memory
 from ..search.engine import HybridSearch
 from ..wiki.engine import WikiEngine
 
@@ -166,6 +152,7 @@ class MCPServer:
     @property
     def tools(self) -> list[dict]:
         from .handlers import TOOLS
+
         return TOOLS
 
     # ── 工具调用（handler 字典路由） ──
@@ -177,6 +164,7 @@ class MCPServer:
 
         try:
             from .handlers import HANDLERS
+
             handler = HANDLERS.get(tool_name)
             if handler:
                 return await handler(self, drawers, arguments)
@@ -185,7 +173,6 @@ class MCPServer:
 
         except Exception as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
-
 
     # ── MCP 协议 ──
 

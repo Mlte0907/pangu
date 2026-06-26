@@ -1,4 +1,5 @@
 """盘古核心功能测试"""
+
 import json
 import os
 import sys
@@ -448,7 +449,9 @@ class TestForgettingCurve:
     def test_effective_importance_decays(self):
         curve = ForgettingCurve(decay_rate=0.5)
         drawer = Drawer(
-            id="test", content="test", importance=5.0,
+            id="test",
+            content="test",
+            importance=5.0,
             created_at=(datetime.now() - timedelta(hours=48)).isoformat(),
         )
         effective = curve.effective_importance(drawer)
@@ -457,7 +460,9 @@ class TestForgettingCurve:
     def test_effective_importance_with_access(self):
         curve = ForgettingCurve(decay_rate=0.5)
         drawer = Drawer(
-            id="test", content="test", importance=3.0,
+            id="test",
+            content="test",
+            importance=3.0,
             created_at=(datetime.now() - timedelta(hours=24)).isoformat(),
         )
         drawer.access_count = 10
@@ -472,8 +477,10 @@ class TestMemoryConsolidator:
         config = PanguConfig()
         consolidator = MemoryConsolidator(config)
         drawer = Drawer(
-            id="test", content="这是一条重要的测试记忆，包含足够多的内容来进行重要性评估",
-            importance=5.0, tags=["test", "important", "memory"],
+            id="test",
+            content="这是一条重要的测试记忆，包含足够多的内容来进行重要性评估",
+            importance=5.0,
+            tags=["test", "important", "memory"],
         )
         importance = consolidator.calculate_importance(drawer)
         assert importance > 0
@@ -484,7 +491,9 @@ class TestMemoryConsolidator:
         config.min_importance_threshold = 0.5
         consolidator = MemoryConsolidator(config)
         drawer = Drawer(
-            id="test", content="important memory", importance=5.0,
+            id="test",
+            content="important memory",
+            importance=5.0,
         )
         assert not consolidator.should_forget(drawer)
 
@@ -493,7 +502,9 @@ class TestMemoryConsolidator:
         config.min_importance_threshold = 10.0
         consolidator = MemoryConsolidator(config)
         drawer = Drawer(
-            id="test", content="unimportant", importance=0.1,
+            id="test",
+            content="unimportant",
+            importance=0.1,
             created_at=(datetime.now() - timedelta(hours=72)).isoformat(),
         )
         assert consolidator.should_forget(drawer)
@@ -504,8 +515,12 @@ class TestMemoryConsolidator:
         consolidator = MemoryConsolidator(config)
         drawers = [
             Drawer(id="d1", content="important", importance=5.0),
-            Drawer(id="d2", content="unimportant", importance=0.1,
-                   created_at=(datetime.now() - timedelta(hours=72)).isoformat()),
+            Drawer(
+                id="d2",
+                content="unimportant",
+                importance=0.1,
+                created_at=(datetime.now() - timedelta(hours=72)).isoformat(),
+            ),
         ]
         forgotten = consolidator.find_forgotten(drawers)
         assert len(forgotten) >= 0
@@ -535,11 +550,11 @@ class TestMemoryConsolidator:
 
     def test_next_review_interval(self):
         assert MemoryConsolidator.next_review_interval(0) == 24  # 未访问: 24h
-        assert MemoryConsolidator.next_review_interval(1) == 6   # 第1次: 6h
+        assert MemoryConsolidator.next_review_interval(1) == 6  # 第1次: 6h
         assert MemoryConsolidator.next_review_interval(2) == 24  # 第2次: 24h
         assert MemoryConsolidator.next_review_interval(3) == 72  # 第3次: 3天
-        assert MemoryConsolidator.next_review_interval(4) == 168 # 第4次: 7天
-        assert MemoryConsolidator.next_review_interval(5) == 720 # 第5次+: 30天
+        assert MemoryConsolidator.next_review_interval(4) == 168  # 第4次: 7天
+        assert MemoryConsolidator.next_review_interval(5) == 720  # 第5次+: 30天
 
     def test_needs_consolidation(self):
         config = PanguConfig()
@@ -627,11 +642,11 @@ class TestLLMEngine:
         result2 = LLMEngine._extract_json('```json\n{"key": "value"}\n```')
         assert result2 == {"key": "value"}
 
-        result3 = LLMEngine._extract_json('invalid json')
+        result3 = LLMEngine._extract_json("invalid json")
         assert result3 == {}
 
     def test_extract_json_with_default(self):
-        result = LLMEngine._extract_json('invalid', default={"fallback": True})
+        result = LLMEngine._extract_json("invalid", default={"fallback": True})
         assert result == {"fallback": True}
 
     def test_get_api_key_from_config(self):
@@ -876,6 +891,7 @@ class TestPluginSystem:
         ctx.set("content", "修复了一个登录 bug")
         ctx.set("tags", [])
         import asyncio
+
         asyncio.run(plugin.on_pre_memory_add(ctx))
         assert "bug" in ctx.get("tags", [])
 
@@ -885,6 +901,7 @@ class TestPluginSystem:
         ctx = PluginContext()
         ctx.set("content", "safe content")
         import asyncio
+
         asyncio.run(plugin.on_pre_memory_add(ctx))
         assert not ctx.cancelled
 
@@ -908,6 +925,7 @@ class TestPluginSystem:
         ctx.set("content", "新增了一个 feature")
         ctx.set("tags", [])
         import asyncio
+
         asyncio.run(mgr.trigger_hook(HookPoint.PRE_MEMORY_ADD, ctx))
         assert "feature" in ctx.get("tags", [])
 
@@ -926,6 +944,7 @@ class TestEmbedder:
     def test_embedding_cache(self):
         cache = EmbeddingCache(max_size=100)
         import numpy as np
+
         vec = np.array([1.0, 2.0, 3.0])
         cache.set("test", vec)
 
@@ -941,6 +960,7 @@ class TestEmbedder:
     def test_embedding_cache_clear(self):
         cache = EmbeddingCache()
         import numpy as np
+
         cache.set("test", np.array([1.0]))
         assert len(cache) == 1
         cache.clear()
@@ -970,10 +990,8 @@ class TestClustering:
     def test_cluster_stats(self):
         clusterer = MemoryClusterer()
         clusters = [
-            MemoryCluster(id="c1", label="test", keywords=["a", "b"],
-                          memory_ids=["1", "2"], size=2, cohesion=0.8),
-            MemoryCluster(id="c2", label="test2", keywords=["c"],
-                          memory_ids=["3"], size=1, cohesion=1.0),
+            MemoryCluster(id="c1", label="test", keywords=["a", "b"], memory_ids=["1", "2"], size=2, cohesion=0.8),
+            MemoryCluster(id="c2", label="test2", keywords=["c"], memory_ids=["3"], size=1, cohesion=1.0),
         ]
         stats = clusterer.cluster_stats(clusters)
         assert stats["total_clusters"] == 2
@@ -1043,9 +1061,13 @@ class TestConflictDetection:
     def test_resolve_suggestion(self):
         detector = ConflictDetector()
         conflict = MemoryConflict(
-            id="c1", memory_a="a", memory_b="b",
-            content_a="支持 Redis", content_b="不支持 Redis",
-            description="矛盾", severity=ConflictSeverity.CRITICAL,
+            id="c1",
+            memory_a="a",
+            memory_b="b",
+            content_a="支持 Redis",
+            content_b="不支持 Redis",
+            description="矛盾",
+            severity=ConflictSeverity.CRITICAL,
             confidence=0.9,
         )
         suggestion = detector.resolve_suggestion(conflict)
@@ -1088,8 +1110,12 @@ class TestDeduplication:
         deduper = MemoryDeduplicator()
         groups = [
             DuplicateGroup(
-                id="g1", memory_ids=["d1", "d2"], primary_id="d1",
-                duplicate_ids=["d2"], similarity_matrix={}, avg_similarity=0.95,
+                id="g1",
+                memory_ids=["d1", "d2"],
+                primary_id="d1",
+                duplicate_ids=["d2"],
+                similarity_matrix={},
+                avg_similarity=0.95,
             ),
         ]
         stats = deduper.dedup_stats(groups)
@@ -1103,8 +1129,12 @@ class TestDeduplication:
             Drawer(id="d2", content="Python 异步编程详解", importance=3.0, tags=["async"]),
         ]
         group = DuplicateGroup(
-            id="g1", memory_ids=["d1", "d2"], primary_id="d1",
-            duplicate_ids=["d2"], similarity_matrix={}, avg_similarity=0.9,
+            id="g1",
+            memory_ids=["d1", "d2"],
+            primary_id="d1",
+            duplicate_ids=["d2"],
+            similarity_matrix={},
+            avg_similarity=0.9,
         )
         merged = deduper.merge_duplicates(group, drawers)
         assert merged is not None
@@ -1139,12 +1169,23 @@ class TestAnalytics:
         analyzer = MemoryAnalyzer(config)
 
         drawers = [
-            Drawer(id="d1", content="重要决策：采用微服务架构", importance=5.0,
-                   wing="work", room="architecture", tags=["架构", "决策"]),
-            Drawer(id="d2", content="修复了登录页面的 bug", importance=3.0,
-                   wing="work", room="bugfix", tags=["bug", "修复"]),
-            Drawer(id="d3", content="日常代码审查", importance=2.0,
-                   wing="work", room="review", tags=["review"]),
+            Drawer(
+                id="d1",
+                content="重要决策：采用微服务架构",
+                importance=5.0,
+                wing="work",
+                room="architecture",
+                tags=["架构", "决策"],
+            ),
+            Drawer(
+                id="d2",
+                content="修复了登录页面的 bug",
+                importance=3.0,
+                wing="work",
+                room="bugfix",
+                tags=["bug", "修复"],
+            ),
+            Drawer(id="d3", content="日常代码审查", importance=2.0, wing="work", room="review", tags=["review"]),
         ]
         analysis = analyzer.analyze(drawers, wiki_page_count=2)
         assert isinstance(analysis, MemoryAnalytics)
@@ -1159,9 +1200,14 @@ class TestAnalytics:
         analyzer = MemoryAnalyzer(config)
 
         drawers = [
-            Drawer(id=f"d{i}", content=f"重要记忆 {i} 包含足够多的内容",
-                   importance=4.0, wing=f"wing_{i % 3}", room=f"room_{i}",
-                   tags=[f"tag_{i % 5}"])
+            Drawer(
+                id=f"d{i}",
+                content=f"重要记忆 {i} 包含足够多的内容",
+                importance=4.0,
+                wing=f"wing_{i % 3}",
+                room=f"room_{i}",
+                tags=[f"tag_{i % 5}"],
+            )
             for i in range(20)
         ]
         analysis = analyzer.analyze(drawers)
@@ -1192,19 +1238,29 @@ class TestAnalytics:
     def test_summary_report(self):
         analyzer = MemoryAnalyzer()
         analysis = MemoryAnalytics(
-            total_memories=10, total_wings=2, total_rooms=5,
-            total_tags=8, total_wiki_pages=3,
+            total_memories=10,
+            total_wings=2,
+            total_rooms=5,
+            total_tags=8,
+            total_wiki_pages=3,
             distribution_by_wing={"work": 7, "personal": 3},
-            distribution_by_room={}, distribution_by_hall={},
+            distribution_by_room={},
+            distribution_by_hall={},
             distribution_by_tag={},
             importance_distribution={"high": 3, "medium": 4, "low": 3},
             avg_importance=2.8,
-            memories_last_24h=2, memories_last_7d=5, memories_last_30d=10,
-            oldest_memory_age_days=90, newest_memory_age_hours=1.0,
-            avg_content_length=100, avg_tags_per_memory=1.5,
+            memories_last_24h=2,
+            memories_last_7d=5,
+            memories_last_30d=10,
+            oldest_memory_age_days=90,
+            newest_memory_age_hours=1.0,
+            avg_content_length=100,
+            avg_tags_per_memory=1.5,
             most_common_tags=[("python", 3), ("bug", 2)],
             most_active_wings=[("work", 7)],
-            health_score=85.0, health_issues=[], recommendations=["建议测试"],
+            health_score=85.0,
+            health_issues=[],
+            recommendations=["建议测试"],
         )
         report = analyzer.summary_report(analysis)
         assert "盘古" in report
@@ -1238,10 +1294,8 @@ class TestTimeline:
     def test_timeline_stats(self):
         engine = TimelineEngine()
         events = [
-            TimelineEvent(id="e1", drawer_id="d1", content="test",
-                          timestamp="2024-01-01T10:00:00"),
-            TimelineEvent(id="e2", drawer_id="d2", content="test",
-                          timestamp="2024-01-02T10:00:00"),
+            TimelineEvent(id="e1", drawer_id="d1", content="test", timestamp="2024-01-01T10:00:00"),
+            TimelineEvent(id="e2", drawer_id="d2", content="test", timestamp="2024-01-02T10:00:00"),
         ]
         stats = engine.timeline_stats(events)
         assert stats["total_events"] == 2
@@ -1250,12 +1304,10 @@ class TestTimeline:
     def test_find_causal_links(self):
         engine = TimelineEngine()
         events = [
-            TimelineEvent(id="e1", drawer_id="d1",
-                          content="因为发现了一个 bug，所以开始修复",
-                          timestamp="2024-01-01T10:00:00"),
-            TimelineEvent(id="e2", drawer_id="d2",
-                          content="修复了登录页面的 bug",
-                          timestamp="2024-01-01T11:00:00"),
+            TimelineEvent(
+                id="e1", drawer_id="d1", content="因为发现了一个 bug，所以开始修复", timestamp="2024-01-01T10:00:00"
+            ),
+            TimelineEvent(id="e2", drawer_id="d2", content="修复了登录页面的 bug", timestamp="2024-01-01T11:00:00"),
         ]
         links = engine.find_causal_links(events)
         assert isinstance(links, list)
@@ -1263,12 +1315,9 @@ class TestTimeline:
     def test_build_event_chain(self):
         engine = TimelineEngine()
         events = [
-            TimelineEvent(id="e1", drawer_id="d1", content="开始",
-                          timestamp="2024-01-01T10:00:00"),
-            TimelineEvent(id="e2", drawer_id="d2", content="进行中",
-                          timestamp="2024-01-01T11:00:00"),
-            TimelineEvent(id="e3", drawer_id="d3", content="完成",
-                          timestamp="2024-01-02T10:00:00"),
+            TimelineEvent(id="e1", drawer_id="d1", content="开始", timestamp="2024-01-01T10:00:00"),
+            TimelineEvent(id="e2", drawer_id="d2", content="进行中", timestamp="2024-01-01T11:00:00"),
+            TimelineEvent(id="e3", drawer_id="d3", content="完成", timestamp="2024-01-02T10:00:00"),
         ]
         chains = engine.build_event_chain(events, max_gap_hours=24)
         assert len(chains) >= 1
@@ -1282,10 +1331,8 @@ class TestTimeline:
     def test_query_timeline(self):
         engine = TimelineEngine()
         events = [
-            TimelineEvent(id="e1", drawer_id="d1", content="test1",
-                          timestamp="2024-01-01T10:00:00", wing="work"),
-            TimelineEvent(id="e2", drawer_id="d2", content="test2",
-                          timestamp="2024-01-02T10:00:00", wing="personal"),
+            TimelineEvent(id="e1", drawer_id="d1", content="test1", timestamp="2024-01-01T10:00:00", wing="work"),
+            TimelineEvent(id="e2", drawer_id="d2", content="test2", timestamp="2024-01-02T10:00:00", wing="personal"),
         ]
         result = engine.query_timeline(events, wing="work")
         assert len(result) == 1
@@ -1300,12 +1347,9 @@ class TestTimeline:
     def test_temporal_patterns(self):
         engine = TimelineEngine()
         events = [
-            TimelineEvent(id="e1", drawer_id="d1", content="test",
-                          timestamp="2024-01-01T10:00:00"),
-            TimelineEvent(id="e2", drawer_id="d2", content="test",
-                          timestamp="2024-01-01T11:00:00"),
-            TimelineEvent(id="e3", drawer_id="d3", content="test",
-                          timestamp="2024-01-01T12:00:00"),
+            TimelineEvent(id="e1", drawer_id="d1", content="test", timestamp="2024-01-01T10:00:00"),
+            TimelineEvent(id="e2", drawer_id="d2", content="test", timestamp="2024-01-01T11:00:00"),
+            TimelineEvent(id="e3", drawer_id="d3", content="test", timestamp="2024-01-01T12:00:00"),
         ]
         patterns = engine.detect_temporal_patterns(events)
         assert isinstance(patterns, list)
@@ -1317,12 +1361,9 @@ class TestFusion:
     def test_fuse_topic(self):
         engine = FusionEngine()
         drawers = [
-            Drawer(id="d1", content="Python 异步编程使用 asyncio 库", importance=4.0,
-                   tags=["python", "async"]),
-            Drawer(id="d2", content="Python 协程可以提升并发性能", importance=3.0,
-                   tags=["python", "performance"]),
-            Drawer(id="d3", content="JavaScript 使用 Promise 处理异步", importance=3.0,
-                   tags=["javascript"]),
+            Drawer(id="d1", content="Python 异步编程使用 asyncio 库", importance=4.0, tags=["python", "async"]),
+            Drawer(id="d2", content="Python 协程可以提升并发性能", importance=3.0, tags=["python", "performance"]),
+            Drawer(id="d3", content="JavaScript 使用 Promise 处理异步", importance=3.0, tags=["javascript"]),
         ]
         fused = engine.fuse_topic("Python", drawers)
         assert fused is not None
@@ -1367,14 +1408,10 @@ class TestPatterns:
     def test_discover_all(self):
         engine = PatternEngine()
         drawers = [
-            Drawer(id="d1", content="Python 异步编程", tags=["python", "async"],
-                   wing="dev", room="python"),
-            Drawer(id="d2", content="Python 数据分析", tags=["python", "data"],
-                   wing="dev", room="python"),
-            Drawer(id="d3", content="JavaScript 前端", tags=["javascript", "frontend"],
-                   wing="dev", room="js"),
-            Drawer(id="d4", content="Python 机器学习", tags=["python", "ml"],
-                   wing="dev", room="python"),
+            Drawer(id="d1", content="Python 异步编程", tags=["python", "async"], wing="dev", room="python"),
+            Drawer(id="d2", content="Python 数据分析", tags=["python", "data"], wing="dev", room="python"),
+            Drawer(id="d3", content="JavaScript 前端", tags=["javascript", "frontend"], wing="dev", room="js"),
+            Drawer(id="d4", content="Python 机器学习", tags=["python", "ml"], wing="dev", room="python"),
         ]
         patterns = engine.discover_all(drawers)
         assert isinstance(patterns, list)
@@ -1383,10 +1420,8 @@ class TestPatterns:
     def test_pattern_stats(self):
         engine = PatternEngine()
         patterns = [
-            DiscoveredPattern(id="p1", pattern_type="frequency",
-                              description="test", evidence=[], confidence=0.8),
-            DiscoveredPattern(id="p2", pattern_type="association",
-                              description="test", evidence=[], confidence=0.5),
+            DiscoveredPattern(id="p1", pattern_type="frequency", description="test", evidence=[], confidence=0.8),
+            DiscoveredPattern(id="p2", pattern_type="association", description="test", evidence=[], confidence=0.5),
         ]
         stats = engine.pattern_stats(patterns)
         assert stats["total_patterns"] == 2
@@ -1395,12 +1430,22 @@ class TestPatterns:
     def test_pattern_insights(self):
         engine = PatternEngine()
         patterns = [
-            DiscoveredPattern(id="p1", pattern_type="frequency",
-                              description="标签 python 出现 3 次", evidence=[],
-                              confidence=0.8, frequency=3),
-            DiscoveredPattern(id="p2", pattern_type="association",
-                              description="python 和 async 经常一起出现", evidence=[],
-                              confidence=0.6, frequency=2),
+            DiscoveredPattern(
+                id="p1",
+                pattern_type="frequency",
+                description="标签 python 出现 3 次",
+                evidence=[],
+                confidence=0.8,
+                frequency=3,
+            ),
+            DiscoveredPattern(
+                id="p2",
+                pattern_type="association",
+                description="python 和 async 经常一起出现",
+                evidence=[],
+                confidence=0.6,
+                frequency=2,
+            ),
         ]
         insights = engine.pattern_insights(patterns)
         assert len(insights) >= 1
@@ -1420,12 +1465,30 @@ class TestReplay:
         engine = ReplayEngine(config)
 
         drawers = [
-            Drawer(id="d1", content="项目启动会议", created_at="2024-01-01T10:00:00",
-                   importance=5.0, wing="work", room="meeting"),
-            Drawer(id="d2", content="编写需求文档", created_at="2024-01-02T14:00:00",
-                   importance=4.0, wing="work", room="docs"),
-            Drawer(id="d3", content="代码审查完成", created_at="2024-01-03T09:00:00",
-                   importance=3.0, wing="work", room="dev"),
+            Drawer(
+                id="d1",
+                content="项目启动会议",
+                created_at="2024-01-01T10:00:00",
+                importance=5.0,
+                wing="work",
+                room="meeting",
+            ),
+            Drawer(
+                id="d2",
+                content="编写需求文档",
+                created_at="2024-01-02T14:00:00",
+                importance=4.0,
+                wing="work",
+                room="docs",
+            ),
+            Drawer(
+                id="d3",
+                content="代码审查完成",
+                created_at="2024-01-03T09:00:00",
+                importance=3.0,
+                wing="work",
+                room="dev",
+            ),
         ]
         session = engine.timeline_replay(drawers)
         assert isinstance(session, ReplaySession)
@@ -1435,12 +1498,27 @@ class TestReplay:
     def test_topic_replay(self):
         engine = ReplayEngine()
         drawers = [
-            Drawer(id="d1", content="Python 异步编程 asyncio 教程", created_at="2024-01-01T10:00:00",
-                   importance=4.0, tags=["python"]),
-            Drawer(id="d2", content="JavaScript 前端开发", created_at="2024-01-02T10:00:00",
-                   importance=3.0, tags=["javascript"]),
-            Drawer(id="d3", content="Python 数据分析 pandas", created_at="2024-01-03T10:00:00",
-                   importance=4.0, tags=["python"]),
+            Drawer(
+                id="d1",
+                content="Python 异步编程 asyncio 教程",
+                created_at="2024-01-01T10:00:00",
+                importance=4.0,
+                tags=["python"],
+            ),
+            Drawer(
+                id="d2",
+                content="JavaScript 前端开发",
+                created_at="2024-01-02T10:00:00",
+                importance=3.0,
+                tags=["javascript"],
+            ),
+            Drawer(
+                id="d3",
+                content="Python 数据分析 pandas",
+                created_at="2024-01-03T10:00:00",
+                importance=4.0,
+                tags=["python"],
+            ),
         ]
         session = engine.topic_replay("Python", drawers)
         assert session.event_count >= 2
@@ -1477,12 +1555,9 @@ class TestReplay:
     def test_highlight_reel(self):
         engine = ReplayEngine()
         drawers = [
-            Drawer(id="d1", content="important event", created_at="2024-01-01T10:00:00",
-                   importance=5.0),
-            Drawer(id="d2", content="normal event", created_at="2024-01-02T10:00:00",
-                   importance=2.0),
-            Drawer(id="d3", content="very important", created_at="2024-01-03T10:00:00",
-                   importance=4.5),
+            Drawer(id="d1", content="important event", created_at="2024-01-01T10:00:00", importance=5.0),
+            Drawer(id="d2", content="normal event", created_at="2024-01-02T10:00:00", importance=2.0),
+            Drawer(id="d3", content="very important", created_at="2024-01-03T10:00:00", importance=4.5),
         ]
         session = engine.highlight_reel(drawers, top_n=2)
         assert session.event_count == 2
@@ -1491,10 +1566,13 @@ class TestReplay:
     def test_replay_summary(self):
         engine = ReplayEngine()
         session = ReplaySession(
-            id="test", title="测试回放", events=[], span="2024-01-01 ~ 2024-01-03",
-            event_count=3, wings=["work"],
-            key_moments=[{"time": "2024-01-01T10:00:00", "content": "test",
-                          "importance": 5.0}],
+            id="test",
+            title="测试回放",
+            events=[],
+            span="2024-01-01 ~ 2024-01-03",
+            event_count=3,
+            wings=["work"],
+            key_moments=[{"time": "2024-01-01T10:00:00", "content": "test", "importance": 5.0}],
         )
         summary = engine.replay_summary(session)
         assert "测试回放" in summary

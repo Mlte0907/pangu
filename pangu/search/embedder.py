@@ -8,6 +8,7 @@
 - 批量处理（提升吞吐量）
 - 多模型支持（可切换嵌入模型）
 """
+
 import time
 from collections import OrderedDict
 
@@ -71,11 +72,10 @@ class VectorEmbedder:
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 self._model = SentenceTransformer(self.config.embedding_model)
             except ImportError as e:
-                raise ImportError(
-                    "sentence-transformers 未安装，请运行: pip install sentence-transformers"
-                ) from e
+                raise ImportError("sentence-transformers 未安装，请运行: pip install sentence-transformers") from e
             except Exception as e:
                 raise RuntimeError(f"加载嵌入模型失败: {e}") from e
         return self._model
@@ -138,8 +138,7 @@ class VectorEmbedder:
         """计算余弦相似度"""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
 
-    def search(self, query: str, items: list[dict], top_k: int = 10,
-               content_key: str = "content") -> list[dict]:
+    def search(self, query: str, items: list[dict], top_k: int = 10, content_key: str = "content") -> list[dict]:
         """语义搜索 — 基于向量相似度
 
         Args:

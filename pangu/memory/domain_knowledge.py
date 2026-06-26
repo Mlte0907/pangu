@@ -8,11 +8,11 @@
 - 团队协作知识库（沟通模式、反馈、成长轨迹）
 - 知识条目的 CRUD 和关联管理
 """
+
 import json
 import sqlite3
-from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -23,6 +23,7 @@ from ..core.config import PanguConfig
 
 class DomainType(str, Enum):
     """领域类型"""
+
     SOFTWARE_ENGINEERING = "software_engineering"
     PROJECT_MANAGEMENT = "project_management"
     TEAM_COLLABORATION = "team_collaboration"
@@ -31,6 +32,7 @@ class DomainType(str, Enum):
 
 class KnowledgeCategory(str, Enum):
     """知识分类"""
+
     # 软件工程
     DESIGN_PATTERN = "design_pattern"
     ARCHITECTURE_DECISION = "architecture_decision"
@@ -55,6 +57,7 @@ class KnowledgeCategory(str, Enum):
 
 class KnowledgeStatus(str, Enum):
     """知识状态"""
+
     DRAFT = "draft"
     ACTIVE = "active"
     REVIEW = "review"
@@ -65,6 +68,7 @@ class KnowledgeStatus(str, Enum):
 @dataclass
 class KnowledgeEntry:
     """知识条目"""
+
     id: str
     domain: DomainType
     category: KnowledgeCategory
@@ -72,11 +76,11 @@ class KnowledgeEntry:
     content: str
     tags: list[str] = field(default_factory=list)
     status: KnowledgeStatus = KnowledgeStatus.ACTIVE
-    confidence: float = 1.0          # 置信度 [0,1]
-    importance: float = 0.5          # 重要性 [0,1]
+    confidence: float = 1.0  # 置信度 [0,1]
+    importance: float = 0.5  # 重要性 [0,1]
     related_ids: list[str] = field(default_factory=list)  # 关联条目
-    source: str = ""                 # 来源
-    author: str = ""                 # 作者
+    source: str = ""  # 来源
+    author: str = ""  # 作者
     version: int = 1
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -86,6 +90,7 @@ class KnowledgeEntry:
 @dataclass
 class KnowledgeStats:
     """知识库统计"""
+
     total_entries: int
     by_domain: dict[str, int]
     by_category: dict[str, int]
@@ -170,8 +175,8 @@ class DomainKnowledge:
                 category=KnowledgeCategory.DESIGN_PATTERN,
                 title="单例模式",
                 content="确保一个类只有一个实例，并提供全局访问点。"
-                        "适用场景：配置管理、日志、连接池。"
-                        "注意：避免过度使用，会增加耦合度。",
+                "适用场景：配置管理、日志、连接池。"
+                "注意：避免过度使用，会增加耦合度。",
                 tags=["设计模式", "创建型"],
                 importance=0.7,
                 source="GoF Design Patterns",
@@ -182,8 +187,8 @@ class DomainKnowledge:
                 category=KnowledgeCategory.DESIGN_PATTERN,
                 title="观察者模式",
                 content="定义对象间的一对多依赖，当一个对象状态改变时，"
-                        "所有依赖它的对象都会收到通知。"
-                        "适用场景：事件系统、消息队列、UI 响应式更新。",
+                "所有依赖它的对象都会收到通知。"
+                "适用场景：事件系统、消息队列、UI 响应式更新。",
                 tags=["设计模式", "行为型"],
                 importance=0.8,
                 source="GoF Design Patterns",
@@ -193,8 +198,7 @@ class DomainKnowledge:
                 domain=DomainType.SOFTWARE_ENGINEERING,
                 category=KnowledgeCategory.DESIGN_PATTERN,
                 title="策略模式",
-                content="定义一系列算法，将每个算法封装起来，使它们可互换。"
-                        "适用场景：支付方式、排序算法、验证规则。",
+                content="定义一系列算法，将每个算法封装起来，使它们可互换。适用场景：支付方式、排序算法、验证规则。",
                 tags=["设计模式", "行为型"],
                 importance=0.7,
             ),
@@ -204,7 +208,7 @@ class DomainKnowledge:
                 category=KnowledgeCategory.ARCHITECTURE_DECISION,
                 title="整洁架构",
                 content="依赖规则：源码依赖只能向内。外层知道内层，内层不知道外层。"
-                        "层次：实体 → 用例 → 接口适配器 → 框架和驱动。",
+                "层次：实体 → 用例 → 接口适配器 → 框架和驱动。",
                 tags=["架构", "整洁架构", "SOLID"],
                 importance=0.9,
             ),
@@ -213,8 +217,7 @@ class DomainKnowledge:
                 domain=DomainType.SOFTWARE_ENGINEERING,
                 category=KnowledgeCategory.ARCHITECTURE_DECISION,
                 title="六边形架构（端口适配器）",
-                content="应用核心通过端口与外部交互，适配器实现端口接口。"
-                        "优势：可测试性高、技术栈可替换。",
+                content="应用核心通过端口与外部交互，适配器实现端口接口。优势：可测试性高、技术栈可替换。",
                 tags=["架构", "六边形"],
                 importance=0.8,
             ),
@@ -224,9 +227,9 @@ class DomainKnowledge:
                 category=KnowledgeCategory.BEST_PRACTICE,
                 title="代码审查最佳实践",
                 content="1. 每次 PR 不超过 400 行。"
-                        "2. 关注逻辑错误而非代码风格。"
-                        "3. 提出建设性建议而非命令。"
-                        "4. 至少一人批准后合并。",
+                "2. 关注逻辑错误而非代码风格。"
+                "3. 提出建设性建议而非命令。"
+                "4. 至少一人批准后合并。",
                 tags=["代码审查", "团队规范"],
                 importance=0.8,
             ),
@@ -240,8 +243,7 @@ class DomainKnowledge:
                 domain=DomainType.PROJECT_MANAGEMENT,
                 category=KnowledgeCategory.RISK,
                 title="范围蔓延风险",
-                content="项目需求不断膨胀，超出原始范围。"
-                        "应对：明确需求基线，建立变更控制流程。",
+                content="项目需求不断膨胀，超出原始范围。应对：明确需求基线，建立变更控制流程。",
                 tags=["风险管理", "范围"],
                 importance=0.9,
             ),
@@ -250,8 +252,7 @@ class DomainKnowledge:
                 domain=DomainType.PROJECT_MANAGEMENT,
                 category=KnowledgeCategory.RISK,
                 title="巴士因子风险",
-                content="关键知识集中在少数人身上，一旦离开项目就无法继续。"
-                        "应对：知识共享、文档化、交叉培训。",
+                content="关键知识集中在少数人身上，一旦离开项目就无法继续。应对：知识共享、文档化、交叉培训。",
                 tags=["风险管理", "人员"],
                 importance=0.85,
             ),
@@ -266,9 +267,9 @@ class DomainKnowledge:
                 category=KnowledgeCategory.COMMUNICATION,
                 title="异步沟通原则",
                 content="1. 文字优于语音（可搜索、可引用）。"
-                        "2. 明确期望回复时间。"
-                        "3. 写清楚上下文，减少来回。"
-                        "4. 重要决策形成文档。",
+                "2. 明确期望回复时间。"
+                "3. 写清楚上下文，减少来回。"
+                "4. 重要决策形成文档。",
                 tags=["沟通", "远程协作"],
                 importance=0.8,
             ),
@@ -278,8 +279,8 @@ class DomainKnowledge:
                 category=KnowledgeCategory.FEEDBACK,
                 title="SBI 反馈模型",
                 content="Situation（情境）→ Behavior（行为）→ Impact（影响）。"
-                        "描述具体情境，指出具体行为，说明产生的影响。"
-                        "避免评判人格，聚焦可观察行为。",
+                "描述具体情境，指出具体行为，说明产生的影响。"
+                "避免评判人格，聚焦可观察行为。",
                 tags=["反馈", "沟通技巧"],
                 importance=0.75,
             ),
@@ -335,9 +336,7 @@ class DomainKnowledge:
     def get_entry(self, entry_id: str) -> KnowledgeEntry | None:
         """获取知识条目"""
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM knowledge_entries WHERE id = ?", (entry_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM knowledge_entries WHERE id = ?", (entry_id,)).fetchone()
         if not row:
             return None
         return self._row_to_entry(row)
@@ -353,9 +352,18 @@ class DomainKnowledge:
             更新后的条目，不存在返回 None
         """
         allowed = {
-            "title", "content", "tags", "status", "confidence",
-            "importance", "related_ids", "source", "author",
-            "metadata", "category", "domain",
+            "title",
+            "content",
+            "tags",
+            "status",
+            "confidence",
+            "importance",
+            "related_ids",
+            "source",
+            "author",
+            "metadata",
+            "category",
+            "domain",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
@@ -398,9 +406,7 @@ class DomainKnowledge:
     def delete_entry(self, entry_id: str) -> bool:
         """删除知识条目"""
         with self._conn() as conn:
-            cursor = conn.execute(
-                "DELETE FROM knowledge_entries WHERE id = ?", (entry_id,)
-            )
+            cursor = conn.execute("DELETE FROM knowledge_entries WHERE id = ?", (entry_id,))
         return cursor.rowcount > 0
 
     def list_entries(
@@ -454,10 +460,7 @@ class DomainKnowledge:
 
         # 标签过滤（需要后过滤，因为标签是 JSON）
         if tags:
-            entries = [
-                e for e in entries
-                if all(t in e.tags for t in tags)
-            ]
+            entries = [e for e in entries if all(t in e.tags for t in tags)]
 
         return entries
 
@@ -552,28 +555,18 @@ class DomainKnowledge:
         with self._conn() as conn:
             total = conn.execute("SELECT COUNT(*) FROM knowledge_entries").fetchone()[0]
 
-            domain_rows = conn.execute(
-                "SELECT domain, COUNT(*) FROM knowledge_entries GROUP BY domain"
-            ).fetchall()
+            domain_rows = conn.execute("SELECT domain, COUNT(*) FROM knowledge_entries GROUP BY domain").fetchall()
             by_domain = {row[0]: row[1] for row in domain_rows}
 
-            cat_rows = conn.execute(
-                "SELECT category, COUNT(*) FROM knowledge_entries GROUP BY category"
-            ).fetchall()
+            cat_rows = conn.execute("SELECT category, COUNT(*) FROM knowledge_entries GROUP BY category").fetchall()
             by_category = {row[0]: row[1] for row in cat_rows}
 
-            status_rows = conn.execute(
-                "SELECT status, COUNT(*) FROM knowledge_entries GROUP BY status"
-            ).fetchall()
+            status_rows = conn.execute("SELECT status, COUNT(*) FROM knowledge_entries GROUP BY status").fetchall()
             by_status = {row[0]: row[1] for row in status_rows}
 
-            avg_conf = conn.execute(
-                "SELECT AVG(confidence) FROM knowledge_entries"
-            ).fetchone()[0] or 0.0
+            avg_conf = conn.execute("SELECT AVG(confidence) FROM knowledge_entries").fetchone()[0] or 0.0
 
-            avg_imp = conn.execute(
-                "SELECT AVG(importance) FROM knowledge_entries"
-            ).fetchone()[0] or 0.0
+            avg_imp = conn.execute("SELECT AVG(importance) FROM knowledge_entries").fetchone()[0] or 0.0
 
         # 统计标签
         all_tags: list[str] = []
@@ -622,10 +615,9 @@ class DomainKnowledge:
         merged_tags = list(set(source.tags + target.tags))
 
         # 合并关联（排除自己）
-        merged_related = list(set(
-            r for r in (source.related_ids + target.related_ids)
-            if r not in (source_id, target_id)
-        ))
+        merged_related = list(
+            set(r for r in (source.related_ids + target.related_ids) if r not in (source_id, target_id))
+        )
 
         # 更新 target
         updated = self.update_entry(

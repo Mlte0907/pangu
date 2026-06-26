@@ -1,4 +1,5 @@
 """盘古 FastAPI 服务器工厂（伏羲移植）"""
+
 import json
 import logging
 import time
@@ -35,7 +36,6 @@ from pangu.api.rbac import (
     require_scope,
     resolve_scopes,
 )
-from pangu.core.config import config
 from pangu.store.migrations import init_db
 
 logger = logging.getLogger("pangu.api.server")
@@ -43,7 +43,9 @@ logger = logging.getLogger("pangu.api.server")
 
 def create_app() -> FastAPI:
     """创建 FastAPI 应用（伏羲移植版）"""
-    from pangu.core.config import PanguConfig as _Cfg, config as _orig_cfg
+    from pangu.core.config import PanguConfig as _Cfg
+    from pangu.core.config import config as _orig_cfg
+
     _loaded = _Cfg.load()
     # 用加载后的配置替换全局单例，使整个模块统一使用 config.json 的值
     for _field in _loaded.model_fields:
@@ -63,6 +65,7 @@ def create_app() -> FastAPI:
         # 启动工作记忆持久化
         try:
             from pangu.memory.working_memory import get_working_memory
+
             wm = get_working_memory()
             wm.restore_checkpoint()
             wm.start_auto_checkpoint()
@@ -72,14 +75,18 @@ def create_app() -> FastAPI:
         # 预热组件（消除冷查询延迟）
         try:
             from pangu.memory.warmup import warmup_all
+
             warmup = warmup_all()
-            logger.info(f"Warmup complete: {warmup['total']:.0f}ms (jieba={warmup['jieba']:.0f}ms, onnx={warmup['onnx']:.0f}ms, fts={warmup['fts_index']:.0f}ms)")
+            logger.info(
+                f"Warmup complete: {warmup['total']:.0f}ms (jieba={warmup['jieba']:.0f}ms, onnx={warmup['onnx']:.0f}ms, fts={warmup['fts_index']:.0f}ms)"
+            )
         except Exception as e:
             logger.warning(f"Warmup failed: {e}")
 
         # 预加载 MCPServer 实例（避免每次请求重建）
         try:
             from pangu.api.routes_tools import _get_server
+
             _get_server()
             logger.info("MCPServer instance preloaded")
         except Exception as e:
@@ -88,12 +95,15 @@ def create_app() -> FastAPI:
         # 自主记忆管理：检查是否需要运行维护周期
         try:
             from pangu.memory.autonomous import get_autonomous_engine
+
             engine = get_autonomous_engine(config)
             tick = engine.tick()
             if tick["should_run"]:
                 logger.info(f"Autonomous maintenance: {len(tick['pending_tasks'])} tasks pending, running...")
                 cycle = engine.run_cycle()
-                logger.info(f"Autonomous cycle: {cycle.tasks_run} ran, {cycle.tasks_skipped} skipped, {cycle.tasks_failed} failed, {cycle.total_duration_ms:.0f}ms")
+                logger.info(
+                    f"Autonomous cycle: {cycle.tasks_run} ran, {cycle.tasks_skipped} skipped, {cycle.tasks_failed} failed, {cycle.total_duration_ms:.0f}ms"
+                )
             else:
                 logger.info("Autonomous maintenance: all tasks up to date")
         except Exception as e:
@@ -102,6 +112,7 @@ def create_app() -> FastAPI:
         # 启动后台自主调度器（每 30 分钟自动检查维护）
         try:
             from pangu.memory.autonomous import get_scheduler
+
             scheduler = get_scheduler(config)
             scheduler.start()
         except Exception as e:
@@ -110,6 +121,7 @@ def create_app() -> FastAPI:
         # 激活事件总线→WebSocket 桥接
         try:
             from pangu.memory.realtime_bridge import setup_bridge
+
             setup_bridge()
         except Exception as e:
             logger.warning(f"Realtime bridge setup failed: {e}")
@@ -120,6 +132,7 @@ def create_app() -> FastAPI:
         # 停止后台调度器
         try:
             from pangu.memory.autonomous import get_scheduler
+
             get_scheduler().stop()
         except Exception:
             pass
@@ -139,8 +152,10 @@ def create_app() -> FastAPI:
         config.cors_origins
         if hasattr(config, "cors_origins") and config.cors_origins
         else [
-            "http://localhost:19528", "http://127.0.0.1:19528",
-            "http://localhost:8866", "http://127.0.0.1:8866",
+            "http://localhost:19528",
+            "http://127.0.0.1:19528",
+            "http://localhost:8866",
+            "http://127.0.0.1:8866",
         ]
     )
     app.add_middleware(
@@ -153,6 +168,7 @@ def create_app() -> FastAPI:
     # ── 速率限制 ──
     class RateLimitMiddleware:
         """速率限制中间件 — 每分钟最多 100 次请求"""
+
         def __init__(self, app: ASGIApp, max_requests: int = 100, window_seconds: int = 60):
             self.app = app
             self.max_requests = max_requests
@@ -176,8 +192,7 @@ def create_app() -> FastAPI:
             # 检查速率限制
             if len(self._requests.get(client_ip, [])) >= self.max_requests:
                 response = JSONResponse(
-                    status_code=429,
-                    content={"error": "Rate limit exceeded", "retry_after": self.window}
+                    status_code=429, content={"error": "Rate limit exceeded", "retry_after": self.window}
                 )
                 await response(scope, receive, send)
                 return
@@ -193,6 +208,7 @@ def create_app() -> FastAPI:
     # ── API 指标中间件 ──
     class _MetricsMiddleware:
         """纯 ASGI 中间件：记录 API 指标"""
+
         def __init__(self, app: ASGIApp):
             self.app = app
 
@@ -214,6 +230,7 @@ def create_app() -> FastAPI:
 
             try:
                 from pangu.observability.metrics import record_api_request
+
                 method = scope.get("method", "GET")
                 path = scope.get("path", "")
                 record_api_request(method, path, status_code, time.time() - start)
@@ -281,10 +298,24 @@ def create_app() -> FastAPI:
         启用条件：config.api_key 非空 或 jwt_secret 非空。
         公开端点始终豁免：/、/health*、/metrics、/docs、/openapi.json、/api/v2/auth/*。
         """
-        _EXEMPT_PATHS = {"/", "/health", "/health/deep", "/metrics", "/docs", "/openapi.json", "/redoc",
-                          "/dashboard", "/graph", "/performance",
-                          "/api/v2/system/info", "/api/v2/autonomous/status",
-                          "/api/v2/graph", "/api/v2/tools", "/api/v2/tools-batch"}
+
+        _EXEMPT_PATHS = {
+            "/",
+            "/health",
+            "/health/deep",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/dashboard",
+            "/graph",
+            "/performance",
+            "/api/v2/system/info",
+            "/api/v2/autonomous/status",
+            "/api/v2/graph",
+            "/api/v2/tools",
+            "/api/v2/tools-batch",
+        }
         _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh"}
         _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/memories", "/mcp")
 
@@ -428,14 +459,17 @@ def create_app() -> FastAPI:
 
     # 注册路由
     from pangu.api.routes_memory import router as mem_router
+
     app.include_router(mem_router, prefix="/api/v2")
 
     # 任务状态同步路由
     from pangu.api.routes_tasks import router as task_router
+
     app.include_router(task_router, prefix="/api/v2")
 
     # MCP 工具网关
     from pangu.api.routes_tools import router as tools_router
+
     app.include_router(tools_router, prefix="/api/v2")
 
     # 批量工具调用（直接注册到 app 避免被 {tool_name} 截获）
@@ -446,6 +480,7 @@ def create_app() -> FastAPI:
         results = []
         try:
             from pangu.api.routes_tools import _get_server
+
             srv = _get_server()
             for call in req.calls[:20]:
                 name = call.get("name", "")
@@ -467,6 +502,7 @@ def create_app() -> FastAPI:
 
     # MCP HTTP 传输层（SSE + StreamableHTTP）
     from pangu.api.mcp_http import mcp_http_routes
+
     for route in mcp_http_routes:
         app.routes.insert(0, route)
 
@@ -475,27 +511,32 @@ def create_app() -> FastAPI:
     async def health():
         """健康检查 — 返回服务状态和版本"""
         from pangu.observability.health import quick_health_check
+
         return {"code": 0, "message": "ok", "data": quick_health_check()}
 
     @app.get("/health/deep")
     async def deep_health():
         from pangu.observability.health import deep_health_check
+
         return {"code": 0, "message": "ok", "data": deep_health_check()}
 
     # Prometheus 指标
     @app.get("/metrics")
     async def metrics():
         from pangu.observability.metrics import get_metrics_response, update_llm_metrics
+
         # 同步 LLM 引擎统计到 Prometheus 指标
         try:
             from pangu.core.config import PanguConfig
             from pangu.core.llm import LLMEngine
+
             llm_engine = LLMEngine(PanguConfig())
             update_llm_metrics(llm_engine)
         except Exception:
             pass
         content, media_type = get_metrics_response()
         from fastapi.responses import Response
+
         return Response(content=content, media_type=media_type)
 
     # 自主引擎状态
@@ -503,6 +544,7 @@ def create_app() -> FastAPI:
     async def autonomous_status():
         try:
             from pangu.memory.autonomous import get_autonomous_engine, get_scheduler
+
             engine = get_autonomous_engine(config)
             scheduler = get_scheduler()
             status = engine.get_status()
@@ -515,6 +557,7 @@ def create_app() -> FastAPI:
     @app.get("/api/v2/system/info")
     async def system_info():
         from pangu.observability.health import quick_health_check
+
         return {
             "code": 0,
             "message": "ok",
@@ -571,6 +614,7 @@ def create_app() -> FastAPI:
     async def abac_whoami(request: Request):
         """返回当前 subject 属性。"""
         from pangu.api.abac import Subject
+
         principal = get_principal(request)
         tenant_id = request.headers.get(config.abac_tenant_header, "") or config.abac_default_tenant
         subject = Subject.from_principal(principal, tenant_id=tenant_id)
@@ -599,8 +643,10 @@ def create_app() -> FastAPI:
         """ABAC 演示：访问指定租户的记忆。需通过 tenant_isolation 等策略。"""
         # 手动构造依赖（避免 lambda 在 Depends 求值时无法捕获 path 参数）
         from pangu.api.abac import Resource as AbacResource
+
         decision = abac_authorize(
-            "memories", "read",
+            "memories",
+            "read",
             resource_loader=lambda ctx: AbacResource(
                 type="memories",
                 id=mid,
@@ -681,14 +727,20 @@ def create_app() -> FastAPI:
                 content={"code": 503, "message": "JWT not configured on server", "data": None},
             )
         try:
-            claims = verify_token(req.refresh_token, jwt_secret, expected_type=TOKEN_TYPE_REFRESH, algorithm=config.jwt_algorithm)
+            claims = verify_token(
+                req.refresh_token, jwt_secret, expected_type=TOKEN_TYPE_REFRESH, algorithm=config.jwt_algorithm
+            )
         except TokenExpiredError:
-            return JSONResponse(status_code=401, content={"code": 401, "message": "Refresh token expired", "data": None})
+            return JSONResponse(
+                status_code=401, content={"code": 401, "message": "Refresh token expired", "data": None}
+            )
         except TokenInvalidError as e:
             return JSONResponse(status_code=401, content={"code": 401, "message": str(e.message), "data": None})
 
         if user_store.is_revoked(claims.jti):
-            return JSONResponse(status_code=401, content={"code": 401, "message": "Refresh token revoked", "data": None})
+            return JSONResponse(
+                status_code=401, content={"code": 401, "message": "Refresh token revoked", "data": None}
+            )
 
         # 旋转 refresh：撤销旧 jti，颁发新对（保持原 role/scope + ABAC 属性）
         user_store.revoke(claims.jti)
@@ -755,7 +807,9 @@ def create_app() -> FastAPI:
             revoked += 1
         if req.refresh_token:
             try:
-                claims = verify_token(req.refresh_token, jwt_secret, expected_type=TOKEN_TYPE_REFRESH, algorithm=config.jwt_algorithm)
+                claims = verify_token(
+                    req.refresh_token, jwt_secret, expected_type=TOKEN_TYPE_REFRESH, algorithm=config.jwt_algorithm
+                )
                 user_store.revoke(claims.jti)
                 revoked += 1
             except AuthError:
@@ -785,7 +839,6 @@ def create_app() -> FastAPI:
         供 openclaw memorySearch.provider=openai-compatible 调用。
         内部使用 Pangu ONNX 本地嵌入器，无需外部 API key。
         """
-        import numpy as np
 
         inputs = [req.input] if isinstance(req.input, str) else req.input
         if not inputs:
@@ -795,8 +848,9 @@ def create_app() -> FastAPI:
             )
 
         try:
-            from pangu.memory.embedding import EmbeddingService
             from pangu.core.config import PanguConfig
+            from pangu.memory.embedding import EmbeddingService
+
             svc = EmbeddingService(PanguConfig())
         except Exception as e:
             logger.warning(f"ONNX embedder unavailable, using hash fallback: {e}")
@@ -816,11 +870,13 @@ def create_app() -> FastAPI:
 
         data = []
         for i, vec in enumerate(results):
-            data.append({
-                "object": "embedding",
-                "index": i,
-                "embedding": vec if req.encoding_format == "float" else _b64_encode(vec),
-            })
+            data.append(
+                {
+                    "object": "embedding",
+                    "index": i,
+                    "embedding": vec if req.encoding_format == "float" else _b64_encode(vec),
+                }
+            )
 
         return {
             "object": "list",
@@ -830,7 +886,9 @@ def create_app() -> FastAPI:
         }
 
     def _b64_encode(vec: list[float]) -> str:
-        import base64, struct
+        import base64
+        import struct
+
         raw = struct.pack(f"<{len(vec)}f", *vec)
         return base64.b64encode(raw).decode()
 
@@ -842,6 +900,7 @@ def create_app() -> FastAPI:
     @app.get("/dashboard", include_in_schema=False)
     async def dashboard():
         from fastapi.responses import HTMLResponse
+
         dashboard_path = Path(__file__).parent.parent / "ui" / "templates" / "dashboard.html"
         if dashboard_path.exists():
             return HTMLResponse(content=dashboard_path.read_text(encoding="utf-8"))
@@ -850,6 +909,7 @@ def create_app() -> FastAPI:
     @app.get("/performance", include_in_schema=False)
     async def performance():
         from fastapi.responses import HTMLResponse
+
         perf_path = Path(__file__).parent.parent / "ui" / "templates" / "performance.html"
         if perf_path.exists():
             return HTMLResponse(content=perf_path.read_text(encoding="utf-8"))
@@ -859,8 +919,9 @@ def create_app() -> FastAPI:
     @app.get("/api/v2/graph")
     async def graph_data(entity_type: str = None, limit: int = 100):
         try:
-            from pangu.memory.knowledge_graph import KnowledgeGraph
             from pangu.core.config import PanguConfig as _Cfg
+            from pangu.memory.knowledge_graph import KnowledgeGraph
+
             cfg = _Cfg.load()
             kg = KnowledgeGraph(cfg)
             entities = kg.list_entities(entity_type)[:limit]
@@ -868,15 +929,24 @@ def create_app() -> FastAPI:
             for e in entities[:50]:
                 rels = kg.query_relations(subject_id=e["id"])
                 for r in rels:
-                    edges.append({
-                        "source": r["subject_id"],
-                        "target": r["object_id"],
-                        "predicate": r.get("predicate", ""),
-                        "confidence": r.get("confidence", 1.0),
-                    })
-            nodes = [{"id": e["id"], "name": e["name"], "type": e.get("type", "default"),
-                       "memory_count": e.get("memory_count", 0), "description": e.get("description", "")}
-                      for e in entities]
+                    edges.append(
+                        {
+                            "source": r["subject_id"],
+                            "target": r["object_id"],
+                            "predicate": r.get("predicate", ""),
+                            "confidence": r.get("confidence", 1.0),
+                        }
+                    )
+            nodes = [
+                {
+                    "id": e["id"],
+                    "name": e["name"],
+                    "type": e.get("type", "default"),
+                    "memory_count": e.get("memory_count", 0),
+                    "description": e.get("description", ""),
+                }
+                for e in entities
+            ]
             return {"code": 0, "data": {"nodes": nodes, "edges": edges, "total_entities": len(entities)}}
         except Exception as e:
             return {"code": 500, "error": str(e)}
@@ -884,6 +954,7 @@ def create_app() -> FastAPI:
     @app.get("/graph", include_in_schema=False)
     async def graph_page():
         from fastapi.responses import HTMLResponse
+
         graph_path = Path(__file__).parent.parent / "ui" / "templates" / "graph.html"
         if graph_path.exists():
             return HTMLResponse(content=graph_path.read_text(encoding="utf-8"))
@@ -897,6 +968,7 @@ def create_app() -> FastAPI:
     async def websocket_endpoint(websocket: WebSocket):
         await websocket.accept()
         from ..memory.realtime import get_connection_manager
+
         mgr = get_connection_manager()
         client_id = f"client_{id(websocket)}"
         mgr.connect(client_id, websocket)

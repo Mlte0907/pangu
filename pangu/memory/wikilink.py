@@ -79,8 +79,7 @@ def _build_edge_dict(target_id: str, link: WikilinkMatch) -> dict:
     }
 
 
-def _resolve_link_to_edge(link: WikilinkMatch, source_item_id: str,
-                           existing_drawers: list[Drawer]) -> dict | None:
+def _resolve_link_to_edge(link: WikilinkMatch, source_item_id: str, existing_drawers: list[Drawer]) -> dict | None:
     """解析单个 wikilink 为边字典，无法解析返回 None"""
     target_id = resolve_wikilink_to_item(link.target, existing_drawers)
     if not target_id or target_id == source_item_id:

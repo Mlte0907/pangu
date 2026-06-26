@@ -1,35 +1,49 @@
 """盘古 V3.0 模块测试 — 11 个记忆引擎"""
+
 import asyncio
-import json
 import os
 import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pytest
+
 from pangu.core.palace import Drawer
 
 
-def _drawer(id: str = "t1", content: str = "test content", wing: str = "test",
-            room: str = "general", importance: float = 3.0, tags: list = None,
-            emotional_weight: float = 0.0, created_at: str = "", author: str = "",
-            metadata: dict = None) -> Drawer:
+def _drawer(
+    id: str = "t1",
+    content: str = "test content",
+    wing: str = "test",
+    room: str = "general",
+    importance: float = 3.0,
+    tags: list = None,
+    emotional_weight: float = 0.0,
+    created_at: str = "",
+    author: str = "",
+    metadata: dict = None,
+) -> Drawer:
     return Drawer(
-        id=id, content=content, wing=wing, room=room,
-        importance=importance, tags=tags or [],
+        id=id,
+        content=content,
+        wing=wing,
+        room=room,
+        importance=importance,
+        tags=tags or [],
         emotional_weight=emotional_weight,
         created_at=created_at or datetime.now().isoformat(),
-        author=author, metadata=metadata or {},
+        author=author,
+        metadata=metadata or {},
     )
 
 
 # ── EvaluationCache ──
 
+
 class TestEvaluationCache:
     def setup_method(self):
         from pangu.memory.evaluation import EvaluationCache
+
         self.tmp = tempfile.mkdtemp()
         self.cache = EvaluationCache(cache_path=os.path.join(self.tmp, "eval_cache.jsonl"))
 
@@ -56,6 +70,7 @@ class TestEvaluationCache:
 
     def test_make_prompt_hash(self):
         from pangu.memory.evaluation import _make_prompt_hash
+
         h1 = _make_prompt_hash("hello", "world")
         h2 = _make_prompt_hash("hello", "world")
         h3 = _make_prompt_hash("hello", "different")
@@ -64,10 +79,12 @@ class TestEvaluationCache:
 
     def test_get_evaluation_stats_empty(self):
         from pangu.memory.evaluation import get_evaluation_stats
+
         assert get_evaluation_stats([]) == {"items": 0, "edges": 0}
 
     def test_get_evaluation_stats_with_drawers(self):
         from pangu.memory.evaluation import get_evaluation_stats
+
         drawers = [_drawer(id="d1", metadata={"embedding": [1.0]}), _drawer(id="d2", metadata={})]
         stats = get_evaluation_stats(drawers)
         assert stats["items"] == 2
@@ -76,20 +93,24 @@ class TestEvaluationCache:
 
 # ── EventBus ──
 
+
 class TestEventBus:
     def setup_method(self):
         from pangu.memory.event_bus import EventBus
+
         EventBus.reset()
         self.bus = EventBus()
 
     def test_singleton(self):
         from pangu.memory.event_bus import EventBus
+
         b1 = EventBus.get()
         b2 = EventBus.get()
         assert b1 is b2
 
     def test_subscribe_and_publish(self):
-        from pangu.memory.event_bus import Event, EventPriority
+        from pangu.memory.event_bus import Event
+
         received = []
         self.bus.subscribe("test_event", lambda e: received.append(e))
         event = Event(type="test_event", data={"key": "val"})
@@ -99,6 +120,7 @@ class TestEventBus:
 
     def test_wildcard_handler(self):
         from pangu.memory.event_bus import Event
+
         received = []
         self.bus.subscribe("*", lambda e: received.append(e))
         self.bus.publish(Event(type="anything"))
@@ -106,8 +128,10 @@ class TestEventBus:
 
     def test_unsubscribe(self):
         from pangu.memory.event_bus import Event
+
         received = []
-        handler = lambda e: received.append(e)
+        def handler(e):
+            return received.append(e)
         self.bus.subscribe("t", handler)
         self.bus.unsubscribe("t", handler)
         self.bus.publish(Event(type="t"))
@@ -115,6 +139,7 @@ class TestEventBus:
 
     def test_async_publish(self):
         from pangu.memory.event_bus import Event
+
         received = []
         self.bus.subscribe("async_test", lambda e: received.append(e))
         asyncio.run(self.bus.publish_async(Event(type="async_test")))
@@ -122,6 +147,7 @@ class TestEventBus:
 
     def test_clear(self):
         from pangu.memory.event_bus import Event
+
         self.bus.subscribe("x", lambda e: None)
         self.bus.publish(Event(type="x"))
         self.bus.clear()
@@ -129,6 +155,7 @@ class TestEventBus:
 
     def test_stats(self):
         from pangu.memory.event_bus import Event
+
         self.bus.subscribe("a", lambda e: None)
         self.bus.publish(Event(type="a"))
         s = self.bus.stats
@@ -137,6 +164,7 @@ class TestEventBus:
 
     def test_priority(self):
         from pangu.memory.event_bus import EventPriority
+
         assert EventPriority.URGENT.value > EventPriority.LOW.value
 
     def test_start_stop(self):
@@ -148,9 +176,11 @@ class TestEventBus:
 
 # ── FTS5SearchEngine ──
 
+
 class TestFTS5SearchEngine:
     def setup_method(self):
         from pangu.memory.fts_search import FTS5SearchEngine
+
         self.engine = FTS5SearchEngine()
 
     def test_build_index(self):
@@ -203,12 +233,14 @@ class TestFTS5SearchEngine:
 
     def test_cosine_similarity(self):
         from pangu.memory.fts_search import cosine_similarity
+
         assert cosine_similarity([1, 0, 0], [1, 0, 0]) == pytest.approx(1.0)
         assert cosine_similarity([1, 0], [0, 1]) == pytest.approx(0.0)
         assert cosine_similarity([], []) == 0.0
 
     def test_rrf_fuse(self):
         from pangu.memory.fts_search import _rrf_fuse
+
         fts = {"d1": 3.0, "d2": 2.0}
         vec = {"d1": 0.9, "d3": 0.8}
         fused = _rrf_fuse(fts, vec)
@@ -219,30 +251,38 @@ class TestFTS5SearchEngine:
 
 # ── Hologram ──
 
+
 class TestHologram:
     def test_hologram_get(self):
-        from pangu.memory.hologram import Hologram
         import numpy as np
+
+        from pangu.memory.hologram import Hologram
+
         h = Hologram(item_id="test", projections={"semantic": np.zeros(10)})
         assert h.get("semantic") is not None
         assert h.get("missing") is None
 
     def test_hologram_all_dims(self):
-        from pangu.memory.hologram import Hologram
         import numpy as np
+
+        from pangu.memory.hologram import Hologram
+
         h = Hologram(item_id="t", projections={"temporal": np.zeros(5), "emotional": np.zeros(5)})
         dims = h.all_dims()
         assert "temporal" in dims
         assert "emotional" in dims
 
     def test_hologram_byte_size(self):
-        from pangu.memory.hologram import Hologram
         import numpy as np
+
+        from pangu.memory.hologram import Hologram
+
         h = Hologram(item_id="t", projections={"a": np.zeros(10, dtype=np.float32)})
         assert h.byte_size == 40
 
     def test_temporal_encoder(self):
         from pangu.memory.hologram import TemporalEncoder
+
         enc = TemporalEncoder(dim=256)
         vec = enc.encode(created_at=datetime.now().isoformat(), wing="test", room="r1")
         assert len(vec) == 256
@@ -250,6 +290,7 @@ class TestHologram:
 
     def test_emotional_encoder(self):
         from pangu.memory.hologram import EmotionalEncoder
+
         enc = EmotionalEncoder(dim=128)
         vec = enc.encode(valence=0.5, arousal=0.3, dominance=0.7)
         assert len(vec) == 128
@@ -257,18 +298,21 @@ class TestHologram:
 
     def test_causal_encoder(self):
         from pangu.memory.hologram import CausalEncoder
+
         enc = CausalEncoder(dim=256)
         vec = enc.encode("some causal text")
         assert len(vec) == 256
 
     def test_causal_encoder_empty(self):
         from pangu.memory.hologram import CausalEncoder
+
         enc = CausalEncoder()
         vec = enc.encode("")
         assert all(v == 0.0 for v in vec)
 
     def test_source_encoder(self):
         from pangu.memory.hologram import SourceEncoder
+
         enc = SourceEncoder(dim=128)
         vec = enc.encode(source_type="file", agent_id="agent1")
         assert len(vec) == 128
@@ -276,12 +320,18 @@ class TestHologram:
 
     def test_holographic_encoder_encode(self):
         from pangu.memory.hologram import HolographicEncoder
+
         enc = HolographicEncoder()
         holo = enc.encode(
-            item_id="test1", raw_text="hello world",
-            created_at=datetime.now().isoformat(), wing="test",
-            valence=0.1, arousal=0.2, dominance=0.5,
-            causal_summary="because of x", source_type="direct",
+            item_id="test1",
+            raw_text="hello world",
+            created_at=datetime.now().isoformat(),
+            wing="test",
+            valence=0.1,
+            arousal=0.2,
+            dominance=0.5,
+            causal_summary="because of x",
+            source_type="direct",
         )
         assert holo.item_id == "test1"
         assert "temporal" in holo.projections
@@ -291,6 +341,7 @@ class TestHologram:
 
     def test_holographic_search_empty(self):
         from pangu.memory.hologram import HolographicSearch
+
         search = HolographicSearch()
         results = search.search("query", [])
         assert results == []
@@ -298,9 +349,11 @@ class TestHologram:
 
 # ── ImportanceScorer ──
 
+
 class TestImportanceScorer:
     def setup_method(self):
         from pangu.memory.importance_scorer import ImportanceScorer
+
         self.scorer = ImportanceScorer()
 
     def test_score_basic(self):
@@ -341,11 +394,12 @@ class TestImportanceScorer:
 
 # ── Ingestion ──
 
+
 class TestIngestion:
     def test_remember_basic(self):
         from pangu.memory.ingestion import remember
-        item_id, drawer = remember(raw_text="test memory content", wing="test", room="general",
-                                   _skip_index_update=True)
+
+        item_id, drawer = remember(raw_text="test memory content", wing="test", room="general", _skip_index_update=True)
         assert item_id
         assert isinstance(drawer, Drawer)
         assert drawer.wing == "test"
@@ -353,31 +407,37 @@ class TestIngestion:
 
     def test_remember_empty_raises(self):
         from pangu.memory.ingestion import remember
+
         with pytest.raises(ValueError):
             remember(raw_text="")
 
     def test_remember_invalid_importance(self):
         from pangu.memory.ingestion import remember
+
         with pytest.raises(ValueError):
             remember(raw_text="hello", importance=2.0)
 
     def test_remember_with_tags(self):
         from pangu.memory.ingestion import remember
+
         _, d = remember(raw_text="tagged memory", tags=["a", "b"])
         assert "a" in d.tags
 
     def test_remember_importance_scaling(self):
         from pangu.memory.ingestion import remember
+
         _, d = remember(raw_text="importance test", importance=0.6)
         assert d.importance == pytest.approx(3.0, abs=0.01)
 
     def test_get_fusion_stats(self):
         from pangu.memory.ingestion import get_fusion_stats
+
         stats = get_fusion_stats()
         assert "count" in stats
 
     def test_maybe_decrypt(self):
         from pangu.memory.ingestion import maybe_decrypt
+
         d = _drawer(content="plain text")
         result = maybe_decrypt(d)
         assert result.content == "plain text"
@@ -385,13 +445,16 @@ class TestIngestion:
 
 # ── MemoryJudge ──
 
+
 class TestMemoryJudge:
     def setup_method(self):
         from pangu.memory.judge import MemoryJudge
+
         self.judge = MemoryJudge()
 
     def test_fallback_when_no_llm(self):
         from pangu.memory.judge import JudgmentVerdict
+
         try:
             result = self.judge.evaluate("code", "refactor module", "summary of changes")
             assert result.verdict in [JudgmentVerdict.A, JudgmentVerdict.B, JudgmentVerdict.C]
@@ -400,6 +463,7 @@ class TestMemoryJudge:
 
     def test_parse_reply_valid(self):
         from pangu.memory.judge import JudgmentVerdict
+
         reply = '{"verdict": "A", "reasoning": "high value", "confidence": 0.9, "tags": ["x"], "importance": 0.8}'
         result = self.judge._parse_reply(reply)
         assert result.verdict == JudgmentVerdict.A
@@ -407,17 +471,22 @@ class TestMemoryJudge:
 
     def test_parse_reply_invalid(self):
         from pangu.memory.judge import JudgmentVerdict
+
         result = self.judge._parse_reply(None)
         assert result.verdict == JudgmentVerdict.B
         assert result.confidence == 0.3
 
     def test_parse_reply_embedded_json(self):
         from pangu.memory.judge import JudgmentVerdict
-        result = self.judge._parse_reply('Here is the result: {"verdict": "C", "reasoning": "r", "confidence": 0.4, "tags": [], "importance": 0.3}')
+
+        result = self.judge._parse_reply(
+            'Here is the result: {"verdict": "C", "reasoning": "r", "confidence": 0.4, "tags": [], "importance": 0.3}'
+        )
         assert result.verdict == JudgmentVerdict.C
 
     def test_apply_verdict_a(self):
-        from pangu.memory.judge import MemoryJudge, JudgmentResult, JudgmentVerdict
+        from pangu.memory.judge import JudgmentResult, JudgmentVerdict
+
         jr = JudgmentResult(verdict=JudgmentVerdict.A, suggested_importance=0.8, suggested_tags=["tag1"])
         result = self.judge.apply_verdict(jr, "content")
         assert result["wing"] == "longterm"
@@ -425,12 +494,14 @@ class TestMemoryJudge:
 
     def test_apply_verdict_b_with_agent(self):
         from pangu.memory.judge import JudgmentResult, JudgmentVerdict
+
         jr = JudgmentResult(verdict=JudgmentVerdict.B, suggested_importance=0.5)
         result = self.judge.apply_verdict(jr, "content", agent_id="agent1")
         assert result["wing"] == "agent1_agent"
 
     def test_apply_verdict_c(self):
         from pangu.memory.judge import JudgmentResult, JudgmentVerdict
+
         jr = JudgmentResult(verdict=JudgmentVerdict.C, suggested_importance=0.1)
         result = self.judge.apply_verdict(jr, "content")
         assert "待复盘" in result["tags"]
@@ -445,10 +516,12 @@ class TestMemoryJudge:
 
 # ── LifecycleManager ──
 
+
 class TestLifecycleManager:
     def setup_method(self):
-        from pangu.memory.lifecycle import LifecycleManager
         from pangu.core.config import PanguConfig
+        from pangu.memory.lifecycle import LifecycleManager
+
         self.config = PanguConfig.load()
         self.manager = LifecycleManager(self.config)
 
@@ -465,6 +538,7 @@ class TestLifecycleManager:
 
     def test_needs_index_rebuild_recent(self):
         import time
+
         self.manager._last_index_rebuild = time.time()
         assert self.manager.needs_index_rebuild() is False
 
@@ -500,9 +574,11 @@ class TestLifecycleManager:
 
 # ── Lifespan ──
 
+
 class TestLifespan:
     def setup_method(self):
         from pangu.memory.lifespan import Lifespan
+
         self.lifespan = Lifespan()
 
     def test_init(self):
@@ -538,6 +614,7 @@ class TestLifespan:
 
     def test_spawn_background(self):
         import threading
+
         self.lifespan.start()
         event = threading.Event()
         self.lifespan.spawn_background(target=event.set, name="test_bg")
@@ -546,6 +623,7 @@ class TestLifespan:
 
     def test_get_lifespan_singleton(self):
         from pangu.memory.lifespan import get_lifespan
+
         l1 = get_lifespan()
         l2 = get_lifespan()
         assert l1 is l2
@@ -553,10 +631,12 @@ class TestLifespan:
 
 # ── MemoryValidator ──
 
+
 class TestMemoryValidator:
     def setup_method(self):
-        from pangu.memory.memory_validator import MemoryValidator
         from pangu.core.config import PanguConfig
+        from pangu.memory.memory_validator import MemoryValidator
+
         self.validator = MemoryValidator(PanguConfig.load())
 
     def test_validate_single_short(self):
@@ -592,9 +672,11 @@ class TestMemoryValidator:
 
 # ── NaturalLanguageQuery ──
 
+
 class TestNaturalLanguageQuery:
     def setup_method(self):
         from pangu.memory.natural_query import NaturalLanguageQuery
+
         self.parser = NaturalLanguageQuery()
 
     def test_parse_empty(self):
@@ -653,9 +735,11 @@ class TestNaturalLanguageQuery:
 
 # ── MemoryRecommender ──
 
+
 class TestMemoryRecommender:
     def setup_method(self):
         from pangu.memory.natural_query import MemoryRecommender
+
         self.recommender = MemoryRecommender()
 
     def test_recommend_empty(self):
@@ -663,8 +747,11 @@ class TestMemoryRecommender:
 
     def test_fallback_recommend(self):
         from pangu.memory.natural_query import MemoryRecommender
-        drawers = [_drawer(id="d1", importance=4.0, created_at=datetime.now().isoformat()),
-                    _drawer(id="d2", importance=2.0, created_at=datetime.now().isoformat())]
+
+        drawers = [
+            _drawer(id="d1", importance=4.0, created_at=datetime.now().isoformat()),
+            _drawer(id="d2", importance=2.0, created_at=datetime.now().isoformat()),
+        ]
         r = MemoryRecommender(drawers)
         results = r._fallback_recommend(1)
         assert len(results) == 1
@@ -672,6 +759,7 @@ class TestMemoryRecommender:
 
     def test_generate_reason(self):
         from pangu.memory.natural_query import MemoryRecommender
+
         r = MemoryRecommender()
         assert r._generate_reason(None, 0.9) == "高度相关"
         assert r._generate_reason(None, 0.7) == "较为相关"
@@ -680,12 +768,14 @@ class TestMemoryRecommender:
 
     def test_time_decay_score(self):
         from pangu.memory.natural_query import MemoryRecommender
+
         r = MemoryRecommender()
         d = _drawer(created_at=datetime.now().isoformat())
         assert r._time_decay_score(d) == 1.0
 
     def test_time_decay_score_old(self):
         from pangu.memory.natural_query import MemoryRecommender
+
         r = MemoryRecommender()
         d = _drawer(created_at=(datetime.now() - timedelta(days=30)).isoformat())
         score = r._time_decay_score(d)
@@ -693,6 +783,7 @@ class TestMemoryRecommender:
 
     def test_cosine_similarity(self):
         from pangu.memory.natural_query import MemoryRecommender
+
         r = MemoryRecommender()
         assert r._cosine_similarity([1, 0, 0], [1, 0, 0]) == pytest.approx(1.0)
         assert r._cosine_similarity([], []) == 0.0
@@ -700,15 +791,18 @@ class TestMemoryRecommender:
 
 # ── NaturalLanguageSearch integration ──
 
+
 class TestNaturalLanguageSearch:
     def test_search_intent(self):
         from pangu.memory.natural_query import natural_language_search
+
         drawers = [_drawer(id="d1", content="python tip")]
         result = natural_language_search("查找 python", drawers)
         assert isinstance(result, list)
 
     def test_analysis_intent(self):
         from pangu.memory.natural_query import natural_language_search
+
         drawers = [_drawer(id="d1", wing="tech"), _drawer(id="d2", wing="work")]
         result = natural_language_search("统计有多少条", drawers)
         assert len(result) == 1
@@ -717,6 +811,7 @@ class TestNaturalLanguageSearch:
 
     def test_timeline_intent(self):
         from pangu.memory.natural_query import natural_language_search
+
         d = _drawer(id="d1", created_at=datetime.now().isoformat())
         result = natural_language_search("时间线", [d])
         assert len(result) == 1

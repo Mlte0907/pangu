@@ -8,6 +8,7 @@
 注意：多模态内容理解（OCR、语音转文字）需要额外的 LMM 支持，
 盘古提供基础的多模态数据结构，实际理解由上层 Agent 完成。
 """
+
 import base64
 import hashlib
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 @dataclass
 class MultimodalMemory:
     """多模态记忆片段"""
+
     id: str
     content: str  # 文本描述/摘要
     modality: str  # text, image, audio, file
@@ -153,8 +155,9 @@ class MultimodalExtractor:
     def __init__(self):
         pass
 
-    def extract_from_file(self, file_path: str, wing: str = "default",
-                          room: str = None, tags: list[str] = None) -> MultimodalMemory:
+    def extract_from_file(
+        self, file_path: str, wing: str = "default", room: str = None, tags: list[str] = None
+    ) -> MultimodalMemory:
         """从文件提取多模态记忆"""
         path = Path(file_path)
         if not path.exists():
@@ -187,6 +190,7 @@ class MultimodalExtractor:
         if modality == "image":
             try:
                 from PIL import Image
+
                 with Image.open(file_path) as img:
                     memory.image_width = img.width
                     memory.image_height = img.height
@@ -198,15 +202,17 @@ class MultimodalExtractor:
     def _extract_single_file(self, file_path: Path, wing: str, tags: list[str]) -> MultimodalMemory | None:
         try:
             return self.extract_from_file(
-                str(file_path), wing=wing,
+                str(file_path),
+                wing=wing,
                 room=file_path.parent.name,
                 tags=tags,
             )
         except Exception:
             return None
 
-    def extract_from_directory(self, dir_path: str, wing: str = "default",
-                               recursive: bool = True, tags: list[str] = None) -> list[MultimodalMemory]:
+    def extract_from_directory(
+        self, dir_path: str, wing: str = "default", recursive: bool = True, tags: list[str] = None
+    ) -> list[MultimodalMemory]:
         """从目录批量提取多模态记忆"""
         path = Path(dir_path)
         if not path.is_dir():

@@ -6,8 +6,8 @@
 3. 自动失效：5 分钟后自动清除
 4. 可配置：TTL 和缓存大小可调
 """
+
 import hashlib
-import json
 import logging
 import time
 from collections import OrderedDict

@@ -7,13 +7,11 @@
 4. 长度优化：截断过长、补全过短的记忆
 5. 批量修复：一键修复所有质量问题
 """
+
 import json
 import logging
 import re
-import time
-from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
@@ -39,7 +37,23 @@ class QualityPipeline:
     """记忆质量管道"""
 
     TAG_KEYWORDS = {
-        "tech": ["代码", "python", "java", "docker", "git", "api", "bug", "修复", "部署", "配置", "数据库", "服务器", "git", "npm", "pip"],
+        "tech": [
+            "代码",
+            "python",
+            "java",
+            "docker",
+            "git",
+            "api",
+            "bug",
+            "修复",
+            "部署",
+            "配置",
+            "数据库",
+            "服务器",
+            "git",
+            "npm",
+            "pip",
+        ],
         "project": ["任务", "计划", "进度", "交付", "里程碑", "排期", "需求", "功能"],
         "team": ["会议", "讨论", "决策", "分工", "协作", "沟通"],
         "product": ["用户", "体验", "产品", "设计", "原型", "PRD"],
@@ -75,26 +89,39 @@ class QualityPipeline:
         if not content:
             return 0.0
 
-        if len(content) < 30: score -= 20
-        elif len(content) > 100: score += 5
-        elif len(content) > 300: score += 10
+        if len(content) < 30:
+            score -= 20
+        elif len(content) > 100:
+            score += 5
+        elif len(content) > 300:
+            score += 10
 
-        if not drawer.tags or len(drawer.tags) == 0: score -= 15
-        elif len(drawer.tags) >= 2: score += 5
+        if not drawer.tags or len(drawer.tags) == 0:
+            score -= 15
+        elif len(drawer.tags) >= 2:
+            score += 5
 
-        if drawer.importance >= 4.0: score += 10
-        elif drawer.importance < 2.0: score -= 10
+        if drawer.importance >= 4.0:
+            score += 10
+        elif drawer.importance < 2.0:
+            score -= 10
 
-        if "```" in content: score += 5
-        if re.search(r'https?://', content): score += 3
-        if re.search(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}', content): score += 3
+        if "```" in content:
+            score += 5
+        if re.search(r"https?://", content):
+            score += 3
+        if re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", content):
+            score += 3
 
-        if content == content.upper() and len(content) > 10: score -= 15
+        if content == content.upper() and len(content) > 10:
+            score -= 15
 
         has_structure = any(c in content for c in ["#", "-", "*", "|", "1.", "2."])
-        if has_structure: score += 5
+        if has_structure:
+            score += 5
 
-        if content.startswith(("TODO", "FIXME", "HACK", "test")): score -= 10
+        if content.startswith(("TODO", "FIXME", "HACK", "test")):
+            score -= 10
 
         return max(0.0, min(100.0, score))
 
@@ -155,8 +182,10 @@ class QualityPipeline:
             report.scored += 1
             if not d.tags or len(d.tags) == 0:
                 tagless += 1
-            if s < 40: report.low_quality += 1
-            elif s >= 80: report.high_quality += 1
+            if s < 40:
+                report.low_quality += 1
+            elif s >= 80:
+                report.high_quality += 1
 
         if scores:
             report.avg_score = sum(scores) / len(scores)
@@ -166,10 +195,14 @@ class QualityPipeline:
         report.merged = sum(len(g) - 1 for g in dups)
 
         for s in scores:
-            if s < 40: report.score_distribution["poor"] += 1
-            elif s < 60: report.score_distribution["fair"] += 1
-            elif s < 80: report.score_distribution["good"] += 1
-            else: report.score_distribution["excellent"] += 1
+            if s < 40:
+                report.score_distribution["poor"] += 1
+            elif s < 60:
+                report.score_distribution["fair"] += 1
+            elif s < 80:
+                report.score_distribution["good"] += 1
+            else:
+                report.score_distribution["excellent"] += 1
 
         return report
 
@@ -189,15 +222,17 @@ class QualityPipeline:
                 changed = True
 
             s = self.score_memory(d)
-            if s < 40: report.low_quality += 1
-            elif s >= 80: report.high_quality += 1
+            if s < 40:
+                report.low_quality += 1
+            elif s >= 80:
+                report.high_quality += 1
 
             report.scored += 1
 
         dups = self.find_duplicates(drawers)
         dup_ids = set()
         for group in dups:
-            keep = group[0]
+            group[0]
             for gid in group[1:]:
                 dup_ids.add(gid)
             report.merged += len(group) - 1
@@ -214,10 +249,14 @@ class QualityPipeline:
             report.avg_score = sum(scores) / len(scores)
 
         for s in scores:
-            if s < 40: report.score_distribution["poor"] += 1
-            elif s < 60: report.score_distribution["fair"] += 1
-            elif s < 80: report.score_distribution["good"] += 1
-            else: report.score_distribution["excellent"] += 1
+            if s < 40:
+                report.score_distribution["poor"] += 1
+            elif s < 60:
+                report.score_distribution["fair"] += 1
+            elif s < 80:
+                report.score_distribution["good"] += 1
+            else:
+                report.score_distribution["excellent"] += 1
 
         return report
 

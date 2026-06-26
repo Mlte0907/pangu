@@ -1,7 +1,7 @@
 """盘古启动预热 — 消除首次查询冷启动延迟"""
-import time
+
 import logging
-from pathlib import Path
+import time
 
 logger = logging.getLogger("pangu.warmup")
 
@@ -11,6 +11,7 @@ def warmup_jieba():
     t0 = time.perf_counter()
     try:
         import jieba
+
         jieba.setLogLevel(logging.WARNING)
         # 预热：强制加载词典
         jieba.cut("盘古记忆系统预热测试")
@@ -26,6 +27,7 @@ def warmup_onnx():
     t0 = time.perf_counter()
     try:
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         embedder = ONNXEmbedder()
         embedder.embed("预热")
         elapsed = (time.perf_counter() - t0) * 1000
@@ -40,9 +42,9 @@ def warmup_fts_index():
     """预热 FTS 索引"""
     t0 = time.perf_counter()
     try:
+        from pangu.core.config import PanguConfig
         from pangu.memory.fts_search import FTS5SearchEngine
         from pangu.memory.layers import MemoryStack
-        from pangu.core.config import PanguConfig
 
         config = PanguConfig.load()
         stack = MemoryStack(config)
@@ -63,6 +65,7 @@ def warmup_vector_index():
     t0 = time.perf_counter()
     try:
         from pangu.memory.vector_index import get_vector_index
+
         idx = get_vector_index()
         logger.info(f"向量索引预热完成: {(time.perf_counter() - t0) * 1000:.0f}ms (size={idx.size})")
         return (time.perf_counter() - t0) * 1000

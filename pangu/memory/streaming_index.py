@@ -53,8 +53,7 @@ class StreamingIndexer:
         """
         new_items = self.scan_new(drawers)
         if not new_items:
-            return {"status": "idle", "scanned": 0, "indexed": 0,
-                    "timestamp": datetime.now().isoformat()}
+            return {"status": "idle", "scanned": 0, "indexed": 0, "timestamp": datetime.now().isoformat()}
 
         # 写入 WAL
         wal_entries = self._write_wal(new_items, embedder)

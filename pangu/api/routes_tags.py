@@ -1,5 +1,5 @@
 """盘古标签管理 API — CRUD + 统计 + 合并 + 推荐"""
-import json
+
 import logging
 import sqlite3
 import threading
@@ -8,7 +8,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from pangu.core.config import config
 
@@ -66,6 +65,7 @@ _init_db()
 
 # ── 请求/响应模型 ──
 
+
 class TagCreateRequest(BaseModel):
     name: str = Field(..., description="标签名称")
     description: str = Field(default="", description="标签描述")
@@ -85,6 +85,7 @@ class TagMergeRequest(BaseModel):
 
 # ── CRUD 路由 ──
 
+
 @router.post("/tags")
 async def create_tag(req: TagCreateRequest) -> dict:
     """创建标签"""
@@ -95,7 +96,7 @@ async def create_tag(req: TagCreateRequest) -> dict:
         try:
             conn.execute(
                 "INSERT OR REPLACE INTO tags (id, name, description, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (tag_id, req.name, req.description, req.color, now, now)
+                (tag_id, req.name, req.description, req.color, now, now),
             )
             conn.commit()
         finally:
@@ -115,14 +116,10 @@ async def list_tags(
         try:
             if search:
                 rows = conn.execute(
-                    "SELECT * FROM tags WHERE name LIKE ? ORDER BY usage_count DESC LIMIT ?",
-                    (f"%{search}%", limit)
+                    "SELECT * FROM tags WHERE name LIKE ? ORDER BY usage_count DESC LIMIT ?", (f"%{search}%", limit)
                 ).fetchall()
             else:
-                rows = conn.execute(
-                    "SELECT * FROM tags ORDER BY usage_count DESC LIMIT ?",
-                    (limit,)
-                ).fetchall()
+                rows = conn.execute("SELECT * FROM tags ORDER BY usage_count DESC LIMIT ?", (limit,)).fetchall()
             tags = [dict(row) for row in rows]
             return {"code": 0, "data": {"items": tags, "total": len(tags)}}
         finally:
@@ -193,6 +190,7 @@ async def delete_tag(tag_id: str) -> dict:
 
 # ── 统计 ──
 
+
 @router.get("/tags/stats/summary")
 async def get_tag_stats() -> dict:
     """获取标签统计"""
@@ -200,15 +198,13 @@ async def get_tag_stats() -> dict:
         conn = _get_db()
         try:
             total = conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0]
-            top_tags = conn.execute(
-                "SELECT name, usage_count FROM tags ORDER BY usage_count DESC LIMIT 10"
-            ).fetchall()
+            top_tags = conn.execute("SELECT name, usage_count FROM tags ORDER BY usage_count DESC LIMIT 10").fetchall()
             return {
                 "code": 0,
                 "data": {
                     "total_tags": total,
                     "top_tags": [{"name": t[0], "count": t[1]} for t in top_tags],
-                }
+                },
             }
         finally:
             conn.close()
@@ -222,7 +218,7 @@ async def increment_usage(tag_id: str) -> dict:
         try:
             conn.execute(
                 "UPDATE tags SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?",
-                (datetime.now().isoformat(), tag_id)
+                (datetime.now().isoformat(), tag_id),
             )
             conn.commit()
             row = conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,)).fetchone()
@@ -234,6 +230,7 @@ async def increment_usage(tag_id: str) -> dict:
 
 
 # ── 合并 ──
+
 
 @router.post("/tags/merge")
 async def merge_tags(req: TagMergeRequest) -> dict:
@@ -248,7 +245,7 @@ async def merge_tags(req: TagMergeRequest) -> dict:
                 target_id = f"tag-{req.target_tag.lower().replace(' ', '-')}"
                 conn.execute(
                     "INSERT OR REPLACE INTO tags (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                    (target_id, req.target_tag, now, now)
+                    (target_id, req.target_tag, now, now),
                 )
             else:
                 target_id = target["id"]
@@ -263,7 +260,7 @@ async def merge_tags(req: TagMergeRequest) -> dict:
 
             conn.execute(
                 "UPDATE tags SET usage_count = usage_count + ?, updated_at = ? WHERE id = ?",
-                (total_usage, datetime.now().isoformat(), target_id)
+                (total_usage, datetime.now().isoformat(), target_id),
             )
             conn.commit()
             return {"code": 0, "data": {"merged": len(req.source_tags), "target": req.target_tag}}
@@ -272,6 +269,7 @@ async def merge_tags(req: TagMergeRequest) -> dict:
 
 
 # ── 推荐 ──
+
 
 @router.get("/tags/suggest")
 async def suggest_tags(

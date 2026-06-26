@@ -7,6 +7,7 @@
 4. 选择性遗忘：基于重要性/时效/访问频率智能遗忘
 5. 遗忘效果追踪：追踪遗忘后的系统改善
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,7 @@ logger = logging.getLogger("pangu.memory.adaptive_forgetting")
 @dataclass
 class ForgettingDecision:
     """遗忘决策"""
+
     memory_id: str
     action: str  # keep / archive / compress / forget
     reason: str
@@ -28,6 +30,7 @@ class ForgettingDecision:
 @dataclass
 class ForgettingReport:
     """遗忘报告"""
+
     total_evaluated: int
     keep_count: int
     archive_count: int
@@ -65,8 +68,7 @@ class AdaptiveForgetting:
             return 0.4
         return 0.1
 
-    def evaluate_memory(self, drawer, access_count: int = 0,
-                        days_since_access: int = 0) -> ForgettingDecision:
+    def evaluate_memory(self, drawer, access_count: int = 0, days_since_access: int = 0) -> ForgettingDecision:
         imp_norm = drawer.importance / 5.0
         content_len = len(drawer.content)
 
@@ -130,24 +132,28 @@ class AdaptiveForgetting:
                 continue
 
             if decision.action == "archive":
-                self._archive.append({
-                    "id": d.id,
-                    "content": d.content[:200],
-                    "wing": d.wing,
-                    "importance": d.importance,
-                    "archived_at": datetime.now().isoformat(),
-                })
+                self._archive.append(
+                    {
+                        "id": d.id,
+                        "content": d.content[:200],
+                        "wing": d.wing,
+                        "importance": d.importance,
+                        "archived_at": datetime.now().isoformat(),
+                    }
+                )
                 archived.append(d.id)
 
             elif decision.action == "forget":
                 forgotten.append(d.id)
 
-        self._forgetting_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "evaluated": report.total_evaluated,
-            "archived": len(archived),
-            "forgotten": len(forgotten),
-        })
+        self._forgetting_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "evaluated": report.total_evaluated,
+                "archived": len(archived),
+                "forgotten": len(forgotten),
+            }
+        )
 
         return {
             "evaluated": report.total_evaluated,

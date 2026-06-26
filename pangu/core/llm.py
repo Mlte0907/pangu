@@ -19,6 +19,7 @@
 - JSON 模式：原生 response_format 支持
 - 自动重试：失败时指数退避
 """
+
 import asyncio
 import hashlib
 import json
@@ -55,6 +56,7 @@ if not _warmup_logger.handlers:
 @dataclass
 class LLMResponse:
     """LMM 响应"""
+
     content: str
     model: str = ""
     usage: dict = field(default_factory=dict)
@@ -147,6 +149,7 @@ class LLMEngine:
         if config is not None and self._cache_enabled and getattr(config, "llm_cache_persist", True):
             try:
                 from .cache import PersistentCache
+
                 self._persistent_cache = PersistentCache(
                     db_path=getattr(config, "llm_cache_persist_path", "") or "",
                     ttl_days=getattr(config, "llm_cache_ttl_days", 7),
@@ -190,8 +193,12 @@ class LLMEngine:
         return PROVIDER_URLS.get(provider, "https://api.openai.com/v1")
 
     async def _call_openai_compatible(
-        self, provider: str, messages: list[dict], system: str = "",
-        temperature: float = 0.7, max_tokens: int = 4096,
+        self,
+        provider: str,
+        messages: list[dict],
+        system: str = "",
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
         json_mode: bool = False,
     ) -> LLMResponse:
         """调用 OpenAI 兼容 API（OpenAI, DeepSeek, OpenRouter, 智谱, 通义千问, Ollama）
@@ -279,8 +286,11 @@ class LLMEngine:
             )
 
     async def _call_anthropic(
-        self, messages: list[dict], system: str = "",
-        temperature: float = 0.7, max_tokens: int = 4096,
+        self,
+        messages: list[dict],
+        system: str = "",
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
     ) -> LLMResponse:
         """调用 Anthropic Messages API"""
         api_key = self._get_api_key("anthropic")
@@ -293,10 +303,12 @@ class LLMEngine:
 
         anthropic_messages = []
         for msg in messages:
-            anthropic_messages.append({
-                "role": msg["role"],
-                "content": [{"type": "text", "text": msg["content"]}],
-            })
+            anthropic_messages.append(
+                {
+                    "role": msg["role"],
+                    "content": [{"type": "text", "text": msg["content"]}],
+                }
+            )
 
         payload = {
             "model": self.config.llm_model,
@@ -375,9 +387,8 @@ class LLMEngine:
                 self._cache.move_to_end(cache_key)
                 # 累计节省的 token（粗略估计：按 usage 中的 prompt+completion）
                 if cached.usage:
-                    self._tokens_saved += (
-                        cached.usage.get("prompt_tokens", 0)
-                        + cached.usage.get("completion_tokens", 0)
+                    self._tokens_saved += cached.usage.get("prompt_tokens", 0) + cached.usage.get(
+                        "completion_tokens", 0
                     )
                 return cached
             # 1b) 再查持久化缓存
@@ -389,10 +400,9 @@ class LLMEngine:
                         self._cache_disk_hits += 1
                         # 累计节省的 token
                         if disk_entry.response.usage:
-                            self._tokens_saved += (
-                                disk_entry.response.usage.get("prompt_tokens", 0)
-                                + disk_entry.response.usage.get("completion_tokens", 0)
-                            )
+                            self._tokens_saved += disk_entry.response.usage.get(
+                                "prompt_tokens", 0
+                            ) + disk_entry.response.usage.get("completion_tokens", 0)
                         # 提升到内存缓存
                         self._put_cache(cache_key, disk_entry.response)
                         return disk_entry.response
@@ -405,9 +415,7 @@ class LLMEngine:
         provider = self.config.llm_provider.lower()
         response = None
         for attempt in range(self.config.llm_max_retries):
-            response = await self._do_chat(
-                provider, messages, system, temperature, max_tokens, json_mode
-            )
+            response = await self._do_chat(provider, messages, system, temperature, max_tokens, json_mode)
             # JSON 模式：解析失败时重试
             if json_mode and not response.content.startswith("[LMM"):
                 parsed = self._extract_json(response.content, default=None)
@@ -443,20 +451,26 @@ class LLMEngine:
         return response
 
     async def _do_chat(
-        self, provider: str, messages: list[dict], system: str = "",
-        temperature: float = 0.7, max_tokens: int = 4096, json_mode: bool = False,
+        self,
+        provider: str,
+        messages: list[dict],
+        system: str = "",
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """执行实际的 LLM 调用"""
         if provider == "anthropic":
             return await self._call_anthropic(messages, system, temperature, max_tokens)
         else:
-            return await self._call_openai_compatible(
-                provider, messages, system, temperature, max_tokens, json_mode
-            )
+            return await self._call_openai_compatible(provider, messages, system, temperature, max_tokens, json_mode)
 
     async def stream_chat(
-        self, messages: list[dict], system: str = "",
-        temperature: float = 0.7, max_tokens: int = 4096,
+        self,
+        messages: list[dict],
+        system: str = "",
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
     ) -> AsyncGenerator[str, None]:
         """流式聊天 — 逐 token 返回"""
         provider = self.config.llm_provider.lower()
@@ -482,8 +496,10 @@ class LLMEngine:
 
         try:
             async with self.client.stream(
-                "POST", f"{base_url}/chat/completions",
-                json=payload, headers=headers,
+                "POST",
+                f"{base_url}/chat/completions",
+                json=payload,
+                headers=headers,
             ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
@@ -509,10 +525,9 @@ class LLMEngine:
         if not memories:
             return "暂无记忆。"
 
-        memory_text = "\n\n---\n\n".join([
-            f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:1000]}"
-            for m in memories[:10]
-        ])
+        memory_text = "\n\n---\n\n".join(
+            [f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:1000]}" for m in memories[:10]]
+        )
 
         system = """你是盘古记忆系统的智能摘要引擎。请将以下记忆片段总结为简洁的摘要。
 要求：
@@ -550,23 +565,21 @@ class LLMEngine:
             json_mode=True,
         )
 
-        return self._extract_json(response.content, default={
-            "hall": "hall_events", "room": "general", "importance": 3, "tags": []
-        })
+        return self._extract_json(
+            response.content, default={"hall": "hall_events", "room": "general", "importance": 3, "tags": []}
+        )
 
     async def generate_wiki_page(self, title: str, memories: list[dict], existing_pages: list[dict] = None) -> dict:
         """从记忆片段生成 Wiki 页面"""
-        memory_text = "\n\n---\n\n".join([
-            f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:1500]}"
-            for m in memories[:8]
-        ])
+        memory_text = "\n\n---\n\n".join(
+            [f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:1500]}" for m in memories[:8]]
+        )
 
         existing_context = ""
         if existing_pages:
-            existing_context = "\n\n已存在的相关页面：\n" + "\n".join([
-                f"- {p.get('title', '')}: {p.get('summary', '')[:200]}"
-                for p in existing_pages[:5]
-            ])
+            existing_context = "\n\n已存在的相关页面：\n" + "\n".join(
+                [f"- {p.get('title', '')}: {p.get('summary', '')[:200]}" for p in existing_pages[:5]]
+            )
 
         system = """你是盘古记忆系统的 Wiki 生成引擎。请根据记忆片段生成一个知识页面。
 
@@ -587,16 +600,21 @@ class LLMEngine:
 }"""
 
         response = await self.chat(
-            messages=[{"role": "user", "content": f"请为以下记忆生成 Wiki 页面：\n\n主题：{title}\n\n记忆片段：\n{memory_text}{existing_context}"}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"请为以下记忆生成 Wiki 页面：\n\n主题：{title}\n\n记忆片段：\n{memory_text}{existing_context}",
+                }
+            ],
             system=system,
             temperature=0.5,
             max_tokens=2000,
             json_mode=True,
         )
 
-        return self._extract_json(response.content, default={
-            "title": title, "summary": "", "content": "", "linked_pages": [], "tags": []
-        })
+        return self._extract_json(
+            response.content, default={"title": title, "summary": "", "content": "", "linked_pages": [], "tags": []}
+        )
 
     async def detect_links(self, page: dict, all_pages: list[dict]) -> list[str]:
         """检测页面之间的关联"""
@@ -604,13 +622,15 @@ class LLMEngine:
 
 返回 JSON 格式：{"linked_titles": ["关联页面标题1", "关联页面标题2"]}"""
 
-        all_pages_text = "\n".join([
-            f"- {p.get('title', '')}: {p.get('summary', '')[:100]}"
-            for p in all_pages[:20]
-        ])
+        all_pages_text = "\n".join([f"- {p.get('title', '')}: {p.get('summary', '')[:100]}" for p in all_pages[:20]])
 
         response = await self.chat(
-            messages=[{"role": "user", "content": f"当前页面：\n标题：{page.get('title', '')}\n摘要：{page.get('summary', '')}\n\n所有页面：\n{all_pages_text}"}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"当前页面：\n标题：{page.get('title', '')}\n摘要：{page.get('summary', '')}\n\n所有页面：\n{all_pages_text}",
+                }
+            ],
             system=system,
             temperature=0.3,
             max_tokens=500,
@@ -620,10 +640,9 @@ class LLMEngine:
 
     async def generate_insight(self, memories: list[dict]) -> str:
         """从记忆中生成洞察"""
-        memory_text = "\n\n".join([
-            f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:800]}"
-            for m in memories[:5]
-        ])
+        memory_text = "\n\n".join(
+            [f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:800]}" for m in memories[:5]]
+        )
 
         system = """你是盘古记忆系统的洞察引擎。请从以下记忆片段中提取洞察。
 
@@ -642,10 +661,9 @@ class LLMEngine:
 
     async def compress_memories(self, memories: list[dict], target_count: int = 5) -> str:
         """将多条记忆压缩为精简摘要"""
-        memory_text = "\n\n---\n\n".join([
-            f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:500]}"
-            for m in memories[:20]
-        ])
+        memory_text = "\n\n---\n\n".join(
+            [f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:500]}" for m in memories[:20]]
+        )
 
         system = f"""你是盘古记忆压缩引擎。请将以下多条记忆片段压缩为 {target_count} 条精简摘要。
 要求：
@@ -665,10 +683,12 @@ class LLMEngine:
 
     async def detect_associations(self, memories: list[dict]) -> list[dict]:
         """自动检测记忆之间的关联"""
-        memory_text = "\n\n---\n\n".join([
-            f"[{i}] [{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:300]}"
-            for i, m in enumerate(memories[:10])
-        ])
+        memory_text = "\n\n---\n\n".join(
+            [
+                f"[{i}] [{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:300]}"
+                for i, m in enumerate(memories[:10])
+            ]
+        )
 
         system = """你是盘古记忆关联引擎。请分析以下记忆片段，找出它们之间的关联。
 
@@ -785,9 +805,7 @@ class LLMEngine:
     def get_stats(self) -> dict:
         """获取引擎统计信息（调用次数/延迟/token/成本/缓存）"""
         total_lookups = self._cache_hits + self._cache_misses
-        cache_hit_rate = (
-            self._cache_hits / total_lookups * 100 if total_lookups > 0 else 0.0
-        )
+        cache_hit_rate = self._cache_hits / total_lookups * 100 if total_lookups > 0 else 0.0
         stats = {
             "provider": self.config.llm_provider,
             "model": self.config.llm_model,
@@ -838,6 +856,7 @@ class LLMEngine:
              "duration_ms": 耗时, "skipped": bool}
         """
         import os as _os
+
         if self._persistent_cache is None:
             return {"skipped": True, "reason": "persistent cache disabled"}
         before_path = self._persistent_cache.db_path
@@ -877,18 +896,28 @@ class LLMEngine:
             await asyncio.sleep(interval_seconds)
             try:
                 result = self.vacuum_persistent_cache()
-                _warmup_logger.info(json.dumps({
-                    "ts": time.time(),
-                    "event": "llm_cache_vacuum",
-                    "interval_hours": interval_hours,
-                    **result,
-                }, ensure_ascii=False))
+                _warmup_logger.info(
+                    json.dumps(
+                        {
+                            "ts": time.time(),
+                            "event": "llm_cache_vacuum",
+                            "interval_hours": interval_hours,
+                            **result,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
             except Exception as e:
-                _warmup_logger.info(json.dumps({
-                    "ts": time.time(),
-                    "event": "llm_cache_vacuum",
-                    "error": str(e),
-                }, ensure_ascii=False))
+                _warmup_logger.info(
+                    json.dumps(
+                        {
+                            "ts": time.time(),
+                            "event": "llm_cache_vacuum",
+                            "error": str(e),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
 
     def auto_vacuum_on_start(self) -> dict:
         """启动时自动 VACUUM（如果配置启用）"""
@@ -941,7 +970,11 @@ class LLMEngine:
 
         if not prompts:
             return {
-                "total": 0, "warmed": 0, "skipped": 0, "failed": 0, "duration_ms": 0,
+                "total": 0,
+                "warmed": 0,
+                "skipped": 0,
+                "failed": 0,
+                "duration_ms": 0,
             }
 
         start = time.time()
@@ -950,9 +983,7 @@ class LLMEngine:
             "warmed": 0,
             "skipped": 0,
             "failed": 0,
-            "source": "auto" if prompts is getattr(
-                self.config, "llm_cache_warmup_prompts", None
-            ) else "manual",
+            "source": "auto" if prompts is getattr(self.config, "llm_cache_warmup_prompts", None) else "manual",
         }
 
         # 预过滤已存在的（基于缓存键）
@@ -1008,9 +1039,7 @@ class LLMEngine:
             预热记录列表，按时间倒序
         """
         if not log_path:
-            log_path = os.path.join(
-                os.path.expanduser("~"), ".pangu", "logs", "llm_cache_warmup.log"
-            )
+            log_path = os.path.join(os.path.expanduser("~"), ".pangu", "logs", "llm_cache_warmup.log")
         if not os.path.exists(log_path):
             return []
         records: list[dict] = []
@@ -1093,7 +1122,7 @@ class LLMEngine:
             return (
                 f"# HELP {name} {help_text}\n"
                 f"# TYPE {name} {mtype}\n"
-                f"{name}{{provider=\"{provider}\",model=\"{model}\"}} {value}\n"
+                f'{name}{{provider="{provider}",model="{model}"}} {value}\n'
             )
 
         lines = []
@@ -1101,91 +1130,81 @@ class LLMEngine:
         hit_rate = self._cache_hits / total_lookups * 100 if total_lookups > 0 else 0.0
 
         # 调用统计
-        lines.append(metric(
-            "pangu_llm_calls_total", self._call_count, "counter",
-            "LLM 实际调用次数"
-        ))
+        lines.append(metric("pangu_llm_calls_total", self._call_count, "counter", "LLM 实际调用次数"))
         # 缓存统计
-        lines.append(metric(
-            "pangu_llm_cache_hits_total", self._cache_hits, "counter",
-            "缓存命中次数（内存+磁盘）"
-        ))
-        lines.append(metric(
-            "pangu_llm_cache_disk_hits_total", self._cache_disk_hits, "counter",
-            "持久化磁盘缓存命中次数"
-        ))
-        lines.append(metric(
-            "pangu_llm_cache_misses_total", self._cache_misses, "counter",
-            "缓存未命中次数"
-        ))
-        lines.append(metric(
-            "pangu_llm_cache_writes_total", self._cache_writes, "counter",
-            "持久化缓存写入次数"
-        ))
-        lines.append(metric(
-            "pangu_llm_cache_hit_rate", round(hit_rate, 2), "gauge",
-            "缓存命中率（百分比 0-100）"
-        ))
-        lines.append(metric(
-            "pangu_llm_memory_cache_size", len(self._cache), "gauge",
-            "内存 LRU 缓存当前条目数"
-        ))
+        lines.append(metric("pangu_llm_cache_hits_total", self._cache_hits, "counter", "缓存命中次数（内存+磁盘）"))
+        lines.append(
+            metric("pangu_llm_cache_disk_hits_total", self._cache_disk_hits, "counter", "持久化磁盘缓存命中次数")
+        )
+        lines.append(metric("pangu_llm_cache_misses_total", self._cache_misses, "counter", "缓存未命中次数"))
+        lines.append(metric("pangu_llm_cache_writes_total", self._cache_writes, "counter", "持久化缓存写入次数"))
+        lines.append(metric("pangu_llm_cache_hit_rate", round(hit_rate, 2), "gauge", "缓存命中率（百分比 0-100）"))
+        lines.append(metric("pangu_llm_memory_cache_size", len(self._cache), "gauge", "内存 LRU 缓存当前条目数"))
         # Token 与成本
-        lines.append(metric(
-            "pangu_llm_prompt_tokens_total", self._total_prompt_tokens, "counter",
-            "累计 prompt tokens"
-        ))
-        lines.append(metric(
-            "pangu_llm_completion_tokens_total", self._total_completion_tokens, "counter",
-            "累计 completion tokens"
-        ))
-        lines.append(metric(
-            "pangu_llm_cost_usd_total", round(self._estimated_cost_usd, 6), "counter",
-            "累计估算成本（USD）"
-        ))
+        lines.append(
+            metric("pangu_llm_prompt_tokens_total", self._total_prompt_tokens, "counter", "累计 prompt tokens")
+        )
+        lines.append(
+            metric(
+                "pangu_llm_completion_tokens_total", self._total_completion_tokens, "counter", "累计 completion tokens"
+            )
+        )
+        lines.append(
+            metric("pangu_llm_cost_usd_total", round(self._estimated_cost_usd, 6), "counter", "累计估算成本（USD）")
+        )
         # 性能
-        lines.append(metric(
-            "pangu_llm_avg_latency_ms", round(self.avg_latency_ms, 2), "gauge",
-            "LLM 平均延迟（毫秒）"
-        ))
+        lines.append(metric("pangu_llm_avg_latency_ms", round(self.avg_latency_ms, 2), "gauge", "LLM 平均延迟（毫秒）"))
         # 节省的 token
-        lines.append(metric(
-            "pangu_llm_tokens_saved_total", self._tokens_saved, "counter",
-            "缓存命中累计节省的 token 数"
-        ))
+        lines.append(
+            metric("pangu_llm_tokens_saved_total", self._tokens_saved, "counter", "缓存命中累计节省的 token 数")
+        )
         # 持久化缓存
         if self._persistent_cache is not None:
             try:
                 pstats = self._persistent_cache.get_stats()
-                lines.append(metric(
-                    "pangu_llm_persistent_cache_entries", pstats["total_entries"], "gauge",
-                    "持久化缓存条目数"
-                ))
-                lines.append(metric(
-                    "pangu_llm_persistent_cache_bytes", pstats["total_bytes"], "gauge",
-                    "持久化缓存占用字节"
-                ))
-                lines.append(metric(
-                    "pangu_llm_persistent_cache_max_bytes", pstats["max_disk_bytes"], "gauge",
-                    "持久化缓存最大允许字节"
-                ))
-                lines.append(metric(
-                    "pangu_llm_persistent_cache_hit_count_total", pstats["total_hits"], "counter",
-                    "持久化缓存累计命中次数"
-                ))
-                lines.append(metric(
-                    "pangu_llm_persistent_cache_tokens_saved_total",
-                    pstats.get("total_tokens_saved", 0), "counter",
-                    "持久化缓存累计节省 token"
-                ))
+                lines.append(
+                    metric("pangu_llm_persistent_cache_entries", pstats["total_entries"], "gauge", "持久化缓存条目数")
+                )
+                lines.append(
+                    metric("pangu_llm_persistent_cache_bytes", pstats["total_bytes"], "gauge", "持久化缓存占用字节")
+                )
+                lines.append(
+                    metric(
+                        "pangu_llm_persistent_cache_max_bytes",
+                        pstats["max_disk_bytes"],
+                        "gauge",
+                        "持久化缓存最大允许字节",
+                    )
+                )
+                lines.append(
+                    metric(
+                        "pangu_llm_persistent_cache_hit_count_total",
+                        pstats["total_hits"],
+                        "counter",
+                        "持久化缓存累计命中次数",
+                    )
+                )
+                lines.append(
+                    metric(
+                        "pangu_llm_persistent_cache_tokens_saved_total",
+                        pstats.get("total_tokens_saved", 0),
+                        "counter",
+                        "持久化缓存累计节省 token",
+                    )
+                )
             except Exception:
                 pass
 
         return "\n".join(lines)
 
     def _make_cache_key(
-        self, provider: str, model: str, messages: list, system: str,
-        max_tokens: int, json_mode: bool,
+        self,
+        provider: str,
+        model: str,
+        messages: list,
+        system: str,
+        max_tokens: int,
+        json_mode: bool,
     ) -> str:
         """生成缓存键（基于完整参数哈希）"""
         # 使用 SHA256 而非简单 hash，更稳定且抗碰撞
@@ -1291,9 +1310,9 @@ class LLMEngine:
 
         results = []
         for memory, resp in zip(memories, responses, strict=False):
-            cls = self._extract_json(resp.content, default={
-                "hall": "hall_events", "room": "general", "importance": 3, "tags": []
-            })
+            cls = self._extract_json(
+                resp.content, default={"hall": "hall_events", "room": "general", "importance": 3, "tags": []}
+            )
             results.append({"id": memory.get("id"), "classification": cls})
         return results
 
@@ -1316,15 +1335,19 @@ class LLMEngine:
 
         results = []
         for page in pages:
-            memory_text = "\n\n---\n\n".join([
-                f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:300]}"
-                for m in page.get("memories", [])[:10]
-            ])
+            memory_text = "\n\n---\n\n".join(
+                [
+                    f"[{m.get('wing', '?')}/{m.get('room', '?')}] {m.get('content', '')[:300]}"
+                    for m in page.get("memories", [])[:10]
+                ]
+            )
             batch_item = {
-                "messages": [{
-                    "role": "user",
-                    "content": f"请为以下记忆生成 Wiki 页面：\n\n主题：{page['title']}\n\n记忆片段：\n{memory_text}",
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"请为以下记忆生成 Wiki 页面：\n\n主题：{page['title']}\n\n记忆片段：\n{memory_text}",
+                    }
+                ],
                 "system": self._get_wiki_system(),
                 "temperature": 0.5,
                 "max_tokens": 2000,
@@ -1334,9 +1357,7 @@ class LLMEngine:
 
         responses = await self.batch_chat(results, concurrency=concurrency)
         return [
-            self._extract_json(r.content, default={
-                "title": p["title"], "summary": "", "content": "", "tags": []
-            })
+            self._extract_json(r.content, default={"title": p["title"], "summary": "", "content": "", "tags": []})
             for p, r in zip(pages, responses, strict=False)
         ]
 

@@ -10,9 +10,8 @@
               + quality * w_qua
               + access_freq * w_acc
 """
+
 import logging
-import math
-import time
 from datetime import datetime
 
 from ..core.config import PanguConfig
@@ -22,11 +21,11 @@ logger = logging.getLogger("pangu.memory.reranker")
 
 # 默认权重
 DEFAULT_WEIGHTS = {
-    "rrf": 0.35,       # RRF 基础分
-    "context": 0.25,   # 上下文匹配
-    "recency": 0.15,   # 时效性
-    "importance": 0.15, # 重要性
-    "quality": 0.10,   # 内容质量
+    "rrf": 0.35,  # RRF 基础分
+    "context": 0.25,  # 上下文匹配
+    "recency": 0.15,  # 时效性
+    "importance": 0.15,  # 重要性
+    "quality": 0.10,  # 内容质量
 }
 
 
@@ -115,7 +114,8 @@ class SemanticReranker:
             # 字符级 fallback：提取 query 中文字符匹配
             if matched < len(query_words):
                 import re
-                cn_chars = set(re.findall(r'[\u4e00-\u9fff]', query_lower))
+
+                cn_chars = set(re.findall(r"[\u4e00-\u9fff]", query_lower))
                 if cn_chars:
                     char_matched = sum(1 for c in cn_chars if c in content)
                     matched = max(matched, char_matched)
@@ -127,7 +127,8 @@ class SemanticReranker:
             ctx_matched = sum(1 for w in ctx_words if w in content)
             if ctx_matched == 0:
                 import re
-                cn_chars = set(re.findall(r'[\u4e00-\u9fff]', context_lower))
+
+                cn_chars = set(re.findall(r"[\u4e00-\u9fff]", context_lower))
                 if cn_chars:
                     ctx_matched = sum(1 for c in cn_chars if c in content)
             score += min(ctx_matched / max(len(ctx_words), 1) * 0.3, 0.3)
@@ -144,9 +145,10 @@ class SemanticReranker:
     def _tokenize(text: str) -> list[str]:
         """简单分词：支持中英文混合"""
         import re
+
         # 提取中文2字以上词组 + 英文单词
-        cn_words = re.findall(r'[\u4e00-\u9fff]{2,}', text)
-        en_words = [w for w in re.findall(r'[a-zA-Z0-9_]{2,}', text)]
+        cn_words = re.findall(r"[\u4e00-\u9fff]{2,}", text)
+        en_words = [w for w in re.findall(r"[a-zA-Z0-9_]{2,}", text)]
         return cn_words + en_words
 
     def _recency_score(self, source) -> float:

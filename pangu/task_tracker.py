@@ -11,6 +11,7 @@
 - 每个会话使用独立的任务文件（基于会话 ID）
 - 避免跨会话状态污染
 """
+
 import json
 import os
 import sys
@@ -62,7 +63,7 @@ def _extract_task_from_context(messages: list) -> dict | None:
         "progress": 0.0,
         "last_update": datetime.now().isoformat(),
         "tool_count": 0,
-        "messages_count": len(messages)
+        "messages_count": len(messages),
     }
 
     # 从最近的 user 消息提取任务
@@ -88,22 +89,20 @@ def _extract_task_from_context(messages: list) -> dict | None:
 def _save_to_pangu_memory(task_info: dict) -> bool:
     """将任务状态保存到盘古记忆系统"""
     import requests
+
     try:
         if task_info.get("progress", 0) < 0.3:
             return False
 
         resp = requests.post(
             f"{PANGU_BASE}/api/v2/memories",
-            headers={
-                "X-API-Key": API_KEY,
-                "Content-Type": "application/json"
-            },
+            headers={"X-API-Key": API_KEY, "Content-Type": "application/json"},
             json={
                 "text": f"[任务快照] {task_info.get('task', '')[:200]}",
                 "wing": "default",
                 "room": "tasks",
                 "importance": 0.9,
-                "tags": ["task-progress", "session-snapshot"]
+                "tags": ["task-progress", "session-snapshot"],
             },
             timeout=2,
         )

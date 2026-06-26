@@ -7,8 +7,9 @@
 4. 选择性恢复：按 Wing/时间/重要性恢复
 5. 备份管理：管理多个备份版本
 """
-import json
+
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,6 +21,7 @@ logger = logging.getLogger("pangu.memory.backup_restore")
 @dataclass
 class BackupInfo:
     """备份信息"""
+
     backup_id: str
     timestamp: str
     memory_count: int
@@ -52,9 +54,14 @@ class BackupRestoreEngine:
         """保存备份索引"""
         index_file = self._backup_dir / "index.json"
         data = [
-            {"backup_id": b.backup_id, "timestamp": b.timestamp,
-             "memory_count": b.memory_count, "size_bytes": b.size_bytes,
-             "checksum": b.checksum, "description": b.description}
+            {
+                "backup_id": b.backup_id,
+                "timestamp": b.timestamp,
+                "memory_count": b.memory_count,
+                "size_bytes": b.size_bytes,
+                "checksum": b.checksum,
+                "description": b.description,
+            }
             for b in self._backup_index
         ]
         index_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
@@ -117,9 +124,13 @@ class BackupRestoreEngine:
     def list_backups(self) -> list[dict]:
         """列出所有备份"""
         return [
-            {"id": b.backup_id, "timestamp": b.timestamp,
-             "memories": b.memory_count, "size": b.size_bytes,
-             "description": b.description}
+            {
+                "id": b.backup_id,
+                "timestamp": b.timestamp,
+                "memories": b.memory_count,
+                "size": b.size_bytes,
+                "description": b.description,
+            }
             for b in self._backup_index
         ]
 
@@ -168,8 +179,7 @@ class BackupRestoreEngine:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _apply_filters(self, data: list, wing: str = None,
-                       min_importance: float = None) -> list:
+    def _apply_filters(self, data: list, wing: str = None, min_importance: float = None) -> list:
         filtered = data
         if wing:
             filtered = [d for d in filtered if d.get("wing") == wing]
@@ -177,12 +187,9 @@ class BackupRestoreEngine:
             filtered = [d for d in filtered if d.get("importance", 0) >= min_importance]
         return filtered
 
-    def _load_and_filter_backup(self, backup_id: str, wing: str = None,
-                                 min_importance: float = None) -> dict:
+    def _load_and_filter_backup(self, backup_id: str, wing: str = None, min_importance: float = None) -> dict:
         """加载并过滤备份数据"""
-        data = json.loads(
-            (self._backup_dir / f"{backup_id}.json").read_text()
-        )
+        data = json.loads((self._backup_dir / f"{backup_id}.json").read_text())
         filtered = self._apply_filters(data, wing, min_importance)
         return {
             "success": True,
@@ -192,8 +199,7 @@ class BackupRestoreEngine:
             "filter": {"wing": wing, "min_importance": min_importance},
         }
 
-    def restore_by_filter(self, backup_id: str, wing: str = None,
-                          min_importance: float = None) -> dict:
+    def restore_by_filter(self, backup_id: str, wing: str = None, min_importance: float = None) -> dict:
         backup_file = self._backup_dir / f"{backup_id}.json"
         if not backup_file.exists():
             return {"success": False, "error": "备份文件不存在"}

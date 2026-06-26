@@ -2,6 +2,7 @@
 盘古 — 双鉴权 (API Key + JWT) 单元测试
 ==============================================
 """
+
 from __future__ import annotations
 
 import time
@@ -171,7 +172,8 @@ class TestVerifyCredentials:
     def test_api_key_via_x_api_key_header(self):
         r = verify_credentials(
             headers={"x-api-key": self.API_KEY},
-            api_key=self.API_KEY, secret=self.SECRET,
+            api_key=self.API_KEY,
+            secret=self.SECRET,
         )
         assert r.ok
         assert r.method == "api_key"
@@ -179,7 +181,8 @@ class TestVerifyCredentials:
     def test_api_key_wrong(self):
         r = verify_credentials(
             headers={"x-api-key": "wrong"},
-            api_key=self.API_KEY, secret=self.SECRET,
+            api_key=self.API_KEY,
+            secret=self.SECRET,
         )
         assert not r.ok
         assert "Invalid" in r.reason or "credentials" in r.reason.lower()
@@ -188,7 +191,8 @@ class TestVerifyCredentials:
         pair = issue_token_pair("alice", self.SECRET)
         r = verify_credentials(
             headers={"authorization": f"Bearer {pair['access_token']}"},
-            api_key="", secret=self.SECRET,
+            api_key="",
+            secret=self.SECRET,
         )
         assert r.ok
         assert r.method == "jwt"
@@ -201,7 +205,8 @@ class TestVerifyCredentials:
         time.sleep(1.5)
         r = verify_credentials(
             headers={"authorization": f"Bearer {pair['access_token']}"},
-            api_key="", secret=self.SECRET,
+            api_key="",
+            secret=self.SECRET,
         )
         assert not r.ok
 
@@ -209,11 +214,14 @@ class TestVerifyCredentials:
         pair = issue_token_pair("alice", self.SECRET)
         store = UserStore({}, persist_path=tmp_path / "r.json")
         from pangu.api.auth import _decode
+
         c = _decode(pair["access_token"], self.SECRET)
         store.revoke(c.jti)
         r = verify_credentials(
             headers={"authorization": f"Bearer {pair['access_token']}"},
-            api_key="", secret=self.SECRET, user_store=store,
+            api_key="",
+            secret=self.SECRET,
+            user_store=store,
         )
         assert not r.ok
 
@@ -221,7 +229,8 @@ class TestVerifyCredentials:
         # API key 优先
         r1 = verify_credentials(
             headers={"x-api-key": self.API_KEY},
-            api_key=self.API_KEY, secret=self.SECRET,
+            api_key=self.API_KEY,
+            secret=self.SECRET,
         )
         assert r1.method == "api_key"
 
@@ -229,21 +238,24 @@ class TestVerifyCredentials:
         pair = issue_token_pair("alice", self.SECRET)
         r2 = verify_credentials(
             headers={"authorization": f"Bearer {pair['access_token']}"},
-            api_key=self.API_KEY, secret=self.SECRET,
+            api_key=self.API_KEY,
+            secret=self.SECRET,
         )
         assert r2.method == "jwt"
 
     def test_no_credentials_when_required(self):
         r = verify_credentials(
             headers={},
-            api_key=self.API_KEY, secret=self.SECRET,
+            api_key=self.API_KEY,
+            secret=self.SECRET,
         )
         assert not r.ok
 
     def test_garbage_bearer_rejected(self):
         r = verify_credentials(
             headers={"authorization": "Bearer not.a.jwt"},
-            api_key="", secret=self.SECRET,
+            api_key="",
+            secret=self.SECRET,
         )
         assert not r.ok
 

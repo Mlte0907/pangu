@@ -18,6 +18,7 @@
 - 发送通知
 - 触发外部工作流
 """
+
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -28,6 +29,7 @@ logger = logging.getLogger("pangu.plugins")
 
 class HookPoint(str, Enum):
     """钩子触发点"""
+
     PRE_MEMORY_ADD = "pre_memory_add"
     POST_MEMORY_ADD = "post_memory_add"
     PRE_MEMORY_RECALL = "pre_memory_recall"
@@ -44,6 +46,7 @@ class HookPoint(str, Enum):
 @dataclass
 class PluginInfo:
     """插件元信息"""
+
     name: str
     version: str = "0.1.0"
     description: str = ""
@@ -55,6 +58,7 @@ class PluginInfo:
 @dataclass
 class PluginContext:
     """插件上下文 — 在钩子间传递数据"""
+
     data: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
     cancelled: bool = False  # 设置为 True 可取消后续操作
@@ -131,15 +135,18 @@ class Plugin:
 
 # ── 内置插件 ──
 
+
 class TagEnricherPlugin(Plugin):
     """标签增强插件 — 自动为记忆添加标签"""
 
     def __init__(self, auto_tags: dict[str, list[str]] = None):
-        super().__init__(PluginInfo(
-            name="tag_enricher",
-            description="根据关键词自动添加标签",
-            hooks=[HookPoint.PRE_MEMORY_ADD],
-        ))
+        super().__init__(
+            PluginInfo(
+                name="tag_enricher",
+                description="根据关键词自动添加标签",
+                hooks=[HookPoint.PRE_MEMORY_ADD],
+            )
+        )
         self.auto_tags = auto_tags or {
             "bug": ["bug", "缺陷", "修复"],
             "feature": ["feature", "功能", "新增"],
@@ -164,11 +171,13 @@ class ContentFilterPlugin(Plugin):
     """内容过滤器插件 — 过滤或修改记忆内容"""
 
     def __init__(self, blocked_patterns: list[str] = None, max_length: int = 10000):
-        super().__init__(PluginInfo(
-            name="content_filter",
-            description="过滤敏感内容，限制长度",
-            hooks=[HookPoint.PRE_MEMORY_ADD],
-        ))
+        super().__init__(
+            PluginInfo(
+                name="content_filter",
+                description="过滤敏感内容，限制长度",
+                hooks=[HookPoint.PRE_MEMORY_ADD],
+            )
+        )
         self.blocked_patterns = blocked_patterns or []
         self.max_length = max_length
 
@@ -185,18 +194,20 @@ class ContentFilterPlugin(Plugin):
 
         # 截断过长内容
         if len(content) > self.max_length:
-            ctx.set("content", content[:self.max_length] + "...[已截断]")
+            ctx.set("content", content[: self.max_length] + "...[已截断]")
 
 
 class TranslationPlugin(Plugin):
     """翻译插件 — 自动翻译记忆内容"""
 
     def __init__(self, target_lang: str = "zh", llm_engine=None):
-        super().__init__(PluginInfo(
-            name="translator",
-            description="自动翻译记忆内容",
-            hooks=[HookPoint.POST_MEMORY_ADD],
-        ))
+        super().__init__(
+            PluginInfo(
+                name="translator",
+                description="自动翻译记忆内容",
+                hooks=[HookPoint.POST_MEMORY_ADD],
+            )
+        )
         self.target_lang = target_lang
         self.llm = llm_engine
 
@@ -219,6 +230,7 @@ class TranslationPlugin(Plugin):
 
 
 # ── 插件管理器 ──
+
 
 class PluginManager:
     """插件管理器 — 注册、调度插件钩子"""
@@ -299,10 +311,12 @@ class PluginManager:
 
 # ── 从 plugin_manager.py 导入增强类型 ──
 from .plugin_manager import (
-    MiningPlugin,
-    StoragePlugin,
     AnalyzerPlugin,
+    MiningPlugin,
     PluginType,
-    PluginManager as EnhancedPluginManager,
+    StoragePlugin,
     get_plugin_manager,
+)
+from .plugin_manager import (
+    PluginManager as EnhancedPluginManager,
 )

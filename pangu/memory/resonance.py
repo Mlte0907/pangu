@@ -30,13 +30,13 @@ class ResonanceEngine:
         if self._embedder is None:
             try:
                 from .embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
         return self._embedder
 
-    def find_resonance(self, drawers: list[Drawer], limit: int = 30,
-                       sim_threshold: float = 0.7) -> list[dict]:
+    def find_resonance(self, drawers: list[Drawer], limit: int = 30, sim_threshold: float = 0.7) -> list[dict]:
         """发现共鸣记忆对
 
         Args:
@@ -64,18 +64,21 @@ class ResonanceEngine:
                     if not (embeddings[i] and embeddings[j]):
                         continue
                     from .fts_search import cosine_similarity
+
                     sim = cosine_similarity(embeddings[i], embeddings[j])
                     same_dir = candidates[i].emotional_weight * candidates[j].emotional_weight > 0
                     if sim >= sim_threshold and same_dir:
-                        matches.append({
-                            "source_id": candidates[i].id,
-                            "target_id": candidates[j].id,
-                            "source_preview": candidates[i].content[:80],
-                            "target_preview": candidates[j].content[:80],
-                            "similarity": round(sim, 3),
-                            "source_wing": candidates[i].wing,
-                            "target_wing": candidates[j].wing,
-                        })
+                        matches.append(
+                            {
+                                "source_id": candidates[i].id,
+                                "target_id": candidates[j].id,
+                                "source_preview": candidates[i].content[:80],
+                                "target_preview": candidates[j].content[:80],
+                                "similarity": round(sim, 3),
+                                "source_wing": candidates[i].wing,
+                                "target_wing": candidates[j].wing,
+                            }
+                        )
                 except Exception:
                     continue
 
@@ -87,8 +90,7 @@ class ResonanceEngine:
 
         return top_matches
 
-    def build_edges(self, matches: list[dict], drawers: list[Drawer],
-                    max_edges: int = 5) -> list[dict]:
+    def build_edges(self, matches: list[dict], drawers: list[Drawer], max_edges: int = 5) -> list[dict]:
         """为高共鸣匹配建立图谱边
 
         Args:
@@ -127,6 +129,7 @@ class ResonanceEngine:
             return 0.0
         try:
             from .fts_search import cosine_similarity
+
             emb_a = self.embedder.embed(drawer_a.content)
             emb_b = self.embedder.embed(drawer_b.content)
             if not (emb_a and emb_b):

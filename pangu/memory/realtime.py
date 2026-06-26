@@ -1,5 +1,5 @@
 """盘古实时事件通知 — WebSocket 实时推送记忆变更"""
-import asyncio
+
 import json
 import logging
 from collections import defaultdict
@@ -39,19 +39,24 @@ class ConnectionManager:
 
     async def emit(self, event_type: str, data: dict) -> int:
         """推送事件到所有订阅者"""
-        message = json.dumps({
-            "type": event_type,
-            "data": data,
-            "timestamp": datetime.now().isoformat(),
-        }, ensure_ascii=False)
+        message = json.dumps(
+            {
+                "type": event_type,
+                "data": data,
+                "timestamp": datetime.now().isoformat(),
+            },
+            ensure_ascii=False,
+        )
 
-        self._message_history.append({
-            "type": event_type,
-            "data": data,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._message_history.append(
+            {
+                "type": event_type,
+                "data": data,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         if len(self._message_history) > self._max_history:
-            self._message_history = self._message_history[-self._max_history:]
+            self._message_history = self._message_history[-self._max_history :]
 
         sent = 0
         target_clients = self._subscriptions.get(event_type, set()) | self._subscriptions.get("*", set())

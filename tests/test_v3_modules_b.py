@@ -1,5 +1,5 @@
 """Pangu v3.0 模块测试 — 第二批 7 个记忆子系统"""
-import pytest
+
 from pangu.core.palace import Drawer
 
 
@@ -9,17 +9,18 @@ def _d(id="t1", content="test content", wing="test_wing", importance=3.0, tags=N
 
 def _drawers(n=5):
     return [
-        _d(id=f"t{i}", content=f"memory item {i} 关于开发",
-           wing="dev", importance=2.0 + i, tags=["code", f"tag{i}"])
+        _d(id=f"t{i}", content=f"memory item {i} 关于开发", wing="dev", importance=2.0 + i, tags=["code", f"tag{i}"])
         for i in range(n)
     ]
 
 
 # ── 1. KnowledgeSynthesizer ──
 
+
 class TestKnowledgeSynthesizer:
     def setup_method(self):
         from pangu.memory.knowledge_synthesis import KnowledgeSynthesizer
+
         self.synth = KnowledgeSynthesizer()
 
     def test_synthesize_by_topic_empty(self):
@@ -57,9 +58,11 @@ class TestKnowledgeSynthesizer:
 
 # ── 2. PredictiveAnalytics ──
 
+
 class TestPredictiveAnalytics:
     def setup_method(self):
         from pangu.memory.predictive_analytics import PredictiveAnalytics
+
         self.analytics = PredictiveAnalytics()
 
     def test_analyze_growth_trend_empty(self):
@@ -85,9 +88,11 @@ class TestPredictiveAnalytics:
 
 # ── 3. AdaptiveArchitecture ──
 
+
 class TestAdaptiveArchitecture:
     def setup_method(self):
         from pangu.memory.adaptive_architecture import AdaptiveArchitecture
+
         self.arch = AdaptiveArchitecture()
 
     def test_analyze_architecture_empty(self):
@@ -110,9 +115,11 @@ class TestAdaptiveArchitecture:
 
 # ── 4. QAEngine ──
 
+
 class TestQAEngine:
     def setup_method(self):
         from pangu.memory.qa_engine import QAEngine
+
         self.qa = QAEngine()
 
     def test_answer_no_match(self):
@@ -141,9 +148,11 @@ class TestQAEngine:
 
 # ── 5. ContextInjectionEngine ──
 
+
 class TestContextInjectionEngine:
     def setup_method(self):
         from pangu.memory.context_injection import ContextInjectionEngine
+
         self.engine = ContextInjectionEngine()
 
     def test_inject_context_empty(self):
@@ -169,9 +178,11 @@ class TestContextInjectionEngine:
 
 # ── 6. AdaptiveForgetting ──
 
+
 class TestAdaptiveForgetting:
     def setup_method(self):
         from pangu.memory.adaptive_forgetting import AdaptiveForgetting
+
         self.forgetting = AdaptiveForgetting()
 
     def test_evaluate_all_empty(self):
@@ -201,9 +212,11 @@ class TestAdaptiveForgetting:
 
 # ── 7. ConsolidationIntelligence ──
 
+
 class TestConsolidationIntelligence:
     def setup_method(self):
         from pangu.memory.consolidation_intelligence import ConsolidationIntelligence
+
         self.consolidator = ConsolidationIntelligence()
 
     def test_find_merge_candidates_empty(self):

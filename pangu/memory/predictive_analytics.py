@@ -6,10 +6,11 @@
 3. 热点预测：预测即将成为热点的主题
 4. 遗忘预测：预测哪些记忆即将被遗忘
 """
+
 import logging
 import statistics
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 logger = logging.getLogger("pangu.memory.predictive_analytics")
 
@@ -17,6 +18,7 @@ logger = logging.getLogger("pangu.memory.predictive_analytics")
 @dataclass
 class Prediction:
     """预测结果"""
+
     prediction_type: str
     statement: str
     confidence: float
@@ -46,13 +48,15 @@ class PredictiveAnalytics:
 
         predictions = []
         for word, freq in sorted_words[:top_k]:
-            predictions.append(Prediction(
-                prediction_type="next_query",
-                statement=f"用户可能搜索: {word}",
-                confidence=min(0.8, freq / max(len(query_history), 1)),
-                evidence=[f"该词在最近 {len(query_history)} 次查询中出现 {freq} 次"],
-                timeframe="immediate",
-            ))
+            predictions.append(
+                Prediction(
+                    prediction_type="next_query",
+                    statement=f"用户可能搜索: {word}",
+                    confidence=min(0.8, freq / max(len(query_history), 1)),
+                    evidence=[f"该词在最近 {len(query_history)} 次查询中出现 {freq} 次"],
+                    timeframe="immediate",
+                )
+            )
 
         return predictions
 
@@ -69,19 +73,21 @@ class PredictiveAnalytics:
         return predictions[:20]
 
     def _check_forgetting(self, d, now, days_threshold, predictions):
-        if not (hasattr(d, 'last_accessed') and d.last_accessed):
+        if not (hasattr(d, "last_accessed") and d.last_accessed):
             return
         try:
             last = datetime.fromisoformat(d.last_accessed)
             days_since = (now - last).days
             if days_since > days_threshold:
-                predictions.append(Prediction(
-                    prediction_type="forgetting",
-                    statement=f"记忆 '{d.content[:40]}' 可能被遗忘 (已 {days_since} 天未访问)",
-                    confidence=min(0.9, days_since / 100),
-                    evidence=[f"重要性: {d.importance}", f"未访问: {days_since} 天"],
-                    timeframe=f"{days_threshold}+ days",
-                ))
+                predictions.append(
+                    Prediction(
+                        prediction_type="forgetting",
+                        statement=f"记忆 '{d.content[:40]}' 可能被遗忘 (已 {days_since} 天未访问)",
+                        confidence=min(0.9, days_since / 100),
+                        evidence=[f"重要性: {d.importance}", f"未访问: {days_since} 天"],
+                        timeframe=f"{days_threshold}+ days",
+                    )
+                )
         except (ValueError, TypeError):
             pass
 
@@ -122,13 +128,15 @@ class PredictiveAnalytics:
         for tag, recent_count in sorted(tag_recent.items(), key=lambda x: x[1], reverse=True)[:top_k]:
             all_count = tag_all.get(tag, 0)
             momentum = recent_count / max(all_count, 1)
-            predictions.append(Prediction(
-                prediction_type="hot_topic",
-                statement=f"主题 '{tag}' 正在升温 (活跃度: {momentum:.2f})",
-                confidence=min(0.85, momentum),
-                evidence=[f"近期 {recent_count} 条", f"总计 {all_count} 条"],
-                timeframe="near_term",
-            ))
+            predictions.append(
+                Prediction(
+                    prediction_type="hot_topic",
+                    statement=f"主题 '{tag}' 正在升温 (活跃度: {momentum:.2f})",
+                    confidence=min(0.85, momentum),
+                    evidence=[f"近期 {recent_count} 条", f"总计 {all_count} 条"],
+                    timeframe="near_term",
+                )
+            )
 
         return predictions
 
@@ -137,22 +145,22 @@ class PredictiveAnalytics:
         result = {
             "growth_trend": self.analyze_growth_trend(drawers),
             "hot_topics": [
-                {"statement": p.statement, "confidence": p.confidence}
-                for p in self.predict_hot_topics(drawers)
+                {"statement": p.statement, "confidence": p.confidence} for p in self.predict_hot_topics(drawers)
             ],
             "forgetting_risk": len(self.predict_forgetting(drawers)),
         }
 
         if query_history:
             result["next_queries"] = [
-                {"statement": p.statement, "confidence": p.confidence}
-                for p in self.predict_next_queries(query_history)
+                {"statement": p.statement, "confidence": p.confidence} for p in self.predict_next_queries(query_history)
             ]
 
-        self._prediction_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "total_memories": len(drawers),
-        })
+        self._prediction_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "total_memories": len(drawers),
+            }
+        )
 
         return result
 

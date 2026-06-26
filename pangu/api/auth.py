@@ -14,6 +14,7 @@
     >>> users.verify("admin", "secret")      # True / False
     >>> token = create_access_token("admin", scope="read write")
 """
+
 from __future__ import annotations
 
 import hmac
@@ -343,7 +344,7 @@ class UserStore:
             try:
                 conn.execute(
                     "INSERT OR REPLACE INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
-                    (username, password_hash, datetime.now().isoformat())
+                    (username, password_hash, datetime.now().isoformat()),
                 )
                 conn.commit()
                 logger.debug(f"User saved to DB: {username}")
@@ -402,8 +403,8 @@ class AuthResult:
     """鉴权结果"""
 
     ok: bool
-    method: str = ""           # "api_key" | "jwt" | "anonymous"
-    user_id: str = ""          # 凭据对应的用户（JWT 模式下为 sub）
+    method: str = ""  # "api_key" | "jwt" | "anonymous"
+    user_id: str = ""  # 凭据对应的用户（JWT 模式下为 sub）
     claims: TokenClaims | None = None
     reason: str = ""
 

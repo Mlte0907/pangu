@@ -6,10 +6,10 @@
 3. 主动推送：在 Agent 询问前预加载相关记忆
 4. 学习优化：根据使用反馈优化预测模型
 """
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -20,6 +20,7 @@ logger = logging.getLogger("pangu.memory.proactive")
 @dataclass
 class ProactiveMemory:
     """主动推送的记忆"""
+
     memory_id: str
     content: str
     relevance_score: float
@@ -41,11 +42,12 @@ class ProactiveEngine:
         """获取当前上下文（从 working_memory）"""
         try:
             from pangu.memory.working_memory import get_working_memory
+
             wm = get_working_memory()
             # 从工作记忆中提取上下文
             context_items = []
             for item in wm._buffer[-5:]:  # 最近 5 条
-                if hasattr(item, 'content'):
+                if hasattr(item, "content"):
                     context_items.append(item.content)
             return " ".join(context_items)
         except Exception:
@@ -55,7 +57,7 @@ class ProactiveEngine:
         """更新上下文历史"""
         self._context_history.append(text)
         if len(self._context_history) > self._context_window:
-            self._context_history = self._context_history[-self._context_window:]
+            self._context_history = self._context_history[-self._context_window :]
 
     def predict(self, context: str, drawers: list[Drawer], limit: int = 5) -> list[ProactiveMemory]:
         """基于上下文预测相关记忆
@@ -93,14 +95,16 @@ class ProactiveEngine:
         results = []
         for drawer, score in scored[:limit]:
             reason = self._generate_reason(drawer, keywords, context)
-            results.append(ProactiveMemory(
-                memory_id=drawer.id,
-                content=drawer.content[:100],
-                relevance_score=round(score, 3),
-                reason=reason,
-                wing=drawer.wing,
-                tags=drawer.tags,
-            ))
+            results.append(
+                ProactiveMemory(
+                    memory_id=drawer.id,
+                    content=drawer.content[:100],
+                    relevance_score=round(score, 3),
+                    reason=reason,
+                    wing=drawer.wing,
+                    tags=drawer.tags,
+                )
+            )
 
         return results
 
@@ -109,7 +113,36 @@ class ProactiveEngine:
         # 简单分词
         words = text.lower().split()
         # 过滤停用词
-        stopwords = {"的", "了", "是", "在", "我", "有", "和", "就", "不", "人", "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好", "自己", "这"}
+        stopwords = {
+            "的",
+            "了",
+            "是",
+            "在",
+            "我",
+            "有",
+            "和",
+            "就",
+            "不",
+            "人",
+            "都",
+            "一",
+            "一个",
+            "上",
+            "也",
+            "很",
+            "到",
+            "说",
+            "要",
+            "去",
+            "你",
+            "会",
+            "着",
+            "没有",
+            "看",
+            "好",
+            "自己",
+            "这",
+        }
         keywords = [w for w in words if len(w) >= 2 and w not in stopwords]
         return keywords[:10]
 
@@ -158,7 +191,7 @@ class ProactiveEngine:
         if matched_tags:
             return f"匹配标签: {', '.join(matched_tags[:3])}"
 
-        return f"与当前上下文相关"
+        return "与当前上下文相关"
 
     def get_stats(self) -> dict:
         """获取预测统计"""

@@ -46,6 +46,7 @@ async def get_memory(
     return decision.context.resource
 ```
 """
+
 from __future__ import annotations
 
 import logging
@@ -136,6 +137,7 @@ class RequestContext:
 @dataclass
 class Rule:
     """单条规则：condition 满足时返回 effect。"""
+
     effect: Effect
     description: str = ""
     # 简单条件：用 Python 表达式求值（仅限访问 context 的字段）
@@ -211,84 +213,105 @@ def register_builtin_policies() -> None:
     # 1. 显式 deny 黑名单（最高优先级）
     # 默认：未配置黑名单时为无害的 allow，便于未来扩展。
     # 真正使用 deny 场景时，外部可通过 register_policy 注入 condition 包含黑名单的规则。
-    register_policy(Policy(
-        name="deny_blacklist",
-        priority=0,
-        rules=[
-            # 占位规则：始终为 noop（由具体的黑名单策略覆盖）
-            Rule(Effect.ALLOW, "黑名单占位（未命中任何规则）",
-                 condition="False"),  # 永不命中
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="deny_blacklist",
+            priority=0,
+            rules=[
+                # 占位规则：始终为 noop（由具体的黑名单策略覆盖）
+                Rule(Effect.ALLOW, "黑名单占位（未命中任何规则）", condition="False"),  # 永不命中
+            ],
+        )
+    )
 
     # 2. admin 角色 → 全放行
-    register_policy(Policy(
-        name="admin_full",
-        priority=10,
-        rules=[
-            Rule(Effect.ALLOW, "admin 角色放行所有",
-                 condition="s.is_admin"),
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="admin_full",
+            priority=10,
+            rules=[
+                Rule(Effect.ALLOW, "admin 角色放行所有", condition="s.is_admin"),
+            ],
+        )
+    )
 
     # 3. 公开资源 → 任何人都可读
-    register_policy(Policy(
-        name="public_resource",
-        priority=20,
-        rules=[
-            Rule(Effect.ALLOW, "公开资源 read 放行",
-                 condition='r.visibility == "public" and act in ("read", "search")'),
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="public_resource",
+            priority=20,
+            rules=[
+                Rule(
+                    Effect.ALLOW,
+                    "公开资源 read 放行",
+                    condition='r.visibility == "public" and act in ("read", "search")',
+                ),
+            ],
+        )
+    )
 
     # 4. 租户隔离（必须同一租户，但公开资源 / admin / 缺省租户例外）
-    register_policy(Policy(
-        name="tenant_isolation",
-        priority=30,
-        rules=[
-            Rule(Effect.DENY, "跨租户访问被拒",
-                 condition='r.tenant_id != "" and s.tenant_id != "" and s.tenant_id != r.tenant_id and r.visibility != "public" and not s.is_admin'),
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="tenant_isolation",
+            priority=30,
+            rules=[
+                Rule(
+                    Effect.DENY,
+                    "跨租户访问被拒",
+                    condition='r.tenant_id != "" and s.tenant_id != "" and s.tenant_id != r.tenant_id and r.visibility != "public" and not s.is_admin',
+                ),
+            ],
+        )
+    )
 
     # 5. 资源所有权（owner 可访问）
-    register_policy(Policy(
-        name="owner_or_admin",
-        priority=40,
-        rules=[
-            Rule(Effect.ALLOW, "资源 owner 放行",
-                 condition='r.owner_id != "" and r.owner_id == s.user_id'),
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="owner_or_admin",
+            priority=40,
+            rules=[
+                Rule(Effect.ALLOW, "资源 owner 放行", condition='r.owner_id != "" and r.owner_id == s.user_id'),
+            ],
+        )
+    )
 
     # 6. 密级控制（subject.clearance >= resource.classification）
-    register_policy(Policy(
-        name="classification_based",
-        priority=50,
-        rules=[
-            Rule(Effect.DENY, "密级不足被拒",
-                 condition="r.classification > s.clearance"),
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="classification_based",
+            priority=50,
+            rules=[
+                Rule(Effect.DENY, "密级不足被拒", condition="r.classification > s.clearance"),
+            ],
+        )
+    )
 
     # 7. 租户级可见（同一租户都可读）
-    register_policy(Policy(
-        name="tenant_visibility",
-        priority=60,
-        rules=[
-            Rule(Effect.ALLOW, "租户级可见资源 read",
-                 condition='r.visibility == "tenant" and r.tenant_id == s.tenant_id and act in ("read", "search")'),
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="tenant_visibility",
+            priority=60,
+            rules=[
+                Rule(
+                    Effect.ALLOW,
+                    "租户级可见资源 read",
+                    condition='r.visibility == "tenant" and r.tenant_id == s.tenant_id and act in ("read", "search")',
+                ),
+            ],
+        )
+    )
 
     # 8. 默认 deny（仅当没有任何 allow 命中时）
-    register_policy(Policy(
-        name="default_deny",
-        priority=9999,
-        rules=[
-            # 永不匹配自身：仅在 evaluate() 中作为 fallback 调用
-        ],
-    ))
+    register_policy(
+        Policy(
+            name="default_deny",
+            priority=9999,
+            rules=[
+                # 永不匹配自身：仅在 evaluate() 中作为 fallback 调用
+            ],
+        )
+    )
 
 
 # ──────────────────────────────────────────────
@@ -346,11 +369,13 @@ def policy_from_dict(data: dict) -> Policy:
     """
     rules = []
     for r in data.get("rules", []):
-        rules.append(Rule(
-            effect=Effect(r["effect"]),
-            description=r.get("description", ""),
-            condition=r.get("condition", ""),
-        ))
+        rules.append(
+            Rule(
+                effect=Effect(r["effect"]),
+                description=r.get("description", ""),
+                condition=r.get("condition", ""),
+            )
+        )
     return Policy(
         name=data["name"],
         rules=rules,
@@ -451,9 +476,20 @@ def authorize(
                     "message": f"ABAC deny: {decision.reason}",
                     "data": {
                         "policy": decision.policy,
-                        "subject": {"user_id": subject.user_id, "role": subject.role, "tenant_id": subject.tenant_id, "clearance": subject.clearance},
+                        "subject": {
+                            "user_id": subject.user_id,
+                            "role": subject.role,
+                            "tenant_id": subject.tenant_id,
+                            "clearance": subject.clearance,
+                        },
                         "action": action,
-                        "resource": {"type": res.type, "id": res.id, "tenant_id": res.tenant_id, "classification": res.classification, "visibility": res.visibility},
+                        "resource": {
+                            "type": res.type,
+                            "id": res.id,
+                            "tenant_id": res.tenant_id,
+                            "classification": res.classification,
+                            "visibility": res.visibility,
+                        },
                     },
                 },
             )

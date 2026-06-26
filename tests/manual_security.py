@@ -1,4 +1,5 @@
 """盘古安全测试 — 危险 API、SQL 注入、secret 扫描、越权"""
+
 import json
 import os
 import pathlib
@@ -40,8 +41,11 @@ for py in ROOT.rglob("*.py"):
         if m:
             # 排除占位符/示例
             m_filtered = [
-                s for s in m if not re.search(r"(?:example|placeholder|TODO|FAKE|xxxxx|sample)", s, re.I)
-                and "YOUR_KEY" not in s and "your_key" not in s
+                s
+                for s in m
+                if not re.search(r"(?:example|placeholder|TODO|FAKE|xxxxx|sample)", s, re.I)
+                and "YOUR_KEY" not in s
+                and "your_key" not in s
             ]
             if m_filtered:
                 findings.append({"file": str(py.relative_to(ROOT)), "type": name, "samples": m_filtered[:2]})
@@ -83,7 +87,7 @@ for py in ROOT.rglob("*.py"):
         continue
     for name, pat in dangerous.items():
         for m in re.finditer(pat, text, re.M):
-            line = text[:m.start()].count("\n") + 1
+            line = text[: m.start()].count("\n") + 1
             api_findings.append({"file": str(py.relative_to(ROOT)), "type": name, "line": line})
 results["dangerous_api"] = {"findings": api_findings}
 print(f"  dangerous API usages: {len(api_findings)}")
@@ -103,6 +107,7 @@ try:
 
     from pangu.core.config import PanguConfig
     from pangu.memory.knowledge_graph import KnowledgeGraph
+
     with tempfile.TemporaryDirectory() as td:
         cfg = PanguConfig()
         cfg.db_path = pathlib.Path(td)
@@ -114,7 +119,14 @@ try:
         malicious = "a'); DROP TABLE entities; --"
         try:
             r = kg.list_entities(entity_type=malicious)
-            sql_test_results.append({"input": malicious, "output_type": type(r).__name__, "count": len(r) if hasattr(r, "__len__") else -1, "error": None})
+            sql_test_results.append(
+                {
+                    "input": malicious,
+                    "output_type": type(r).__name__,
+                    "count": len(r) if hasattr(r, "__len__") else -1,
+                    "error": None,
+                }
+            )
         except Exception as e:
             sql_test_results.append({"input": malicious, "error": f"{type(e).__name__}: {e}"})
         # 验证表还在
@@ -135,6 +147,7 @@ try:
     from fastapi.testclient import TestClient
 
     from pangu.api.server import create_app
+
     app = create_app()
     client = TestClient(app)
     # 尝试在已知 API 路径穿越
@@ -168,6 +181,7 @@ try:
     from fastapi.testclient import TestClient
 
     from pangu.api.server import create_app
+
     app = create_app()
     client = TestClient(app)
     # 假设存在 X-API-Key 头
@@ -179,13 +193,15 @@ try:
         r2 = client.get(ep, headers={"X-API-Key": "fake_key_test_12345"})
         # 错误头
         r3 = client.get(ep, headers={"X-API-Key": ""})
-        auth_results.append({
-            "endpoint": ep,
-            "no_auth": r1.status_code,
-            "fake_key": r2.status_code,
-            "empty_key": r3.status_code,
-            "passes_through": r1.status_code == r2.status_code == r3.status_code,  # 没有差分 = 没鉴权
-        })
+        auth_results.append(
+            {
+                "endpoint": ep,
+                "no_auth": r1.status_code,
+                "fake_key": r2.status_code,
+                "empty_key": r3.status_code,
+                "passes_through": r1.status_code == r2.status_code == r3.status_code,  # 没有差分 = 没鉴权
+            }
+        )
 except Exception as e:
     auth_results.append({"error": f"{type(e).__name__}: {e}"})
 results["auth_bypass"] = auth_results

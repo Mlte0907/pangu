@@ -1,15 +1,13 @@
 """盘古性能基准测试 — 延迟/吞吐量/并发/内存"""
-import time
-import statistics
-import threading
-import concurrent.futures
-from pathlib import Path
 
-from pangu.memory.layers import MemoryStack
-from pangu.memory.ingestion import remember
-from pangu.memory.retrieval import recall
+import concurrent.futures
+import statistics
+import time
+
 from pangu.core.config import PanguConfig
-from pangu.core.palace import Drawer
+from pangu.memory.ingestion import remember
+from pangu.memory.layers import MemoryStack
+from pangu.memory.retrieval import recall
 
 
 class Benchmark:
@@ -68,7 +66,11 @@ class Benchmark:
 
         avg_median = statistics.mean([s["median"] for s in query_stats])
         avg_p95 = statistics.mean([s["p95"] for s in query_stats])
-        self.results["search"] = {"avg_median": round(avg_median, 2), "avg_p95": round(avg_p95, 2), "queries": len(queries)}
+        self.results["search"] = {
+            "avg_median": round(avg_median, 2),
+            "avg_p95": round(avg_p95, 2),
+            "queries": len(queries),
+        }
         print(f"   {len(queries)} 个查询, 每个 50 次迭代:")
         print(f"   avg median={avg_median:.2f}ms, avg p95={avg_p95:.2f}ms")
 
@@ -79,7 +81,9 @@ class Benchmark:
             t0 = time.perf_counter()
             item_id, drawer = remember(
                 raw_text=f"性能测试记忆 #{i} — benchmark test memory",
-                wing="benchmark", tags=["benchmark", "test"], importance=0.5,
+                wing="benchmark",
+                tags=["benchmark", "test"],
+                importance=0.5,
                 existing_drawers=self.drawers,
             )
             elapsed = (time.perf_counter() - t0) * 1000
@@ -98,6 +102,7 @@ class Benchmark:
     def benchmark_embedding(self):
         print("\n[4] 嵌入性能")
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         embedder = ONNXEmbedder()
         texts = ["Python编程", "ONNX推理优化", "向量索引搜索", "记忆系统架构", "性能测试"]
 
@@ -129,7 +134,7 @@ class Benchmark:
         # 并发
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             t0 = time.perf_counter()
-            concurrent_times = list(executor.map(search_task, queries))
+            list(executor.map(search_task, queries))
             concurrent_total = (time.perf_counter() - t0) * 1000
 
         serial_total = sum(serial_times)
@@ -148,6 +153,7 @@ class Benchmark:
     def benchmark_memory_overhead(self):
         print("\n[6] 内存开销")
         import sys
+
         stack_size = sys.getsizeof(self.drawers)
         drawer_sample = self.drawers[0] if self.drawers else None
         drawer_size = sys.getsizeof(drawer_sample) if drawer_sample else 0

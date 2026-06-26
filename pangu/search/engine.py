@@ -17,15 +17,22 @@ class SemanticSearch:
         if self._embedder is None:
             try:
                 from .embedder import VectorEmbedder
+
                 self._embedder = VectorEmbedder(self.config)
             except ImportError:
                 self._embedder = None
         return self._embedder
 
-    def search(self, query: str, drawers: list[Drawer],
-               wing: str = None, room: str = None,
-               hall: str = None, n_results: int = 10,
-               use_embeddings: bool = True) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        drawers: list[Drawer],
+        wing: str = None,
+        room: str = None,
+        hall: str = None,
+        n_results: int = 10,
+        use_embeddings: bool = True,
+    ) -> list[dict]:
         """语义搜索 — 优先使用向量搜索，回退到关键词匹配"""
         # 过滤
         filtered = []
@@ -43,17 +50,20 @@ class SemanticSearch:
 
         # 尝试向量搜索
         if use_embeddings and self.embedder:
-            items = [{
-                "id": d.id,
-                "content": d.content,
-                "wing": d.wing,
-                "room": d.room,
-                "hall": d.hall,
-                "importance": d.importance,
-                "source_file": d.source_file,
-                "tags": d.tags,
-                "created_at": d.created_at,
-            } for d in filtered]
+            items = [
+                {
+                    "id": d.id,
+                    "content": d.content,
+                    "wing": d.wing,
+                    "room": d.room,
+                    "hall": d.hall,
+                    "importance": d.importance,
+                    "source_file": d.source_file,
+                    "tags": d.tags,
+                    "created_at": d.created_at,
+                }
+                for d in filtered
+            ]
             try:
                 results = self.embedder.search(query, items, top_k=n_results)
                 return results
@@ -79,19 +89,21 @@ class SemanticSearch:
 
         results = []
         for score, drawer in scored[:n_results]:
-            results.append({
-                "id": drawer.id,
-                "content": drawer.content,
-                "wing": drawer.wing,
-                "room": drawer.room,
-                "hall": drawer.hall,
-                "score": round(score, 2),
-                "importance": drawer.importance,
-                "source_file": drawer.source_file,
-                "tags": drawer.tags,
-                "created_at": drawer.created_at,
-                "source": "keyword",
-            })
+            results.append(
+                {
+                    "id": drawer.id,
+                    "content": drawer.content,
+                    "wing": drawer.wing,
+                    "room": drawer.room,
+                    "hall": drawer.hall,
+                    "score": round(score, 2),
+                    "importance": drawer.importance,
+                    "source_file": drawer.source_file,
+                    "tags": drawer.tags,
+                    "created_at": drawer.created_at,
+                    "source": "keyword",
+                }
+            )
 
         return results
 
@@ -102,8 +114,7 @@ class LexicalSearch:
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
 
-    def search(self, query: str, drawers: list[Drawer],
-               wing: str = None, n_results: int = 10) -> list[dict]:
+    def search(self, query: str, drawers: list[Drawer], wing: str = None, n_results: int = 10) -> list[dict]:
         """精确文本搜索"""
         filtered = []
         for d in drawers:
@@ -126,16 +137,18 @@ class LexicalSearch:
             if end < len(drawer.content):
                 snippet = snippet + "..."
 
-            results.append({
-                "id": drawer.id,
-                "content": drawer.content,
-                "snippet": snippet,
-                "wing": drawer.wing,
-                "room": drawer.room,
-                "importance": drawer.importance,
-                "source_file": drawer.source_file,
-                "created_at": drawer.created_at,
-            })
+            results.append(
+                {
+                    "id": drawer.id,
+                    "content": drawer.content,
+                    "snippet": snippet,
+                    "wing": drawer.wing,
+                    "room": drawer.room,
+                    "importance": drawer.importance,
+                    "source_file": drawer.source_file,
+                    "created_at": drawer.created_at,
+                }
+            )
 
         return results
 
@@ -147,9 +160,9 @@ class HybridSearch:
         self.semantic = SemanticSearch(config)
         self.lexical = LexicalSearch(config)
 
-    def search(self, query: str, drawers: list[Drawer],
-               wing: str = None, room: str = None,
-               n_results: int = 10) -> list[dict]:
+    def search(
+        self, query: str, drawers: list[Drawer], wing: str = None, room: str = None, n_results: int = 10
+    ) -> list[dict]:
         """混合搜索"""
         semantic_results = self.semantic.search(query, drawers, wing=wing, room=room, n_results=n_results * 2)
         lexical_results = self.lexical.search(query, drawers, wing=wing, n_results=n_results * 2)

@@ -8,10 +8,10 @@
 纯大脑能力：只做评估和检测，不执行任务。
 """
 
+import asyncio
 import hashlib
 import json
 import logging
-import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -63,12 +63,17 @@ class EvaluationCache:
     def put(self, prompt_hash: str, verdict: str, confidence: float) -> None:
         try:
             with open(self.cache_path, "a") as f:
-                f.write(json.dumps({
-                    "hash": prompt_hash,
-                    "verdict": verdict,
-                    "confidence": confidence,
-                    "timestamp": datetime.now().isoformat(),
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "hash": prompt_hash,
+                            "verdict": verdict,
+                            "confidence": confidence,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+                    + "\n"
+                )
         except OSError as e:
             logger.warning(f"Cache write error: {e}")
 
@@ -86,6 +91,7 @@ class EnhancedContradictionDetector:
         if self._llm_engine is None:
             try:
                 from ..core.llm import LLMEngine
+
                 self._llm_engine = LLMEngine(self.config)
             except ImportError:
                 self._llm_engine = None
@@ -114,25 +120,29 @@ class EnhancedContradictionDetector:
 
                 cached = self.cache.get(prompt_hash)
                 if cached:
-                    verdicts.append({
-                        "source_id": sorted_drawers[i].id,
-                        "target_id": sorted_drawers[j].id,
-                        "verdict": cached["verdict"],
-                        "confidence": cached.get("confidence", 1.0),
-                        "cached": True,
-                    })
+                    verdicts.append(
+                        {
+                            "source_id": sorted_drawers[i].id,
+                            "target_id": sorted_drawers[j].id,
+                            "verdict": cached["verdict"],
+                            "confidence": cached.get("confidence", 1.0),
+                            "cached": True,
+                        }
+                    )
                     continue
 
                 verdict, confidence = self._judge(text_a, text_b)
                 self.cache.put(prompt_hash, verdict, confidence)
 
-                verdicts.append({
-                    "source_id": sorted_drawers[i].id,
-                    "target_id": sorted_drawers[j].id,
-                    "verdict": verdict,
-                    "confidence": confidence,
-                    "cached": False,
-                })
+                verdicts.append(
+                    {
+                        "source_id": sorted_drawers[i].id,
+                        "target_id": sorted_drawers[j].id,
+                        "verdict": verdict,
+                        "confidence": confidence,
+                        "cached": False,
+                    }
+                )
 
         stats = self._compute_stats(verdicts)
         return {"verdicts": verdicts, "stats": stats}
@@ -175,14 +185,10 @@ class EnhancedContradictionDetector:
             return "temporal_regression", 0.6
 
         evolution_keywords = ["后来", "最终", "现在", "目前", "最终发现"]
-        if any(kw in text_b for kw in evolution_keywords) and any(
-            kw in text_a for kw in ["最初", "之前", "起初"]
-        ):
+        if any(kw in text_b for kw in evolution_keywords) and any(kw in text_a for kw in ["最初", "之前", "起初"]):
             return "temporal_evolution", 0.6
 
-        if any(kw in text_a for kw in ["因为", "导致"]) and any(
-            kw in text_b for kw in ["所以", "因此"]
-        ):
+        if any(kw in text_a for kw in ["因为", "导致"]) and any(kw in text_b for kw in ["所以", "因此"]):
             return "temporal_supersession", 0.5
 
         return "no_contradiction", 0.5
@@ -213,8 +219,7 @@ class TrajectoryTracker:
     def __init__(self, config=None):
         self.config = config
 
-    def track(self, drawers: list, item_id: str = None,
-              wing: str = None, room: str = None) -> dict:
+    def track(self, drawers: list, item_id: str = None, wing: str = None, room: str = None) -> dict:
         """追踪记忆的时间轨迹
 
         Returns:
@@ -234,15 +239,17 @@ class TrajectoryTracker:
             except (ValueError, TypeError):
                 ts = datetime.now()
 
-            events.append({
-                "id": d.id,
-                "content": d.content[:200],
-                "timestamp": ts.isoformat(),
-                "importance": d.importance,
-                "wing": d.wing,
-                "room": d.room,
-                "tags": d.tags,
-            })
+            events.append(
+                {
+                    "id": d.id,
+                    "content": d.content[:200],
+                    "timestamp": ts.isoformat(),
+                    "importance": d.importance,
+                    "wing": d.wing,
+                    "room": d.room,
+                    "tags": d.tags,
+                }
+            )
 
         events.sort(key=lambda e: e["timestamp"])
 
@@ -271,15 +278,17 @@ class TrajectoryTracker:
 
             # 重要性下降且超过 50%
             if prev["importance"] > 0 and curr["importance"] < prev["importance"] * 0.5:
-                regressions.append({
-                    "type": "importance_drop",
-                    "from": prev["id"],
-                    "to": curr["id"],
-                    "from_importance": prev["importance"],
-                    "to_importance": curr["importance"],
-                    "from_time": prev["timestamp"],
-                    "to_time": curr["timestamp"],
-                })
+                regressions.append(
+                    {
+                        "type": "importance_drop",
+                        "from": prev["id"],
+                        "to": curr["id"],
+                        "from_importance": prev["importance"],
+                        "to_importance": curr["importance"],
+                        "from_time": prev["timestamp"],
+                        "to_time": curr["timestamp"],
+                    }
+                )
 
         return regressions
 

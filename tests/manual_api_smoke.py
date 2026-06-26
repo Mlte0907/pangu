@@ -10,6 +10,7 @@
 - MCP 工具注册表
 - CLI 命令注册
 """
+
 import os
 
 os.environ.setdefault("PANGU_DATA_DIR", "/home/xiaoxin/pangu/.test_data")
@@ -23,6 +24,7 @@ from fastapi.testclient import TestClient
 
 results = {"passed": 0, "failed": 0, "errors": []}
 
+
 def check(name, cond, detail=""):
     if cond:
         results["passed"] += 1
@@ -31,6 +33,7 @@ def check(name, cond, detail=""):
         results["failed"] += 1
         results["errors"].append((name, detail))
         print(f"  [FAIL] {name} :: {detail}")
+
 
 # ── 1. FastAPI 应用 ──
 print("== FastAPI Application ==")
@@ -55,7 +58,7 @@ check("/health 200", r.status_code == 200, f"status={r.status_code} body={r.text
 if r.status_code == 200:
     body = r.json()
     check("/health envelope", body.get("code") == 0 and "data" in body, body)
-    check("/health data.status", body["data"].get("status") in ("ok","degraded","unhealthy"), body["data"])
+    check("/health data.status", body["data"].get("status") in ("ok", "degraded", "unhealthy"), body["data"])
 
 r = client.get("/health/deep")
 check("/health/deep 200", r.status_code == 200, f"status={r.status_code}")
@@ -68,7 +71,7 @@ print("== Metrics ==")
 r = client.get("/metrics")
 check("/metrics 200", r.status_code == 200, f"status={r.status_code}")
 if r.status_code == 200:
-    check("/metrics prometheus text", "text/plain" in r.headers.get("content-type",""), r.headers.get("content-type"))
+    check("/metrics prometheus text", "text/plain" in r.headers.get("content-type", ""), r.headers.get("content-type"))
     check("/metrics has pangu metrics", "pangu_" in r.text or "python_gc" in r.text, r.text[:300])
 
 # ── 4. 系统信息 ──
@@ -77,7 +80,11 @@ r = client.get("/api/v2/system/info")
 check("/api/v2/system/info 200", r.status_code == 200, f"status={r.status_code}")
 if r.status_code == 200:
     body = r.json()
-    check("/system/info data fields", all(k in body.get("data",{}) for k in ("name","version","health","config")), list(body.get("data",{}).keys()))
+    check(
+        "/system/info data fields",
+        all(k in body.get("data", {}) for k in ("name", "version", "health", "config")),
+        list(body.get("data", {}).keys()),
+    )
 
 # ── 5. 文档限制 ──
 print("== Docs access control ==")
@@ -89,27 +96,43 @@ check("/docs accessible from localhost", r.status_code in (200, 307, 308), f"sta
 # 通过自定义 scope 模拟外部 host
 # Use raw ASGI to test the middleware
 
+
 async def call_with_host(path, host="8.8.8.8"):
     from pangu.api.server import create_app
+
     app2 = create_app()
     _received = {}
     body_chunks = []
     status = {}
+
     async def receive():
         return {"type": "http.request", "body": b"", "more_body": False}
+
     async def send(msg):
         if msg["type"] == "http.response.start":
             status["code"] = msg["status"]
             status["headers"] = msg.get("headers", [])
         elif msg["type"] == "http.response.body":
             body_chunks.append(msg.get("body", b""))
-    scope = {"type": "http", "method": "GET", "path": path, "raw_path": path.encode(), "query_string": b"", "headers": [], "client": (host, 12345), "server": ("test", 80), "scheme": "http"}
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "headers": [],
+        "client": (host, 12345),
+        "server": ("test", 80),
+        "scheme": "http",
+    }
     try:
         await app2(scope, receive, send)
     except Exception as e:
         return 500, str(e)
     body = b"".join(body_chunks).decode(errors="ignore")
     return status.get("code", 0), body
+
 
 # 用 asyncio 跑
 import asyncio
@@ -122,11 +145,14 @@ for path in ["/docs", "/openapi.json"]:
 
 # ── 6. CORS ──
 print("== CORS ==")
-r = client.options("/health", headers={
-    "Origin": "http://localhost:19528",
-    "Access-Control-Request-Method": "GET",
-    "Access-Control-Request-Headers": "Content-Type",
-})
+r = client.options(
+    "/health",
+    headers={
+        "Origin": "http://localhost:19528",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "Content-Type",
+    },
+)
 check("CORS preflight", "access-control-allow-origin" in {k.lower() for k in r.headers.keys()}, dict(r.headers))
 
 # ── 7. 异常处理 ──
@@ -142,18 +168,26 @@ if r.status_code == 404:
 print("== MCP Server ==")
 try:
     from pangu.server.mcp_server import MCPServer
+
     mcp = MCPServer.__new__(MCPServer)
     if hasattr(mcp, "_register_tools") or hasattr(mcp, "tools"):
         # Try list_tools method
         from pangu.core.config import PanguConfig
+
         cfg = PanguConfig()
         mcp_inst = MCPServer(cfg) if hasattr(MCPServer, "__init__") else None
         if mcp_inst:
             tools = mcp_inst.list_tools() if hasattr(mcp_inst, "list_tools") else None
             if tools is not None:
-                check("MCP list_tools", isinstance(tools, list) and len(tools) > 0, f"count={len(tools) if tools else 0}")
+                check(
+                    "MCP list_tools", isinstance(tools, list) and len(tools) > 0, f"count={len(tools) if tools else 0}"
+                )
                 if tools:
-                    check("MCP tool has name/signature", all("name" in t and ("inputSchema" in t or "parameters" in t) for t in tools), tools[:2])
+                    check(
+                        "MCP tool has name/signature",
+                        all("name" in t and ("inputSchema" in t or "parameters" in t) for t in tools),
+                        tools[:2],
+                    )
                     print(f"  ({len(tools)} tools registered)")
             else:
                 check("MCP list_tools", True, "no list_tools method, but class loaded")
@@ -166,6 +200,7 @@ except Exception as e:
 print("== CLI ==")
 try:
     from pangu.cli import app as cli_app
+
     check("CLI app", cli_app is not None, str(type(cli_app)))
     # typer apps have registered_commands via app.registered_commands or similar
     if hasattr(cli_app, "registered_commands"):
@@ -203,14 +238,20 @@ if results["failed"] > 0:
 import pathlib
 
 out = pathlib.Path("/home/xiaoxin/pangu/reports/api_smoke.json")
-out.write_text(json.dumps({
-    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-    "passed": results["passed"],
-    "failed": results["failed"],
-    "errors": [{"name": n, "detail": d} for n, d in results["errors"]],
-    "routes_count": len(routes),
-    "api_v2_count": len(api_v2),
-}, indent=2, ensure_ascii=False))
+out.write_text(
+    json.dumps(
+        {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "passed": results["passed"],
+            "failed": results["failed"],
+            "errors": [{"name": n, "detail": d} for n, d in results["errors"]],
+            "routes_count": len(routes),
+            "api_v2_count": len(api_v2),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+)
 print(f"saved {out}")
 
 import sys

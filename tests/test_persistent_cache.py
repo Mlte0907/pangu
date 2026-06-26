@@ -42,7 +42,9 @@ class TestPersistentCacheBasic:
             usage={"prompt_tokens": 5, "completion_tokens": 5},
         )
         cache.put(
-            "key1", "openai", "gpt-4o-mini",
+            "key1",
+            "openai",
+            "gpt-4o-mini",
             {"messages": [{"role": "user", "content": "hi"}]},
             response,
         )
@@ -317,9 +319,7 @@ class TestLLMEnginePersistentCache:
         )
         engine = LLMEngine(cfg)
         # 写入测试数据
-        engine._persistent_cache.put(
-            "k1", "p", "m", {}, LLMResponse(content="x", model="m", provider="p")
-        )
+        engine._persistent_cache.put("k1", "p", "m", {}, LLMResponse(content="x", model="m", provider="p"))
         assert engine._persistent_cache.get("k1") is not None
         # 清空
         n = engine.clear_persistent_cache()
@@ -359,9 +359,16 @@ class TestPrometheusMetrics:
         # 写入持久化数据
         for i in range(3):
             engine._persistent_cache.put(
-                f"k_{i}", "openai", "gpt-4o-mini", {},
-                LLMResponse(content=f"r{i}", model="gpt-4o-mini", provider="openai",
-                            usage={"prompt_tokens": 10, "completion_tokens": 20}),
+                f"k_{i}",
+                "openai",
+                "gpt-4o-mini",
+                {},
+                LLMResponse(
+                    content=f"r{i}",
+                    model="gpt-4o-mini",
+                    provider="openai",
+                    usage={"prompt_tokens": 10, "completion_tokens": 20},
+                ),
             )
         # 模拟统计
         engine._call_count = 10
@@ -374,10 +381,7 @@ class TestPrometheusMetrics:
         assert "pangu_llm_persistent_cache_entries" in output
         assert "pangu_llm_persistent_cache_bytes" in output
         # 验证具体数值（3 个条目数应出现在 entries 行）
-        entries_line = [
-            line for line in output.split("\n")
-            if "pangu_llm_persistent_cache_entries{" in line
-        ]
+        entries_line = [line for line in output.split("\n") if "pangu_llm_persistent_cache_entries{" in line]
         assert len(entries_line) == 1
         assert " 3" in entries_line[0]  # 3 个条目
         assert "50.0" in output  # 命中率 50%
@@ -393,7 +397,7 @@ class TestPrometheusMetrics:
             # 每行指标必须有 {...} 标签
             assert "{" in line and "}" in line, f"指标格式不合法: {line}"
             # 必须包含 provider
-            assert 'provider=' in line
+            assert "provider=" in line
 
 
 # ─────────────────────────────────────────────────────

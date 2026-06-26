@@ -7,9 +7,9 @@
 - Claude Code 会话历史
 - 接入自主调度器自动运行
 """
+
 import json
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -90,10 +90,11 @@ class FileCollector:
         chunks = self._chunk_content(content, max_chars=800)
 
         from ..memory.ingestion import remember
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
+
+        Path(self.config.palace_path) / "drawers.json"
         existing = self._load_existing()
 
-        for i, chunk in enumerate(chunks):
+        for _i, chunk in enumerate(chunks):
             importance = self._assess_importance(chunk)
             if importance < min_importance:
                 continue
@@ -111,12 +112,14 @@ class FileCollector:
                 existing_drawers=existing,
             )
             existing.append(drawer)
-            results.append({
-                "id": item_id,
-                "wing": wing,
-                "importance": round(importance, 2),
-                "preview": chunk[:80],
-            })
+            results.append(
+                {
+                    "id": item_id,
+                    "wing": wing,
+                    "importance": round(importance, 2),
+                    "preview": chunk[:80],
+                }
+            )
 
         if results:
             self._save_drawers(existing)
@@ -126,8 +129,14 @@ class FileCollector:
         self._save_state()
         return results
 
-    def collect_from_dir(self, dir_path: str, pattern: str = "*.md", source: str = "dir",
-                         min_importance: float = 0.3, max_files: int = 20) -> dict:
+    def collect_from_dir(
+        self,
+        dir_path: str,
+        pattern: str = "*.md",
+        source: str = "dir",
+        min_importance: float = 0.3,
+        max_files: int = 20,
+    ) -> dict:
         """从目录批量采集"""
         path = Path(dir_path).expanduser()
         if not path.exists() or not path.is_dir():
@@ -159,7 +168,10 @@ class FileCollector:
             if not path.exists():
                 continue
             result = self.collect_from_dir(
-                str(path), pattern=src["pattern"], source=name, min_importance=min_importance,
+                str(path),
+                pattern=src["pattern"],
+                source=name,
+                min_importance=min_importance,
             )
             stats["sources"][name] = result
             stats["total"] += result.get("memories_collected", 0)
@@ -184,27 +196,32 @@ class FileCollector:
 
     def _assess_importance(self, text: str) -> float:
         score = 0.3
-        if len(text) > 100: score += 0.1
-        if len(text) > 300: score += 0.1
+        if len(text) > 100:
+            score += 0.1
+        if len(text) > 300:
+            score += 0.1
         text_lower = text.lower()
         high_kw = ["决定", "修复", "bug", "部署", "必须", "规则", "P0", "架构", "完成", "失败"]
         score += min(sum(0.08 for kw in high_kw if kw in text_lower), 0.3)
-        if "```" in text: score += 0.05
-        if "http" in text: score += 0.05
+        if "```" in text:
+            score += 0.05
+        if "http" in text:
+            score += 0.05
         return min(1.0, score)
 
     def _classify(self, text: str) -> tuple[str, str]:
         text_lower = text.lower()
         wing = "default"
-        for w, kws in {"tech": ["代码", "bug", "修复", "api", "python", "docker", "git"],
-                        "project": ["任务", "计划", "进度", "交付"],
-                        "team": ["会议", "讨论", "决策"]}.items():
+        for w, kws in {
+            "tech": ["代码", "bug", "修复", "api", "python", "docker", "git"],
+            "project": ["任务", "计划", "进度", "交付"],
+            "team": ["会议", "讨论", "决策"],
+        }.items():
             if any(k in text_lower for k in kws):
                 wing = w
                 break
         room = "general"
-        for r, kws in {"decisions": ["决定", "确认"], "tasks": ["任务", "完成"],
-                        "issues": ["bug", "问题"]}.items():
+        for r, kws in {"decisions": ["决定", "确认"], "tasks": ["任务", "完成"], "issues": ["bug", "问题"]}.items():
             if any(k in text_lower for k in kws):
                 room = r
                 break

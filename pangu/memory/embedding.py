@@ -39,6 +39,7 @@ class EmbeddingService:
             return
         try:
             from pangu.memory.onnx_embedder import get_onnx_embedder
+
             if get_onnx_embedder.__module__:
                 self._onnx = get_onnx_embedder(
                     model_id=self.config.onnx_model_id,
@@ -217,7 +218,9 @@ class EmbeddingService:
                     session.post(
                         self.config.embed_api_url,
                         json=data,
-                        headers={"Authorization": f"Bearer {self.config.llm_api_key}"} if self.config.llm_api_key else {},
+                        headers={"Authorization": f"Bearer {self.config.llm_api_key}"}
+                        if self.config.llm_api_key
+                        else {},
                     ) as resp,
                 ):
                     resp.raise_for_status()
@@ -261,7 +264,9 @@ class EmbeddingService:
                     session.post(
                         self.config.embed_api_url,
                         json=data,
-                        headers={"Authorization": f"Bearer {self.config.llm_api_key}"} if self.config.llm_api_key else {},
+                        headers={"Authorization": f"Bearer {self.config.llm_api_key}"}
+                        if self.config.llm_api_key
+                        else {},
                     ) as resp,
                 ):
                     resp.raise_for_status()

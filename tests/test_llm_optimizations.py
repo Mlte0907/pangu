@@ -58,12 +58,12 @@ class TestJSONMode:
 
     def test_extract_json_empty(self):
         """空字符串返回默认值"""
-        result = LLMEngine._extract_json('', default={"fallback": True})
+        result = LLMEngine._extract_json("", default={"fallback": True})
         assert result == {"fallback": True}
 
     def test_extract_json_invalid(self):
         """完全无效输入返回默认值"""
-        result = LLMEngine._extract_json('not json at all', default={"x": 0})
+        result = LLMEngine._extract_json("not json at all", default={"x": 0})
         assert result == {"x": 0}
 
     def test_extract_json_partial(self):
@@ -92,53 +92,63 @@ class TestCostEstimation:
 
     def test_estimate_zhipu_free(self):
         """智谱 glm-4-flash 新用户免费"""
-        engine = LLMEngine(PanguConfig(
-            llm_provider="zhipu",
-            llm_model="glm-4-flash",
-            llm_api_key="dummy",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="zhipu",
+                llm_model="glm-4-flash",
+                llm_api_key="dummy",
+            )
+        )
         cost = engine._estimate_cost("zhipu", 1000, 1000)
         assert cost == 0.0
 
     def test_estimate_openai_gpt4o_mini(self):
         """OpenAI gpt-4o-mini 价格"""
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="dummy",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="dummy",
+            )
+        )
         # 1000 input + 1000 output = 0.15 + 0.6 = 0.75 USD cents
         cost = engine._estimate_cost("openai", 1000, 1000)
         assert abs(cost - 0.00075) < 1e-6
 
     def test_estimate_deepseek(self):
         """DeepSeek 价格"""
-        engine = LLMEngine(PanguConfig(
-            llm_provider="deepseek",
-            llm_model="deepseek-chat",
-            llm_api_key="dummy",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="deepseek",
+                llm_model="deepseek-chat",
+                llm_api_key="dummy",
+            )
+        )
         # 1000 input + 1000 output = 0.14 + 0.28 = 0.42 USD mills
         cost = engine._estimate_cost("deepseek", 1000, 1000)
         assert abs(cost - 0.00042) < 1e-6
 
     def test_estimate_unknown_model(self):
         """未知模型返回 0"""
-        engine = LLMEngine(PanguConfig(
-            llm_provider="zhipu",
-            llm_model="unknown-model-xyz",
-            llm_api_key="dummy",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="zhipu",
+                llm_model="unknown-model-xyz",
+                llm_api_key="dummy",
+            )
+        )
         cost = engine._estimate_cost("zhipu", 1000, 1000)
         assert cost == 0.0
 
     def test_estimate_ollama_free(self):
         """Ollama 本地免费"""
-        engine = LLMEngine(PanguConfig(
-            llm_provider="ollama",
-            llm_model="qwen2:7b",
-            llm_base_url="http://localhost:11434/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="ollama",
+                llm_model="qwen2:7b",
+                llm_base_url="http://localhost:11434/v1",
+            )
+        )
         cost = engine._estimate_cost("ollama", 10000, 5000)
         assert cost == 0.0
 
@@ -186,13 +196,16 @@ class TestEngineStats:
 class TestProviderMatrix:
     """提供商配置矩阵测试"""
 
-    @pytest.mark.parametrize("provider,env_key,model", [
-        ("zhipu", "ZHIPU_API_KEY", "glm-4-flash"),
-        ("openai", "OPENAI_API_KEY", "gpt-4o-mini"),
-        ("deepseek", "DEEPSEEK_API_KEY", "deepseek-chat"),
-        ("qwen", "DASHSCOPE_API_KEY", "qwen-turbo"),
-        ("openrouter", "OPENROUTER_API_KEY", "openai/gpt-4o-mini"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,env_key,model",
+        [
+            ("zhipu", "ZHIPU_API_KEY", "glm-4-flash"),
+            ("openai", "OPENAI_API_KEY", "gpt-4o-mini"),
+            ("deepseek", "DEEPSEEK_API_KEY", "deepseek-chat"),
+            ("qwen", "DASHSCOPE_API_KEY", "qwen-turbo"),
+            ("openrouter", "OPENROUTER_API_KEY", "openai/gpt-4o-mini"),
+        ],
+    )
     def test_provider_url_configured(self, provider, env_key, model):
         """所有 provider URL 已配置"""
         assert provider in PROVIDER_URLS
@@ -208,11 +221,13 @@ class TestProviderMatrix:
         """为每个 provider 的每个模型估算成本"""
         for provider, models in PRICING_PER_1K.items():
             for model in models:
-                engine = LLMEngine(PanguConfig(
-                    llm_provider=provider,
-                    llm_model=model,
-                    llm_api_key="dummy",
-                ))
+                engine = LLMEngine(
+                    PanguConfig(
+                        llm_provider=provider,
+                        llm_model=model,
+                        llm_api_key="dummy",
+                    )
+                )
                 cost = engine._estimate_cost(provider, 1000, 1000)
                 # 应该有合理的成本（除非免费）
                 assert cost >= 0
@@ -229,12 +244,14 @@ class TestJSONModeIntegration:
         """JSON mode 启用时 payload 包含 response_format"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
 
         # 跟踪实际 payload
         captured_payload = {}
@@ -272,13 +289,15 @@ class TestJSONModeIntegration:
         """chat json_mode=True 时解析 JSON"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-            llm_max_retries=2,
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+                llm_max_retries=2,
+            )
+        )
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -309,12 +328,20 @@ class TestResponseCache:
         """不同参数生成不同缓存键"""
         engine = LLMEngine(PanguConfig(llm_api_key="dummy"))
         key1 = engine._make_cache_key(
-            "openai", "gpt-4o-mini", [{"role": "user", "content": "a"}],
-            "sys", 100, False,
+            "openai",
+            "gpt-4o-mini",
+            [{"role": "user", "content": "a"}],
+            "sys",
+            100,
+            False,
         )
         key2 = engine._make_cache_key(
-            "openai", "gpt-4o-mini", [{"role": "user", "content": "b"}],
-            "sys", 100, False,
+            "openai",
+            "gpt-4o-mini",
+            [{"role": "user", "content": "b"}],
+            "sys",
+            100,
+            False,
         )
         assert key1 != key2
 
@@ -322,8 +349,12 @@ class TestResponseCache:
         """相同参数生成相同键"""
         engine = LLMEngine(PanguConfig(llm_api_key="dummy"))
         args = (
-            "openai", "gpt-4o-mini", [{"role": "user", "content": "x"}],
-            "sys", 100, False,
+            "openai",
+            "gpt-4o-mini",
+            [{"role": "user", "content": "x"}],
+            "sys",
+            100,
+            False,
         )
         key1 = engine._make_cache_key(*args)
         key2 = engine._make_cache_key(*args)
@@ -403,12 +434,14 @@ class TestResponseCache:
         """chat 使用缓存（temperature=0）"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
         # 清空持久化缓存（避免之前测试残留）
         engine.clear_persistent_cache()
         engine.clear_cache()
@@ -448,12 +481,14 @@ class TestResponseCache:
         """temperature>0 时不使用缓存"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -493,12 +528,14 @@ class TestBatchOperations:
         """批量并发调用"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
 
         call_count = 0
         call_log = []
@@ -522,10 +559,7 @@ class TestBatchOperations:
         mock_client.post = AsyncMock(side_effect=mock_post)
         engine._client = mock_client
 
-        batch = [
-            {"messages": [{"role": "user", "content": f"q_{i}"}], "temperature": 0.7}
-            for i in range(5)
-        ]
+        batch = [{"messages": [{"role": "user", "content": f"q_{i}"}], "temperature": 0.7} for i in range(5)]
         start = time.time()
         results = await engine.batch_chat(batch, concurrency=3)
         elapsed = time.time() - start
@@ -540,12 +574,14 @@ class TestBatchOperations:
         """批量调用使用缓存"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
         # 清空持久化缓存
         engine.clear_persistent_cache()
         engine.clear_cache()
@@ -563,10 +599,7 @@ class TestBatchOperations:
         engine._client = mock_client
 
         # 3 个完全相同的请求（temperature=0）
-        batch = [
-            {"messages": [{"role": "user", "content": "same"}], "temperature": 0}
-            for _ in range(3)
-        ]
+        batch = [{"messages": [{"role": "user", "content": "same"}], "temperature": 0} for _ in range(3)]
         results = await engine.batch_chat(batch, concurrency=2, use_cache=True)
         assert len(results) == 3
         # 第一次 miss，后续 2 次 hit
@@ -579,19 +612,21 @@ class TestBatchOperations:
         """批量分类"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "choices": [{"message": {
-                "content": '{"hall": "hall_facts", "room": "test", "importance": 3, "tags": ["t1"]}'
-            }}],
+            "choices": [
+                {"message": {"content": '{"hall": "hall_facts", "room": "test", "importance": 3, "tags": ["t1"]}'}}
+            ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 10},
         }
         mock_resp.raise_for_status = lambda: None
@@ -600,9 +635,7 @@ class TestBatchOperations:
         mock_client.post = AsyncMock(return_value=mock_resp)
         engine._client = mock_client
 
-        memories = [
-            {"id": f"m_{i}", "content": f"content {i}"} for i in range(5)
-        ]
+        memories = [{"id": f"m_{i}", "content": f"content {i}"} for i in range(5)]
         results = await engine.batch_classify_memories(memories, concurrency=2)
 
         assert len(results) == 5
@@ -616,19 +649,19 @@ class TestBatchOperations:
         """批量 Wiki"""
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "choices": [{"message": {
-                "content": '{"title": "T", "summary": "S", "content": "C", "tags": ["a"]}'
-            }}],
+            "choices": [{"message": {"content": '{"title": "T", "summary": "S", "content": "C", "tags": ["a"]}'}}],
             "usage": {"prompt_tokens": 50, "completion_tokens": 50},
         }
         mock_resp.raise_for_status = lambda: None
@@ -638,8 +671,7 @@ class TestBatchOperations:
         engine._client = mock_client
 
         pages = [
-            {"title": f"Topic {i}", "memories": [{"wing": "w", "room": "r", "content": f"m {i}"}]}
-            for i in range(3)
+            {"title": f"Topic {i}", "memories": [{"wing": "w", "room": "r", "content": f"m {i}"}]} for i in range(3)
         ]
         results = await engine.batch_generate_wiki_pages(pages, concurrency=2)
 
@@ -661,12 +693,14 @@ class TestCachePerformance:
         import time as time_mod
         from unittest.mock import AsyncMock, MagicMock
 
-        engine = LLMEngine(PanguConfig(
-            llm_provider="openai",
-            llm_model="gpt-4o-mini",
-            llm_api_key="test-key",
-            llm_base_url="https://api.test.com/v1",
-        ))
+        engine = LLMEngine(
+            PanguConfig(
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="test-key",
+                llm_base_url="https://api.test.com/v1",
+            )
+        )
 
         async def slow_mock(*args, **kwargs):
             await asyncio.sleep(0.2)  # 模拟 200ms 延迟

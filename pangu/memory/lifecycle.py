@@ -13,7 +13,6 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from pangu.core.config import PanguConfig
 from pangu.core.palace import Drawer
@@ -94,7 +93,7 @@ class LifecycleManager:
 
         # 执行巩固
         consolidator = MemoryConsolidator(self.config)
-        stats = consolidator.stats(drawers)
+        consolidator.stats(drawers)
 
         # 找出需要遗忘的记忆
         forgotten = consolidator.find_forgotten(drawers)
@@ -125,6 +124,7 @@ class LifecycleManager:
         neural_stats = {}
         try:
             from pangu.memory.neural_memory import get_neural_engine
+
             engine = get_neural_engine()
             if engine.needs_sleep():
                 neural_stats = engine.sleep()
@@ -297,6 +297,7 @@ class LifecycleManager:
         neural_result = {}
         try:
             from pangu.memory.neural_memory import get_neural_engine
+
             engine = get_neural_engine()
             if engine.needs_sleep() or engine.hippocampus.load_factor > 0.5:
                 neural_result = engine.sleep()
@@ -316,6 +317,7 @@ class LifecycleManager:
             # 验证记忆
             try:
                 from pangu.memory.memory_validator import MemoryValidator
+
                 validator = MemoryValidator(self.config)
                 val_result = validator.validate_all()
                 results["validation"] = val_result
@@ -419,6 +421,7 @@ class LifecycleManager:
         # 神经记忆巩固
         try:
             from pangu.memory.neural_memory import get_neural_engine
+
             engine = get_neural_engine()
             if engine.needs_sleep() or engine.hippocampus.load_factor > 0.5:
                 neural_result = engine.sleep()
@@ -429,8 +432,7 @@ class LifecycleManager:
 
         return results
 
-    def _fuse_tag_in_wing(self, tag: str, count: int, wing: str, wing_drawers: list,
-                          engine, drawers: list) -> int:
+    def _fuse_tag_in_wing(self, tag: str, count: int, wing: str, wing_drawers: list, engine, drawers: list) -> int:
         if count < 3:
             return 0
         result = engine.fuse_topic(tag, wing_drawers, min_similarity=0.25)
@@ -457,8 +459,7 @@ class LifecycleManager:
             return 1
         return 0
 
-    def _process_wing_fusion(self, wing: str, wing_drawers: list, engine,
-                             drawers: list) -> int:
+    def _process_wing_fusion(self, wing: str, wing_drawers: list, engine, drawers: list) -> int:
         if len(wing_drawers) < 3:
             return 0
         tag_freq: dict[str, int] = {}
@@ -515,6 +516,7 @@ class LifecycleManager:
         """跨会话记忆整合"""
         try:
             from pangu.memory.cross_session import CrossSessionIntegrator
+
             integrator = CrossSessionIntegrator(self.config)
         except ImportError:
             return {"status": "skip", "reason": "cross_session module not available"}
@@ -566,6 +568,7 @@ class LifecycleManager:
         """LLM 驱动的记忆压缩"""
         try:
             from pangu.memory.compression import get_compressor
+
             compressor = get_compressor(self.config)
         except ImportError:
             return {"status": "skip", "reason": "compression module not available"}
@@ -657,8 +660,12 @@ class LifecycleManager:
             "consolidation_enabled": self.config.consolidation_enabled,
             "consolidation_interval_hours": self.config.consolidation_interval_hours,
             "needs_consolidation": self.needs_consolidation(),
-            "last_consolidation": datetime.fromtimestamp(self._last_consolidation).isoformat() if self._last_consolidation else None,
-            "last_index_rebuild": datetime.fromtimestamp(self._last_index_rebuild).isoformat() if self._last_index_rebuild else None,
+            "last_consolidation": datetime.fromtimestamp(self._last_consolidation).isoformat()
+            if self._last_consolidation
+            else None,
+            "last_index_rebuild": datetime.fromtimestamp(self._last_index_rebuild).isoformat()
+            if self._last_index_rebuild
+            else None,
             "memories": stats,
         }
 

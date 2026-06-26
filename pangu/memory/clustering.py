@@ -7,6 +7,7 @@
 - 主题标签自动生成
 - 聚类质量评估
 """
+
 from collections import Counter
 from dataclasses import dataclass
 
@@ -21,6 +22,7 @@ from ..core.palace import Drawer
 @dataclass
 class MemoryCluster:
     """记忆聚类"""
+
     id: str
     label: str  # 聚类标签
     keywords: list[str]  # 关键词
@@ -38,11 +40,10 @@ class MemoryClusterer:
     def _cosine_sim(a, b) -> float:
         if not a or not b or len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
+        dot = sum(x * y for x, y in zip(a, b, strict=False))
         na = sum(x * x for x in a) ** 0.5
         nb = sum(x * x for x in b) ** 0.5
         return dot / (na * nb) if na and nb else 0.0
-
 
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
@@ -54,13 +55,13 @@ class MemoryClusterer:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except Exception:
                 self._embedder = None
         return self._embedder
 
-    def cluster(self, drawers: list[Drawer], n_clusters: int = 0,
-                min_similarity: float = 0.99) -> list[MemoryCluster]:
+    def cluster(self, drawers: list[Drawer], n_clusters: int = 0, min_similarity: float = 0.99) -> list[MemoryCluster]:
         """将记忆聚类为分组
 
         Args:
@@ -84,8 +85,7 @@ class MemoryClusterer:
         # 回退到关键词聚类
         return self._keyword_cluster(drawers, n_clusters)
 
-    def _vector_cluster(self, drawers: list[Drawer], n_clusters: int,
-                        min_similarity: float) -> list[MemoryCluster]:
+    def _vector_cluster(self, drawers: list[Drawer], n_clusters: int, min_similarity: float) -> list[MemoryCluster]:
         """基于嵌入向量的层次聚类"""
         texts = [d.content for d in drawers]
         embeddings = self.embedder.embed_batch(texts)
@@ -148,9 +148,9 @@ class MemoryClusterer:
                 return gid
         return -1
 
-    def _assign_keyword_cluster(self, doc_ids: set[int], assigned: set,
-                                 clusters: list, drawers: list,
-                                 n_clusters: int) -> bool:
+    def _assign_keyword_cluster(
+        self, doc_ids: set[int], assigned: set, clusters: list, drawers: list, n_clusters: int
+    ) -> bool:
         """为一组文档分配聚类，返回 True 表示应停止分配"""
         unassigned = doc_ids - assigned
         if len(unassigned) < 2:
@@ -164,8 +164,7 @@ class MemoryClusterer:
         assigned.update(unassigned)
         return False
 
-    def _keyword_cluster(self, drawers: list[Drawer],
-                         n_clusters: int = 0) -> list[MemoryCluster]:
+    def _keyword_cluster(self, drawers: list[Drawer], n_clusters: int = 0) -> list[MemoryCluster]:
         """基于关键词共现的聚类"""
         all_keywords = []
         for d in drawers:
@@ -180,16 +179,14 @@ class MemoryClusterer:
         if n_clusters <= 0:
             n_clusters = max(2, min(len(drawers) // 3, 10))
 
-        for _kw, doc_ids in sorted(keyword_docs.items(),
-                                   key=lambda x: len(x[1]), reverse=True):
+        for _kw, doc_ids in sorted(keyword_docs.items(), key=lambda x: len(x[1]), reverse=True):
             if self._assign_keyword_cluster(doc_ids, assigned, clusters, drawers, n_clusters):
                 break
 
         # 剩余未分配的
         unassigned = [i for i in range(len(drawers)) if i not in assigned]
         if unassigned:
-            clusters.append(self._build_cluster(
-                [drawers[i] for i in unassigned], unassigned))
+            clusters.append(self._build_cluster([drawers[i] for i in unassigned], unassigned))
 
         clusters.sort(key=lambda c: c.size, reverse=True)
         return clusters
@@ -203,12 +200,10 @@ class MemoryClusterer:
                 keyword_docs[kw].add(i)
         return keyword_docs
 
-    def _build_cluster(self, drawers: list[Drawer], indices: list[int],
-                       embeddings: np.ndarray = None) -> MemoryCluster:
+    def _build_cluster(self, drawers: list[Drawer], indices: list[int], embeddings: np.ndarray = None) -> MemoryCluster:
         """构建聚类对象"""
         if not drawers:
-            return MemoryCluster(id="empty", label="空", keywords=[],
-                                 memory_ids=[], size=0)
+            return MemoryCluster(id="empty", label="空", keywords=[], memory_ids=[], size=0)
 
         # 提取关键词
         keyword_counter = Counter()
@@ -224,19 +219,20 @@ class MemoryClusterer:
         if embeddings is not None and len(indices) > 1:
             group_embs = embeddings[indices]
             centroid = np.mean(group_embs, axis=0)
-            cohesion = float(np.mean([
-                float(np.dot(emb, centroid) / (
-                    np.linalg.norm(emb) * np.linalg.norm(centroid) + 1e-8))
-                for emb in group_embs
-            ]))
+            cohesion = float(
+                np.mean(
+                    [
+                        float(np.dot(emb, centroid) / (np.linalg.norm(emb) * np.linalg.norm(centroid) + 1e-8))
+                        for emb in group_embs
+                    ]
+                )
+            )
             centroid_list = centroid.tolist()
         else:
             cohesion = 1.0
             centroid_list = None
 
-        cluster_id = hex_digest(
-            "".join(sorted(d.id for d in drawers))
-        )[:12]
+        cluster_id = hex_digest("".join(sorted(d.id for d in drawers)))[:12]
 
         return MemoryCluster(
             id=cluster_id,
@@ -268,30 +264,52 @@ class MemoryClusterer:
         """从文本中提取关键词"""
         # 中文分词简单实现
         import re
+
         # 匹配中文词（2-4字）和英文词
         words = []
         # 英文词
-        eng_words = re.findall(r'[a-zA-Z][a-zA-Z0-9_]{2,}', text)
+        eng_words = re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", text)
         words.extend(w.lower() for w in eng_words)
 
         # 中文词（2-4字组合）
-        chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+        chinese_chars = re.findall(r"[\u4e00-\u9fff]", text)
         for window in [4, 3, 2]:
             for i in range(len(chinese_chars) - window + 1):
-                words.append("".join(chinese_chars[i:i + window]))
+                words.append("".join(chinese_chars[i : i + window]))
 
         # 去重并过滤停用词
-        stopwords = {"这个", "一个", "可以", "没有", "什么", "怎么", "如何",
-                     "我们", "他们", "因为", "所以", "但是", "而且", "或者",
-                     "the", "and", "for", "that", "this", "with", "from"}
+        stopwords = {
+            "这个",
+            "一个",
+            "可以",
+            "没有",
+            "什么",
+            "怎么",
+            "如何",
+            "我们",
+            "他们",
+            "因为",
+            "所以",
+            "但是",
+            "而且",
+            "或者",
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "from",
+        }
         filtered = [w for w in words if w.lower() not in stopwords]
 
         # 按频率排序
         counter = Counter(filtered)
         return [kw for kw, _ in counter.most_common(max_len)]
 
-    def find_related(self, drawer: Drawer, all_drawers: list[Drawer],
-                     top_k: int = 5, min_similarity: float = 0.99) -> list[dict]:
+    def find_related(
+        self, drawer: Drawer, all_drawers: list[Drawer], top_k: int = 5, min_similarity: float = 0.99
+    ) -> list[dict]:
         """找到与指定记忆最相关的其他记忆"""
         if not self.embedder:
             return []
@@ -309,21 +327,18 @@ class MemoryClusterer:
                 scored.append((sim, d))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [{"id": d.id, "content": d.content[:200],
-                 "similarity": round(sim, 4)} for sim, d in scored[:top_k]]
+        return [{"id": d.id, "content": d.content[:200], "similarity": round(sim, 4)} for sim, d in scored[:top_k]]
 
     def cluster_stats(self, clusters: list[MemoryCluster]) -> dict:
         """聚类统计"""
         if not clusters:
-            return {"total_clusters": 0, "total_memories": 0,
-                    "avg_cohesion": 0.0, "avg_size": 0.0}
+            return {"total_clusters": 0, "total_memories": 0, "avg_cohesion": 0.0, "avg_size": 0.0}
 
         total_mems = sum(c.size for c in clusters)
         return {
             "total_clusters": len(clusters),
             "total_memories": total_mems,
-            "avg_cohesion": round(
-                sum(c.cohesion for c in clusters) / len(clusters), 4),
+            "avg_cohesion": round(sum(c.cohesion for c in clusters) / len(clusters), 4),
             "avg_size": round(total_mems / len(clusters), 1),
             "largest_cluster": max(c.size for c in clusters),
             "smallest_cluster": min(c.size for c in clusters),

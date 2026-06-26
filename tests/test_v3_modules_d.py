@@ -1,5 +1,5 @@
 """Pangu v3.0 模块测试 — 第四批 7 个记忆子系统"""
-import pytest
+
 from pangu.core.palace import Drawer
 
 
@@ -9,17 +9,18 @@ def _d(id="t1", content="test content", wing="test_wing", importance=3.0, tags=N
 
 def _drawers(n=5):
     return [
-        _d(id=f"t{i}", content=f"memory item {i} 关于开发",
-           wing="dev", importance=2.0 + i, tags=["code", f"tag{i}"])
+        _d(id=f"t{i}", content=f"memory item {i} 关于开发", wing="dev", importance=2.0 + i, tags=["code", f"tag{i}"])
         for i in range(n)
     ]
 
 
 # ── 1. ProjectManager ──
 
+
 class TestProjectManager:
     def setup_method(self):
         from pangu.memory.project_manager import ProjectManager
+
         self.pm = ProjectManager()
 
     def test_list_projects(self):
@@ -111,9 +112,11 @@ class TestProjectManager:
 
 # ── 2. AuditAnalytics ──
 
+
 class TestAuditAnalytics:
     def setup_method(self):
         from pangu.memory.audit_analytics import AuditAnalytics
+
         self.audit = AuditAnalytics()
 
     def test_log_operation(self):
@@ -185,16 +188,18 @@ class TestAuditAnalytics:
 
     def test_max_entries_limit(self):
         self.audit._max_entries = 5
-        for i in range(10):
+        for _i in range(10):
             self.audit.log("create")
         assert len(self.audit._entries) == 5
 
 
 # ── 3. SyncManager ──
 
+
 class TestSyncManager:
     def setup_method(self):
         from pangu.memory.sync_manager import SyncManager
+
         self.sync = SyncManager()
 
     def test_record_change(self):
@@ -229,15 +234,31 @@ class TestSyncManager:
 
     def test_detect_conflicts_with_local(self):
         self.sync.record_change("mem1", "update", content="local version", old_content="base")
-        remote = [{"memory_id": "mem1", "operation": "update",
-                    "content_hash": "remote_hash", "id": "r1", "timestamp": "2099-01-01", "source": "device_b"}]
+        remote = [
+            {
+                "memory_id": "mem1",
+                "operation": "update",
+                "content_hash": "remote_hash",
+                "id": "r1",
+                "timestamp": "2099-01-01",
+                "source": "device_b",
+            }
+        ]
         conflicts = self.sync.detect_conflicts(remote)
         assert isinstance(conflicts, list)
 
     def test_detect_conflicts_no_conflict(self):
         self.sync.record_change("mem1", "update", content="v1", old_content="v0")
-        remote = [{"memory_id": "mem1", "operation": "update",
-                    "content_hash": "v1_hash", "id": "r1", "timestamp": "2099-01-01", "source": "device_b"}]
+        remote = [
+            {
+                "memory_id": "mem1",
+                "operation": "update",
+                "content_hash": "v1_hash",
+                "id": "r1",
+                "timestamp": "2099-01-01",
+                "source": "device_b",
+            }
+        ]
         conflicts = self.sync.detect_conflicts(remote)
         assert isinstance(conflicts, list)
 
@@ -252,7 +273,7 @@ class TestSyncManager:
 
     def test_mark_synced(self):
         e1 = self.sync.record_change("mem1", "create", content="a")
-        e2 = self.sync.record_change("mem2", "create", content="b")
+        self.sync.record_change("mem2", "create", content="b")
         count = self.sync.mark_synced([e1.change_id])
         assert count == 1
 
@@ -282,9 +303,11 @@ class TestSyncManager:
 
 # ── 4. MemoryEventStream ──
 
+
 class TestMemoryEventStream:
     def setup_method(self):
         from pangu.memory.memory_events import MemoryEventStream
+
         self.stream = MemoryEventStream()
 
     def test_emit(self):
@@ -314,7 +337,7 @@ class TestMemoryEventStream:
         assert len(history) == 2
 
     def test_get_history_limit(self):
-        for i in range(10):
+        for _i in range(10):
             self.stream.emit("memory.write")
         history = self.stream.get_history(limit=3)
         assert len(history) == 3
@@ -377,9 +400,11 @@ class TestMemoryEventStream:
 
 # ── 5. SmartIndexingEngine ──
 
+
 class TestSmartIndexingEngine:
     def setup_method(self):
         from pangu.memory.smart_indexing import SmartIndexingEngine
+
         self.engine = SmartIndexingEngine()
 
     def test_build_all_indexes_empty(self):
@@ -448,9 +473,11 @@ class TestSmartIndexingEngine:
 
 # ── 6. CacheManager ──
 
+
 class TestCacheManager:
     def setup_method(self):
         from pangu.memory.smart_cache import CacheManager
+
         self.cache = CacheManager()
 
     def test_set_and_get(self):
@@ -503,15 +530,18 @@ class TestCacheManager:
     def test_ttl_expiry(self):
         self.cache.set("k1", "v1", ttl=0)
         import time
+
         time.sleep(0.01)
         assert self.cache.get("k1") is None
 
 
 # ── 7. MemoryPortal ──
 
+
 class TestMemoryPortal:
     def setup_method(self):
         from pangu.memory.portal import MemoryPortal
+
         self.portal = MemoryPortal()
 
     def test_system_panorama_empty(self):

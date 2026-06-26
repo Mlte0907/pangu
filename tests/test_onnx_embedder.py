@@ -20,6 +20,7 @@ def _onnx_available():
     try:
         import onnxruntime  # noqa: F401
         from tokenizers import Tokenizer  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -40,12 +41,14 @@ class TestONNXEmbedder:
     def test_availability(self):
         """检查依赖可用性"""
         from pangu.memory.onnx_embedder import _HAS_ORT, _HAS_TOKENIZERS
+
         assert _HAS_ORT, "onnxruntime 未安装"
         assert _HAS_TOKENIZERS, "tokenizers 未安装"
 
     def test_dim_config(self):
         """维度配置"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder(embedding_dim=384)
         assert emb.embedding_dim == 384
         assert emb.max_length == 128
@@ -53,6 +56,7 @@ class TestONNXEmbedder:
     def test_is_loaded_false_initially(self):
         """初始化时不立即加载"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         assert emb.is_loaded is False
         assert emb._load_attempted is False
@@ -61,6 +65,7 @@ class TestONNXEmbedder:
     def test_lazy_load(self):
         """懒加载：首次 embed 时才加载模型"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         assert emb.is_loaded is False
         vec = emb.embed("hello world")
@@ -72,6 +77,7 @@ class TestONNXEmbedder:
     def test_embed_dim_and_norm(self):
         """嵌入向量维度和归一化"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder(embedding_dim=384)
         vec = emb.embed("盘古是记忆系统")
         assert vec is not None
@@ -84,6 +90,7 @@ class TestONNXEmbedder:
     def test_empty_text(self):
         """空文本返回零向量"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder(embedding_dim=384)
         vec = emb.embed("")
         assert vec == [0.0] * 384
@@ -108,9 +115,7 @@ class TestONNXEmbedder:
 
         sim_related = cos(v_weather, v_sunny)
         sim_unrelated = cos(v_weather, v_python)
-        assert sim_related > sim_unrelated, (
-            f"related={sim_related:.3f} 应高于 unrelated={sim_unrelated:.3f}"
-        )
+        assert sim_related > sim_unrelated, f"related={sim_related:.3f} 应高于 unrelated={sim_unrelated:.3f}"
         assert sim_related > 0.5, f"related sim={sim_related:.3f} 过低"
 
     @pytestmark_onnx
@@ -133,14 +138,13 @@ class TestONNXEmbedder:
 
         sim_animals = cos(v_cat, v_dog)
         sim_mixed = cos(v_cat, v_computer)
-        assert sim_animals > sim_mixed, (
-            f"animals={sim_animals:.3f} 应高于 mixed={sim_mixed:.3f}"
-        )
+        assert sim_animals > sim_mixed, f"animals={sim_animals:.3f} 应高于 mixed={sim_mixed:.3f}"
 
     @pytestmark_onnx
     def test_cache_hit(self):
         """缓存命中"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
 
         # 首次
@@ -155,6 +159,7 @@ class TestONNXEmbedder:
     def test_batch_embed(self):
         """批量嵌入"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         texts = ["hello", "world", "盘古", "pangu"] * 4
         results = emb.embed_batch(texts)
@@ -166,6 +171,7 @@ class TestONNXEmbedder:
     def test_batch_with_cache(self):
         """批量嵌入 + 缓存混合"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         emb.embed("cached_text")
         hits_before = emb._stats["cache_hits"]
@@ -179,6 +185,7 @@ class TestONNXEmbedder:
     def test_stats(self):
         """统计信息"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         emb.embed("test_a")
         emb.embed("test_b")  # 不同的文本才会触发推理
@@ -199,6 +206,7 @@ class TestEmbeddingServiceONNXIntegration:
     def test_service_has_onnx(self):
         """服务初始化时挂载 ONNX"""
         from pangu.memory.embedding import EmbeddingService
+
         svc = EmbeddingService()
         assert svc._onnx is not None
         assert "onnx" in svc.stats
@@ -207,6 +215,7 @@ class TestEmbeddingServiceONNXIntegration:
     def test_service_embed_uses_onnx(self):
         """服务 embed 在无 API 时走 ONNX"""
         from pangu.memory.embedding import EmbeddingService
+
         svc = EmbeddingService()
         vec = svc.embed("盘古测试")
         assert vec is not None
@@ -218,6 +227,7 @@ class TestEmbeddingServiceONNXIntegration:
     def test_service_batch_embed(self):
         """服务批量嵌入走 ONNX"""
         from pangu.memory.embedding import EmbeddingService
+
         svc = EmbeddingService()
         results = svc.embed_batch(["a", "b", "c", "d"])
         assert len(results) == 4
@@ -228,6 +238,7 @@ class TestEmbeddingServiceONNXIntegration:
         """禁用 ONNX 时回退到 hash"""
         from pangu.core.config import PanguConfig
         from pangu.memory.embedding import EmbeddingService
+
         cfg = PanguConfig(onnx_enabled=False)
         svc = EmbeddingService(cfg)
         vec = svc.embed("test")
@@ -247,6 +258,7 @@ class TestONNXPerformance:
     def test_inference_speed(self, capsys):
         """推理速度（打印，不阻塞）"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         # 预热
         emb.embed("warmup")
@@ -265,6 +277,7 @@ class TestONNXPerformance:
     def test_batch_speedup(self, capsys):
         """批处理加速比"""
         from pangu.memory.onnx_embedder import ONNXEmbedder
+
         emb = ONNXEmbedder()
         emb.embed("warmup")
         texts = [f"批次性能测试 {i}" for i in range(20)]
@@ -297,6 +310,7 @@ class TestGlobalSingleton:
     def test_get_onnx_embedder_singleton(self):
         """全局单例"""
         from pangu.memory.onnx_embedder import get_onnx_embedder, reset_onnx_embedder
+
         reset_onnx_embedder()
         e1 = get_onnx_embedder()
         e2 = get_onnx_embedder()
@@ -305,6 +319,7 @@ class TestGlobalSingleton:
     def test_reset_clears_singleton(self):
         """reset_onnx_embedder 清除单例"""
         from pangu.memory.onnx_embedder import get_onnx_embedder, reset_onnx_embedder
+
         e1 = get_onnx_embedder()
         reset_onnx_embedder()
         e2 = get_onnx_embedder()
@@ -313,6 +328,7 @@ class TestGlobalSingleton:
     def test_config_onnx_fields(self):
         """配置字段存在"""
         from pangu.core.config import PanguConfig
+
         cfg = PanguConfig()
         assert hasattr(cfg, "onnx_enabled")
         assert hasattr(cfg, "onnx_model_id")
@@ -326,6 +342,7 @@ class TestGlobalSingleton:
     def test_config_env_override(self, monkeypatch):
         """环境变量覆盖"""
         from pangu.core.config import PanguConfig
+
         monkeypatch.setenv("PANGU_ONNX_ENABLED", "false")
         monkeypatch.setenv("PANGU_ONNX_MAX_LENGTH", "256")
         cfg = PanguConfig()

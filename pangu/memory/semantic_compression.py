@@ -6,10 +6,9 @@
 3. 重要性重评估：基于记忆网络重新评估重要性
 4. 压缩质量评估：评估压缩后信息损失
 """
+
 import logging
-import hashlib
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 
 logger = logging.getLogger("pangu.memory.semantic_compression")
 
@@ -17,6 +16,7 @@ logger = logging.getLogger("pangu.memory.semantic_compression")
 @dataclass
 class CompressionResult:
     """压缩结果"""
+
     original_count: int
     compressed_count: int
     merged_groups: list[dict]
@@ -45,13 +45,15 @@ class SemanticCompressor:
                 contents = [d.content for d in group]
                 summary = self._generate_summary(contents)
                 avg_importance = sum(d.importance for d in group) / len(group)
-                merged.append({
-                    "tag": tag,
-                    "summary": summary,
-                    "original_count": len(group),
-                    "avg_importance": avg_importance,
-                    "ids": [d.id for d in group],
-                })
+                merged.append(
+                    {
+                        "tag": tag,
+                        "summary": summary,
+                        "original_count": len(group),
+                        "avg_importance": avg_importance,
+                        "ids": [d.id for d in group],
+                    }
+                )
                 compressed_ids.update(d.id for d in group)
 
         unmerged = [d for d in drawers if d.id not in compressed_ids]
@@ -75,12 +77,14 @@ class SemanticCompressor:
         for d in drawers:
             content_key = d.content[:30]
             if content_key in seen:
-                duplicates.append({
-                    "original": seen[content_key],
-                    "duplicate": d.id,
-                    "similarity": 0.95,
-                    "reason": "前30字符完全匹配",
-                })
+                duplicates.append(
+                    {
+                        "original": seen[content_key],
+                        "duplicate": d.id,
+                        "similarity": 0.95,
+                        "reason": "前30字符完全匹配",
+                    }
+                )
             else:
                 seen[content_key] = d.id
 
@@ -92,7 +96,7 @@ class SemanticCompressor:
             else:
                 tag_sets[key] = [d]
 
-        for tag_key, group in tag_sets.items():
+        for _tag_key, group in tag_sets.items():
             if len(group) >= 2:
                 self._check_tag_group_duplicates(group, threshold, duplicates)
 
@@ -129,12 +133,14 @@ class SemanticCompressor:
             new_importance = round(new_norm * 5.0, 1)
 
             if abs(new_importance - d.importance) > 0.3:
-                updates.append({
-                    "id": d.id,
-                    "old_importance": d.importance,
-                    "new_importance": new_importance,
-                    "network_score": round(network_score, 3),
-                })
+                updates.append(
+                    {
+                        "id": d.id,
+                        "old_importance": d.importance,
+                        "new_importance": new_importance,
+                        "network_score": round(network_score, 3),
+                    }
+                )
 
         return updates
 

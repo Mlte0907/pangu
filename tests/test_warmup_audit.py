@@ -26,6 +26,7 @@ class TestWarmupAuditLog:
         log_file = str(tmp_path / "warmup_audit.log")
         # 直接构造一个独立 logger
         import logging
+
         test_logger = logging.getLogger("pangu.llm.warmup.test")
         test_logger.handlers.clear()
         fh = logging.FileHandler(log_file, encoding="utf-8")
@@ -51,7 +52,9 @@ class TestWarmupAuditLog:
         await engine.warmup_cache([])
 
         # 写入内容：手动调用 _log_warmup
-        engine._log_warmup({"total": 3, "warmed": 3, "skipped": 0, "failed": 0, "duration_ms": 12.5, "source": "manual"})
+        engine._log_warmup(
+            {"total": 3, "warmed": 3, "skipped": 0, "failed": 0, "duration_ms": 12.5, "source": "manual"}
+        )
         # flush handler
         for h in test_logger.handlers:
             h.flush()
@@ -73,9 +76,7 @@ class TestWarmupAuditLog:
     def test_get_warmup_history_empty(self, tmp_path):
         """无日志文件时返回空列表"""
         # 使用不存在的路径
-        records = LLMEngine.get_warmup_history(
-            log_path=str(tmp_path / "nonexistent.log"), limit=10
-        )
+        records = LLMEngine.get_warmup_history(log_path=str(tmp_path / "nonexistent.log"), limit=10)
         assert records == []
 
     def test_get_warmup_history_parses(self, tmp_path):
@@ -83,8 +84,30 @@ class TestWarmupAuditLog:
         log_file = tmp_path / "history.log"
         # 写入两条模拟日志
         entries = [
-            {"ts": 1000.0, "event": "llm_cache_warmup", "total": 2, "warmed": 2, "skipped": 0, "failed": 0, "duration_ms": 5.0, "source": "auto", "provider": "openai", "model": "gpt-4o"},
-            {"ts": 2000.0, "event": "llm_cache_warmup", "total": 1, "warmed": 0, "skipped": 1, "failed": 0, "duration_ms": 1.0, "source": "manual", "provider": "zhipu", "model": "glm-4"},
+            {
+                "ts": 1000.0,
+                "event": "llm_cache_warmup",
+                "total": 2,
+                "warmed": 2,
+                "skipped": 0,
+                "failed": 0,
+                "duration_ms": 5.0,
+                "source": "auto",
+                "provider": "openai",
+                "model": "gpt-4o",
+            },
+            {
+                "ts": 2000.0,
+                "event": "llm_cache_warmup",
+                "total": 1,
+                "warmed": 0,
+                "skipped": 1,
+                "failed": 0,
+                "duration_ms": 1.0,
+                "source": "manual",
+                "provider": "zhipu",
+                "model": "glm-4",
+            },
         ]
         with open(log_file, "w", encoding="utf-8") as f:
             for e in entries:
@@ -103,6 +126,8 @@ class TestWarmupAuditLog:
         log_file = tmp_path / "history.log"
         with open(log_file, "w", encoding="utf-8") as f:
             for i in range(5):
-                f.write(f"2026-06-08 {json.dumps({'ts': float(i), 'event': 'llm_cache_warmup', 'warmed': i, 'provider': 'p', 'model': 'm'})}\n")
+                f.write(
+                    f"2026-06-08 {json.dumps({'ts': float(i), 'event': 'llm_cache_warmup', 'warmed': i, 'provider': 'p', 'model': 'm'})}\n"
+                )
         records = LLMEngine.get_warmup_history(log_path=str(log_file), limit=3)
         assert len(records) == 3

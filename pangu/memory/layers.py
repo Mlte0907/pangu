@@ -9,6 +9,7 @@ L3: 深度搜索 (无限) — 全文语义搜索
 - LRU 缓存减少磁盘 I/O
 - 批量操作支持
 - 记忆访问追踪（用于巩固引擎）"""
+
 import json
 import logging
 import os
@@ -134,8 +135,9 @@ class Layer2:
         self.palace_path = palace_path
         self.token_budget = token_budget or self.DEFAULT_TOKEN_BUDGET
 
-    def retrieve(self, drawers: list[Drawer], wing: str = None, room: str = None,
-                 n_results: int = 10, token_budget: int = None) -> str:
+    def retrieve(
+        self, drawers: list[Drawer], wing: str = None, room: str = None, n_results: int = 10, token_budget: int = None
+    ) -> str:
         """按 Wing/Room 过滤检索，超过 token 预算自动截断"""
         budget = token_budget or self.token_budget
         filtered = []
@@ -162,7 +164,7 @@ class Layer2:
         for drawer in filtered[:n_results]:
             snippet = drawer.content.strip().replace("\n", " ")
             if len(snippet) > self.MAX_CHARS_PER_ENTRY:
-                snippet = snippet[:self.MAX_CHARS_PER_ENTRY - 3] + "..."
+                snippet = snippet[: self.MAX_CHARS_PER_ENTRY - 3] + "..."
             entry = f"  [{drawer.room}] {snippet}"
             if drawer.source_file:
                 entry += f"  ({Path(drawer.source_file).name})"
@@ -188,8 +190,15 @@ class Layer3:
         self.palace_path = palace_path
         self.token_budget = token_budget or self.DEFAULT_TOKEN_BUDGET
 
-    def search(self, query: str, drawers: list[Drawer], wing: str = None,
-               room: str = None, n_results: int = 5, token_budget: int = None) -> str:
+    def search(
+        self,
+        query: str,
+        drawers: list[Drawer],
+        wing: str = None,
+        room: str = None,
+        n_results: int = 5,
+        token_budget: int = None,
+    ) -> str:
         """深度搜索，超过 token 预算自动截断"""
         budget = token_budget or self.token_budget
         # 过滤
@@ -202,7 +211,7 @@ class Layer3:
             filtered.append(d)
 
         if not filtered:
-            return f"## L3 — 未找到与 \"{query}\" 相关的结果"
+            return f'## L3 — 未找到与 "{query}" 相关的结果'
 
         # 简单关键词匹配评分
         query_lower = query.lower()
@@ -227,7 +236,7 @@ class Layer3:
         for i, (score, drawer) in enumerate(scored[:n_results], 1):
             snippet = drawer.content.strip().replace("\n", " ")
             if len(snippet) > self.MAX_CHARS_PER_ENTRY:
-                snippet = snippet[:self.MAX_CHARS_PER_ENTRY - 3] + "..."
+                snippet = snippet[: self.MAX_CHARS_PER_ENTRY - 3] + "..."
             entry = f"  [{i}] {drawer.wing}/{drawer.room} (score={score:.1f})\n      {snippet}"
             if drawer.source_file:
                 entry += f"\n      src: {Path(drawer.source_file).name}"
@@ -247,7 +256,7 @@ def _estimate_tokens(text: str) -> int:
     """粗估 token 数：中文 1 字 ≈ 1.5 token，英文 1 词 ≈ 1 token"""
     if not text:
         return 0
-    chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
     other_chars = len(text) - chinese_chars
     return int(chinese_chars * 1.5 + other_chars * 0.25)
 
@@ -296,6 +305,7 @@ class MemoryStack:
         """懒加载巩固引擎"""
         if self._consolidator is None:
             from .consolidation import MemoryConsolidator
+
             self._consolidator = MemoryConsolidator(self.config)
         return self._consolidator
 
@@ -381,6 +391,7 @@ class MemoryStack:
         """备份 drawers.json，返回备份路径"""
         import shutil
         from datetime import datetime
+
         if not self._drawers_file.exists():
             return None
         backup_dir = Path(self.config.palace_path) / "backups"
@@ -398,6 +409,7 @@ class MemoryStack:
         """从向量索引中删除指定记忆"""
         try:
             from pangu.memory.vector_index import get_vector_index
+
             idx = get_vector_index()
             for did in drawer_ids:
                 if did in idx._ids:
@@ -448,10 +460,13 @@ class MemoryStack:
         parts.append(l1_text)
 
         result = "\n".join(parts)
-        _log_token_stats("wake_up", {
-            "L0": _estimate_tokens(parts[0]),
-            "L1": _estimate_tokens(l1_text),
-        })
+        _log_token_stats(
+            "wake_up",
+            {
+                "L0": _estimate_tokens(parts[0]),
+                "L1": _estimate_tokens(l1_text),
+            },
+        )
         return result
 
     def _dynamic_budget(self, level: str = "L2") -> int:
@@ -482,11 +497,14 @@ class MemoryStack:
         drawers = self._load_drawers()
         budget = self._dynamic_budget("L2")
         result = self.l2.retrieve(drawers, wing=wing, room=room, n_results=n_results, token_budget=budget)
-        _log_token_stats("recall", {
-            "L2": _estimate_tokens(result),
-            "budget": budget,
-            "total_drawers": len(drawers),
-        })
+        _log_token_stats(
+            "recall",
+            {
+                "L2": _estimate_tokens(result),
+                "budget": budget,
+                "total_drawers": len(drawers),
+            },
+        )
         return result
 
     def search(self, query: str, wing: str = None, room: str = None, n_results: int = 5) -> str:
@@ -494,11 +512,14 @@ class MemoryStack:
         drawers = self._load_drawers()
         budget = self._dynamic_budget("L3")
         result = self.l3.search(query, drawers, wing=wing, room=room, n_results=n_results, token_budget=budget)
-        _log_token_stats("search", {
-            "L3": _estimate_tokens(result),
-            "budget": budget,
-            "query": query,
-        })
+        _log_token_stats(
+            "search",
+            {
+                "L3": _estimate_tokens(result),
+                "budget": budget,
+                "query": query,
+            },
+        )
         return result
 
     # ── 巩固集成 ──
@@ -544,6 +565,7 @@ class MemoryStack:
         # 3. ONNX 嵌入器
         try:
             from pangu.memory.onnx_embedder import get_onnx_embedder
+
             onnx = get_onnx_embedder()
             checks["onnx"] = {"available": onnx.is_available, "loaded": onnx.is_loaded}
         except Exception as e:
@@ -552,6 +574,7 @@ class MemoryStack:
         # 4. 向量索引
         try:
             from pangu.memory.vector_index import get_vector_index
+
             idx = get_vector_index()
             checks["vector_index"] = {"size": idx.size, "backend": "FAISS" if idx._use_faiss else "numpy"}
         except Exception as e:
@@ -560,6 +583,7 @@ class MemoryStack:
         # 5. 神经记忆
         try:
             from pangu.memory.neural_memory import get_neural_engine
+
             engine = get_neural_engine()
             checks["neural_memory"] = {
                 "hippocampus": engine.hippocampus.buffer_size,
@@ -571,6 +595,7 @@ class MemoryStack:
         # 6. 加密状态
         try:
             from pangu.memory.encryption import is_enabled
+
             checks["encryption"] = {"enabled": is_enabled()}
         except Exception:
             checks["encryption"] = {"enabled": False}
@@ -578,6 +603,7 @@ class MemoryStack:
         # 7. 搜索统计
         try:
             from pangu.memory.retrieval import get_search_stats
+
             checks["search"] = get_search_stats()
         except Exception:
             checks["search"] = {}
@@ -585,7 +611,8 @@ class MemoryStack:
         # 总体状态
         all_ok = all(
             v.get("exists", True) and v.get("available", True) and "error" not in v
-            for v in checks.values() if isinstance(v, dict)
+            for v in checks.values()
+            if isinstance(v, dict)
         )
         checks["status"] = "healthy" if all_ok else "degraded"
 
@@ -611,7 +638,8 @@ class MemoryStack:
 
         # 搜索统计
         try:
-            from pangu.memory.retrieval import get_search_stats, get_search_history
+            from pangu.memory.retrieval import get_search_history, get_search_stats
+
             search_stats = get_search_stats()
             search_stats["recent_history"] = get_search_history(limit=5)
         except Exception:
@@ -635,12 +663,12 @@ class MemoryStack:
                 "L2_on_demand": {
                     "tokens": l2_tokens,
                     "budget": l2_budget,
-                    "utilization": f"{l2_tokens/l2_budget*100:.0f}%",
+                    "utilization": f"{l2_tokens / l2_budget * 100:.0f}%",
                 },
                 "L3_deep_search": {
                     "tokens_sample": l3_sample,
                     "budget": l3_budget,
-                    "utilization": f"{l3_sample/l3_budget*100:.0f}%",
+                    "utilization": f"{l3_sample / l3_budget * 100:.0f}%",
                 },
             },
             "token_summary": {
@@ -648,7 +676,7 @@ class MemoryStack:
                 "l2_budget": l2_budget,
                 "l3_budget": l3_budget,
                 "total_if_all": l0_tokens + l1_tokens + l2_tokens + l3_sample,
-                "savings_vs_full": f"{(1 - always_load/(l0_tokens + l1_tokens + l2_tokens + l3_sample))*100:.0f}%",
+                "savings_vs_full": f"{(1 - always_load / (l0_tokens + l1_tokens + l2_tokens + l3_sample)) * 100:.0f}%",
             },
             "search_stats": search_stats,
             "total_drawers": len(drawers),

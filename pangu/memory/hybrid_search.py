@@ -5,10 +5,8 @@
 - RRF(d) = Σ 1 / (k + rank_i(d))，k=60
 - 融合多路排序，返回统一结果
 """
-import json
+
 import logging
-import math
-from datetime import datetime
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -31,6 +29,7 @@ def hybrid_search(
     # 检查缓存
     try:
         from pangu.memory.search_cache import get_search_cache
+
         cache = get_search_cache()
         cached = cache.get(query, limit=limit)
         if cached is not None:
@@ -61,12 +60,13 @@ def hybrid_search(
 
     # ── FTS 召回（使用缓存的 FTS 引擎） ──
     try:
-        from pangu.memory.fts_search import FTS5SearchEngine, _get_fts_engine
+        from pangu.memory.fts_search import _get_fts_engine
+
         fts = _get_fts_engine()
         if not fts._indexed or fts._indexed_count != len(drawers):
             fts.build_index(drawers)
         fts_results = fts._fts_search(query, drawers)
-        for rank, (mid, score) in enumerate(fts_results.items()):
+        for rank, (mid, _score) in enumerate(fts_results.items()):
             if mid in all_ids:
                 fts_ranks[mid] = rank + 1
     except Exception as e:
@@ -77,6 +77,7 @@ def hybrid_search(
         query_vec = None
         try:
             from pangu.memory.onnx_embedder import get_onnx_embedder
+
             onnx = get_onnx_embedder()
             if onnx.is_available:
                 query_vec = onnx.embed(query)
@@ -84,6 +85,7 @@ def hybrid_search(
             pass
         if query_vec is None:
             from pangu.memory.embedding import get_embedding_service
+
             embed_svc = get_embedding_service()
             query_vec = embed_svc.embed(query)
         if query_vec:
@@ -94,7 +96,7 @@ def hybrid_search(
                     continue
                 try:
                     n = min(len(query_vec), len(stored_vec))
-                    dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n]))
+                    dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n], strict=False))
                     norm_a = sum(a * a for a in query_vec[:n]) ** 0.5
                     norm_b = sum(b * b for b in stored_vec[:n]) ** 0.5
                     sim = dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0.0
@@ -111,6 +113,7 @@ def hybrid_search(
     # ── KG 召回 ──
     try:
         from pangu.memory.knowledge_graph import KnowledgeGraph
+
         kg = KnowledgeGraph(config)
         # 用 query 中的关键词搜索 KG 实体
         keywords = [w for w in query.split() if len(w) >= 2]
@@ -148,23 +151,26 @@ def hybrid_search(
     results = []
     for mid in sorted_ids[:limit]:
         d = all_ids[mid]
-        results.append({
-            "id": mid,
-            "content": d.content,
-            "wing": d.wing,
-            "room": d.room,
-            "importance": d.importance,
-            "tags": d.tags,
-            "created_at": d.created_at,
-            "rrf_score": round(rrf_scores[mid], 6),
-            "fts_rank": fts_ranks.get(mid),
-            "vector_rank": vector_ranks.get(mid),
-            "kg_rank": kg_ranks.get(mid),
-        })
+        results.append(
+            {
+                "id": mid,
+                "content": d.content,
+                "wing": d.wing,
+                "room": d.room,
+                "importance": d.importance,
+                "tags": d.tags,
+                "created_at": d.created_at,
+                "rrf_score": round(rrf_scores[mid], 6),
+                "fts_rank": fts_ranks.get(mid),
+                "vector_rank": vector_ranks.get(mid),
+                "kg_rank": kg_ranks.get(mid),
+            }
+        )
 
     # 语义重排序
     try:
         from pangu.memory.reranker import rerank_search_results
+
         results = rerank_search_results(query, results, drawers=drawers, limit=limit)
     except Exception as e:
         logger.debug(f"Reranking skipped: {e}")
@@ -172,6 +178,7 @@ def hybrid_search(
     # 生成搜索解释
     try:
         from pangu.memory.search_explainer import get_search_explainer
+
         explainer = get_search_explainer()
         for r in results:
             exp = explainer.explain(query, r, all_results=results)
@@ -184,6 +191,7 @@ def hybrid_search(
     # 存入缓存
     try:
         from pangu.memory.search_cache import get_search_cache
+
         cache = get_search_cache()
         cache.set(query, results, limit=limit)
     except Exception:

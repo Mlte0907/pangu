@@ -6,7 +6,7 @@
 3. 版本回滚：恢复到之前的版本
 4. 变更历史：完整的变更轨迹
 """
-import json
+
 import logging
 import time
 from dataclasses import dataclass, field
@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import Any
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.versioning")
 
@@ -22,6 +21,7 @@ logger = logging.getLogger("pangu.memory.versioning")
 @dataclass
 class MemoryVersion:
     """记忆版本"""
+
     version: int
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -37,8 +37,9 @@ class MemoryVersionControl:
         self._versions: dict[str, list[MemoryVersion]] = {}  # memory_id -> [versions]
         self._max_versions: int = 10
 
-    def record_version(self, memory_id: str, content: str, change_type: str = "update",
-                       metadata: dict[str, Any] | None = None) -> MemoryVersion:
+    def record_version(
+        self, memory_id: str, content: str, change_type: str = "update", metadata: dict[str, Any] | None = None
+    ) -> MemoryVersion:
         """记录记忆版本"""
         if memory_id not in self._versions:
             self._versions[memory_id] = []
@@ -56,7 +57,7 @@ class MemoryVersionControl:
 
         # 限制版本数量
         if len(self._versions[memory_id]) > self._max_versions:
-            self._versions[memory_id] = self._versions[memory_id][-self._max_versions:]
+            self._versions[memory_id] = self._versions[memory_id][-self._max_versions :]
 
         return version
 
@@ -127,12 +128,14 @@ class MemoryVersionControl:
         versions = self._versions.get(memory_id, [])
         history = []
         for v in versions:
-            history.append({
-                "version": v.version,
-                "change_type": v.change_type,
-                "timestamp": datetime.fromtimestamp(v.timestamp).isoformat(),
-                "content_preview": v.content[:50] + "..." if len(v.content) > 50 else v.content,
-            })
+            history.append(
+                {
+                    "version": v.version,
+                    "change_type": v.change_type,
+                    "timestamp": datetime.fromtimestamp(v.timestamp).isoformat(),
+                    "content_preview": v.content[:50] + "..." if len(v.content) > 50 else v.content,
+                }
+            )
         return history
 
 

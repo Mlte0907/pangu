@@ -15,53 +15,57 @@
 - 情感杏仁核调制记忆强度（强烈情感 → 更深编码）
 - 语义网络中的激活扩散（相关概念联动激活）
 """
+
 import math
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
 
-
 # ── 记忆类型枚举 ──
+
 
 class MemoryType(Enum):
     """记忆分类 — 决定遗忘曲线和巩固策略"""
-    EPISODIC = "episodic"           # 情景记忆：具体事件、经历
-    SEMANTIC = "semantic"           # 语义记忆：事实、知识
-    PROCEDURAL = "procedural"       # 程序记忆：操作方法、技能
-    EMOTIONAL = "emotional"         # 情感记忆：情绪体验
+
+    EPISODIC = "episodic"  # 情景记忆：具体事件、经历
+    SEMANTIC = "semantic"  # 语义记忆：事实、知识
+    PROCEDURAL = "procedural"  # 程序记忆：操作方法、技能
+    EMOTIONAL = "emotional"  # 情感记忆：情绪体验
 
 
 class MemoryState(Enum):
     """记忆状态 — 海马体/新皮层生命周期"""
-    ENCODED = "encoded"             # 新编码，尚未巩固
-    CONSOLIDATING = "consolidating" # 巩固中（重播/强化）
-    CONSOLIDATED = "consolidated"   # 已巩固至长期存储
-    DECAYING = "decaying"           # 正在衰减
-    FORGOTTEN = "forgotten"         # 已遗忘
+
+    ENCODED = "encoded"  # 新编码，尚未巩固
+    CONSOLIDATING = "consolidating"  # 巩固中（重播/强化）
+    CONSOLIDATED = "consolidated"  # 已巩固至长期存储
+    DECAYING = "decaying"  # 正在衰减
+    FORGOTTEN = "forgotten"  # 已遗忘
 
 
 # ── 记忆单元 ──
 
+
 @dataclass
 class NeuralMemory:
     """记忆神经元 — 记忆在网络中的基本单元"""
+
     id: str
     content: str
     memory_type: MemoryType = MemoryType.EPISODIC
     state: MemoryState = MemoryState.ENCODED
-    strength: float = 1.0                    # 记忆强度 0-1
-    emotional_valence: float = 0.0           # 情感效价 -1(负面) ~ +1(正面)
-    arousal: float = 0.0                     # 情感唤醒度 0(平静) ~ 1(激动)
-    consolidation_count: int = 0             # 巩固次数
+    strength: float = 1.0  # 记忆强度 0-1
+    emotional_valence: float = 0.0  # 情感效价 -1(负面) ~ +1(正面)
+    arousal: float = 0.0  # 情感唤醒度 0(平静) ~ 1(激动)
+    consolidation_count: int = 0  # 巩固次数
     last_access: float = field(default_factory=time.time)
     access_count: int = 0
     created_at: float = field(default_factory=time.time)
-    source_drawer_id: str = ""               # 关联的 Drawer ID
+    source_drawer_id: str = ""  # 关联的 Drawer ID
     related_ids: list[str] = field(default_factory=list)  # 语义关联的记忆 ID
     tags: list[str] = field(default_factory=list)
 
@@ -72,15 +76,16 @@ class NeuralMemory:
 
 # ── 个性化遗忘曲线 ──
 
+
 class PersonalizedDecay:
     """个性化遗忘曲线 — 不同记忆类型使用不同的衰减参数"""
 
     # 默认衰减率：不同类型记忆的半衰期差异
     DEFAULT_DECAY_RATES: dict[MemoryType, float] = {
-        MemoryType.EPISODIC: 0.6,      # 情景记忆衰减较快
-        MemoryType.SEMANTIC: 0.15,     # 语义记忆衰减很慢（知识长期保持）
-        MemoryType.PROCEDURAL: 0.08,   # 程序记忆几乎不衰减（肌肉记忆）
-        MemoryType.EMOTIONAL: 0.3,     # 情感记忆中等衰减（情绪淡化）
+        MemoryType.EPISODIC: 0.6,  # 情景记忆衰减较快
+        MemoryType.SEMANTIC: 0.15,  # 语义记忆衰减很慢（知识长期保持）
+        MemoryType.PROCEDURAL: 0.08,  # 程序记忆几乎不衰减（肌肉记忆）
+        MemoryType.EMOTIONAL: 0.3,  # 情感记忆中等衰减（情绪淡化）
     }
 
     def __init__(self, config: PanguConfig = None):
@@ -131,6 +136,7 @@ class PersonalizedDecay:
 
 # ── 海马体短期记忆缓冲 ──
 
+
 class Hippocampus:
     """海马体 — 短期记忆编码器
 
@@ -139,7 +145,8 @@ class Hippocampus:
     2. 维护有限容量的工作缓冲（容量瓶颈）
     3. 在巩固周期向新皮层传输重要记忆
     """
-    CAPACITY: int = 40    # 海马体容量上限
+
+    CAPACITY: int = 40  # 海马体容量上限
 
     def __init__(self, config: PanguConfig = None):
         self.config = config or PanguConfig.load()
@@ -216,7 +223,7 @@ class Hippocampus:
             return MemoryType.EMOTIONAL
         return MemoryType.EPISODIC
 
-    def _competitive_inhibition(self, new_memory: NeuralMemory) -> Optional[NeuralMemory]:
+    def _competitive_inhibition(self, new_memory: NeuralMemory) -> NeuralMemory | None:
         """记忆竞争抑制：新记忆进入时与现有记忆竞争
 
         最终会淘汰最弱的记忆，让出位置给新记忆。
@@ -275,10 +282,7 @@ class Hippocampus:
             if mem.strength < 0.3:
                 continue
             age_hours = (now - mem.created_at) / 3600.0
-            if (mem.arousal > 0.4
-                    or mem.consolidation_count > 0
-                    or mem.access_count > 3
-                    or age_hours > 1.0):
+            if mem.arousal > 0.4 or mem.consolidation_count > 0 or mem.access_count > 3 or age_hours > 1.0:
                 candidates.append(mem)
         return candidates
 
@@ -291,6 +295,7 @@ class Hippocampus:
 
 
 # ── 新皮层长期记忆存储 ──
+
 
 class Neocortex:
     """新皮层 — 长期记忆存储器
@@ -317,7 +322,7 @@ class Neocortex:
         if memory.id not in self._association_graph:
             self._association_graph[memory.id] = {}
 
-    def get(self, memory_id: str) -> Optional[NeuralMemory]:
+    def get(self, memory_id: str) -> NeuralMemory | None:
         """获取指定记忆"""
         return self._memories.get(memory_id)
 
@@ -342,10 +347,16 @@ class Neocortex:
         self._association_graph[id_a][id_b] = strength
         self._association_graph[id_b][id_a] = strength
 
-    def _spread_to_neighbors(self, current: str, current_activation: float,
-                              depth: int, max_depth: int, decay_factor: float,
-                              activations: dict[str, float],
-                              queue: list[tuple[str, float, int]]) -> None:
+    def _spread_to_neighbors(
+        self,
+        current: str,
+        current_activation: float,
+        depth: int,
+        max_depth: int,
+        decay_factor: float,
+        activations: dict[str, float],
+        queue: list[tuple[str, float, int]],
+    ) -> None:
         """将激活信号扩散到当前节点的邻居"""
         neighbors = self._association_graph.get(current, {})
         for neighbor_id, edge_strength in neighbors.items():
@@ -354,8 +365,9 @@ class Neocortex:
                 activations[neighbor_id] = spread_activation
                 queue.append((neighbor_id, spread_activation, depth + 1))
 
-    def activate_spreading(self, seed_ids: list[str], decay_factor: float = 0.6,
-                           max_depth: int = 3) -> list[tuple[str, float]]:
+    def activate_spreading(
+        self, seed_ids: list[str], decay_factor: float = 0.6, max_depth: int = 3
+    ) -> list[tuple[str, float]]:
         """激活扩散 — 模拟神经网络中的信号传播
 
         从种子记忆出发，沿关联网络扩散激活信号。
@@ -421,10 +433,7 @@ class Neocortex:
                     inhibitor_activation = activations.get(mem_b.id, 0.0)
                     inhibition_total += similarity * inhibitor_activation * 0.3
                 # 抑制后的新激活
-                new_activations[mem_a.id] = max(
-                    0.01,
-                    activations[mem_a.id] - inhibition_total
-                )
+                new_activations[mem_a.id] = max(0.01, activations[mem_a.id] - inhibition_total)
 
             # 归一化：防止整体激活值漂移
             total = sum(new_activations.values())
@@ -504,6 +513,7 @@ class Neocortex:
 
 # ── 睡眠巩固引擎 ──
 
+
 class SleepConsolidation:
     """睡眠巩固 — 模拟睡眠期间的记忆重播与整合
 
@@ -513,8 +523,7 @@ class SleepConsolidation:
     - 睡眠纺锤波：选择性巩固重要记忆，抑制噪声
     """
 
-    def __init__(self, config: PanguConfig = None,
-                 hippocampus: Hippocampus = None, neocortex: Neocortex = None):
+    def __init__(self, config: PanguConfig = None, hippocampus: Hippocampus = None, neocortex: Neocortex = None):
         self.config = config or PanguConfig.load()
         self.hippocampus = hippocampus or Hippocampus(config)
         self.neocortex = neocortex or Neocortex(config)
@@ -564,7 +573,7 @@ class SleepConsolidation:
         semantic = [m for m in candidates if m.memory_type == MemoryType.SEMANTIC]
         associations = 0
         for i, mem_a in enumerate(semantic):
-            for mem_b in semantic[i+1:]:
+            for mem_b in semantic[i + 1 :]:
                 sim = self.neocortex._similarity(mem_a, mem_b)
                 if sim > 0.3:
                     self.neocortex.build_association(mem_a.id, mem_b.id, sim)
@@ -580,10 +589,7 @@ class SleepConsolidation:
             ids = [m.id for m in candidates]
             inhibitions = self.neocortex.mutual_inhibition(ids)
             # 移除被抑制到很低激活的记忆
-            suppressed = [
-                mid for mid, activation in inhibitions.items()
-                if activation < 0.1
-            ]
+            suppressed = [mid for mid, activation in inhibitions.items() if activation < 0.1]
             candidates = [m for m in candidates if m.id not in suppressed]
             stats["forgotten"] += len(suppressed)
 
@@ -621,6 +627,7 @@ class SleepConsolidation:
 
 
 # ── 情感调制器 ──
+
 
 class EmotionalModulator:
     """情感调制 — 杏仁核对记忆编码的调制作用
@@ -662,12 +669,13 @@ class EmotionalModulator:
         模拟情感记忆的自然淡化过程。
         """
         for _ in range(decay_cycles):
-            memory.arousal *= 0.9           # 唤醒度衰减 10%
+            memory.arousal *= 0.9  # 唤醒度衰减 10%
             memory.emotional_valence *= 0.95  # 情感效价衰减 5%
         return memory
 
 
 # ── 统一接口：NeuralMemoryEngine ──
+
 
 class NeuralMemoryEngine:
     """类人记忆神经网络引擎 — 统一管理所有子系统
@@ -752,9 +760,7 @@ class NeuralMemoryEngine:
         for mem in list(self.hippocampus._buffer):
             if self.decay.should_forget(mem):
                 hippocampus_forgotten.append(mem)
-                self.hippocampus._buffer = [
-                    m for m in self.hippocampus._buffer if m.id != mem.id
-                ]
+                self.hippocampus._buffer = [m for m in self.hippocampus._buffer if m.id != mem.id]
 
         return forgotten + hippocampus_forgotten
 
@@ -771,9 +777,9 @@ class NeuralMemoryEngine:
             "neocortex": self.neocortex.stats(),
             "sleep": {
                 "sleep_count": self.sleep_engine._sleep_count,
-                "last_sleep": datetime.fromtimestamp(
-                    self.sleep_engine._last_sleep
-                ).isoformat() if self.sleep_engine._last_sleep else None,
+                "last_sleep": datetime.fromtimestamp(self.sleep_engine._last_sleep).isoformat()
+                if self.sleep_engine._last_sleep
+                else None,
             },
         }
 

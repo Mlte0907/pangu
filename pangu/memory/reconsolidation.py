@@ -28,8 +28,7 @@ class ReconsolidationEngine:
         self._runs: int = 0
         self._total_boosted: int = 0
 
-    def run(self, drawers: list, min_importance: float = 0.3,
-            max_importance: float = 0.7, limit: int = 20) -> dict:
+    def run(self, drawers: list, min_importance: float = 0.3, max_importance: float = 0.7, limit: int = 20) -> dict:
         """执行再巩固
 
         Args:
@@ -101,13 +100,13 @@ class ResonanceEngine:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
         return self._embedder
 
-    def find_resonance(self, drawers: list, limit: int = 30,
-                       sim_threshold: float = 0.99) -> list[dict]:
+    def find_resonance(self, drawers: list, limit: int = 30, sim_threshold: float = 0.99) -> list[dict]:
         """发现共鸣记忆对
 
         Args:
@@ -117,8 +116,6 @@ class ResonanceEngine:
         """
         if not self.embedder:
             return []
-
-        from .fts_search import cosine_similarity
 
         # 取有情感标记的记忆（或全部记忆）
         candidates = drawers[:limit]
@@ -139,9 +136,7 @@ class ResonanceEngine:
         matches = []
         for i in range(len(candidates)):
             for j in range(i + 1, len(candidates)):
-                self._try_resonance_match(
-                    candidates, embeddings, i, j, sim_threshold, matches
-                )
+                self._try_resonance_match(candidates, embeddings, i, j, sim_threshold, matches)
 
         matches.sort(key=lambda x: x["similarity"], reverse=True)
         top_matches = matches[:10]
@@ -151,13 +146,11 @@ class ResonanceEngine:
 
         return top_matches
 
-    def _try_resonance_match(self, candidates, embeddings, i, j,
-                             sim_threshold: float, matches: list):
+    def _try_resonance_match(self, candidates, embeddings, i, j, sim_threshold: float, matches: list):
         try:
             if embeddings[i] and embeddings[j]:
                 self._compute_and_append_match(
-                    candidates[i], candidates[j], embeddings[i], embeddings[j],
-                    sim_threshold, matches
+                    candidates[i], candidates[j], embeddings[i], embeddings[j], sim_threshold, matches
                 )
         except Exception:
             pass
@@ -173,54 +166,52 @@ class ResonanceEngine:
             "target_wing": cand_b.wing,
         }
 
-    def _compute_and_append_match(self, cand_a, cand_b, emb_a, emb_b,
-                                   sim_threshold: float, matches: list):
+    def _compute_and_append_match(self, cand_a, cand_b, emb_a, emb_b, sim_threshold: float, matches: list):
         from .fts_search import cosine_similarity
+
         sim = cosine_similarity(emb_a, emb_b)
         if sim >= sim_threshold:
             matches.append(self._build_match_result(cand_a, cand_b, sim))
 
-    def _find_cross_matches(self, wings: list, wing_groups: dict,
-                            sim_threshold: float) -> list[dict]:
+    def _find_cross_matches(self, wings: list, wing_groups: dict, sim_threshold: float) -> list[dict]:
         cross_matches = []
         for a_idx in range(len(wings)):
             for b_idx in range(a_idx + 1, len(wings)):
                 wing_a = wings[a_idx]
                 wing_b = wings[b_idx]
                 self._match_wing_pair(
-                    wing_groups[wing_a][:5], wing_groups[wing_b][:5],
-                    wing_a, wing_b, sim_threshold, cross_matches
+                    wing_groups[wing_a][:5], wing_groups[wing_b][:5], wing_a, wing_b, sim_threshold, cross_matches
                 )
         return cross_matches
 
-    def _match_wing_pair(self, drawables_a: list, drawables_b: list,
-                         wing_a: str, wing_b: str,
-                         sim_threshold: float, cross_matches: list):
+    def _match_wing_pair(
+        self, drawables_a: list, drawables_b: list, wing_a: str, wing_b: str, sim_threshold: float, cross_matches: list
+    ):
         for da in drawables_a:
             for db in drawables_b:
-                self._try_cross_match(
-                    da, db, wing_a, wing_b, sim_threshold, cross_matches
-                )
+                self._try_cross_match(da, db, wing_a, wing_b, sim_threshold, cross_matches)
 
-    def _try_cross_match(self, da, db, wing_a: str, wing_b: str,
-                         sim_threshold: float, cross_matches: list):
+    def _try_cross_match(self, da, db, wing_a: str, wing_b: str, sim_threshold: float, cross_matches: list):
         try:
             emb_a = self.embedder.embed(da.content)
             emb_b = self.embedder.embed(db.content)
             if not (emb_a and emb_b):
                 return
             from .fts_search import cosine_similarity
+
             sim = cosine_similarity(emb_a, emb_b)
             if sim >= sim_threshold:
-                cross_matches.append({
-                    "source_id": da.id,
-                    "target_id": db.id,
-                    "source_wing": wing_a,
-                    "target_wing": wing_b,
-                    "source_content": da.content[:100],
-                    "target_content": db.content[:100],
-                    "similarity": round(sim, 3),
-                })
+                cross_matches.append(
+                    {
+                        "source_id": da.id,
+                        "target_id": db.id,
+                        "source_wing": wing_a,
+                        "target_wing": wing_b,
+                        "source_content": da.content[:100],
+                        "target_content": db.content[:100],
+                        "similarity": round(sim, 3),
+                    }
+                )
         except Exception:
             pass
 

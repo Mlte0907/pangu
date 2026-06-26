@@ -1,18 +1,18 @@
 """盘古生产加固 — 结构化日志、请求指标、启动校验、优雅关闭"""
+
 import json
 import logging
-import time
 import os
 import signal
 import threading
+import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from contextlib import contextmanager
-
 
 # ── 结构化日志 ──
+
 
 class StructuredFormatter(logging.Formatter):
     """JSON 结构化日志格式"""
@@ -52,9 +52,11 @@ def setup_structured_logging(level: str = "INFO", log_file: str = None):
 
 # ── 请求指标收集 ──
 
+
 @dataclass
 class RequestMetric:
     """请求指标"""
+
     endpoint: str
     method: str
     status: int
@@ -74,15 +76,19 @@ class MetricsCollector:
         self._start_time = time.time()
         self._lock = threading.Lock()
 
-    def record_request(self, endpoint: str, method: str, status: int,
-                       duration_ms: float, user_agent: str = ""):
+    def record_request(self, endpoint: str, method: str, status: int, duration_ms: float, user_agent: str = ""):
         """记录请求指标"""
         with self._lock:
-            self._request_metrics.append(RequestMetric(
-                endpoint=endpoint, method=method, status=status,
-                duration_ms=duration_ms, timestamp=time.time(),
-                user_agent=user_agent,
-            ))
+            self._request_metrics.append(
+                RequestMetric(
+                    endpoint=endpoint,
+                    method=method,
+                    status=status,
+                    duration_ms=duration_ms,
+                    timestamp=time.time(),
+                    user_agent=user_agent,
+                )
+            )
             self._counters[f"requests_{status}"] += 1
             self._counters[f"requests_{method}"] += 1
             self._histograms[f"duration_{endpoint}"].append(duration_ms)
@@ -131,6 +137,7 @@ class MetricsCollector:
 
 # ── 启动校验 ──
 
+
 class StartupValidator:
     """启动校验器"""
 
@@ -147,13 +154,11 @@ class StartupValidator:
         for name, func, desc in self._checks:
             try:
                 ok = func()
-                results.append({"check": name, "status": "ok" if ok else "fail",
-                                "description": desc})
+                results.append({"check": name, "status": "ok" if ok else "fail", "description": desc})
                 if not ok:
                     all_ok = False
             except Exception as e:
-                results.append({"check": name, "status": "error",
-                                "description": desc, "error": str(e)})
+                results.append({"check": name, "status": "error", "description": desc, "error": str(e)})
                 all_ok = False
 
         return all_ok, results
@@ -163,30 +168,25 @@ def default_startup_checks() -> StartupValidator:
     """默认启动校验"""
     validator = StartupValidator()
 
-    validator.check("python_version",
-                    lambda: __import__("sys").version_info >= (3, 10),
-                    "Python >= 3.10")
+    validator.check("python_version", lambda: __import__("sys").version_info >= (3, 10), "Python >= 3.10")
 
-    validator.check("data_dir",
-                    lambda: Path.home().joinpath(".pangu").exists(),
-                    "~/.pangu 目录存在")
+    validator.check("data_dir", lambda: Path.home().joinpath(".pangu").exists(), "~/.pangu 目录存在")
 
-    validator.check("config_file",
-                    lambda: Path.home().joinpath(".pangu/config.json").exists(),
-                    "配置文件存在")
+    validator.check("config_file", lambda: Path.home().joinpath(".pangu/config.json").exists(), "配置文件存在")
 
-    validator.check("drawers_file",
-                    lambda: Path.home().joinpath(".pangu/palace/drawers.json").exists(),
-                    "记忆数据文件存在")
+    validator.check(
+        "drawers_file", lambda: Path.home().joinpath(".pangu/palace/drawers.json").exists(), "记忆数据文件存在"
+    )
 
-    validator.check("onnx_model",
-                    lambda: any(Path.home().joinpath(".cache/pangu/onnx").rglob("*.onnx")),
-                    "ONNX 嵌入模型可用")
+    validator.check(
+        "onnx_model", lambda: any(Path.home().joinpath(".cache/pangu/onnx").rglob("*.onnx")), "ONNX 嵌入模型可用"
+    )
 
     return validator
 
 
 # ── 优雅关闭 ──
+
 
 class GracefulShutdown:
     """优雅关闭管理器"""
@@ -235,6 +235,7 @@ def get_shutdown_manager() -> GracefulShutdown:
 
 # ── 环境检查 ──
 
+
 def check_environment() -> dict:
     """检查运行环境"""
     checks = {
@@ -274,6 +275,7 @@ def check_environment() -> dict:
         drawers = pangu_dir / "palace" / "drawers.json"
         if drawers.exists():
             import json as _json
+
             try:
                 data = _json.loads(drawers.read_text())
                 checks["pangu"]["memory_count"] = len(data)

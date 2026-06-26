@@ -1,5 +1,5 @@
 """盘古任务状态同步 API — 跨 Agent 任务追踪（SQLite 持久化）"""
-import json
+
 import logging
 import sqlite3
 import threading
@@ -9,7 +9,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from pangu.core.config import config
 
@@ -68,6 +67,7 @@ _init_db()
 
 class TaskStatus(str, Enum):
     """任务状态"""
+
     received = "received"
     in_progress = "in_progress"
     blocked = "blocked"
@@ -76,6 +76,7 @@ class TaskStatus(str, Enum):
 
 
 # ── 请求/响应模型 ──
+
 
 class TaskCreateRequest(BaseModel):
     task_id: str = Field(..., description="任务 ID")
@@ -107,6 +108,7 @@ class TaskResponse(BaseModel):
 
 # ── 路由 ──
 
+
 @router.post("/tasks")
 async def create_task(req: TaskCreateRequest, request: Request) -> dict:
     """创建任务"""
@@ -116,13 +118,23 @@ async def create_task(req: TaskCreateRequest, request: Request) -> dict:
         try:
             conn.execute(
                 "INSERT INTO tasks (task_id, title, description, agent_id, status, parent_task_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (req.task_id, req.title, req.description, req.agent_id, req.status.value, req.parent_task_id, now, now)
+                (req.task_id, req.title, req.description, req.agent_id, req.status.value, req.parent_task_id, now, now),
             )
             conn.commit()
         finally:
             conn.close()
     logger.info(f"Task created: {req.task_id} by {req.agent_id}")
-    return {"code": 0, "message": "ok", "data": {"task_id": req.task_id, "title": req.title, "agent_id": req.agent_id, "status": req.status.value, "created_at": now}}
+    return {
+        "code": 0,
+        "message": "ok",
+        "data": {
+            "task_id": req.task_id,
+            "title": req.title,
+            "agent_id": req.agent_id,
+            "status": req.status.value,
+            "created_at": now,
+        },
+    }
 
 
 @router.get("/tasks/{task_id}")
@@ -176,7 +188,7 @@ async def update_task(task_id: str, req: TaskUpdateRequest) -> dict:
             row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
             if not row:
                 return {"code": 404, "message": f"Task not found: {task_id}", "data": None}
-            
+
             updates = []
             params = []
             if req.title is not None:
@@ -191,14 +203,14 @@ async def update_task(task_id: str, req: TaskUpdateRequest) -> dict:
             if req.blocker is not None:
                 updates.append("blocker = ?")
                 params.append(req.blocker)
-            
+
             if updates:
                 updates.append("updated_at = ?")
                 params.append(datetime.now().isoformat())
                 params.append(task_id)
                 conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE task_id = ?", params)
                 conn.commit()
-            
+
             row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
             logger.info(f"Task updated: {task_id} -> {row['status'] if row else 'unknown'}")
             return {"code": 0, "message": "ok", "data": _task_to_dict(row)}
@@ -228,7 +240,9 @@ async def get_agent_tasks(agent_id: str) -> dict:
     with _db_lock:
         conn = _get_db()
         try:
-            rows = conn.execute("SELECT * FROM tasks WHERE agent_id = ? ORDER BY updated_at DESC", (agent_id,)).fetchall()
+            rows = conn.execute(
+                "SELECT * FROM tasks WHERE agent_id = ? ORDER BY updated_at DESC", (agent_id,)
+            ).fetchall()
             tasks = [_task_to_dict(row) for row in rows]
             return {"code": 0, "message": "ok", "data": {"items": tasks, "total": len(tasks)}}
         finally:

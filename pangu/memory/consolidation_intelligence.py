@@ -7,10 +7,10 @@
 4. 层级巩固：L0→L1→L2→L3 多层渐进式压缩
 5. 巩固效果评估：评估每次巩固的效果和信息保留率
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -21,6 +21,7 @@ logger = logging.getLogger("pangu.memory.consolidation_intelligence")
 @dataclass
 class ConsolidationAction:
     """巩固操作"""
+
     action_type: str  # merge / promote / resolve / compress / skip
     source_ids: list[str]
     target_id: str | None
@@ -32,6 +33,7 @@ class ConsolidationAction:
 @dataclass
 class ConsolidationReport:
     """巩固报告"""
+
     total_actions: int
     merges: int
     promotions: int
@@ -84,7 +86,7 @@ class ConsolidationIntelligence:
             all_tags.update(d.tags)
 
         max_importance = max(d.importance for d in group)
-        merged_content = f"[合并{len(group)}条] " + " | ".join(contents)[:300]
+        f"[合并{len(group)}条] " + " | ".join(contents)[:300]
 
         return ConsolidationAction(
             action_type="merge",
@@ -95,8 +97,7 @@ class ConsolidationIntelligence:
             importance_delta=max_importance * 0.1,
         )
 
-    def _collect_promotions(self, drawers: list[Drawer],
-                             access_counts: dict[str, int]) -> list[ConsolidationAction]:
+    def _collect_promotions(self, drawers: list[Drawer], access_counts: dict[str, int]) -> list[ConsolidationAction]:
         actions = []
         for d in drawers:
             count = access_counts.get(d.id, 0)
@@ -105,8 +106,9 @@ class ConsolidationIntelligence:
                 actions.append(action)
         return actions
 
-    def find_promotion_candidates(self, drawers: list[Drawer],
-                                   access_counts: dict[str, int] = None) -> list[ConsolidationAction]:
+    def find_promotion_candidates(
+        self, drawers: list[Drawer], access_counts: dict[str, int] = None
+    ) -> list[ConsolidationAction]:
         """查找应提升重要性的记忆"""
         access_counts = access_counts or {}
         return self._collect_promotions(drawers, access_counts)[:10]
@@ -146,44 +148,46 @@ class ConsolidationIntelligence:
                 latest = max(pos + neg, key=lambda d: d.importance)
                 others = [d.id for d in (pos + neg) if d.id != latest.id]
 
-                actions.append(ConsolidationAction(
-                    action_type="resolve",
-                    source_ids=others,
-                    target_id=latest.id,
-                    description=f"解决 '{tag}' 冲突: 保留最高重要性版本",
-                    info_preserved=0.85,
-                    importance_delta=0,
-                ))
+                actions.append(
+                    ConsolidationAction(
+                        action_type="resolve",
+                        source_ids=others,
+                        target_id=latest.id,
+                        description=f"解决 '{tag}' 冲突: 保留最高重要性版本",
+                        info_preserved=0.85,
+                        importance_delta=0,
+                    )
+                )
 
         return actions[:10]
 
-    def compress_old_memories(self, drawers: list[Drawer],
-                              min_age_days: int = 60) -> list[ConsolidationAction]:
+    def compress_old_memories(self, drawers: list[Drawer], min_age_days: int = 60) -> list[ConsolidationAction]:
         """压缩旧记忆"""
         actions = []
         now = datetime.now()
 
         for d in drawers:
-            if hasattr(d, 'created_at') and d.created_at:
+            if hasattr(d, "created_at") and d.created_at:
                 try:
                     created = datetime.fromisoformat(d.created_at)
                     age_days = (now - created).days
                     if age_days > min_age_days and len(d.content) > 200:
-                        actions.append(ConsolidationAction(
-                            action_type="compress",
-                            source_ids=[d.id],
-                            target_id=d.id,
-                            description=f"压缩 {age_days} 天前的旧记忆 ({len(d.content)}字)",
-                            info_preserved=0.7,
-                            importance_delta=-0.1,
-                        ))
+                        actions.append(
+                            ConsolidationAction(
+                                action_type="compress",
+                                source_ids=[d.id],
+                                target_id=d.id,
+                                description=f"压缩 {age_days} 天前的旧记忆 ({len(d.content)}字)",
+                                info_preserved=0.7,
+                                importance_delta=-0.1,
+                            )
+                        )
                 except (ValueError, TypeError):
                     pass
 
         return actions[:10]
 
-    def run_consolidation(self, drawers: list[Drawer],
-                          access_counts: dict[str, int] = None) -> ConsolidationReport:
+    def run_consolidation(self, drawers: list[Drawer], access_counts: dict[str, int] = None) -> ConsolidationReport:
         """执行完整巩固流程"""
         all_actions: list[ConsolidationAction] = []
 
@@ -199,10 +203,7 @@ class ConsolidationIntelligence:
         promotions = sum(1 for a in all_actions if a.action_type == "promote")
         resolutions = sum(1 for a in all_actions if a.action_type == "resolve")
         compressions = sum(1 for a in all_actions if a.action_type == "compress")
-        avg_preserved = (
-            sum(a.info_preserved for a in all_actions) / len(all_actions)
-            if all_actions else 1.0
-        )
+        avg_preserved = sum(a.info_preserved for a in all_actions) / len(all_actions) if all_actions else 1.0
 
         report = ConsolidationReport(
             total_actions=len(all_actions),
@@ -215,15 +216,17 @@ class ConsolidationIntelligence:
             actions=all_actions,
         )
 
-        self._consolidation_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "total_memories": len(drawers),
-            "actions": len(all_actions),
-            "merges": merges,
-            "promotions": promotions,
-            "resolutions": resolutions,
-            "compressions": compressions,
-        })
+        self._consolidation_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "total_memories": len(drawers),
+                "actions": len(all_actions),
+                "merges": merges,
+                "promotions": promotions,
+                "resolutions": resolutions,
+                "compressions": compressions,
+            }
+        )
 
         return report
 

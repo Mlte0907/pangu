@@ -132,8 +132,7 @@ class AttentionSystem:
                 "ab_test_active": self._ab_test is not None,
             }
 
-    def start_ab_test(self, strategy_a: AttentionStrategy, strategy_b: AttentionStrategy,
-                      duration_days: float = 7):
+    def start_ab_test(self, strategy_a: AttentionStrategy, strategy_b: AttentionStrategy, duration_days: float = 7):
         """启动 A/B 测试"""
         with self._lock:
             self._ab_test = ABTestConfig(
@@ -179,11 +178,19 @@ class AttentionSystem:
 
         total = stats_a["count"] + stats_b["count"]
         if total < 30:
-            return {"winner": None, "confidence": 0.0, "recommendation": "insufficient data",
-                    "strategy_a": stats_a, "strategy_b": stats_b}
+            return {
+                "winner": None,
+                "confidence": 0.0,
+                "recommendation": "insufficient data",
+                "strategy_a": stats_a,
+                "strategy_b": stats_b,
+            }
 
-        winner = (self._ab_test.strategy_a.value if stats_a["avg_quality"] >= stats_b["avg_quality"]
-                  else self._ab_test.strategy_b.value)
+        winner = (
+            self._ab_test.strategy_a.value
+            if stats_a["avg_quality"] >= stats_b["avg_quality"]
+            else self._ab_test.strategy_b.value
+        )
         diff = abs(stats_a["avg_quality"] - stats_b["avg_quality"])
         pooled = max((stats_a["avg_quality"] + stats_b["avg_quality"]) / 2, 0.01)
         confidence = min(diff / pooled, 1.0)

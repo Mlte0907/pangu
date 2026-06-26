@@ -6,11 +6,10 @@
 3. 重要性预测：预测记忆的长期价值
 4. 评分解释：解释为什么给这个分数
 """
+
 import logging
-import math
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -21,6 +20,7 @@ logger = logging.getLogger("pangu.memory.importance_scorer")
 @dataclass
 class ImportanceScore:
     """重要性评分结果"""
+
     score: float  # 0.0 - 1.0
     factors: dict[str, float]  # 各维度得分
     explanation: str  # 评分解释
@@ -31,12 +31,12 @@ class ImportanceScorer:
 
     # 默认权重
     DEFAULT_WEIGHTS = {
-        "content": 0.25,      # 内容质量
-        "recency": 0.20,      # 时效性
-        "frequency": 0.20,    # 访问频率
-        "importance": 0.15,   # 原始重要性
-        "tags": 0.10,         # 标签丰富度
-        "emotional": 0.10,    # 情感强度
+        "content": 0.25,  # 内容质量
+        "recency": 0.20,  # 时效性
+        "frequency": 0.20,  # 访问频率
+        "importance": 0.15,  # 原始重要性
+        "tags": 0.10,  # 标签丰富度
+        "emotional": 0.10,  # 情感强度
     }
 
     def __init__(self, config: PanguConfig = None):

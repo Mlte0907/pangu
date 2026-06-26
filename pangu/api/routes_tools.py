@@ -2,6 +2,7 @@
 
 任何 HTTP 客户端可通过 POST /api/v2/tools/{tool_name} 调用全部 367 个 MCP 工具。
 """
+
 import json
 import logging
 
@@ -25,12 +26,14 @@ class BatchToolCallRequest(BaseModel):
 
 _cached_server = None
 
+
 def _get_server():
     global _cached_server
     if _cached_server is not None:
         return _cached_server
-    from pangu.server.mcp_server import MCPServer
     from pangu.core.config import PanguConfig
+    from pangu.server.mcp_server import MCPServer
+
     config = PanguConfig.load()
     config.ensure_dirs()
     _cached_server = MCPServer(config)
@@ -53,10 +56,7 @@ async def list_tools():
             "code": 0,
             "data": {
                 "total": len(tools),
-                "tools": [
-                    {"name": t["name"], "description": t.get("description", "")}
-                    for t in tools
-                ],
+                "tools": [{"name": t["name"], "description": t.get("description", "")} for t in tools],
             },
         }
     except Exception as e:

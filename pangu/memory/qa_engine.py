@@ -7,8 +7,9 @@
 4. 置信度评估：评估答案的可信度
 5. 追问生成：生成有价值的追问
 """
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger("pangu.memory.qa_engine")
 
@@ -16,6 +17,7 @@ logger = logging.getLogger("pangu.memory.qa_engine")
 @dataclass
 class QAResult:
     """问答结果"""
+
     question: str
     answer: str
     confidence: float
@@ -50,6 +52,7 @@ class QAEngine:
     def answer(self, question: str, drawers: list, recall_fn=None) -> QAResult:
         """回答问题"""
         import re
+
         intent = self.detect_intent(question)
         reasoning = [f"检测到意图: {intent}"]
 
@@ -57,7 +60,7 @@ class QAEngine:
         relevant = []
         # 提取问题关键词（中文2字+，英文整体）
         q_keywords = set()
-        for segment in re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]+', question):
+        for segment in re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]+", question):
             q_keywords.add(segment.lower())
 
         q_lower = question.lower()
@@ -107,12 +110,14 @@ class QAEngine:
             reasoning_steps=reasoning,
         )
 
-        self._qa_history.append({
-            "question": question,
-            "intent": intent,
-            "confidence": confidence,
-            "source_count": len(top_memories),
-        })
+        self._qa_history.append(
+            {
+                "question": question,
+                "intent": intent,
+                "confidence": confidence,
+                "source_count": len(top_memories),
+            }
+        )
 
         return result
 
@@ -127,7 +132,7 @@ class QAEngine:
         elif intent == "why":
             follow_ups.append("有其他可能的原因吗？")
         else:
-            follow_ups.append(f"关于这个话题，还有什么值得了解的？")
+            follow_ups.append("关于这个话题，还有什么值得了解的？")
 
         if memories:
             tags = set()
@@ -158,7 +163,7 @@ class QAEngine:
         if d.tags:
             score += self._score_tags(d.tags, q_keywords)
         for i in range(len(q_lower) - 1):
-            bigram = q_lower[i:i+2]
+            bigram = q_lower[i : i + 2]
             if bigram in d_lower:
                 score += 0.5
         return score

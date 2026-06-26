@@ -10,6 +10,7 @@
 - 频繁访问的记忆会被强化
 - 旧记忆自动浓缩为知识结晶
 """
+
 import math
 import time
 from datetime import datetime
@@ -61,7 +62,7 @@ class ForgettingCurve:
         retention = self.retention(elapsed_hours)
 
         # 强化加成：每次访问提升 5%
-        access_count = getattr(drawer, 'access_count', 0)
+        access_count = getattr(drawer, "access_count", 0)
         reinforcement = 1.0 + access_count * 0.05
 
         return drawer.importance * retention * reinforcement
@@ -271,5 +272,7 @@ class MemoryConsolidator:
             "average_effective_importance": round(avg_importance, 2),
             "needs_compression": self.should_compress(drawers),
             "total_accesses": sum(self._access_tracker.values()),
-            "last_consolidation": datetime.fromtimestamp(self._last_consolidation).isoformat() if self._last_consolidation else None,
+            "last_consolidation": datetime.fromtimestamp(self._last_consolidation).isoformat()
+            if self._last_consolidation
+            else None,
         }

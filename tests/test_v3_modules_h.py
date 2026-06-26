@@ -4,14 +4,9 @@ warmup / wikilink / working_memory"""
 
 import os
 import tempfile
-import time
-from unittest.mock import MagicMock
 
-import numpy as np
-import pytest
-
-from pangu.core.palace import Drawer
 from pangu.core.config import PanguConfig
+from pangu.core.palace import Drawer
 
 
 def _drawer(id="t1", content="test content", wing="test", importance=3.0, tags=None):
@@ -74,7 +69,7 @@ class TestONNXEmbedder:
 
 # ── proactive ──
 
-from pangu.memory.proactive import ProactiveEngine, ProactiveMemory, get_proactive_engine
+from pangu.memory.proactive import ProactiveEngine, get_proactive_engine
 
 
 class TestProactiveEngine:
@@ -118,6 +113,7 @@ class TestProactiveEngine:
 
     def test_singleton(self):
         import pangu.memory.proactive as pm
+
         pm._proactive_engine = None
         e1 = get_proactive_engine(_config())
         e2 = get_proactive_engine(_config())
@@ -143,6 +139,7 @@ class TestReconsolidationEngine:
 
     def test_run_with_drawers(self):
         from datetime import datetime, timedelta
+
         e = ReconsolidationEngine()
         old = (datetime.now() - timedelta(days=5)).isoformat()
         drawers = [
@@ -333,7 +330,7 @@ class TestStreamingIndexer:
 
 # ── synonyms ──
 
-from pangu.memory.synonyms import expand_synonyms, get_synonyms, SYNONYM_MAP
+from pangu.memory.synonyms import SYNONYM_MAP, expand_synonyms, get_synonyms
 
 
 class TestSynonyms:
@@ -378,11 +375,13 @@ from pangu.memory.vector_index import VectorIndex, get_vector_index
 
 class TestVectorIndex:
     def _make_vi(self, dim=4):
-        import tempfile, os
+        import os
+        import tempfile
+
         tmpdir = tempfile.mkdtemp()
-        os.environ['PANGU_CACHE_DIR'] = tmpdir
+        os.environ["PANGU_CACHE_DIR"] = tmpdir
         vi = VectorIndex(dim=dim)
-        os.environ.pop('PANGU_CACHE_DIR', None)
+        os.environ.pop("PANGU_CACHE_DIR", None)
         return vi
 
     def test_init(self):
@@ -452,6 +451,7 @@ class TestVectorIndex:
 
     def test_singleton(self):
         import pangu.memory.vector_index as vi_mod
+
         vi_mod._vector_index = None
         v1 = get_vector_index()
         v2 = get_vector_index()
@@ -503,7 +503,7 @@ class TestVerificationLoop:
 
 # ── versioning ──
 
-from pangu.memory.versioning import MemoryVersionControl, MemoryVersion, get_version_control
+from pangu.memory.versioning import MemoryVersionControl, get_version_control
 
 
 class TestMemoryVersionControl:
@@ -590,6 +590,7 @@ class TestMemoryVersionControl:
 
     def test_singleton(self):
         import pangu.memory.versioning as vm
+
         vm._version_control = None
         v1 = get_version_control(_config())
         v2 = get_version_control(_config())
@@ -600,11 +601,11 @@ class TestMemoryVersionControl:
 # ── warmup ──
 
 from pangu.memory.warmup import (
+    warmup_all,
+    warmup_fts_index,
     warmup_jieba,
     warmup_onnx,
-    warmup_fts_index,
     warmup_vector_index,
-    warmup_all,
 )
 
 
@@ -636,11 +637,10 @@ class TestWarmup:
 # ── wikilink ──
 
 from pangu.memory.wikilink import (
-    parse_wikilinks,
-    resolve_wikilink_to_item,
     extract_entity_links,
     get_wikilink_stats,
-    WikilinkMatch,
+    parse_wikilinks,
+    resolve_wikilink_to_item,
 )
 
 
@@ -703,7 +703,7 @@ class TestWikilink:
 
 # ── working_memory ──
 
-from pangu.memory.working_memory import WorkingMemory, WMItem, get_working_memory
+from pangu.memory.working_memory import WMItem, WorkingMemory, get_working_memory
 
 
 class TestWorkingMemory:
@@ -799,6 +799,7 @@ class TestWorkingMemory:
 
     def test_singleton(self):
         import pangu.memory.working_memory as wmm
+
         wmm._wm_instance = None
         w1 = get_working_memory()
         w2 = get_working_memory()

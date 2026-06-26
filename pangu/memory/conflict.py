@@ -8,6 +8,7 @@
 - 冲突严重度评分
 - 冲突解决建议
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -20,15 +21,17 @@ from ..core.palace import Drawer
 
 class ConflictSeverity(str, Enum):
     """冲突严重度"""
-    CRITICAL = "critical"    # 严重矛盾（如事实完全相反）
-    MAJOR = "major"          # 重要矛盾
-    MINOR = "minor"          # 轻微不一致
+
+    CRITICAL = "critical"  # 严重矛盾（如事实完全相反）
+    MAJOR = "major"  # 重要矛盾
+    MINOR = "minor"  # 轻微不一致
     POTENTIAL = "potential"  # 潜在冲突
 
 
 @dataclass
 class MemoryConflict:
     """记忆冲突"""
+
     id: str
     memory_a: str  # 记忆 A ID
     memory_b: str  # 记忆 B ID
@@ -67,9 +70,24 @@ class ConflictDetector:
 
     # 事实类关键词
     FACT_KEYWORDS = [
-        "版本", "version", "数量", "number", "日期", "date",
-        "大小", "size", "状态", "status", "结果", "result",
-        "决定", "decision", "结论", "conclusion", "配置", "config",
+        "版本",
+        "version",
+        "数量",
+        "number",
+        "日期",
+        "date",
+        "大小",
+        "size",
+        "状态",
+        "status",
+        "结果",
+        "result",
+        "决定",
+        "decision",
+        "结论",
+        "conclusion",
+        "配置",
+        "config",
     ]
 
     def __init__(self, config: PanguConfig = None):
@@ -81,6 +99,7 @@ class ConflictDetector:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
@@ -90,14 +109,14 @@ class ConflictDetector:
     def _cosine_sim(a, b) -> float:
         if not a or not b or len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
+        dot = sum(x * y for x, y in zip(a, b, strict=False))
         na = sum(x * x for x in a) ** 0.5
         nb = sum(x * x for x in b) ** 0.5
         return dot / (na * nb) if na and nb else 0.0
 
-    def detect_conflicts(self, drawers: list[Drawer],
-                         min_similarity: float = 0.5,
-                         min_confidence: float = 0.3) -> list[MemoryConflict]:
+    def detect_conflicts(
+        self, drawers: list[Drawer], min_similarity: float = 0.5, min_confidence: float = 0.3
+    ) -> list[MemoryConflict]:
         """检测记忆列表中的冲突
 
         Args:
@@ -116,14 +135,12 @@ class ConflictDetector:
         # 尝试向量方法
         if self.embedder:
             try:
-                conflicts = self._vector_conflict_detect(
-                    drawers, min_similarity, min_confidence)
+                conflicts = self._vector_conflict_detect(drawers, min_similarity, min_confidence)
             except Exception:
                 conflicts = []
 
         # 关键词方法（补充检测）
-        keyword_conflicts = self._keyword_conflict_detect(
-            drawers, min_confidence)
+        keyword_conflicts = self._keyword_conflict_detect(drawers, min_confidence)
         existing_pairs = {(c.memory_a, c.memory_b) for c in conflicts}
         existing_pairs.update((c.memory_b, c.memory_a) for c in conflicts)
         for c in keyword_conflicts:
@@ -133,9 +150,9 @@ class ConflictDetector:
         conflicts.sort(key=lambda c: c.confidence, reverse=True)
         return conflicts
 
-    def _vector_conflict_detect(self, drawers: list[Drawer],
-                                min_similarity: float,
-                                min_confidence: float) -> list[MemoryConflict]:
+    def _vector_conflict_detect(
+        self, drawers: list[Drawer], min_similarity: float, min_confidence: float
+    ) -> list[MemoryConflict]:
         """基于向量的冲突检测"""
         has_fact = [self._contains_fact_keywords(d.content) for d in drawers]
 
@@ -151,20 +168,20 @@ class ConflictDetector:
         for a in range(len(candidates)):
             for b in range(a + 1, len(candidates)):
                 conflict = self._check_vector_conflict_pair(
-                    candidates, a, b, embeddings, min_similarity, min_confidence)
+                    candidates, a, b, embeddings, min_similarity, min_confidence
+                )
                 if conflict:
                     conflicts.append(conflict)
 
         return conflicts
 
-    def _check_vector_conflict_pair(self, candidates: list, a: int, b: int,
-                                    embeddings: list, min_similarity: float,
-                                    min_confidence: float) -> MemoryConflict | None:
+    def _check_vector_conflict_pair(
+        self, candidates: list, a: int, b: int, embeddings: list, min_similarity: float, min_confidence: float
+    ) -> MemoryConflict | None:
         sim = self._cosine_sim(embeddings[a], embeddings[b])
         if sim < min_similarity:
             return None
-        conf = self._contradiction_score(
-            candidates[a][1].content, candidates[b][1].content, sim)
+        conf = self._contradiction_score(candidates[a][1].content, candidates[b][1].content, sim)
         if conf["confidence"] >= min_confidence:
             return MemoryConflict(
                 id=f"conflict_{hex_digest(candidates[a][1].id + candidates[b][1].id)[:12]}",
@@ -178,8 +195,7 @@ class ConflictDetector:
             )
         return None
 
-    def _keyword_conflict_detect(self, drawers: list[Drawer],
-                                 min_confidence: float) -> list[MemoryConflict]:
+    def _keyword_conflict_detect(self, drawers: list[Drawer], min_confidence: float) -> list[MemoryConflict]:
         """基于关键词的冲突检测"""
         conflicts = []
 
@@ -194,21 +210,22 @@ class ConflictDetector:
 
                 conf = self._contradiction_score(a.content, b.content)
                 if conf["confidence"] >= min_confidence:
-                    conflicts.append(MemoryConflict(
-                        id=f"conflict_{hex_digest(a.id + b.id)[:12]}",
-                        memory_a=a.id,
-                        memory_b=b.id,
-                        content_a=a.content[:200],
-                        content_b=b.content[:200],
-                        description=conf["description"],
-                        severity=conf["severity"],
-                        confidence=round(conf["confidence"], 4),
-                    ))
+                    conflicts.append(
+                        MemoryConflict(
+                            id=f"conflict_{hex_digest(a.id + b.id)[:12]}",
+                            memory_a=a.id,
+                            memory_b=b.id,
+                            content_a=a.content[:200],
+                            content_b=b.content[:200],
+                            description=conf["description"],
+                            severity=conf["severity"],
+                            confidence=round(conf["confidence"], 4),
+                        )
+                    )
 
         return conflicts
 
-    def _contradiction_score(self, text_a: str, text_b: str,
-                             semantic_sim: float = 0.0) -> dict:
+    def _contradiction_score(self, text_a: str, text_b: str, semantic_sim: float = 0.0) -> dict:
         """计算两个文本的矛盾程度"""
         text_a_lower = text_a.lower()
         text_b_lower = text_b.lower()
@@ -242,8 +259,7 @@ class ConflictDetector:
                     "severity": ConflictSeverity.POTENTIAL,
                     "description": "两条记忆语义高度相似，但可能存在不一致",
                 }
-            return {"confidence": 0.0, "severity": ConflictSeverity.POTENTIAL,
-                    "description": ""}
+            return {"confidence": 0.0, "severity": ConflictSeverity.POTENTIAL, "description": ""}
 
         # 加权计算
         avg_contra_score = sum(s for _, s in contradictions_found) / len(contradictions_found)
@@ -278,10 +294,9 @@ class ConflictDetector:
         """检查两个文本是否共享话题"""
         # 提取名词
         import re
-        words_a = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                  text_a.lower()))
-        words_b = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}',
-                                  text_b.lower()))
+
+        words_a = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text_a.lower()))
+        words_b = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", text_b.lower()))
         if not words_a or not words_b:
             return False
 

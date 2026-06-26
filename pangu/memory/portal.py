@@ -7,6 +7,7 @@
 4. 一键维护：一键执行所有维护操作
 5. 智能摘要：自动生成系统状态摘要
 """
+
 import logging
 from datetime import datetime
 
@@ -19,20 +20,26 @@ class MemoryPortal:
     def __init__(self, config=None):
         self.config = config
 
-    def smart_write(self, drawers: list, content: str, wing: str = "default",
-                    tags: list[str] = None, importance: float = 3.0) -> dict:
+    def smart_write(
+        self, drawers: list, content: str, wing: str = "default", tags: list[str] = None, importance: float = 3.0
+    ) -> dict:
         """智能写入 — 写入时自动触发多个模块"""
-        from ..core.palace import Drawer
         import uuid
+
+        from ..core.palace import Drawer
 
         drawer_id = str(uuid.uuid4())[:16]
         if not tags:
             import re
-            tags = list(set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', content)))[:5]
 
-        drawer = Drawer(
-            id=drawer_id, content=content, wing=wing,
-            importance=importance, tags=tags,
+            tags = list(set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", content)))[:5]
+
+        Drawer(
+            id=drawer_id,
+            content=content,
+            wing=wing,
+            importance=importance,
+            tags=tags,
         )
 
         actions = {
@@ -44,11 +51,13 @@ class MemoryPortal:
         }
 
         from ..memory.memory_events import get_event_stream
+
         es = get_event_stream(self.config)
         es.emit_memory_write(drawer_id, content, wing)
         actions["auto_actions"].append("event_emitted")
 
         from ..memory.smart_indexing import get_smart_indexing
+
         si = get_smart_indexing(self.config)
         for tag in tags:
             key = f"tag:{tag}"
@@ -77,10 +86,12 @@ class MemoryPortal:
     def smart_search(self, drawers: list, query: str, limit: int = 5) -> dict:
         """智能搜索 — 自动触发查询重写+索引搜索+结果排序"""
         from ..memory.query_rewriter import get_rewriter
+
         rw = get_rewriter(self.config)
         rewrite_result = rw.rewrite(query)
 
         from ..memory.smart_indexing import get_smart_indexing
+
         si = get_smart_indexing(self.config)
         index_results = si.search_index(query)
 
@@ -94,16 +105,14 @@ class MemoryPortal:
         top = scored[:limit]
 
         from ..memory.memory_events import get_event_stream
+
         es = get_event_stream(self.config)
         es.emit_memory_search(query, len(top))
 
         return {
             "query": query,
             "rewritten": rewrite_result.rewritten[:100],
-            "results": [
-                {"id": d.id, "content": d.content[:80], "wing": d.wing, "score": s}
-                for d, s in top
-            ],
+            "results": [{"id": d.id, "content": d.content[:80], "wing": d.wing, "score": s} for d, s in top],
             "total_found": len(scored),
             "index_hits": len(index_results),
         }
@@ -137,29 +146,34 @@ class MemoryPortal:
         results = {}
 
         from ..memory.smart_indexing import get_smart_indexing
+
         si = get_smart_indexing(self.config)
         idx_result = si.build_all_indexes(drawers)
         results["indexing"] = idx_result["total_indexes"]
 
         from ..memory.health_monitor import get_monitor
+
         hm = get_monitor(self.config)
         health = hm.full_check(drawers)
         results["health_score"] = health["overall_score"]
         results["health_status"] = health["overall_status"]
 
         from ..memory.quality_scorer import get_scorer
+
         qs = get_scorer(self.config)
         batch = qs.batch_assess(drawers)
         results["quality_avg"] = batch["avg_score"]
         results["quality_grades"] = batch["grade_distribution"]
 
         from ..memory.smart_cache import get_cache_manager
+
         cm = get_cache_manager(self.config)
         cm._l1.cleanup_expired()
         cm._l2.cleanup_expired()
         results["cache_cleaned"] = True
 
         from ..memory.memory_events import get_event_stream
+
         es = get_event_stream(self.config)
         es.emit("system.maintenance", "", results)
 

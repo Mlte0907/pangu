@@ -1,21 +1,23 @@
 """盘古 V3.0 模块测试 — 7 个记忆引擎"""
-import pytest
+
 from pangu.core.palace import Drawer
-from pangu.memory.self_evolution import SelfEvolutionEngine
-from pangu.memory.temporal_reasoning import TemporalReasoning
-from pangu.memory.semantic_compression import SemanticCompressor
-from pangu.memory.collaborative_intelligence import CollaborativeIntelligence
-from pangu.memory.causal_reasoning import CausalReasoningEngine
-from pangu.memory.explainable_search import ExplainableSearchEngine
 from pangu.memory.anomaly_detection import AnomalyDetector
+from pangu.memory.causal_reasoning import CausalReasoningEngine
+from pangu.memory.collaborative_intelligence import CollaborativeIntelligence
+from pangu.memory.explainable_search import ExplainableSearchEngine
+from pangu.memory.self_evolution import SelfEvolutionEngine
+from pangu.memory.semantic_compression import SemanticCompressor
+from pangu.memory.temporal_reasoning import TemporalReasoning
 
 
-def _drawer(id: str = "t1", content: str = "test content", wing: str = "test",
-            importance: float = 3.0, tags: list = None) -> Drawer:
+def _drawer(
+    id: str = "t1", content: str = "test content", wing: str = "test", importance: float = 3.0, tags: list = None
+) -> Drawer:
     return Drawer(id=id, content=content, wing=wing, importance=importance, tags=tags or [])
 
 
 # ── SelfEvolutionEngine ──
+
 
 class TestSelfEvolutionEngine:
     def setup_method(self):
@@ -49,8 +51,8 @@ class TestSelfEvolutionEngine:
 
     def test_generate_evolution_plan_critical(self):
         from pangu.memory.self_evolution import DiagnosisResult
-        diag = [DiagnosisResult(category="mem", severity="critical",
-                                description="bad", recommendation="fix it")]
+
+        diag = [DiagnosisResult(category="mem", severity="critical", description="bad", recommendation="fix it")]
         plan = self.engine.generate_evolution_plan(diag)
         assert plan.priority == 1
         assert len(plan.actions) == 1
@@ -67,6 +69,7 @@ class TestSelfEvolutionEngine:
 
 
 # ── TemporalReasoning ──
+
 
 class TestTemporalReasoning:
     def setup_method(self):
@@ -112,6 +115,7 @@ class TestTemporalReasoning:
 
 
 # ── SemanticCompressor ──
+
 
 class TestSemanticCompressor:
     def setup_method(self):
@@ -159,6 +163,7 @@ class TestSemanticCompressor:
 
 # ── CollaborativeIntelligence ──
 
+
 class TestCollaborativeIntelligence:
     def setup_method(self):
         self.ci = CollaborativeIntelligence()
@@ -202,6 +207,7 @@ class TestCollaborativeIntelligence:
 
 # ── CausalReasoningEngine ──
 
+
 class TestCausalReasoningEngine:
     def setup_method(self):
         self.engine = CausalReasoningEngine()
@@ -237,6 +243,7 @@ class TestCausalReasoningEngine:
 
 # ── ExplainableSearchEngine ──
 
+
 class TestExplainableSearchEngine:
     def setup_method(self):
         self.engine = ExplainableSearchEngine()
@@ -263,9 +270,15 @@ class TestExplainableSearchEngine:
 
     def test_suggest_improvement_with_explanations(self):
         from pangu.memory.explainable_search import SearchExplanation
-        exp = SearchExplanation(memory_id="d1", content_preview="x", score=0.1,
-                                factors={"partial_match": 0.1}, primary_reason="weak",
-                                matched_terms=[])
+
+        exp = SearchExplanation(
+            memory_id="d1",
+            content_preview="x",
+            score=0.1,
+            factors={"partial_match": 0.1},
+            primary_reason="weak",
+            matched_terms=[],
+        )
         suggestions = self.engine.suggest_improvement("python test", [exp])
         assert isinstance(suggestions, list)
 
@@ -275,6 +288,7 @@ class TestExplainableSearchEngine:
 
 
 # ── AnomalyDetector ──
+
 
 class TestAnomalyDetector:
     def setup_method(self):

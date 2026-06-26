@@ -6,6 +6,7 @@
 3. 冷热分离：自动将冷数据和热数据分离
 4. 索引优化：根据查询模式优化索引
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,6 +17,7 @@ logger = logging.getLogger("pangu.memory.adaptive_architecture")
 @dataclass
 class ArchitectureAdvice:
     """架构建议"""
+
     category: str
     action: str
     reason: str
@@ -69,21 +71,25 @@ class AdaptiveArchitecture:
 
         for wing, count in wing_stats.items():
             if count < 2:
-                suggestions.append(ArchitectureAdvice(
-                    category="wing_merge",
-                    action=f"将稀疏 Wing '{wing}' 合并到最近似 Wing",
-                    reason=f"仅有 {count} 条记忆，维护成本高于价值",
-                    priority=3,
-                    expected_benefit="减少架构碎片化",
-                ))
+                suggestions.append(
+                    ArchitectureAdvice(
+                        category="wing_merge",
+                        action=f"将稀疏 Wing '{wing}' 合并到最近似 Wing",
+                        reason=f"仅有 {count} 条记忆，维护成本高于价值",
+                        priority=3,
+                        expected_benefit="减少架构碎片化",
+                    )
+                )
             elif count > len(drawers) * 0.4:
-                suggestions.append(ArchitectureAdvice(
-                    category="wing_split",
-                    action=f"将大 Wing '{wing}' 拆分为子类别",
-                    reason=f"占总记忆 {count / len(drawers):.0%}，需要更细粒度组织",
-                    priority=2,
-                    expected_benefit="提高检索精度",
-                ))
+                suggestions.append(
+                    ArchitectureAdvice(
+                        category="wing_split",
+                        action=f"将大 Wing '{wing}' 拆分为子类别",
+                        reason=f"占总记忆 {count / len(drawers):.0%}，需要更细粒度组织",
+                        priority=2,
+                        expected_benefit="提高检索精度",
+                    )
+                )
 
         all_tags: dict[str, int] = {}
         for d in drawers:
@@ -92,13 +98,15 @@ class AdaptiveArchitecture:
 
         orphan_tags = [t for t, c in all_tags.items() if c == 1]
         if len(orphan_tags) > len(all_tags) * 0.3:
-            suggestions.append(ArchitectureAdvice(
-                category="tag_cleanup",
-                action=f"清理 {len(orphan_tags)} 个孤立标签",
-                reason=f"占总标签 {len(orphan_tags) / max(len(all_tags), 1):.0%}",
-                priority=4,
-                expected_benefit="提高标签系统效率",
-            ))
+            suggestions.append(
+                ArchitectureAdvice(
+                    category="tag_cleanup",
+                    action=f"清理 {len(orphan_tags)} 个孤立标签",
+                    reason=f"占总标签 {len(orphan_tags) / max(len(all_tags), 1):.0%}",
+                    priority=4,
+                    expected_benefit="提高标签系统效率",
+                )
+            )
 
         return suggestions
 
@@ -145,18 +153,17 @@ class AdaptiveArchitecture:
         separation = self.suggest_cold_hot_separation(drawers)
         index_opt = self.optimize_indices(drawers)
 
-        self._restructure_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "total_memories": len(drawers),
-            "suggestions_count": len(suggestions),
-        })
+        self._restructure_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "total_memories": len(drawers),
+                "suggestions_count": len(suggestions),
+            }
+        )
 
         return {
             "architecture": analysis,
-            "suggestions": [
-                {"action": s.action, "reason": s.reason, "priority": s.priority}
-                for s in suggestions
-            ],
+            "suggestions": [{"action": s.action, "reason": s.reason, "priority": s.priority} for s in suggestions],
             "cold_hot_separation": separation,
             "index_optimization": index_opt,
         }

@@ -5,6 +5,7 @@
 2. 混合情绪解耦 — 识别复杂情绪状态中的多个成分
 3. 个性化情绪学习 — 基于用户特征建立个性化情绪基线
 """
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -64,7 +65,9 @@ class DeepEmotionEngine:
         emotion_points.sort(key=lambda p: p["ts"])
         emotion_points = emotion_points[:20]
 
-        trajectory = EmotionTrajectory(data_points=[{"ts": p["ts"], "valence": p["valence"]} for p in emotion_points[-5:]])
+        trajectory = EmotionTrajectory(
+            data_points=[{"ts": p["ts"], "valence": p["valence"]} for p in emotion_points[-5:]]
+        )
 
         if len(emotion_points) >= 2:
             velocities = []
@@ -131,12 +134,14 @@ class DeepEmotionEngine:
                 components.append("interested")
 
             if len(components) >= 2:
-                decomposed.append(MixedEmotion(
-                    drawer_id=d.id[:8],
-                    preview=d.content[:50],
-                    components=components,
-                    primary=components[0],
-                ).__dict__)
+                decomposed.append(
+                    MixedEmotion(
+                        drawer_id=d.id[:8],
+                        preview=d.content[:50],
+                        components=components,
+                        primary=components[0],
+                    ).__dict__
+                )
 
         return decomposed
 

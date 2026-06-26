@@ -7,10 +7,10 @@
 4. 假设验证：验证假设的正确性
 5. 知识更新：根据验证结果更新知识
 """
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
@@ -21,6 +21,7 @@ logger = logging.getLogger("pangu.memory.autonomous_learning")
 @dataclass
 class Hypothesis:
     """假设"""
+
     statement: str
     confidence: float
     evidence: list[str]  # 支持证据
@@ -75,22 +76,26 @@ class AutonomousLearning:
         for d in drawers:
             content = d.content.lower()
             if "因为" in content or "导致" in content or "所以" in content:
-                hypotheses.append(Hypothesis(
-                    statement=f"发现因果关系: {d.content[:50]}",
-                    confidence=0.6,
-                    evidence=[d.id],
-                    source_memories=[d.id],
-                ))
+                hypotheses.append(
+                    Hypothesis(
+                        statement=f"发现因果关系: {d.content[:50]}",
+                        confidence=0.6,
+                        evidence=[d.id],
+                        source_memories=[d.id],
+                    )
+                )
 
         # 发现改进建议
         low_importance = [d for d in drawers if d.importance / 5.0 < 0.3]
         if len(low_importance) > 3:
-            hypotheses.append(Hypothesis(
-                statement=f"发现 {len(low_importance)} 条低重要性记忆，可能需要优化",
-                confidence=0.5,
-                evidence=[d.id for d in low_importance[:3]],
-                source_memories=[d.id for d in low_importance[:5]],
-            ))
+            hypotheses.append(
+                Hypothesis(
+                    statement=f"发现 {len(low_importance)} 条低重要性记忆，可能需要优化",
+                    confidence=0.5,
+                    evidence=[d.id for d in low_importance[:3]],
+                    source_memories=[d.id for d in low_importance[:5]],
+                )
+            )
 
         self._hypotheses.extend(hypotheses)
         return hypotheses
@@ -145,13 +150,15 @@ class AutonomousLearning:
                 h.status = "rejected"
 
         # 4. 记录学习结果
-        self._learning_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "discoveries": len(discoveries),
-            "hypotheses": len(hypotheses),
-            "verified": len(verified),
-            "rejected": len(rejected),
-        })
+        self._learning_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "discoveries": len(discoveries),
+                "hypotheses": len(hypotheses),
+                "verified": len(verified),
+                "rejected": len(rejected),
+            }
+        )
 
         return {
             "discoveries": len(discoveries),

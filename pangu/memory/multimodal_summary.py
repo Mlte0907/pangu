@@ -6,6 +6,7 @@
 3. 时间线摘要：按时间顺序串联多模态内容
 4. 主题摘要：按主题聚合多模态内容
 """
+
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -172,7 +173,7 @@ class MultimodalSummaryEngine:
             return "无视频记忆"
         total_duration = sum(d.metadata.get("duration", 0) for d in drawers)
         codecs = set(d.metadata.get("video_codec", "") for d in drawers if d.metadata.get("video_codec"))
-        return f"{len(drawers)}个视频, 总时长: {total_duration/60:.1f}分钟, 编码: {', '.join(codecs)}"
+        return f"{len(drawers)}个视频, 总时长: {total_duration / 60:.1f}分钟, 编码: {', '.join(codecs)}"
 
     def _summarize_audio(self, drawers: list[Drawer]) -> str:
         if not drawers:
@@ -180,7 +181,7 @@ class MultimodalSummaryEngine:
         langs = set(d.metadata.get("language", "unknown") for d in drawers)
         total_duration = sum(d.metadata.get("duration", 0) for d in drawers)
         has_transcription = sum(1 for d in drawers if d.metadata.get("transcription"))
-        return f"{len(drawers)}段音频, 总时长: {total_duration/60:.1f}分钟, 语言: {', '.join(langs)}, 已转写: {has_transcription}段"
+        return f"{len(drawers)}段音频, 总时长: {total_duration / 60:.1f}分钟, 语言: {', '.join(langs)}, 已转写: {has_transcription}段"
 
     def _find_cross_modal_links(self, drawers: list[Drawer]) -> str:
         """发现跨模态关联"""

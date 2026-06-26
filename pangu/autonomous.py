@@ -3,6 +3,7 @@
 
 当任务涉及复杂决策时，建议使用多轨迹决策。
 """
+
 import json
 import os
 import sys
@@ -17,41 +18,59 @@ CAPABILITY_SCENARIOS = {
     "memory_recall": {
         "keywords": ["记忆", "之前", "上次", "过去", "历史", "记得", "检索", "查询"],
         "capability": "recall",
-        "action": "search_memories"
+        "action": "search_memories",
     },
     "self_reflection": {
         "keywords": ["反思", "复盘", "回顾", "思考自己", "总结", "成长"],
         "capability": "analytics",
-        "action": "analyze_patterns"
+        "action": "analyze_patterns",
     },
     "knowledge_distill": {
         "keywords": ["知识", "概念", "理论", "理解", "解释", "原理"],
         "capability": "wiki",
-        "action": "generate_wiki"
+        "action": "generate_wiki",
     },
     "pattern_discovery": {
         "keywords": ["模式", "规律", "趋势", "习惯", "关联"],
         "capability": "patterns",
-        "action": "discover_patterns"
+        "action": "discover_patterns",
     },
     "conflict_resolution": {
         "keywords": ["矛盾", "冲突", "不一致", "矛盾点"],
         "capability": "conflict",
-        "action": "detect_conflicts"
+        "action": "detect_conflicts",
     },
 }
 
 # 需要深度决策的关键词
 DECISION_KEYWORDS = [
-    "重构", "重写", "迁移", "设计方案", "架构",
-    "多个", "方案", "选择", "对比", "权衡",
-    "分析", "评估", "优化", "改进", "升级",
+    "重构",
+    "重写",
+    "迁移",
+    "设计方案",
+    "架构",
+    "多个",
+    "方案",
+    "选择",
+    "对比",
+    "权衡",
+    "分析",
+    "评估",
+    "优化",
+    "改进",
+    "升级",
 ]
 
 # 复杂任务特征
 COMPLEX_PATTERNS = [
-    "多个文件", "跨模块", "多步骤", "涉及",
-    "重构", "迁移", "重写", "设计",
+    "多个文件",
+    "跨模块",
+    "多步骤",
+    "涉及",
+    "重构",
+    "迁移",
+    "重写",
+    "设计",
 ]
 
 
@@ -79,12 +98,14 @@ def analyze_task(task_text: str) -> dict:
     for scenario, conf in CAPABILITY_SCENARIOS.items():
         for kw in conf["keywords"]:
             if kw in text:
-                matched_scenarios.append({
-                    "scenario": scenario,
-                    "capability": conf["capability"],
-                    "action": conf["action"],
-                    "matched_keyword": kw
-                })
+                matched_scenarios.append(
+                    {
+                        "scenario": scenario,
+                        "capability": conf["capability"],
+                        "action": conf["action"],
+                        "matched_keyword": kw,
+                    }
+                )
                 break
 
     # 2. 复杂度分析
@@ -122,10 +143,7 @@ def format_recommendation(result: dict, task: str) -> str:
 
     # 深度决策建议
     if result["needs_deep_decision"]:
-        outputs.append(
-            f"\033[93m💡 复杂任务检测（复杂度 {result['complexity']}/10）: "
-            f"建议进行多维度分析\033[0m"
-        )
+        outputs.append(f"\033[93m💡 复杂任务检测（复杂度 {result['complexity']}/10）: 建议进行多维度分析\033[0m")
 
     # 能力场景匹配
     if result["matched_scenarios"]:
@@ -135,9 +153,7 @@ def format_recommendation(result: dict, task: str) -> str:
 
     # 记忆检索建议
     if result["needs_memory"]:
-        outputs.append(
-            f"\033[96m🧠 记忆检索建议: 调用 pangu_search_memories \"{task[:30]}...\"\033[0m"
-        )
+        outputs.append(f'\033[96m🧠 记忆检索建议: 调用 pangu_search_memories "{task[:30]}..."\033[0m')
 
     # 服务状态
     if result["service_status"]:

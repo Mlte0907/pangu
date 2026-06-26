@@ -8,7 +8,6 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "javascript": ["js", "es6", "typescript", "ts"],
     "golang": ["go", "go语言"],
     "rust": ["rust语言"],
-
     # AI/ML
     "ai": ["人工智能", "artificial intelligence", "机器智能"],
     "ml": ["机器学习", "machine learning", "统计学习"],
@@ -17,7 +16,6 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "cv": ["计算机视觉", "computer vision", "图像处理"],
     "llm": ["大语言模型", "large language model", "大模型"],
     "transformer": ["transformer模型", "注意力模型"],
-
     # 框架/工具
     "pytorch": ["torch", "pytorch框架"],
     "tensorflow": ["tf", "tensorflow框架"],
@@ -25,7 +23,6 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "sklearn": ["scikit-learn", "scikit"],
     "numpy": ["np", "numpy库"],
     "pandas": ["pd", "pandas库"],
-
     # 向量/搜索
     "faiss": ["faiss库", "向量搜索"],
     "ann": ["近似最近邻", "approximate nearest neighbor"],
@@ -33,7 +30,6 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "vector": ["向量", "矢量"],
     "similarity": ["相似度", "相似性"],
     "cosine": ["余弦相似度", "余弦"],
-
     # 神经网络
     "cnn": ["卷积神经网络", "convolutional neural network"],
     "rnn": ["循环神经网络", "recurrent neural network"],
@@ -41,14 +37,12 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "gan": ["生成对抗网络", "generative adversarial network"],
     "bert": ["bert模型", "双向编码器"],
     "gpt": ["gpt模型", "生成式预训练"],
-
     # 优化
     "sgd": ["随机梯度下降", "stochastic gradient descent"],
     "adam": ["adam优化器"],
     "lr": ["学习率", "learning rate"],
     "epoch": ["训练轮次", "迭代轮次"],
     "batch": ["批大小", "批次"],
-
     # 盘古相关
     "盘古": ["pangu", "盘古系统", "盘古记忆"],
     "伏羲": ["fuxi", "伏羲系统"],
@@ -59,7 +53,6 @@ SYNONYM_MAP: dict[str, list[str]] = {
     "嵌入": ["embedding", "向量", "编码"],
     "分词": ["tokenization", "tokenize", "分词器"],
     "索引": ["index", "索引器"],
-
     # 通用
     "优化": ["optimize", "调优", "改进"],
     "性能": ["performance", "效率", "速度"],
@@ -104,7 +97,7 @@ def expand_synonyms(query: str, max_expansions: int = 3) -> list[str]:
             original = _REVERSE_MAP[word]
             expanded.update(SYNONYM_MAP.get(original, [])[:max_expansions])
 
-    return list(expanded)[:max_expansions * len(words) + len(words)]
+    return list(expanded)[: max_expansions * len(words) + len(words)]
 
 
 def get_synonyms(word: str) -> list[str]:

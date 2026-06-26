@@ -7,9 +7,10 @@
 4. 项目统计：查看各项目的记忆状态
 5. 项目合并：将一个项目的记忆合并到另一个项目
 """
+
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +20,7 @@ logger = logging.getLogger("pangu.memory.project_manager")
 @dataclass
 class ProjectInfo:
     """项目信息"""
+
     project_id: str
     name: str
     description: str
@@ -62,9 +64,12 @@ class ProjectManager:
     def _save_index(self) -> None:
         data = {
             pid: {
-                "project_id": p.project_id, "name": p.name,
-                "description": p.description, "created_at": p.created_at,
-                "memory_count": p.memory_count, "last_active": p.last_active,
+                "project_id": p.project_id,
+                "name": p.name,
+                "description": p.description,
+                "created_at": p.created_at,
+                "memory_count": p.memory_count,
+                "last_active": p.last_active,
             }
             for pid, p in self._projects.items()
         }
@@ -107,16 +112,23 @@ class ProjectManager:
         if not p:
             return {"error": "无活跃项目"}
         return {
-            "project_id": p.project_id, "name": p.name,
-            "description": p.description, "memory_count": p.memory_count,
+            "project_id": p.project_id,
+            "name": p.name,
+            "description": p.description,
+            "memory_count": p.memory_count,
         }
 
     def list_projects(self) -> list[dict]:
         """列出所有项目"""
         return [
-            {"id": p.project_id, "name": p.name, "description": p.description,
-             "memories": p.memory_count, "active": p.project_id == self._active_project,
-             "created": p.created_at}
+            {
+                "id": p.project_id,
+                "name": p.name,
+                "description": p.description,
+                "memories": p.memory_count,
+                "active": p.project_id == self._active_project,
+                "created": p.created_at,
+            }
             for p in self._projects.values()
         ]
 
@@ -127,12 +139,17 @@ class ProjectManager:
 
         data = []
         for d in drawers:
-            data.append({
-                "id": d.id, "content": d.content, "wing": d.wing,
-                "importance": d.importance, "tags": d.tags,
-                "created_at": getattr(d, "created_at", ""),
-                "updated_at": getattr(d, "updated_at", ""),
-            })
+            data.append(
+                {
+                    "id": d.id,
+                    "content": d.content,
+                    "wing": d.wing,
+                    "importance": d.importance,
+                    "tags": d.tags,
+                    "created_at": getattr(d, "created_at", ""),
+                    "updated_at": getattr(d, "updated_at", ""),
+                }
+            )
 
         drawers_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
@@ -163,12 +180,14 @@ class ProjectManager:
         for m in memories:
             score = self._score_memory_cross_project(m, query)
             if score > 0:
-                results.append({
-                    "project": pid,
-                    "id": m.get("id", ""),
-                    "content": m.get("content", "")[:80],
-                    "score": score,
-                })
+                results.append(
+                    {
+                        "project": pid,
+                        "id": m.get("id", ""),
+                        "content": m.get("content", "")[:80],
+                        "score": score,
+                    }
+                )
         return results
 
     def search_cross_project(self, query: str, limit: int = 10) -> list[dict]:
@@ -214,14 +233,12 @@ class ProjectManager:
                 merged += 1
 
         project_dir = self._project_dir(target)
-        (project_dir / "drawers.json").write_text(
-            json.dumps(target_memories, ensure_ascii=False, indent=2))
+        (project_dir / "drawers.json").write_text(json.dumps(target_memories, ensure_ascii=False, indent=2))
 
         self._projects[target].memory_count = len(target_memories)
         self._save_index()
 
-        return {"merged": merged, "source": source_id, "target": target,
-                "target_total": len(target_memories)}
+        return {"merged": merged, "source": source_id, "target": target, "target_total": len(target_memories)}
 
     def delete_project(self, project_id: str) -> dict:
         """删除项目"""
@@ -231,6 +248,7 @@ class ProjectManager:
             return {"error": f"项目 '{project_id}' 不存在"}
 
         import shutil
+
         project_dir = self._projects_dir / project_id
         if project_dir.exists():
             shutil.rmtree(project_dir)

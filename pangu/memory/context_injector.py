@@ -6,9 +6,9 @@
 3. 推送通知：通过 WebSocket 自动推送给 Agent
 4. 记录注入：记录注入历史，优化后续推荐
 """
+
 import json
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -26,8 +26,7 @@ class ContextInjector:
         self._injection_history: list[dict] = []
         self._max_history = 500
 
-    def auto_inject(self, context: str = "", drawers: list[Drawer] = None,
-                    limit: int = 5) -> dict:
+    def auto_inject(self, context: str = "", drawers: list[Drawer] = None, limit: int = 5) -> dict:
         """基于上下文自动注入相关记忆"""
         if not context and not drawers:
             return {"injected": 0, "suggestions": [], "reason": "no context"}
@@ -48,7 +47,7 @@ class ContextInjector:
                     score += 0.3
 
             # 标签匹配
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 if tag.lower() in context.lower():
                     score += 0.2
 
@@ -67,14 +66,16 @@ class ContextInjector:
                 pass
 
             if score > 0.15:
-                suggestions.append({
-                    "id": d.id,
-                    "content": (d.content or "")[:100],
-                    "wing": d.wing,
-                    "importance": d.importance,
-                    "score": round(score, 3),
-                    "created_at": d.created_at,
-                })
+                suggestions.append(
+                    {
+                        "id": d.id,
+                        "content": (d.content or "")[:100],
+                        "wing": d.wing,
+                        "importance": d.importance,
+                        "score": round(score, 3),
+                        "created_at": d.created_at,
+                    }
+                )
 
         suggestions.sort(key=lambda x: -x["score"])
         top = suggestions[:limit]
@@ -91,7 +92,7 @@ class ContextInjector:
         }
         self._injection_history.append(injection)
         if len(self._injection_history) > self._max_history:
-            self._injection_history = self._injection_history[-self._max_history:]
+            self._injection_history = self._injection_history[-self._max_history :]
 
         return {
             "injected": len(top),
@@ -111,14 +112,16 @@ class ContextInjector:
     def _extract_keywords(text: str) -> list[str]:
         """提取关键词"""
         import re
-        cn_words = re.findall(r'[\u4e00-\u9fff]{2,}', text)
-        en_words = re.findall(r'[a-zA-Z0-9_]{3,}', text.lower())
+
+        cn_words = re.findall(r"[\u4e00-\u9fff]{2,}", text)
+        en_words = re.findall(r"[a-zA-Z0-9_]{3,}", text.lower())
         return cn_words + en_words
 
     def _decrypt_suggestions(self, suggestions: list[dict]):
         """解密建议内容"""
         try:
             import importlib
+
             encryption_mod = importlib.import_module("pangu.memory.encryption")
             decrypt = encryption_mod.decrypt
             for s in suggestions:

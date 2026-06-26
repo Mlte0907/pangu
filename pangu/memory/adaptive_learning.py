@@ -7,17 +7,13 @@
 4. 权重自适应：根据学习结果动态调整评分权重
 5. 预测优化：基于历史行为优化预测模型
 """
-import json
+
 import logging
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Any
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.adaptive_learning")
 
@@ -25,6 +21,7 @@ logger = logging.getLogger("pangu.memory.adaptive_learning")
 @dataclass
 class LearningEvent:
     """学习事件"""
+
     event_type: str  # search / access / feedback / prediction
     query: str = ""
     memory_id: str = ""
@@ -152,34 +149,34 @@ class AdaptiveLearningSystem:
             sorted_queries = sorted(self._search_patterns.items(), key=lambda x: x[1]["count"], reverse=True)
             top_queries = sorted_queries[:3]
             if top_queries[0][1]["count"] > 5:
-                patterns.append({
-                    "type": "frequent_query",
-                    "query": top_queries[0][0],
-                    "count": top_queries[0][1]["count"],
-                    "suggestion": f"用户经常搜索 \"{top_queries[0][0]}\"，建议将其设为快捷查询",
-                })
+                patterns.append(
+                    {
+                        "type": "frequent_query",
+                        "query": top_queries[0][0],
+                        "count": top_queries[0][1]["count"],
+                        "suggestion": f'用户经常搜索 "{top_queries[0][0]}"，建议将其设为快捷查询',
+                    }
+                )
 
         # 检测记忆访问模式
         if len(self._memory_access) > 10:
             sorted_memories = sorted(self._memory_access.items(), key=lambda x: x[1]["count"], reverse=True)
             top_memory = sorted_memories[0]
             if top_memory[1]["count"] > 10:
-                patterns.append({
-                    "type": "frequent_memory",
-                    "memory_id": top_memory[0],
-                    "count": top_memory[1]["count"],
-                    "suggestion": f"记忆 {top_memory[0][:8]} 被频繁访问，建议提升重要性",
-                })
+                patterns.append(
+                    {
+                        "type": "frequent_memory",
+                        "memory_id": top_memory[0],
+                        "count": top_memory[1]["count"],
+                        "suggestion": f"记忆 {top_memory[0][:8]} 被频繁访问，建议提升重要性",
+                    }
+                )
 
         return patterns
 
     def get_popular_queries(self, limit: int = 10) -> list[dict]:
         """获取热门查询"""
-        sorted_queries = sorted(
-            self._search_patterns.items(),
-            key=lambda x: x[1]["count"],
-            reverse=True
-        )
+        sorted_queries = sorted(self._search_patterns.items(), key=lambda x: x[1]["count"], reverse=True)
         return [
             {"query": q, "count": p["count"], "avg_score": round(p["total_score"] / max(p["count"], 1), 2)}
             for q, p in sorted_queries[:limit]
@@ -187,11 +184,7 @@ class AdaptiveLearningSystem:
 
     def get_frequent_memories(self, limit: int = 10) -> list[dict]:
         """获取频繁访问的记忆"""
-        sorted_memories = sorted(
-            self._memory_access.items(),
-            key=lambda x: x[1]["count"],
-            reverse=True
-        )
+        sorted_memories = sorted(self._memory_access.items(), key=lambda x: x[1]["count"], reverse=True)
         return [
             {"memory_id": mid, "count": a["count"], "last_access": datetime.fromtimestamp(a["last_access"]).isoformat()}
             for mid, a in sorted_memories[:limit]
@@ -209,7 +202,7 @@ class AdaptiveLearningSystem:
     def _trim_events(self) -> None:
         """修剪事件列表"""
         if len(self._events) > self._max_events:
-            self._events = self._events[-self._max_events:]
+            self._events = self._events[-self._max_events :]
 
 
 # 全局单例

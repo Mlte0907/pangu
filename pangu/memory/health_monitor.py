@@ -7,6 +7,7 @@
 4. 系统概览：提供系统全面健康报告
 5. 自动恢复：检测到问题时自动执行修复操作
 """
+
 import logging
 import statistics
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ logger = logging.getLogger("pangu.memory.health_monitor")
 @dataclass
 class HealthCheck:
     """健康检查结果"""
+
     component: str
     status: str  # healthy / warning / critical
     score: float  # 0-1
@@ -35,17 +37,13 @@ class HealthMonitor:
 
     def _evaluate_volume(self, total: int) -> HealthCheck:
         if total == 0:
-            return HealthCheck("memory_volume", "critical", 0.0,
-                               "无记忆", "开始收集记忆")
+            return HealthCheck("memory_volume", "critical", 0.0, "无记忆", "开始收集记忆")
         elif total < 10:
-            return HealthCheck("memory_volume", "warning", 0.4,
-                               f"记忆偏少: {total}", "增加收集频率")
+            return HealthCheck("memory_volume", "warning", 0.4, f"记忆偏少: {total}", "增加收集频率")
         elif total > 5000:
-            return HealthCheck("memory_volume", "warning", 0.7,
-                               f"记忆量大: {total}", "考虑压缩和归档")
+            return HealthCheck("memory_volume", "warning", 0.7, f"记忆量大: {total}", "考虑压缩和归档")
         else:
-            return HealthCheck("memory_volume", "healthy", 1.0,
-                               f"记忆量正常: {total}", "")
+            return HealthCheck("memory_volume", "healthy", 1.0, f"记忆量正常: {total}", "")
 
     def check_memory_volume(self, drawers: list) -> HealthCheck:
         """检查记忆量"""
@@ -77,8 +75,7 @@ class HealthMonitor:
             status = "healthy"
             rec = ""
 
-        return HealthCheck("importance", status, round(score, 3),
-                           f"均值={avg:.2f}, 标准差={stdev:.2f}", rec)
+        return HealthCheck("importance", status, round(score, 3), f"均值={avg:.2f}, 标准差={stdev:.2f}", rec)
 
     def check_tag_coverage(self, drawers: list) -> HealthCheck:
         """检查标签覆盖"""
@@ -94,16 +91,13 @@ class HealthMonitor:
             all_tags.update(d.tags)
 
         if coverage < 0.3:
-            return HealthCheck("tags", "warning", 0.3,
-                               f"标签覆盖: {coverage:.0%} ({with_tags}/{total})",
-                               "为更多记忆添加标签")
+            return HealthCheck(
+                "tags", "warning", 0.3, f"标签覆盖: {coverage:.0%} ({with_tags}/{total})", "为更多记忆添加标签"
+            )
         elif len(all_tags) < 5:
-            return HealthCheck("tags", "warning", 0.5,
-                               f"标签多样性低: {len(all_tags)} 个标签",
-                               "使用更多样的标签")
+            return HealthCheck("tags", "warning", 0.5, f"标签多样性低: {len(all_tags)} 个标签", "使用更多样的标签")
         else:
-            return HealthCheck("tags", "healthy", 1.0,
-                               f"标签覆盖: {coverage:.0%}, {len(all_tags)} 个标签", "")
+            return HealthCheck("tags", "healthy", 1.0, f"标签覆盖: {coverage:.0%}, {len(all_tags)} 个标签", "")
 
     def check_wing_balance(self, drawers: list) -> HealthCheck:
         """检查 Wing 分布均衡性"""
@@ -116,16 +110,13 @@ class HealthMonitor:
 
         counts = list(wing_counts.values())
         if len(counts) <= 1:
-            return HealthCheck("distribution", "warning", 0.5,
-                               f"仅有 {len(counts)} 个 Wing", "增加领域多样性")
+            return HealthCheck("distribution", "warning", 0.5, f"仅有 {len(counts)} 个 Wing", "增加领域多样性")
 
         ratio = max(counts) / max(min(counts), 1)
         if ratio > 5:
-            return HealthCheck("distribution", "warning", 0.5,
-                               f"分布不均: {ratio:.1f}x", "平衡各领域记忆收集")
+            return HealthCheck("distribution", "warning", 0.5, f"分布不均: {ratio:.1f}x", "平衡各领域记忆收集")
         else:
-            return HealthCheck("distribution", "healthy", 1.0,
-                               f"{len(wing_counts)} 个 Wing, 比例 {ratio:.1f}x", "")
+            return HealthCheck("distribution", "healthy", 1.0, f"{len(wing_counts)} 个 Wing, 比例 {ratio:.1f}x", "")
 
     def check_content_quality(self, drawers: list) -> HealthCheck:
         """检查内容质量"""
@@ -141,16 +132,13 @@ class HealthMonitor:
         problem_rate = problems / total
 
         if problem_rate > 0.3:
-            return HealthCheck("content", "warning", 0.4,
-                               f"质量问题: {empty} 空, {very_long} 超长",
-                               "清理空记忆，压缩超长记忆")
+            return HealthCheck(
+                "content", "warning", 0.4, f"质量问题: {empty} 空, {very_long} 超长", "清理空记忆，压缩超长记忆"
+            )
         elif short > total * 0.5:
-            return HealthCheck("content", "warning", 0.6,
-                               f"短记忆偏多: {short}/{total}",
-                               "补充更多上下文信息")
+            return HealthCheck("content", "warning", 0.6, f"短记忆偏多: {short}/{total}", "补充更多上下文信息")
         else:
-            return HealthCheck("content", "healthy", 1.0,
-                               f"内容质量正常: {total} 条", "")
+            return HealthCheck("content", "healthy", 1.0, f"内容质量正常: {total} 条", "")
 
     def check_duplicates(self, drawers: list) -> HealthCheck:
         """检查重复"""
@@ -168,12 +156,11 @@ class HealthMonitor:
 
         dupe_rate = dupes / len(drawers)
         if dupe_rate > 0.2:
-            return HealthCheck("duplicates", "warning", 0.3,
-                               f"重复率: {dupe_rate:.0%} ({dupes}/{len(drawers)})",
-                               "运行去重清理")
+            return HealthCheck(
+                "duplicates", "warning", 0.3, f"重复率: {dupe_rate:.0%} ({dupes}/{len(drawers)})", "运行去重清理"
+            )
         else:
-            return HealthCheck("duplicates", "healthy", 1.0,
-                               f"重复率: {dupe_rate:.0%}", "")
+            return HealthCheck("duplicates", "healthy", 1.0, f"重复率: {dupe_rate:.0%}", "")
 
     def full_check(self, drawers: list) -> dict:
         """全面健康检查"""
@@ -198,28 +185,36 @@ class HealthMonitor:
 
         new_alerts = [c for c in checks if c.status != "healthy"]
         for alert in new_alerts:
-            self._alerts.append({
-                "component": alert.component,
-                "status": alert.status,
-                "detail": alert.detail,
-                "timestamp": datetime.now().isoformat(),
-            })
+            self._alerts.append(
+                {
+                    "component": alert.component,
+                    "status": alert.status,
+                    "detail": alert.detail,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
-        self._check_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "overall_score": round(overall, 3),
-            "overall_status": overall_status,
-            "checks": len(checks),
-            "warnings": len(new_alerts),
-        })
+        self._check_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "overall_score": round(overall, 3),
+                "overall_status": overall_status,
+                "checks": len(checks),
+                "warnings": len(new_alerts),
+            }
+        )
 
         return {
             "overall_score": round(overall, 3),
             "overall_status": overall_status,
             "checks": [
-                {"component": c.component, "status": c.status,
-                 "score": c.score, "detail": c.detail,
-                 "recommendation": c.recommendation}
+                {
+                    "component": c.component,
+                    "status": c.status,
+                    "score": c.score,
+                    "detail": c.detail,
+                    "recommendation": c.recommendation,
+                }
                 for c in checks
             ],
             "healthy_count": sum(1 for c in checks if c.status == "healthy"),

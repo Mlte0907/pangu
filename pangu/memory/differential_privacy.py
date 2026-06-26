@@ -142,11 +142,13 @@ class FederatedMemory:
         for i, values in enumerate(clients):
             avg = sum(values) / max(len(values), 1)
             noisy_avg = self.dp.add_laplace_noise(avg, sensitivity=5.0 / max(len(values), 1))
-            client_stats.append({
-                "client": i,
-                "count": len(values),
-                "avg_importance": round(noisy_avg, 2),
-            })
+            client_stats.append(
+                {
+                    "client": i,
+                    "count": len(values),
+                    "avg_importance": round(noisy_avg, 2),
+                }
+            )
             all_importances.extend(values)
 
         global_avg = sum(all_importances) / max(len(all_importances), 1)

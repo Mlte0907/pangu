@@ -28,13 +28,16 @@ def _get_jieba():
     if _jieba is None:
         try:
             import warnings
+
             warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
             import jieba
+
             jieba.setLogLevel(logging.WARNING)
             _jieba = jieba
         except ImportError:
             logger.debug("jieba not available, using regex fallback")
     return _jieba
+
 
 _FTS_SPECIAL_RE = re.compile(r'\b(AND|OR|NOT|NEAR)\b|[()"*^]')
 
@@ -111,6 +114,7 @@ class FTS5SearchEngine:
         if self._embedder is None:
             try:
                 from pangu.memory.embedding import EmbeddingService
+
                 self._embedder = EmbeddingService(self.config)
             except ImportError:
                 self._embedder = None
@@ -143,7 +147,7 @@ class FTS5SearchEngine:
                     if len(w) >= 1:
                         tokens.add(w)
             else:
-                tokens = set(re.findall(r'[\u4e00-\u9fff]{1,}|[a-zA-Z]{2,}', content_lower))
+                tokens = set(re.findall(r"[\u4e00-\u9fff]{1,}|[a-zA-Z]{2,}", content_lower))
 
             for tag in d.tags:
                 tokens.add(tag.lower())
@@ -155,7 +159,9 @@ class FTS5SearchEngine:
 
         self._indexed = True
         total_tokens = len(self._fts_index)
-        logger.info(f"FTS index built: {total_tokens} tokens, {len(drawers)} documents, jieba={'yes' if jieba else 'no'}")
+        logger.info(
+            f"FTS index built: {total_tokens} tokens, {len(drawers)} documents, jieba={'yes' if jieba else 'no'}"
+        )
 
         # 持久化到磁盘
         self._save_index_to_disk()
@@ -174,11 +180,14 @@ class FTS5SearchEngine:
             path = self._get_index_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
-                json.dump({
-                    "tokens": index_data,
-                    "doc_count": self._indexed_count,
-                    "built_at": datetime.now().isoformat(),
-                }, f)
+                json.dump(
+                    {
+                        "tokens": index_data,
+                        "doc_count": self._indexed_count,
+                        "built_at": datetime.now().isoformat(),
+                    },
+                    f,
+                )
             logger.info(f"FTS index saved to disk: {len(index_data)} tokens")
         except Exception as e:
             logger.warning(f"Failed to save FTS index: {e}")
@@ -277,10 +286,13 @@ class FTS5SearchEngine:
         except Exception:
             return {}
 
-        items = [{
-            "id": d.id,
-            "content": d.content,
-        } for d in drawers]
+        items = [
+            {
+                "id": d.id,
+                "content": d.content,
+            }
+            for d in drawers
+        ]
 
         try:
             scores = self._try_batch_embed(query_vec, items)
@@ -382,22 +394,24 @@ class FTS5SearchEngine:
         # 提取结果
         drawer_map = {d.id: d for d in filtered}
         results = []
-        for did, score in list(fused.items())[offset:offset + limit]:
+        for did, score in list(fused.items())[offset : offset + limit]:
             d = drawer_map.get(did)
             if not d:
                 continue
-            results.append({
-                "id": d.id,
-                "content": d.content,
-                "wing": d.wing,
-                "room": d.room,
-                "hall": d.hall,
-                "importance": d.importance,
-                "tags": d.tags,
-                "created_at": d.created_at,
-                "search_score": round(score, 4),
-                "source": method,
-            })
+            results.append(
+                {
+                    "id": d.id,
+                    "content": d.content,
+                    "wing": d.wing,
+                    "room": d.room,
+                    "hall": d.hall,
+                    "importance": d.importance,
+                    "tags": d.tags,
+                    "created_at": d.created_at,
+                    "search_score": round(score, 4),
+                    "source": method,
+                }
+            )
 
         response = {
             "results": results,
@@ -439,6 +453,7 @@ class FTS5SearchEngine:
 
 # ── 伏羲移植：增强函数 ──
 
+
 def _compute_method(fts_used: bool, vec_used: bool) -> str:
     """标记搜索降级状态（从伏羲移植）"""
     if fts_used and vec_used:
@@ -454,6 +469,7 @@ def get_search_stats() -> dict:
     """获取搜索引擎统计（含嵌入服务健康状态，从伏羲移植）"""
     try:
         from pangu.memory.embedding import get_embedding_service
+
         es = get_embedding_service()
         embed_stats = es.stats
     except Exception:
@@ -524,7 +540,7 @@ def holographic_search(
             for dim, query_vec in query_projections.items():
                 dim_vec = hologram_data.get(dim)
                 if dim_vec and weights.get(dim, 0) > 0:
-                    sim = cosine_similarity(query_vec, dim_vec[:len(query_vec)])
+                    sim = cosine_similarity(query_vec, dim_vec[: len(query_vec)])
                     w = weights[dim]
                     total_score += sim * w
                     total_weight += w
@@ -537,14 +553,16 @@ def holographic_search(
     scored.sort(key=lambda x: x[1], reverse=True)
     results = []
     for d, score in scored[:top_k]:
-        results.append({
-            "id": d.id,
-            "content": d.content[:200],
-            "wing": d.wing,
-            "room": d.room,
-            "importance": d.importance,
-            "holographic_score": round(score, 4),
-        })
+        results.append(
+            {
+                "id": d.id,
+                "content": d.content[:200],
+                "wing": d.wing,
+                "room": d.room,
+                "importance": d.importance,
+                "holographic_score": round(score, 4),
+            }
+        )
 
     return results
 

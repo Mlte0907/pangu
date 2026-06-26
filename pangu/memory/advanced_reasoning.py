@@ -8,10 +8,11 @@
 - 异常检测和预警（统计偏差 + 语义漂移）
 - 知识缺口识别（发现推理链中的缺失环节）
 """
+
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from itertools import combinations
 
@@ -21,37 +22,41 @@ from ..core.palace import Drawer
 
 class ReasoningType(str, Enum):
     """推理类型"""
-    CAUSAL = "causal"          # 因果推理
-    TREND = "trend"            # 趋势预测
-    ANOMALY = "anomaly"        # 异常检测
-    GAP = "gap"                # 知识缺口
+
+    CAUSAL = "causal"  # 因果推理
+    TREND = "trend"  # 趋势预测
+    ANOMALY = "anomaly"  # 异常检测
+    GAP = "gap"  # 知识缺口
 
 
 class AnomalySeverity(str, Enum):
     """异常严重度"""
-    CRITICAL = "critical"      # 严重异常
-    HIGH = "high"              # 高风险
-    MEDIUM = "medium"          # 中等
-    LOW = "low"                # 低风险
+
+    CRITICAL = "critical"  # 严重异常
+    HIGH = "high"  # 高风险
+    MEDIUM = "medium"  # 中等
+    LOW = "low"  # 低风险
 
 
 class TrendDirection(str, Enum):
     """趋势方向"""
-    RISING = "rising"          # 上升
-    FALLING = "falling"        # 下降
-    STABLE = "stable"          # 平稳
-    VOLATILE = "volatile"      # 波动
+
+    RISING = "rising"  # 上升
+    FALLING = "falling"  # 下降
+    STABLE = "stable"  # 平稳
+    VOLATILE = "volatile"  # 波动
 
 
 @dataclass
 class CausalLink:
     """因果链"""
+
     id: str
-    cause: str                 # 原因（记忆 ID 或主题）
-    effect: str                # 结果（记忆 ID 或主题）
-    confidence: float          # 因果置信度 [0,1]
-    evidence: list[str]        # 支撑证据
-    mechanism: str = ""        # 推断的因果机制
+    cause: str  # 原因（记忆 ID 或主题）
+    effect: str  # 结果（记忆 ID 或主题）
+    confidence: float  # 因果置信度 [0,1]
+    evidence: list[str]  # 支撑证据
+    mechanism: str = ""  # 推断的因果机制
     temporal_lag: float = 0.0  # 时间延迟（小时）
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -59,40 +64,43 @@ class CausalLink:
 @dataclass
 class TrendPrediction:
     """趋势预测"""
+
     id: str
-    subject: str               # 预测对象
+    subject: str  # 预测对象
     direction: TrendDirection
-    confidence: float          # 预测置信度 [0,1]
+    confidence: float  # 预测置信度 [0,1]
     historical_values: list[float]  # 历史值
-    predicted_values: list[float]   # 预测值
+    predicted_values: list[float]  # 预测值
     time_horizon_hours: float  # 预测时间窗口
-    factors: list[str]         # 影响因素
+    factors: list[str]  # 影响因素
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
 @dataclass
 class AnomalyAlert:
     """异常预警"""
+
     id: str
-    anomaly_type: str          # 异常类型
+    anomaly_type: str  # 异常类型
     description: str
     severity: AnomalySeverity
-    evidence: list[str]        # 相关记忆 ID
-    expected_value: float      # 期望值
-    actual_value: float        # 实际值
-    deviation: float           # 偏差度
+    evidence: list[str]  # 相关记忆 ID
+    expected_value: float  # 期望值
+    actual_value: float  # 实际值
+    deviation: float  # 偏差度
     detected_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
 @dataclass
 class KnowledgeGap:
     """知识缺口"""
+
     id: str
-    topic: str                 # 缺口主题
-    description: str           # 缺口描述
+    topic: str  # 缺口主题
+    description: str  # 缺口描述
     related_knowledge: list[str]  # 已有相关知识
-    missing_links: list[str]   # 缺失的连接
-    priority: float            # 优先级 [0,1]
+    missing_links: list[str]  # 缺失的连接
+    priority: float  # 优先级 [0,1]
     suggested_actions: list[str]  # 建议行动
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -136,7 +144,7 @@ class AdvancedReasoning:
         # 构建标签索引
         tag_index: dict[str, list[int]] = defaultdict(list)
         for i, d in enumerate(sorted_drawers):
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 tag_index[tag].append(i)
 
         # 分析标签对的时序关联
@@ -177,15 +185,17 @@ class AdvancedReasoning:
                     if sorted_drawers[i_b].id not in evidence_ids:
                         evidence_ids.append(sorted_drawers[i_b].id)
 
-                causal_links.append(CausalLink(
-                    id=f"causal_{tag_a}_{tag_b}",
-                    cause=tag_a,
-                    effect=tag_b,
-                    confidence=round(confidence, 3),
-                    evidence=evidence_ids[:6],
-                    mechanism=f"标签 '{tag_a}' 后倾向于出现 '{tag_b}'（{forward_count}次，平均延迟{avg_lag:.1f}h）",
-                    temporal_lag=round(avg_lag, 1),
-                ))
+                causal_links.append(
+                    CausalLink(
+                        id=f"causal_{tag_a}_{tag_b}",
+                        cause=tag_a,
+                        effect=tag_b,
+                        confidence=round(confidence, 3),
+                        evidence=evidence_ids[:6],
+                        mechanism=f"标签 '{tag_a}' 后倾向于出现 '{tag_b}'（{forward_count}次，平均延迟{avg_lag:.1f}h）",
+                        temporal_lag=round(avg_lag, 1),
+                    )
+                )
 
         # 按置信度排序
         causal_links.sort(key=lambda c: c.confidence, reverse=True)
@@ -258,7 +268,7 @@ class AdvancedReasoning:
         if not drawers:
             return []
 
-        now = datetime.now()
+        datetime.now()
         predictions: list[TrendPrediction] = []
 
         # 按时间窗口分桶统计
@@ -273,16 +283,18 @@ class AdvancedReasoning:
         # 线性外推预测
         predicted = self._linear_extrapolate(daily_counts, steps=int(prediction_hours / 24))
 
-        predictions.append(TrendPrediction(
-            id="trend_daily_volume",
-            subject="每日记忆创建量",
-            direction=direction,
-            confidence=confidence,
-            historical_values=[float(c) for c in daily_counts],
-            predicted_values=predicted,
-            time_horizon_hours=prediction_hours,
-            factors=["时间窗口活跃度"],
-        ))
+        predictions.append(
+            TrendPrediction(
+                id="trend_daily_volume",
+                subject="每日记忆创建量",
+                direction=direction,
+                confidence=confidence,
+                historical_values=[float(c) for c in daily_counts],
+                predicted_values=predicted,
+                time_horizon_hours=prediction_hours,
+                factors=["时间窗口活跃度"],
+            )
+        )
 
         # 标签热度趋势
         tag_trends = self._tag_heat_trends(drawers, buckets)
@@ -290,9 +302,7 @@ class AdvancedReasoning:
 
         return predictions
 
-    def _time_bucket(
-        self, drawers: list[Drawer], bucket_hours: float = 24.0
-    ) -> list[list[Drawer]]:
+    def _time_bucket(self, drawers: list[Drawer], bucket_hours: float = 24.0) -> list[list[Drawer]]:
         """将记忆按时间窗口分桶"""
         if not drawers:
             return []
@@ -367,9 +377,7 @@ class AdvancedReasoning:
 
         return [max(0.0, slope * (n + i) + intercept) for i in range(steps)]
 
-    def _tag_heat_trends(
-        self, drawers: list[Drawer], buckets: list[list[Drawer]]
-    ) -> list[TrendPrediction]:
+    def _tag_heat_trends(self, drawers: list[Drawer], buckets: list[list[Drawer]]) -> list[TrendPrediction]:
         """分析标签热度趋势"""
         predictions: list[TrendPrediction] = []
 
@@ -378,7 +386,7 @@ class AdvancedReasoning:
         for bucket in buckets:
             counter: Counter = Counter()
             for d in bucket:
-                for tag in (d.tags or []):
+                for tag in d.tags or []:
                     counter[tag] += 1
             tag_per_bucket.append(counter)
 
@@ -400,16 +408,18 @@ class AdvancedReasoning:
                 continue
 
             predicted = self._linear_extrapolate(values, steps=3)
-            predictions.append(TrendPrediction(
-                id=f"trend_tag_{tag}",
-                subject=f"标签 '{tag}' 热度",
-                direction=direction,
-                confidence=confidence,
-                historical_values=values,
-                predicted_values=predicted,
-                time_horizon_hours=72.0,
-                factors=[f"标签在 {sum(values)} 条记忆中出现"],
-            ))
+            predictions.append(
+                TrendPrediction(
+                    id=f"trend_tag_{tag}",
+                    subject=f"标签 '{tag}' 热度",
+                    direction=direction,
+                    confidence=confidence,
+                    historical_values=values,
+                    predicted_values=predicted,
+                    time_horizon_hours=72.0,
+                    factors=[f"标签在 {sum(values)} 条记忆中出现"],
+                )
+            )
 
         predictions.sort(key=lambda p: p.confidence, reverse=True)
         return predictions[:5]
@@ -461,9 +471,7 @@ class AdvancedReasoning:
             return 0.0
         return (value - mean) / std
 
-    def _detect_frequency_anomalies(
-        self, drawers: list[Drawer], z_threshold: float
-    ) -> list[AnomalyAlert]:
+    def _detect_frequency_anomalies(self, drawers: list[Drawer], z_threshold: float) -> list[AnomalyAlert]:
         """检测频率异常"""
         alerts: list[AnomalyAlert] = []
         buckets = self._time_bucket(drawers, bucket_hours=6.0)
@@ -475,22 +483,22 @@ class AdvancedReasoning:
             z = self._z_score(counts, count)
             if abs(z) > z_threshold:
                 direction = "暴增" if z > 0 else "骤降"
-                alerts.append(AnomalyAlert(
-                    id=f"anomaly_freq_{i}",
-                    anomaly_type="frequency",
-                    description=f"6小时窗口内记忆创建量{direction}（Z={z:.2f}）",
-                    severity=AnomalySeverity.HIGH if abs(z) > 3 else AnomalySeverity.MEDIUM,
-                    evidence=[d.id for d in buckets[i][:5]],
-                    expected_value=round(sum(counts) / len(counts), 1),
-                    actual_value=float(count),
-                    deviation=round(z, 2),
-                ))
+                alerts.append(
+                    AnomalyAlert(
+                        id=f"anomaly_freq_{i}",
+                        anomaly_type="frequency",
+                        description=f"6小时窗口内记忆创建量{direction}（Z={z:.2f}）",
+                        severity=AnomalySeverity.HIGH if abs(z) > 3 else AnomalySeverity.MEDIUM,
+                        evidence=[d.id for d in buckets[i][:5]],
+                        expected_value=round(sum(counts) / len(counts), 1),
+                        actual_value=float(count),
+                        deviation=round(z, 2),
+                    )
+                )
 
         return alerts
 
-    def _detect_content_anomalies(
-        self, drawers: list[Drawer], z_threshold: float
-    ) -> list[AnomalyAlert]:
+    def _detect_content_anomalies(self, drawers: list[Drawer], z_threshold: float) -> list[AnomalyAlert]:
         """检测内容长度异常"""
         alerts: list[AnomalyAlert] = []
         if len(drawers) < 5:
@@ -502,22 +510,22 @@ class AdvancedReasoning:
             z = self._z_score(lengths, content_len)
             if abs(z) > z_threshold:
                 direction = "异常长" if z > 0 else "异常短"
-                alerts.append(AnomalyAlert(
-                    id=f"anomaly_content_{d.id}",
-                    anomaly_type="content_length",
-                    description=f"记忆 '{d.title}' 内容{direction}（{content_len}字符，Z={z:.2f}）",
-                    severity=AnomalySeverity.LOW if abs(z) < 3 else AnomalySeverity.MEDIUM,
-                    evidence=[d.id],
-                    expected_value=round(sum(lengths) / len(lengths), 1),
-                    actual_value=float(content_len),
-                    deviation=round(z, 2),
-                ))
+                alerts.append(
+                    AnomalyAlert(
+                        id=f"anomaly_content_{d.id}",
+                        anomaly_type="content_length",
+                        description=f"记忆 '{d.title}' 内容{direction}（{content_len}字符，Z={z:.2f}）",
+                        severity=AnomalySeverity.LOW if abs(z) < 3 else AnomalySeverity.MEDIUM,
+                        evidence=[d.id],
+                        expected_value=round(sum(lengths) / len(lengths), 1),
+                        actual_value=float(content_len),
+                        deviation=round(z, 2),
+                    )
+                )
 
         return alerts
 
-    def _detect_tag_concentration(
-        self, drawers: list[Drawer], z_threshold: float
-    ) -> list[AnomalyAlert]:
+    def _detect_tag_concentration(self, drawers: list[Drawer], z_threshold: float) -> list[AnomalyAlert]:
         """检测标签集中度异常"""
         alerts: list[AnomalyAlert] = []
         buckets = self._time_bucket(drawers, bucket_hours=24.0)
@@ -525,32 +533,29 @@ class AdvancedReasoning:
             return alerts
 
         for tag in set().union(*(d.tags or [] for d in drawers)):
-            tag_counts = [
-                sum(1 for d in b if tag in (d.tags or []))
-                for b in buckets
-            ]
+            tag_counts = [sum(1 for d in b if tag in (d.tags or [])) for b in buckets]
             if sum(tag_counts) < 3:
                 continue
 
             for i, count in enumerate(tag_counts):
                 z = self._z_score(tag_counts, count)
                 if abs(z) > z_threshold:
-                    alerts.append(AnomalyAlert(
-                        id=f"anomaly_tag_{tag}_{i}",
-                        anomaly_type="tag_concentration",
-                        description=f"标签 '{tag}' 在某天集中出现（{count}次，Z={z:.2f}）",
-                        severity=AnomalySeverity.MEDIUM,
-                        evidence=[d.id for d in buckets[i] if tag in (d.tags or [])][:5],
-                        expected_value=round(sum(tag_counts) / len(tag_counts), 1),
-                        actual_value=float(count),
-                        deviation=round(z, 2),
-                    ))
+                    alerts.append(
+                        AnomalyAlert(
+                            id=f"anomaly_tag_{tag}_{i}",
+                            anomaly_type="tag_concentration",
+                            description=f"标签 '{tag}' 在某天集中出现（{count}次，Z={z:.2f}）",
+                            severity=AnomalySeverity.MEDIUM,
+                            evidence=[d.id for d in buckets[i] if tag in (d.tags or [])][:5],
+                            expected_value=round(sum(tag_counts) / len(tag_counts), 1),
+                            actual_value=float(count),
+                            deviation=round(z, 2),
+                        )
+                    )
 
         return alerts
 
-    def _detect_interval_anomalies(
-        self, drawers: list[Drawer], z_threshold: float
-    ) -> list[AnomalyAlert]:
+    def _detect_interval_anomalies(self, drawers: list[Drawer], z_threshold: float) -> list[AnomalyAlert]:
         """检测时间间隔异常"""
         alerts: list[AnomalyAlert] = []
         sorted_drawers = sorted(drawers, key=lambda d: d.created_at)
@@ -574,19 +579,21 @@ class AdvancedReasoning:
             z = self._z_score(intervals, interval)
             if abs(z) > z_threshold:
                 direction = "异常长" if z > 0 else "异常短"
-                alerts.append(AnomalyAlert(
-                    id=f"anomaly_interval_{i}",
-                    anomaly_type="interval",
-                    description=f"记忆创建间隔{direction}（{interval:.1f}小时，Z={z:.2f}）",
-                    severity=AnomalySeverity.MEDIUM,
-                    evidence=[
-                        sorted_drawers[i].id,
-                        sorted_drawers[i + 1].id,
-                    ],
-                    expected_value=round(sum(intervals) / len(intervals), 1),
-                    actual_value=round(interval, 1),
-                    deviation=round(z, 2),
-                ))
+                alerts.append(
+                    AnomalyAlert(
+                        id=f"anomaly_interval_{i}",
+                        anomaly_type="interval",
+                        description=f"记忆创建间隔{direction}（{interval:.1f}小时，Z={z:.2f}）",
+                        severity=AnomalySeverity.MEDIUM,
+                        evidence=[
+                            sorted_drawers[i].id,
+                            sorted_drawers[i + 1].id,
+                        ],
+                        expected_value=round(sum(intervals) / len(intervals), 1),
+                        actual_value=round(interval, 1),
+                        deviation=round(z, 2),
+                    )
+                )
 
         return alerts
 
@@ -641,8 +648,7 @@ class AdvancedReasoning:
 
         return tag_connections, tag_counts
 
-    def _check_orphan_tag(self, tag: str, count: int,
-                           connections: set) -> KnowledgeGap | None:
+    def _check_orphan_tag(self, tag: str, count: int, connections: set) -> KnowledgeGap | None:
         """检查单个标签是否为孤立主题"""
         if count < 3 or len(connections) > 1:
             return None
@@ -672,9 +678,7 @@ class AdvancedReasoning:
 
         return gaps
 
-    def _detect_causal_gaps(
-        self, causal_chains: list[CausalLink]
-    ) -> list[KnowledgeGap]:
+    def _detect_causal_gaps(self, causal_chains: list[CausalLink]) -> list[KnowledgeGap]:
         """检测因果断裂"""
         gaps: list[KnowledgeGap] = []
 
@@ -704,21 +708,20 @@ class AdvancedReasoning:
                 for i in range(len(chain) - 2):
                     # 检查是否有直接连接
                     if chain[i + 2] not in graph.get(chain[i], []):
-                        gaps.append(KnowledgeGap(
-                            id=f"gap_causal_{chain[i]}_{chain[i+2]}",
-                            topic=f"{chain[i]} → {chain[i+2]}",
-                            description=(
-                                f"因果链 {chain[i]} → ... → {chain[i+2]} "
-                                f"中间可能缺少直接关联"
-                            ),
-                            related_knowledge=[chain[i], chain[i + 1], chain[i + 2]],
-                            missing_links=[f"{chain[i]} 与 {chain[i+2]} 的直接因果关系"],
-                            priority=0.7,
-                            suggested_actions=[
-                                f"验证 '{chain[i]}' 是否直接导致 '{chain[i+2]}'",
-                                f"探索 '{chain[i+1]}' 在其中的中介作用",
-                            ],
-                        ))
+                        gaps.append(
+                            KnowledgeGap(
+                                id=f"gap_causal_{chain[i]}_{chain[i + 2]}",
+                                topic=f"{chain[i]} → {chain[i + 2]}",
+                                description=(f"因果链 {chain[i]} → ... → {chain[i + 2]} 中间可能缺少直接关联"),
+                                related_knowledge=[chain[i], chain[i + 1], chain[i + 2]],
+                                missing_links=[f"{chain[i]} 与 {chain[i + 2]} 的直接因果关系"],
+                                priority=0.7,
+                                suggested_actions=[
+                                    f"验证 '{chain[i]}' 是否直接导致 '{chain[i + 2]}'",
+                                    f"探索 '{chain[i + 1]}' 在其中的中介作用",
+                                ],
+                            )
+                        )
 
             visited.update(chain)
 
@@ -730,23 +733,25 @@ class AdvancedReasoning:
         tag_counts: Counter = Counter()
 
         for d in drawers:
-            for tag in (d.tags or []):
+            for tag in d.tags or []:
                 tag_counts[tag] += 1
 
         # 找出出现次数恰好为 1 的主题
         for tag, count in tag_counts.items():
             if count == 1:
-                gaps.append(KnowledgeGap(
-                    id=f"gap_thin_{tag}",
-                    topic=tag,
-                    description=f"主题 '{tag}' 仅有 1 条记忆，信息严重不足",
-                    related_knowledge=[],
-                    missing_links=["更多相关记忆"],
-                    priority=0.4,
-                    suggested_actions=[
-                        f"补充 '{tag}' 相关的记忆",
-                        f"记录 '{tag}' 的使用经验和教训",
-                    ],
-                ))
+                gaps.append(
+                    KnowledgeGap(
+                        id=f"gap_thin_{tag}",
+                        topic=tag,
+                        description=f"主题 '{tag}' 仅有 1 条记忆，信息严重不足",
+                        related_knowledge=[],
+                        missing_links=["更多相关记忆"],
+                        priority=0.4,
+                        suggested_actions=[
+                            f"补充 '{tag}' 相关的记忆",
+                            f"记录 '{tag}' 的使用经验和教训",
+                        ],
+                    )
+                )
 
         return gaps

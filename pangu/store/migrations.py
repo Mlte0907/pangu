@@ -1,4 +1,5 @@
 """盘古数据库Schema — 增量迁移系统（伏羲移植）"""
+
 import json
 import logging
 import os
@@ -12,171 +13,187 @@ MIGRATIONS: list[Migration] = []
 
 
 # ── v1: 基础Schema ──
-MIGRATIONS.append((
-    "v1",
-    "Initial schema — 宫殿基础结构",
-    {
-        "action": "ensure_schema",
-        "version": 1,
-        "description": "确保 palace_meta.json 基础结构存在",
-    },
-    None,
-))
+MIGRATIONS.append(
+    (
+        "v1",
+        "Initial schema — 宫殿基础结构",
+        {
+            "action": "ensure_schema",
+            "version": 1,
+            "description": "确保 palace_meta.json 基础结构存在",
+        },
+        None,
+    )
+)
 
 # ── v2: 记忆索引增强 ──
-MIGRATIONS.append((
-    "v2",
-    "添加 embedding 缓存和 FTS 索引支持",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "embedding_cache": {},
-            "fts_index_version": 1,
-            "index_stats": {"total_indexed": 0, "last_indexed": None},
+MIGRATIONS.append(
+    (
+        "v2",
+        "添加 embedding 缓存和 FTS 索引支持",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "embedding_cache": {},
+                "fts_index_version": 1,
+                "index_stats": {"total_indexed": 0, "last_indexed": None},
+            },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["embedding_cache", "fts_index_version", "index_stats"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["embedding_cache", "fts_index_version", "index_stats"],
+        },
+    )
+)
 
 # ── v3: 任务追踪 ──
-MIGRATIONS.append((
-    "v3",
-    "添加任务追踪支持",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "task_tracking": {
-                "tasks": [],
-                "last_updated": None,
+MIGRATIONS.append(
+    (
+        "v3",
+        "添加任务追踪支持",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "task_tracking": {
+                    "tasks": [],
+                    "last_updated": None,
+                },
             },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["task_tracking"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["task_tracking"],
+        },
+    )
+)
 
 # ── v4: 用户画像 ──
-MIGRATIONS.append((
-    "v4",
-    "添加用户画像支持",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "user_profile": {
-                "preferences": {},
-                "habits": [],
-                "taboos": [],
+MIGRATIONS.append(
+    (
+        "v4",
+        "添加用户画像支持",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "user_profile": {
+                    "preferences": {},
+                    "habits": [],
+                    "taboos": [],
+                },
             },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["user_profile"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["user_profile"],
+        },
+    )
+)
 
 # ── v5: 模型路由规则 ──
-MIGRATIONS.append((
-    "v5",
-    "添加模型路由规则",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "model_routing": {
-                "rules": [],
-                "default_model": "auto",
+MIGRATIONS.append(
+    (
+        "v5",
+        "添加模型路由规则",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "model_routing": {
+                    "rules": [],
+                    "default_model": "auto",
+                },
             },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["model_routing"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["model_routing"],
+        },
+    )
+)
 
 # ── v6: 经验银行 ──
-MIGRATIONS.append((
-    "v6",
-    "添加经验银行支持",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "experience_bank": {
-                "entries": [],
-                "total_count": 0,
-            },
-            "skill_registry": {
-                "skills": [],
-                "last_generated": None,
+MIGRATIONS.append(
+    (
+        "v6",
+        "添加经验银行支持",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "experience_bank": {
+                    "entries": [],
+                    "total_count": 0,
+                },
+                "skill_registry": {
+                    "skills": [],
+                    "last_generated": None,
+                },
             },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["experience_bank", "skill_registry"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["experience_bank", "skill_registry"],
+        },
+    )
+)
 
 # ── v7: 软删除支持 ──
-MIGRATIONS.append((
-    "v7",
-    "添加软删除支持",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "deleted_items": [],
-            "deletion_log": [],
+MIGRATIONS.append(
+    (
+        "v7",
+        "添加软删除支持",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "deleted_items": [],
+                "deletion_log": [],
+            },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["deleted_items", "deletion_log"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["deleted_items", "deletion_log"],
+        },
+    )
+)
 
 # ── v8: 访问计数 ──
-MIGRATIONS.append((
-    "v8",
-    "添加访问计数和记忆分层",
-    {
-        "action": "add_field",
-        "target": "palace_meta",
-        "fields": {
-            "access_stats": {
-                "total_accesses": 0,
-                "by_wing": {},
-                "by_room": {},
-            },
-            "memory_tiers": {
-                "A": {"count": 0, "threshold": 0.8},
-                "B": {"count": 0, "threshold": 0.5},
-                "C": {"count": 0, "threshold": 0.0},
+MIGRATIONS.append(
+    (
+        "v8",
+        "添加访问计数和记忆分层",
+        {
+            "action": "add_field",
+            "target": "palace_meta",
+            "fields": {
+                "access_stats": {
+                    "total_accesses": 0,
+                    "by_wing": {},
+                    "by_room": {},
+                },
+                "memory_tiers": {
+                    "A": {"count": 0, "threshold": 0.8},
+                    "B": {"count": 0, "threshold": 0.5},
+                    "C": {"count": 0, "threshold": 0.0},
+                },
             },
         },
-    },
-    {
-        "action": "remove_field",
-        "target": "palace_meta",
-        "fields": ["access_stats", "memory_tiers"],
-    },
-))
+        {
+            "action": "remove_field",
+            "target": "palace_meta",
+            "fields": ["access_stats", "memory_tiers"],
+        },
+    )
+)
 
 
 def _get_palace_meta_path() -> Path:
@@ -311,7 +328,4 @@ def get_schema_version() -> str:
 
 def get_available_migrations() -> list[dict]:
     """列出所有已定义的迁移版本"""
-    return [
-        {"version": v, "label": lbl, "has_rollback": r is not None}
-        for v, lbl, _, r in MIGRATIONS
-    ]
+    return [{"version": v, "label": lbl, "has_rollback": r is not None} for v, lbl, _, r in MIGRATIONS]

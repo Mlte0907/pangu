@@ -7,6 +7,7 @@
 4. 变更摘要：生成变更摘要报告
 5. 相似度矩阵：计算记忆间的相似度矩阵
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,7 @@ logger = logging.getLogger("pangu.memory.memory_diff")
 @dataclass
 class DiffLine:
     """差异行"""
+
     line_num: int
     type: str  # added / removed / unchanged / modified
     old_text: str
@@ -26,6 +28,7 @@ class DiffLine:
 @dataclass
 class DiffResult:
     """差异结果"""
+
     memory_id_a: str
     memory_id_b: str
     similarity: float
@@ -43,8 +46,7 @@ class MemoryDiffEngine:
         self.config = config
         self._diff_history: list[dict] = []
 
-    def diff_content(self, content_a: str, content_b: str,
-                     id_a: str = "a", id_b: str = "b") -> DiffResult:
+    def diff_content(self, content_a: str, content_b: str, id_a: str = "a", id_b: str = "b") -> DiffResult:
         """对比两段内容"""
         lines_a = content_a.split("\n")
         lines_b = content_b.split("\n")
@@ -74,26 +76,34 @@ class MemoryDiffEngine:
         similarity = unchanged / max(total, 1)
 
         result = DiffResult(
-            memory_id_a=id_a, memory_id_b=id_b,
+            memory_id_a=id_a,
+            memory_id_b=id_b,
             similarity=round(similarity, 3),
-            added=added, removed=removed,
-            unchanged=unchanged, modified=modified,
+            added=added,
+            removed=removed,
+            unchanged=unchanged,
+            modified=modified,
             lines=diff_lines,
         )
 
-        self._diff_history.append({
-            "id_a": id_a, "id_b": id_b,
-            "similarity": result.similarity,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._diff_history.append(
+            {
+                "id_a": id_a,
+                "id_b": id_b,
+                "similarity": result.similarity,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
         return result
 
     def diff_drawers(self, drawer_a, drawer_b) -> DiffResult:
         """对比两条记忆"""
         return self.diff_content(
-            drawer_a.content, drawer_b.content,
-            drawer_a.id, drawer_b.id,
+            drawer_a.content,
+            drawer_b.content,
+            drawer_a.id,
+            drawer_b.id,
         )
 
     def batch_diff(self, drawers: list, reference_id: str = None) -> list[dict]:
@@ -110,13 +120,15 @@ class MemoryDiffEngine:
             if d.id == reference_id:
                 continue
             diff = self.diff_drawers(ref, d)
-            results.append({
-                "memory_id": d.id,
-                "similarity": diff.similarity,
-                "added": diff.added,
-                "removed": diff.removed,
-                "modified": diff.modified,
-            })
+            results.append(
+                {
+                    "memory_id": d.id,
+                    "similarity": diff.similarity,
+                    "added": diff.added,
+                    "removed": diff.removed,
+                    "modified": diff.modified,
+                }
+            )
 
         results.sort(key=lambda x: -x["similarity"])
         return results

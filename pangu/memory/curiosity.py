@@ -40,9 +40,7 @@ class CuriosityEngine:
             "frustration_boost": frustration_boost,
             "suggestions": suggestions,
             "recommendation": (
-                "Consider linking isolated memories"
-                if knowledge_gaps
-                else "Memory graph is well-connected"
+                "Consider linking isolated memories" if knowledge_gaps else "Memory graph is well-connected"
             ),
             "timestamp": datetime.now().isoformat(),
         }
@@ -85,12 +83,14 @@ class CuriosityEngine:
         gaps = []
         for d in drawers:
             if d.importance >= 3.0 and not d.tags:
-                gaps.append({
-                    "item_id": d.id,
-                    "item_preview": d.content[:80],
-                    "importance": d.importance,
-                    "gap_type": "unlinked",
-                })
+                gaps.append(
+                    {
+                        "item_id": d.id,
+                        "item_preview": d.content[:80],
+                        "importance": d.importance,
+                        "gap_type": "unlinked",
+                    }
+                )
         return gaps[:10]
 
     def _generate_suggestions(self, gaps: list, identity_topics: list) -> list:

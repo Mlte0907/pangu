@@ -1,4 +1,5 @@
 """盘古实时推送桥接 — 事件总线 → WebSocket + 飞书 自动推送"""
+
 import asyncio
 import logging
 
@@ -14,9 +15,9 @@ def setup_bridge():
         return
 
     try:
+        from ..core.config import PanguConfig
         from .memory_events import get_event_stream
         from .realtime import get_connection_manager
-        from ..core.config import PanguConfig
 
         stream = get_event_stream()
         mgr = get_connection_manager()
@@ -28,6 +29,7 @@ def setup_bridge():
         try:
             if config.feishu_webhook_url:
                 from .feishu_webhook import get_feishu_webhook
+
                 feishu = get_feishu_webhook(config.feishu_webhook_url)
         except Exception:
             pass

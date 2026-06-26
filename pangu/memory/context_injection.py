@@ -7,9 +7,9 @@
 4. Token 预算管理：在 token 限制内最大化上下文价值
 5. 增量更新：对话进行中持续更新上下文
 """
+
 import logging
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 logger = logging.getLogger("pangu.memory.context_injection")
@@ -18,6 +18,7 @@ logger = logging.getLogger("pangu.memory.context_injection")
 @dataclass
 class InjectedContext:
     """注入的上下文"""
+
     memory_id: str
     content: str
     wing: str
@@ -31,6 +32,7 @@ class InjectedContext:
 @dataclass
 class InjectionResult:
     """注入结果"""
+
     original_text: str
     injected_text: str
     context_count: int
@@ -90,7 +92,7 @@ class ContextInjectionEngine:
 
     def score_recency(self, drawer) -> float:
         """计算记忆的新鲜度分数"""
-        if hasattr(drawer, 'updated_at') and drawer.updated_at:
+        if hasattr(drawer, "updated_at") and drawer.updated_at:
             try:
                 updated = datetime.fromisoformat(drawer.updated_at)
                 days_old = (datetime.now() - updated).days
@@ -106,29 +108,41 @@ class ContextInjectionEngine:
                 pass
         return 0.5
 
-    def _inject_single(self, d, final, relevance, importance, recency,
-                       tokens_used: int, token_budget: int,
-                       injected: list) -> int:
+    def _inject_single(
+        self, d, final, relevance, importance, recency, tokens_used: int, token_budget: int, injected: list
+    ) -> int:
         est_tokens = int(len(d.content) * 1.5)
         if tokens_used + est_tokens > token_budget:
             remaining = token_budget - tokens_used
             truncated_len = int(remaining / 1.5)
             if truncated_len > 20:
                 content = d.content[:truncated_len] + "..."
-                injected.append(InjectedContext(
-                    memory_id=d.id, content=content, wing=d.wing,
-                    relevance_score=relevance, importance_score=importance,
-                    recency_score=recency, final_score=final,
-                    injection_position="prefix",
-                ))
+                injected.append(
+                    InjectedContext(
+                        memory_id=d.id,
+                        content=content,
+                        wing=d.wing,
+                        relevance_score=relevance,
+                        importance_score=importance,
+                        recency_score=recency,
+                        final_score=final,
+                        injection_position="prefix",
+                    )
+                )
                 return remaining
             return 0
-        injected.append(InjectedContext(
-            memory_id=d.id, content=d.content, wing=d.wing,
-            relevance_score=relevance, importance_score=importance,
-            recency_score=recency, final_score=final,
-            injection_position="prefix",
-        ))
+        injected.append(
+            InjectedContext(
+                memory_id=d.id,
+                content=d.content,
+                wing=d.wing,
+                relevance_score=relevance,
+                importance_score=importance,
+                recency_score=recency,
+                final_score=final,
+                injection_position="prefix",
+            )
+        )
         return est_tokens
 
     def _score_drawers(self, d, topics: list[str]):
@@ -141,8 +155,9 @@ class ContextInjectionEngine:
             return (d, final, relevance, importance, recency)
         return None
 
-    def inject_context(self, text: str, drawers: list,
-                       token_budget: int = 500, max_memories: int = 5) -> InjectionResult:
+    def inject_context(
+        self, text: str, drawers: list, token_budget: int = 500, max_memories: int = 5
+    ) -> InjectionResult:
         topics = self.detect_context_topics(text)
 
         scored = []
@@ -154,8 +169,7 @@ class ContextInjectionEngine:
         scored.sort(key=lambda x: x[1], reverse=True)
         top = scored[:max_memories]
 
-        injected, tokens_used = self._fill_injection_buffer(
-            top, token_budget)
+        injected, tokens_used = self._fill_injection_buffer(top, token_budget)
 
         if injected:
             injected_text = self._format_context_block(injected) + text
@@ -163,12 +177,14 @@ class ContextInjectionEngine:
             injected_text = text
 
         self._context_buffer = injected
-        self._injection_history.append({
-            "topics": topics,
-            "injected_count": len(injected),
-            "tokens_used": tokens_used,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._injection_history.append(
+            {
+                "topics": topics,
+                "injected_count": len(injected),
+                "tokens_used": tokens_used,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
         return InjectionResult(
             original_text=text,
@@ -177,8 +193,7 @@ class ContextInjectionEngine:
             tokens_used=tokens_used,
             token_budget=token_budget,
             injection_positions=[
-                {"id": c.memory_id, "wing": c.wing, "score": round(c.final_score, 3)}
-                for c in injected
+                {"id": c.memory_id, "wing": c.wing, "score": round(c.final_score, 3)} for c in injected
             ],
         )
 
@@ -186,8 +201,7 @@ class ContextInjectionEngine:
         injected = []
         tokens_used = 0
         for d, final, relevance, importance, recency in top:
-            used = self._inject_single(d, final, relevance, importance, recency,
-                                       tokens_used, token_budget, injected)
+            used = self._inject_single(d, final, relevance, importance, recency, tokens_used, token_budget, injected)
             if used == 0:
                 break
             tokens_used += used
@@ -204,8 +218,7 @@ class ContextInjectionEngine:
     def get_current_context(self) -> list[dict]:
         """获取当前上下文缓冲"""
         return [
-            {"id": c.memory_id, "content": c.content[:100], "wing": c.wing,
-             "score": round(c.final_score, 3)}
+            {"id": c.memory_id, "content": c.content[:100], "wing": c.wing, "score": round(c.final_score, 3)}
             for c in self._context_buffer
         ]
 

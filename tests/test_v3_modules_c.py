@@ -1,21 +1,23 @@
 """盘古 V3.0 模块测试 C — 7 个记忆引擎"""
-import pytest
+
 from pangu.core.palace import Drawer
-from pangu.memory.quality_scorer import QualityScorer
-from pangu.memory.meta_learning import MetaLearningEngine
+from pangu.memory.backup_restore import BackupRestoreEngine
 from pangu.memory.distillation import DistillationEngine
-from pangu.memory.query_rewriter import QueryRewriter
 from pangu.memory.graph_builder import GraphBuilder
 from pangu.memory.health_monitor import HealthMonitor
-from pangu.memory.backup_restore import BackupRestoreEngine
+from pangu.memory.meta_learning import MetaLearningEngine
+from pangu.memory.quality_scorer import QualityScorer
+from pangu.memory.query_rewriter import QueryRewriter
 
 
-def _drawer(id: str = "t1", content: str = "test content", wing: str = "test",
-            importance: float = 3.0, tags: list = None) -> Drawer:
+def _drawer(
+    id: str = "t1", content: str = "test content", wing: str = "test", importance: float = 3.0, tags: list = None
+) -> Drawer:
     return Drawer(id=id, content=content, wing=wing, importance=importance, tags=tags or [])
 
 
 # ── QualityScorer ──
+
 
 class TestQualityScorer:
     def setup_method(self):
@@ -36,7 +38,12 @@ class TestQualityScorer:
     def test_batch_assess_multiple(self):
         drawers = [
             _drawer(id="a", content="short", tags=[], importance=1.0),
-            _drawer(id="b", content="A longer content with enough text for scoring purposes here", tags=["t1", "t2"], importance=4.0),
+            _drawer(
+                id="b",
+                content="A longer content with enough text for scoring purposes here",
+                tags=["t1", "t2"],
+                importance=4.0,
+            ),
         ]
         result = self.scorer.batch_assess(drawers)
         assert result["total_assessed"] == 2
@@ -62,6 +69,7 @@ class TestQualityScorer:
 
 
 # ── MetaLearningEngine ──
+
 
 class TestMetaLearningEngine:
     def setup_method(self):
@@ -93,7 +101,7 @@ class TestMetaLearningEngine:
         assert result["status"] == "no_data"
 
     def test_auto_tune_with_data(self):
-        for i in range(10):
+        for _i in range(10):
             self.engine.observe("search", "search_score", 0.2)
         result = self.engine.auto_tune()
         assert result["adjusted"] >= 0
@@ -111,6 +119,7 @@ class TestMetaLearningEngine:
 
 
 # ── DistillationEngine ──
+
 
 class TestDistillationEngine:
     def setup_method(self):
@@ -165,6 +174,7 @@ class TestDistillationEngine:
 
 # ── QueryRewriter ──
 
+
 class TestQueryRewriter:
     def setup_method(self):
         self.rewriter = QueryRewriter()
@@ -214,6 +224,7 @@ class TestQueryRewriter:
 
 
 # ── GraphBuilder ──
+
 
 class TestGraphBuilder:
     def setup_method(self):
@@ -268,6 +279,7 @@ class TestGraphBuilder:
 
 # ── HealthMonitor ──
 
+
 class TestHealthMonitor:
     def setup_method(self):
         self.monitor = HealthMonitor()
@@ -279,9 +291,10 @@ class TestHealthMonitor:
         assert len(result["checks"]) == 6
 
     def test_full_check_healthy(self):
-        drawers = [_drawer(id=f"d{i}", importance=3.0, tags=["a", "b", "c"],
-                           wing=f"wing_{i % 3}", content="A" * 50)
-                   for i in range(20)]
+        drawers = [
+            _drawer(id=f"d{i}", importance=3.0, tags=["a", "b", "c"], wing=f"wing_{i % 3}", content="A" * 50)
+            for i in range(20)
+        ]
         result = self.monitor.full_check(drawers)
         assert result["overall_status"] in ("healthy", "warning")
         assert result["overall_score"] > 0.3
@@ -317,6 +330,7 @@ class TestHealthMonitor:
 
 
 # ── BackupRestoreEngine ──
+
 
 class TestBackupRestoreEngine:
     def setup_method(self):

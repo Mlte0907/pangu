@@ -1,4 +1,5 @@
 """盘古健康检查系统（伏羲移植）"""
+
 import logging
 import os
 import time
@@ -7,6 +8,7 @@ from typing import Any
 
 try:
     from importlib.metadata import version as _get_version
+
     __version__ = _get_version("pangu")
 except Exception:
     __version__ = "3.0.0"
@@ -53,6 +55,7 @@ def _check_palace_structure() -> dict[str, Any]:
         if required_fields:
             try:
                 import json
+
                 with open(filepath, encoding="utf-8") as f:
                     data = json.load(f)
                 for field in required_fields:
@@ -71,6 +74,7 @@ def _check_memory_health() -> dict[str, Any]:
 
     try:
         import json
+
         meta_path = palace_dir / "palace_meta.json"
         if meta_path.exists():
             with open(meta_path, encoding="utf-8") as f:

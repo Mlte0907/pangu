@@ -6,7 +6,6 @@
 - 生成自然语言状态报告
 """
 
-import json
 import logging
 import random
 import time
@@ -101,10 +100,7 @@ class PersonaEngine:
 
         # 综合评分
         health_score = round(
-            embed_coverage * 0.15
-            + importance_health * 0.35
-            + connectivity * 0.25
-            + freshness * 0.25,
+            embed_coverage * 0.15 + importance_health * 0.35 + connectivity * 0.25 + freshness * 0.25,
             4,
         )
 
@@ -165,11 +161,13 @@ class PersonaEngine:
         options = templates.get(label, templates["moderate"])
         text = random.choice(options)
 
-        self._report_history.append({
-            "text": text,
-            "type": report_type,
-            "ts": datetime.now().isoformat(),
-        })
+        self._report_history.append(
+            {
+                "text": text,
+                "type": report_type,
+                "ts": datetime.now().isoformat(),
+            }
+        )
         if len(self._report_history) > 10:
             self._report_history = self._report_history[-10:]
 

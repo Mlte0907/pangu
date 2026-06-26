@@ -8,6 +8,7 @@
 - 差异回放：对比两个时间段的记忆变化
 - 快照对比：比较不同时间点的记忆状态
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -20,6 +21,7 @@ from ..core.palace import Drawer
 @dataclass
 class ReplaySession:
     """回放会话"""
+
     id: str
     title: str
     events: list[dict]  # [{time, content, wing, room, importance, tags}]
@@ -33,6 +35,7 @@ class ReplaySession:
 @dataclass
 class SnapshotDiff:
     """快照差异"""
+
     added: list[dict]  # 新增的记忆
     removed: list[dict]  # 消失的记忆
     modified: list[dict]  # 变化的记忆
@@ -61,8 +64,7 @@ class ReplayEngine:
                 pass
         return True
 
-    def _filter_drawer(self, d: Drawer, wing: str, room: str,
-                        start: str, end: str) -> bool:
+    def _filter_drawer(self, d: Drawer, wing: str, room: str, start: str, end: str) -> bool:
         """判断 drawer 是否通过过滤条件，返回 True 表示保留"""
         if wing and d.wing != wing:
             return False
@@ -90,10 +92,15 @@ class ReplayEngine:
             "id": d.id,
         }
 
-    def timeline_replay(self, drawers: list[Drawer],
-                        start: str = None, end: str = None,
-                        wing: str = None, room: str = None,
-                        limit: int = 50) -> ReplaySession:
+    def timeline_replay(
+        self,
+        drawers: list[Drawer],
+        start: str = None,
+        end: str = None,
+        wing: str = None,
+        room: str = None,
+        limit: int = 50,
+    ) -> ReplaySession:
         """时间线回放：按时间顺序重播记忆
 
         Args:
@@ -135,9 +142,7 @@ class ReplayEngine:
         if room:
             title += f" / {room}"
 
-        session_id = hex_digest(
-            title + (events[0]["id"] if events else "")
-        )[:12]
+        session_id = hex_digest(title + (events[0]["id"] if events else ""))[:12]
 
         return ReplaySession(
             id=session_id,
@@ -149,8 +154,7 @@ class ReplayEngine:
             key_moments=key_moments[:10],
         )
 
-    def topic_replay(self, topic: str, drawers: list[Drawer],
-                     limit: int = 30) -> ReplaySession:
+    def topic_replay(self, topic: str, drawers: list[Drawer], limit: int = 30) -> ReplaySession:
         """主题回放：围绕特定主题重播相关记忆
 
         Args:
@@ -187,15 +191,17 @@ class ReplayEngine:
             except (ValueError, TypeError):
                 ts = datetime.now()
 
-            events.append({
-                "time": ts.isoformat(),
-                "content": d.content,
-                "wing": d.wing,
-                "room": d.room,
-                "importance": d.importance,
-                "tags": d.tags or [],
-                "id": d.id,
-            })
+            events.append(
+                {
+                    "time": ts.isoformat(),
+                    "content": d.content,
+                    "wing": d.wing,
+                    "room": d.room,
+                    "importance": d.importance,
+                    "tags": d.tags or [],
+                    "id": d.id,
+                }
+            )
 
         events.sort(key=lambda e: e["time"])
 
@@ -213,8 +219,7 @@ class ReplayEngine:
             key_moments=key_moments,
         )
 
-    def diff_replay(self, before: list[Drawer], after: list[Drawer],
-                    title: str = "差异回放") -> ReplaySession:
+    def diff_replay(self, before: list[Drawer], after: list[Drawer], title: str = "差异回放") -> ReplaySession:
         """差异回放：对比两个时间段的记忆变化
 
         Args:
@@ -231,19 +236,35 @@ class ReplayEngine:
         # 新增的
         added_ids = after_ids - before_ids
         added = [
-            {"time": d.created_at or "", "content": d.content,
-             "wing": d.wing, "room": d.room, "importance": d.importance,
-             "tags": d.tags or [], "id": d.id, "change": "新增"}
-            for d in after if d.id in added_ids
+            {
+                "time": d.created_at or "",
+                "content": d.content,
+                "wing": d.wing,
+                "room": d.room,
+                "importance": d.importance,
+                "tags": d.tags or [],
+                "id": d.id,
+                "change": "新增",
+            }
+            for d in after
+            if d.id in added_ids
         ]
 
         # 删除的
         removed_ids = before_ids - after_ids
         removed = [
-            {"time": d.created_at or "", "content": d.content,
-             "wing": d.wing, "room": d.room, "importance": d.importance,
-             "tags": d.tags or [], "id": d.id, "change": "删除"}
-            for d in before if d.id in removed_ids
+            {
+                "time": d.created_at or "",
+                "content": d.content,
+                "wing": d.wing,
+                "room": d.room,
+                "importance": d.importance,
+                "tags": d.tags or [],
+                "id": d.id,
+                "change": "删除",
+            }
+            for d in before
+            if d.id in removed_ids
         ]
 
         # 不变
@@ -264,8 +285,7 @@ class ReplayEngine:
             created_at=datetime.now().isoformat(),
         )
 
-    def snapshot_compare(self, drawers_a: list[Drawer],
-                         drawers_b: list[Drawer]) -> SnapshotDiff:
+    def snapshot_compare(self, drawers_a: list[Drawer], drawers_b: list[Drawer]) -> SnapshotDiff:
         """快照对比：比较两个记忆集合的差异
 
         Args:
@@ -283,29 +303,30 @@ class ReplayEngine:
         common_ids = set(ids_a.keys()) & set(ids_b.keys())
 
         added = [
-            {"id": d.id, "content": d.content[:100], "wing": d.wing,
-             "room": d.room, "importance": d.importance}
-            for d in drawers_b if d.id in added_ids
+            {"id": d.id, "content": d.content[:100], "wing": d.wing, "room": d.room, "importance": d.importance}
+            for d in drawers_b
+            if d.id in added_ids
         ]
 
         removed = [
-            {"id": d.id, "content": d.content[:100], "wing": d.wing,
-             "room": d.room, "importance": d.importance}
-            for d in drawers_a if d.id in removed_ids
+            {"id": d.id, "content": d.content[:100], "wing": d.wing, "room": d.room, "importance": d.importance}
+            for d in drawers_a
+            if d.id in removed_ids
         ]
 
         modified = []
         for mid in common_ids:
             a = ids_a[mid]
             b = ids_b[mid]
-            if (a.content != b.content or a.importance != b.importance
-                    or a.tags != b.tags):
-                modified.append({
-                    "id": mid,
-                    "before": a.content[:100],
-                    "after": b.content[:100],
-                    "importance_change": b.importance - a.importance,
-                })
+            if a.content != b.content or a.importance != b.importance or a.tags != b.tags:
+                modified.append(
+                    {
+                        "id": mid,
+                        "before": a.content[:100],
+                        "after": b.content[:100],
+                        "importance_change": b.importance - a.importance,
+                    }
+                )
 
         return SnapshotDiff(
             added=added,
@@ -314,8 +335,7 @@ class ReplayEngine:
             unchanged=len(common_ids) - len(modified),
         )
 
-    def highlight_reel(self, drawers: list[Drawer],
-                       top_n: int = 10) -> ReplaySession:
+    def highlight_reel(self, drawers: list[Drawer], top_n: int = 10) -> ReplaySession:
         """精彩集锦：提取最重要的记忆时刻
 
         Args:
@@ -330,15 +350,17 @@ class ReplayEngine:
 
         events = []
         for d in top:
-            events.append({
-                "time": d.created_at or "",
-                "content": d.content,
-                "wing": d.wing,
-                "room": d.room,
-                "importance": d.importance,
-                "tags": d.tags or [],
-                "id": d.id,
-            })
+            events.append(
+                {
+                    "time": d.created_at or "",
+                    "content": d.content,
+                    "wing": d.wing,
+                    "room": d.room,
+                    "importance": d.importance,
+                    "tags": d.tags or [],
+                    "id": d.id,
+                }
+            )
 
         events.sort(key=lambda e: e["time"])
 
@@ -364,10 +386,7 @@ class ReplayEngine:
         ]
 
         for i, moment in enumerate(session.key_moments[:5], 1):
-            lines.append(
-                f"{i}. [{moment['time'][:10]}] {moment['content'][:100]}"
-                f" (重要性: {moment['importance']})"
-            )
+            lines.append(f"{i}. [{moment['time'][:10]}] {moment['content'][:100]} (重要性: {moment['importance']})")
 
         if session.event_count > 0:
             lines.append("")
@@ -375,8 +394,6 @@ class ReplayEngine:
             for i, event in enumerate(session.events[:20], 1):
                 change = event.get("change", "")
                 marker = f"[{change}] " if change else ""
-                lines.append(
-                    f"{i}. [{event['time'][:16]}] {marker}{event['content'][:80]}"
-                )
+                lines.append(f"{i}. [{event['time'][:16]}] {marker}{event['content'][:80]}")
 
         return "\n".join(lines)

@@ -7,8 +7,8 @@
 4. JSON 导入：标准格式导入
 5. 格式检测：自动检测导入文件格式
 """
+
 import csv
-import io
 import json
 import logging
 from datetime import datetime
@@ -30,15 +30,17 @@ class ExportImportEngine:
         """JSON 格式导出"""
         data = []
         for d in drawers:
-            data.append({
-                "id": d.id,
-                "content": d.content,
-                "wing": d.wing,
-                "importance": d.importance,
-                "tags": d.tags,
-                "created_at": getattr(d, "created_at", ""),
-                "updated_at": getattr(d, "updated_at", ""),
-            })
+            data.append(
+                {
+                    "id": d.id,
+                    "content": d.content,
+                    "wing": d.wing,
+                    "importance": d.importance,
+                    "tags": d.tags,
+                    "created_at": getattr(d, "created_at", ""),
+                    "updated_at": getattr(d, "updated_at", ""),
+                }
+            )
 
         if not filepath:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -87,10 +89,16 @@ class ExportImportEngine:
             writer = csv.writer(f)
             writer.writerow(["id", "content", "wing", "importance", "tags", "created_at"])
             for d in drawers:
-                writer.writerow([
-                    d.id, d.content[:200], d.wing, d.importance,
-                    "|".join(d.tags), getattr(d, "created_at", ""),
-                ])
+                writer.writerow(
+                    [
+                        d.id,
+                        d.content[:200],
+                        d.wing,
+                        d.importance,
+                        "|".join(d.tags),
+                        getattr(d, "created_at", ""),
+                    ]
+                )
 
         self._record_export("csv", len(drawers), filepath)
         return {"format": "csv", "count": len(drawers), "filepath": filepath}
@@ -103,14 +111,16 @@ class ExportImportEngine:
 
         data = []
         for d in drawers:
-            data.append({
-                "id": d.id,
-                "content": d.content,
-                "wing": d.wing,
-                "importance": d.importance,
-                "tags": d.tags,
-                "created_at": getattr(d, "created_at", ""),
-            })
+            data.append(
+                {
+                    "id": d.id,
+                    "content": d.content,
+                    "wing": d.wing,
+                    "importance": d.importance,
+                    "tags": d.tags,
+                    "created_at": getattr(d, "created_at", ""),
+                }
+            )
 
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(f"# 盘古记忆导出 - {datetime.now().isoformat()}\n")
@@ -118,11 +128,11 @@ class ExportImportEngine:
             f.write("memories:\n")
             for item in data:
                 f.write(f"  - id: {item['id']}\n")
-                f.write(f"    content: \"{item['content'][:200]}\"\n")
+                f.write(f'    content: "{item["content"][:200]}"\n')
                 f.write(f"    wing: {item['wing']}\n")
                 f.write(f"    importance: {item['importance']}\n")
                 f.write(f"    tags: {json.dumps(item['tags'], ensure_ascii=False)}\n")
-                if item['created_at']:
+                if item["created_at"]:
                     f.write(f"    created_at: {item['created_at']}\n")
                 f.write("\n")
 
@@ -146,7 +156,7 @@ class ExportImportEngine:
         for wing, wing_drawers in by_wing.items():
             lines.append(f"## {wing}\n")
             for d in wing_drawers:
-                tags_str = " ".join(f"#{t}" for t in d.tags)
+                " ".join(f"#{t}" for t in d.tags)
                 lines.append(f"### [{d.id[:8]}]\n")
                 lines.append(f"{d.content[:300]}\n")
                 lines.append(f"重要性: {'⭐' * int(d.importance)} | 标签: {', '.join(d.tags)}\n")
@@ -168,13 +178,15 @@ class ExportImportEngine:
 
         imported = []
         for item in data:
-            imported.append({
-                "id": item.get("id", ""),
-                "content": item.get("content", ""),
-                "wing": item.get("wing", "imported"),
-                "importance": item.get("importance", 3.0),
-                "tags": item.get("tags", []),
-            })
+            imported.append(
+                {
+                    "id": item.get("id", ""),
+                    "content": item.get("content", ""),
+                    "wing": item.get("wing", "imported"),
+                    "importance": item.get("importance", 3.0),
+                    "tags": item.get("tags", []),
+                }
+            )
 
         self._record_import("json", len(imported), filepath)
         return {"format": "json", "imported": len(imported), "data": imported}
@@ -189,36 +201,42 @@ class ExportImportEngine:
         for line in content.split("\n"):
             if line.startswith("## "):
                 if current_content:
-                    imported.append({
-                        "id": "",
-                        "content": current_content.strip(),
-                        "wing": current_wing,
-                        "importance": 3.0,
-                        "tags": [],
-                    })
+                    imported.append(
+                        {
+                            "id": "",
+                            "content": current_content.strip(),
+                            "wing": current_wing,
+                            "importance": 3.0,
+                            "tags": [],
+                        }
+                    )
                 current_wing = line[3:].strip()
                 current_content = ""
             elif line.startswith("### "):
                 if current_content:
-                    imported.append({
-                        "id": "",
-                        "content": current_content.strip(),
-                        "wing": current_wing,
-                        "importance": 3.0,
-                        "tags": [],
-                    })
+                    imported.append(
+                        {
+                            "id": "",
+                            "content": current_content.strip(),
+                            "wing": current_wing,
+                            "importance": 3.0,
+                            "tags": [],
+                        }
+                    )
                 current_content = ""
             elif line.strip() and not line.startswith("#") and not line.startswith("---"):
                 current_content += line + "\n"
 
         if current_content.strip():
-            imported.append({
-                "id": "",
-                "content": current_content.strip(),
-                "wing": current_wing,
-                "importance": 3.0,
-                "tags": [],
-            })
+            imported.append(
+                {
+                    "id": "",
+                    "content": current_content.strip(),
+                    "wing": current_wing,
+                    "importance": 3.0,
+                    "tags": [],
+                }
+            )
 
         self._record_import("markdown", len(imported), filepath)
         return {"format": "markdown", "imported": len(imported), "data": imported}
@@ -229,13 +247,15 @@ class ExportImportEngine:
         with open(filepath, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                imported.append({
-                    "id": row.get("id", ""),
-                    "content": row.get("content", ""),
-                    "wing": row.get("wing", "imported"),
-                    "importance": float(row.get("importance", 3.0)),
-                    "tags": row.get("tags", "").split("|") if row.get("tags") else [],
-                })
+                imported.append(
+                    {
+                        "id": row.get("id", ""),
+                        "content": row.get("content", ""),
+                        "wing": row.get("wing", "imported"),
+                        "importance": float(row.get("importance", 3.0)),
+                        "tags": row.get("tags", "").split("|") if row.get("tags") else [],
+                    }
+                )
 
         self._record_import("csv", len(imported), filepath)
         return {"format": "csv", "imported": len(imported), "data": imported}
@@ -254,7 +274,15 @@ class ExportImportEngine:
             stripped = line.strip()
             if stripped.startswith("- id:"):
                 if current_content:
-                    imported.append({"id": current_id, "content": current_content, "wing": current_wing, "importance": current_importance, "tags": current_tags})
+                    imported.append(
+                        {
+                            "id": current_id,
+                            "content": current_content,
+                            "wing": current_wing,
+                            "importance": current_importance,
+                            "tags": current_tags,
+                        }
+                    )
                 current_id = stripped.split(":", 1)[1].strip().strip('"')
                 current_content = ""
                 current_tags = []
@@ -263,18 +291,30 @@ class ExportImportEngine:
             elif stripped.startswith("wing:"):
                 current_wing = stripped.split(":", 1)[1].strip()
             elif stripped.startswith("importance:"):
-                try: current_importance = float(stripped.split(":", 1)[1].strip())
-                except: pass
+                try:
+                    current_importance = float(stripped.split(":", 1)[1].strip())
+                except:
+                    pass
             elif stripped.startswith("tags:"):
                 tag_str = stripped.split(":", 1)[1].strip()
                 if tag_str.startswith("["):
-                    try: current_tags = json.loads(tag_str)
-                    except: current_tags = []
+                    try:
+                        current_tags = json.loads(tag_str)
+                    except:
+                        current_tags = []
                 elif tag_str:
                     current_tags = [tag_str]
 
         if current_content:
-            imported.append({"id": current_id, "content": current_content, "wing": current_wing, "importance": current_importance, "tags": current_tags})
+            imported.append(
+                {
+                    "id": current_id,
+                    "content": current_content,
+                    "wing": current_wing,
+                    "importance": current_importance,
+                    "tags": current_tags,
+                }
+            )
 
         self._record_import("yaml", len(imported), filepath)
         return {"format": "yaml", "imported": len(imported), "data": imported}
@@ -310,30 +350,40 @@ class ExportImportEngine:
             return {"error": f"不支持的导入格式: {fmt}", "detected": fmt}
 
     def _record_export(self, format_name: str, count: int, filepath: str):
-        self._history.append({
-            "operation": "export", "format": format_name,
-            "count": count, "filepath": filepath,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._history.append(
+            {
+                "operation": "export",
+                "format": format_name,
+                "count": count,
+                "filepath": filepath,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def _record_import(self, format_name: str, count: int, filepath: str):
-        self._history.append({
-            "operation": "import", "format": format_name,
-            "count": count, "filepath": filepath,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._history.append(
+            {
+                "operation": "import",
+                "format": format_name,
+                "count": count,
+                "filepath": filepath,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def list_exports(self) -> list[dict]:
         """列出所有导出文件"""
         exports = []
         for f in self._export_dir.iterdir():
             if f.suffix in (".json", ".md", ".csv", ".yaml", ".yml") or "obsidian" in f.name:
-                exports.append({
-                    "name": f.name,
-                    "format": f.suffix[1:],
-                    "size": f.stat().st_size,
-                    "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                })
+                exports.append(
+                    {
+                        "name": f.name,
+                        "format": f.suffix[1:],
+                        "size": f.stat().st_size,
+                        "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    }
+                )
         exports.sort(key=lambda x: x["modified"], reverse=True)
         return exports
 

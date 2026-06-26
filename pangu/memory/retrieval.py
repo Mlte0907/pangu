@@ -102,6 +102,7 @@ def _safe_execute(func, default=None, error_msg: str = "") -> Any:
 def _cosine_similarity(a: list, b: list) -> float:
     """余弦相似度（numpy 向量化）"""
     import numpy as np
+
     a_arr = np.asarray(a, dtype=np.float32)
     b_arr = np.asarray(b, dtype=np.float32)
     n = min(len(a_arr), len(b_arr))
@@ -120,6 +121,7 @@ def _try_onnx_embed(query: str) -> list[float] | None:
     """尝试 ONNX 嵌入"""
     try:
         from pangu.memory.onnx_embedder import get_onnx_embedder
+
         onnx = get_onnx_embedder()
         if onnx.is_available:
             return onnx.embed(query)
@@ -181,6 +183,7 @@ def _vector_search_with_index(query_vec: list[float], drawers: list[Drawer]) -> 
     vec_results = {}
     try:
         from pangu.memory.vector_index import get_vector_index
+
         idx = get_vector_index()
         if idx.is_built and idx.size > 0:
             search_results = idx.search(query_vec, top_k=min(len(drawers), 100))
@@ -199,6 +202,7 @@ def _fts_search_task(query: str, drawers: list[Drawer]) -> dict[str, float]:
     """FTS 搜索任务"""
     try:
         from pangu.memory.fts_search import FTS5SearchEngine
+
         fts = FTS5SearchEngine()
         fts.build_index(drawers)
         return fts._fts_search(query, drawers)
@@ -211,12 +215,14 @@ def _collect_spreading_results(activations, existing_ids, engine, results, limit
         if mid not in existing_ids and activation > 0.1:
             mem = engine.neocortex.get(mid)
             if mem:
-                results.append({
-                    "id": mid,
-                    "content": mem.content,
-                    "search_score": round(activation * 0.5, 4),
-                    "source": "neural_spreading",
-                })
+                results.append(
+                    {
+                        "id": mid,
+                        "content": mem.content,
+                        "search_score": round(activation * 0.5, 4),
+                        "source": "neural_spreading",
+                    }
+                )
                 if len(results) >= limit:
                     break
 
@@ -227,6 +233,7 @@ def _expand_with_neural_spreading(results: list[dict], limit: int) -> None:
         return
     try:
         from pangu.memory.neural_memory import get_neural_engine
+
         engine = get_neural_engine()
         seed_ids = [r["id"] for r in results[:5]]
         activations = engine.neocortex.activate_spreading(
@@ -301,6 +308,7 @@ def recall(
         expanded_query = _expand_query(query, filtered) if len(query) < 4 else query
         try:
             from pangu.memory.synonyms import expand_synonyms
+
             syn_words = expand_synonyms(query)
             if syn_words:
                 expanded_query = expanded_query + " " + " ".join(syn_words[:3])
@@ -340,6 +348,7 @@ def recall(
                 # 神经衰减加成（替代简单时间加成）
                 try:
                     from pangu.memory.retrieval import _get_neural_decay_score
+
                     decay_score = _get_neural_decay_score(d)
                     decay_boost = decay_score * 0.15
                 except Exception:
@@ -456,7 +465,8 @@ def recall_context(
 def _get_neural_decay_score(drawer: Drawer) -> float:
     """用神经记忆的个性化遗忘曲线计算衰减分数"""
     try:
-        from pangu.memory.neural_memory import PersonalizedDecay, NeuralMemory, MemoryType
+        from pangu.memory.neural_memory import MemoryType, NeuralMemory, PersonalizedDecay
+
         decay = PersonalizedDecay()
 
         # 从 Drawer 推断记忆类型
@@ -569,18 +579,19 @@ def _highlight_content(content: str, query: str) -> str:
     for kw in keywords:
         if len(kw) >= 2 and kw in highlighted.lower():
             import re
+
             pattern = re.compile(re.escape(kw), re.IGNORECASE)
             highlighted = pattern.sub(f"**{kw}**", highlighted)
     return highlighted
 
 
-def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0,
-                    query: str = "") -> dict:
+def _drawer_to_dict(drawer: Drawer, score: float = 0.0, vec_score: float = 0.0, query: str = "") -> dict:
     """将 Drawer 转换为字典（自动解密 + 高亮）"""
     content = drawer.content
     if content and content.startswith("gAAAAAB"):
         try:
             from pangu.memory.encryption import decrypt
+
             content = decrypt(content)
         except Exception:
             pass
@@ -619,11 +630,11 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
         调整结果
     """
     SIGNAL_MULTIPLIERS = {
-        "recall_success": 1.08,   # 召回成功 +8%
-        "recall_miss": 0.92,      # 召回失败 -8%
-        "vote_up": 1.05,          # 投票好评 +5%
-        "vote_down": 0.95,        # 投票差评 -5%
-        "verified": 1.15,         # 验证通过 +15%
+        "recall_success": 1.08,  # 召回成功 +8%
+        "recall_miss": 0.92,  # 召回失败 -8%
+        "vote_up": 1.05,  # 投票好评 +5%
+        "vote_down": 0.95,  # 投票差评 -5%
+        "verified": 1.15,  # 验证通过 +15%
     }
     multi = SIGNAL_MULTIPLIERS.get(signal)
     if multi is None:
@@ -631,7 +642,9 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
 
     if drawers is None:
         from pathlib import Path
+
         from pangu.core.config import PanguConfig
+
         cfg = PanguConfig.load()
         drawers_file = Path(cfg.palace_path) / "drawers.json"
         if not drawers_file.exists():
@@ -656,7 +669,9 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
     # 保存回 drawers.json
     try:
         from pathlib import Path
+
         from pangu.core.config import PanguConfig
+
         cfg = PanguConfig.load()
         drawers_file = Path(cfg.palace_path) / "drawers.json"
         with open(drawers_file, "w", encoding="utf-8") as f:

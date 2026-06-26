@@ -8,7 +8,6 @@
 5. 预热后命中缓存
 """
 
-
 import pytest
 
 from pangu.core.config import PanguConfig
@@ -42,24 +41,21 @@ class TestWarmupCache:
         engine.clear_persistent_cache()
 
         # 预填一个缓存条目
-        engine._cache["test_key"] = LLMResponse(
-            content="already cached", model="gpt-4o", provider="openai"
-        )
+        engine._cache["test_key"] = LLMResponse(content="already cached", model="gpt-4o", provider="openai")
 
         # 构造 prompt（其缓存键应与 test_key 不一致）
         # 但为了测试跳过逻辑，我们需要把同一个 prompt 写入缓存
-        prompts = [
-            {"messages": [{"role": "user", "content": "hello"}], "temperature": 0}
-        ]
+        prompts = [{"messages": [{"role": "user", "content": "hello"}], "temperature": 0}]
         # 先把相同 prompt 写入磁盘，让 skip 逻辑能识别
         cache_key = engine._make_cache_key(
-            provider="openai", model="gpt-4o",
+            provider="openai",
+            model="gpt-4o",
             messages=[{"role": "user", "content": "hello"}],
-            system="", max_tokens=4096, json_mode=False,
+            system="",
+            max_tokens=4096,
+            json_mode=False,
         )
-        engine._cache[cache_key] = LLMResponse(
-            content="cached response", model="gpt-4o", provider="openai"
-        )
+        engine._cache[cache_key] = LLMResponse(content="cached response", model="gpt-4o", provider="openai")
 
         result = await engine.warmup_cache(prompts, skip_existing=True)
         assert result["total"] == 1
@@ -94,10 +90,7 @@ class TestWarmupCache:
         mock_client.post = AsyncMock(return_value=mock_resp)
         engine._client = mock_client
 
-        prompts = [
-            {"messages": [{"role": "user", "content": f"q_{i}"}], "temperature": 0}
-            for i in range(3)
-        ]
+        prompts = [{"messages": [{"role": "user", "content": f"q_{i}"}], "temperature": 0} for i in range(3)]
         result = await engine.warmup_cache(prompts, concurrency=2)
         assert result["total"] == 3
         assert result["warmed"] == 3
@@ -141,9 +134,7 @@ class TestWarmupCache:
         mock_client.post = AsyncMock(return_value=mock_resp)
         engine._client = mock_client
 
-        prompts = [
-            {"messages": [{"role": "user", "content": "failing"}], "temperature": 0}
-        ]
+        prompts = [{"messages": [{"role": "user", "content": "failing"}], "temperature": 0}]
         result = await engine.warmup_cache(prompts, concurrency=1)
         assert result["total"] == 1
         assert result["failed"] == 1
@@ -166,13 +157,14 @@ class TestWarmupCache:
 
         # 预填一个缓存
         cache_key = engine._make_cache_key(
-            provider="openai", model="gpt-4o-mini",
+            provider="openai",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "force"}],
-            system="", max_tokens=4096, json_mode=False,
+            system="",
+            max_tokens=4096,
+            json_mode=False,
         )
-        engine._cache[cache_key] = LLMResponse(
-            content="old", model="gpt-4o-mini", provider="openai"
-        )
+        engine._cache[cache_key] = LLMResponse(content="old", model="gpt-4o-mini", provider="openai")
 
         # Mock HTTP
         mock_resp = MagicMock()
@@ -233,9 +225,7 @@ class TestAutoWarmup:
             llm_base_url="https://api.test.com/v1",
             llm_cache_persist_path=str(tmp_path / "auto_warmup.db"),
             llm_cache_warmup_on_start=True,
-            llm_cache_warmup_prompts=[
-                {"messages": [{"role": "user", "content": "auto warm"}], "temperature": 0}
-            ],
+            llm_cache_warmup_prompts=[{"messages": [{"role": "user", "content": "auto warm"}], "temperature": 0}],
         )
         engine = LLMEngine(cfg)
         engine.clear_persistent_cache()
@@ -274,9 +264,7 @@ class TestIsCached:
         # 初始：未缓存
         assert engine._is_cached(prompt) is False
         # 写入内存
-        engine._cache["dummy"] = LLMResponse(
-            content="r", model="m", provider="p"
-        )
+        engine._cache["dummy"] = LLMResponse(content="r", model="m", provider="p")
         # 真实情况下 _is_cached 会计算正确的键
         # 这里只验证函数不抛异常
         result = engine._is_cached(prompt)
@@ -297,11 +285,16 @@ class TestIsCached:
         # 写入持久化
         engine._persistent_cache.put(
             engine._make_cache_key(
-                provider="openai", model="gpt-4o-mini",
-                messages=prompt["messages"], system="",
-                max_tokens=4096, json_mode=False,
+                provider="openai",
+                model="gpt-4o-mini",
+                messages=prompt["messages"],
+                system="",
+                max_tokens=4096,
+                json_mode=False,
             ),
-            "openai", "gpt-4o-mini", prompt,
+            "openai",
+            "gpt-4o-mini",
+            prompt,
             LLMResponse(content="x", model="gpt-4o-mini", provider="openai"),
         )
         # 应能识别

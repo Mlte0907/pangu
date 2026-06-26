@@ -9,11 +9,8 @@
 """
 
 import sys
-import time
-from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -25,10 +22,8 @@ from pangu.core.palace import Drawer
 from pangu.memory.consolidation import ForgettingCurve, MemoryConsolidator
 from pangu.memory.decay import decay_batch, get_decay_stats, get_purge_candidates
 from pangu.memory.multi_agent import (
-    ConflictResolution,
     MemoryScope,
     MultiAgentMemory,
-    SyncStrategy,
 )
 from pangu.memory.natural_query import (
     MemoryRecommender,
@@ -43,7 +38,6 @@ from pangu.memory.performance import (
     PerformanceOptimizer,
 )
 from pangu.memory.retrieval import recall, recall_by_ids, recall_context
-
 
 # ══════════════════════════════════════════════════════════════════════
 # 辅助工厂
@@ -190,10 +184,8 @@ class TestMemoryRetrieval:
         """测试按时间排序"""
         now = datetime.now()
         drawers = [
-            _make_drawer(id="old", content="旧记忆",
-                         created_at=(now - timedelta(days=7)).isoformat()),
-            _make_drawer(id="new", content="新记忆",
-                         created_at=now.isoformat()),
+            _make_drawer(id="old", content="旧记忆", created_at=(now - timedelta(days=7)).isoformat()),
+            _make_drawer(id="new", content="新记忆", created_at=now.isoformat()),
         ]
         results = recall(drawers=drawers, sort_by="time")
         assert results[0]["id"] == "new"
@@ -255,8 +247,7 @@ class TestMemoryConsolidation:
         consolidator = MemoryConsolidator(config)
 
         d_no_tags = _make_drawer(id="no_tags", content="无标签记忆", importance=3.0)
-        d_with_tags = _make_drawer(id="tags", content="有标签记忆",
-                                    importance=3.0, tags=["a", "b", "c"])
+        d_with_tags = _make_drawer(id="tags", content="有标签记忆", importance=3.0, tags=["a", "b", "c"])
 
         s1 = consolidator.calculate_importance(d_no_tags)
         s2 = consolidator.calculate_importance(d_with_tags)
@@ -294,10 +285,7 @@ class TestMemoryConsolidation:
 
     def test_next_review_interval(self):
         """间隔重复间隔应递增"""
-        intervals = [
-            MemoryConsolidator.next_review_interval(i)
-            for i in range(6)
-        ]
+        intervals = [MemoryConsolidator.next_review_interval(i) for i in range(6)]
         for i in range(len(intervals) - 1):
             assert intervals[i] < intervals[i + 1]
 
@@ -447,15 +435,11 @@ class TestMemoryRecommender:
         rec = MemoryRecommender()
 
         # 新记忆
-        new_drawer = _make_drawer(
-            created_at=datetime.now().isoformat()
-        )
+        new_drawer = _make_drawer(created_at=datetime.now().isoformat())
         assert rec._time_decay_score(new_drawer) == 1.0
 
         # 旧记忆
-        old_drawer = _make_drawer(
-            created_at=(datetime.now() - timedelta(days=60)).isoformat()
-        )
+        old_drawer = _make_drawer(created_at=(datetime.now() - timedelta(days=60)).isoformat())
         assert rec._time_decay_score(old_drawer) < 1.0
 
 
@@ -501,7 +485,8 @@ class TestMultiAgentMemory:
         mam.register_agent("agent_b")
 
         mem = mam.write(
-            "agent_a", "这是共享记忆",
+            "agent_a",
+            "这是共享记忆",
             scope=MemoryScope.SHARED,
             shared_with=["agent_b"],
         )
@@ -572,7 +557,8 @@ class TestMultiAgentMemory:
         mam.register_agent("agent_b")
 
         mem = mam.write(
-            "agent_a", "记忆",
+            "agent_a",
+            "记忆",
             scope=MemoryScope.SHARED,
             shared_with=["agent_b"],
         )
@@ -817,9 +803,11 @@ class TestObjectPool:
 
     def test_reset_callback(self):
         """归还时重置"""
+
         class Box:
             def __init__(self):
                 self.value = 0
+
         pool = ObjectPool[Box](
             factory=Box,
             reset=lambda b: setattr(b, "value", 0),
@@ -876,9 +864,7 @@ class TestBatchProcessor:
     def test_batch_encode(self):
         """批量向量编码"""
         texts = ["文本1", "文本2", "文本3"]
-        results = BatchProcessor.batch_encode(
-            texts, embed_fn=lambda t: [0.1, 0.2, 0.3], batch_size=2
-        )
+        results = BatchProcessor.batch_encode(texts, embed_fn=lambda t: [0.1, 0.2, 0.3], batch_size=2)
         assert len(results) == 3
 
     def test_merge_search_results(self):

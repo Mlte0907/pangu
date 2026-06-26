@@ -1,6 +1,6 @@
 """盘古搜索模式分析 — 跟踪搜索行为，提供优化建议"""
+
 import json
-import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -28,16 +28,17 @@ class SearchAnalytics:
         self._log_file.parent.mkdir(parents=True, exist_ok=True)
         self._log_file.write_text(json.dumps(self._queries[-1000:], ensure_ascii=False))
 
-    def log_search(self, query: str, result_count: int, duration_ms: float,
-                   user_id: str = "default") -> None:
+    def log_search(self, query: str, result_count: int, duration_ms: float, user_id: str = "default") -> None:
         """记录搜索行为"""
-        self._queries.append({
-            "query": query,
-            "result_count": result_count,
-            "duration_ms": duration_ms,
-            "user_id": user_id,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._queries.append(
+            {
+                "query": query,
+                "result_count": result_count,
+                "duration_ms": duration_ms,
+                "user_id": user_id,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         if len(self._queries) > 1000:
             self._queries = self._queries[-1000:]
         self._save()

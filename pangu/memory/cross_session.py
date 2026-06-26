@@ -6,6 +6,7 @@
 3. 自动建立 KG 实体关系
 4. 构建跨会话知识链
 """
+
 import json
 import logging
 import re
@@ -25,8 +26,11 @@ class CrossSessionIntegrator:
         self.config = config or PanguConfig.load()
 
     def find_cross_session_links(
-        self, new_drawers: list[Drawer], all_drawers: list[Drawer],
-        min_similarity: float = 0.4, max_links: int = 10,
+        self,
+        new_drawers: list[Drawer],
+        all_drawers: list[Drawer],
+        min_similarity: float = 0.4,
+        max_links: int = 10,
     ) -> list[dict]:
         """发现跨会话记忆关联
 
@@ -44,6 +48,7 @@ class CrossSessionIntegrator:
 
         try:
             from pangu.memory.embedding import get_embedding_service
+
             embed_svc = get_embedding_service()
         except Exception:
             return self._keyword_fallback(new_drawers, all_drawers, max_links)
@@ -72,7 +77,7 @@ class CrossSessionIntegrator:
                     continue
                 try:
                     n = min(len(new_vec), len(hist_vec))
-                    dot = sum(a * b for a, b in zip(new_vec[:n], hist_vec[:n]))
+                    dot = sum(a * b for a, b in zip(new_vec[:n], hist_vec[:n], strict=False))
                     norm_a = sum(a * a for a in new_vec[:n]) ** 0.5
                     norm_b = sum(b * b for b in hist_vec[:n]) ** 0.5
                     sim = dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0.0
@@ -84,20 +89,24 @@ class CrossSessionIntegrator:
 
             if best_match:
                 shared_tags = set(new_d.tags) & set(best_match.tags)
-                links.append({
-                    "source_id": new_d.id,
-                    "target_id": best_match.id,
-                    "similarity": round(best_sim, 4),
-                    "shared_tags": list(shared_tags),
-                    "source_content": new_d.content[:100],
-                    "target_content": best_match.content[:100],
-                })
+                links.append(
+                    {
+                        "source_id": new_d.id,
+                        "target_id": best_match.id,
+                        "similarity": round(best_sim, 4),
+                        "shared_tags": list(shared_tags),
+                        "source_content": new_d.content[:100],
+                        "target_content": best_match.content[:100],
+                    }
+                )
 
         links.sort(key=lambda x: -x["similarity"])
         return links[:max_links]
 
     def _keyword_fallback(
-        self, new_drawers: list[Drawer], all_drawers: list[Drawer],
+        self,
+        new_drawers: list[Drawer],
+        all_drawers: list[Drawer],
         max_links: int,
     ) -> list[dict]:
         """关键词降级关联发现"""
@@ -116,12 +125,14 @@ class CrossSessionIntegrator:
                     best_overlap = overlap
                     best_match = hist_d
             if best_match:
-                links.append({
-                    "source_id": new_d.id,
-                    "target_id": best_match.id,
-                    "similarity": round(best_overlap / max(len(new_words), 1), 4),
-                    "shared_tags": list(set(new_d.tags) & set(best_match.tags)),
-                })
+                links.append(
+                    {
+                        "source_id": new_d.id,
+                        "target_id": best_match.id,
+                        "similarity": round(best_overlap / max(len(new_words), 1), 4),
+                        "shared_tags": list(set(new_d.tags) & set(best_match.tags)),
+                    }
+                )
 
         links.sort(key=lambda x: -x["similarity"])
         return links[:max_links]
@@ -133,6 +144,7 @@ class CrossSessionIntegrator:
 
         try:
             from ..memory.knowledge_graph import KnowledgeGraph
+
             kg = KnowledgeGraph(self.config)
         except Exception:
             return 0
@@ -212,8 +224,7 @@ class CrossSessionIntegrator:
             "timestamp": datetime.now().isoformat(),
         }
 
-    def build_context_bridge(self, current_memories: list[Drawer],
-                              all_drawers: list[Drawer] = None) -> dict:
+    def build_context_bridge(self, current_memories: list[Drawer], all_drawers: list[Drawer] = None) -> dict:
         """构建上下文桥接 — 为新会话准备上下文"""
         if not current_memories:
             return {"bridge": [], "context_summary": "无上下文"}
@@ -239,12 +250,14 @@ class CrossSessionIntegrator:
         for link in links:
             for d in all_drawers:
                 if d.id == link["target_id"]:
-                    related_memories.append({
-                        "id": d.id,
-                        "content": d.content[:80],
-                        "similarity": link["similarity"],
-                        "wing": d.wing,
-                    })
+                    related_memories.append(
+                        {
+                            "id": d.id,
+                            "content": d.content[:80],
+                            "similarity": link["similarity"],
+                            "wing": d.wing,
+                        }
+                    )
                     break
 
         context_summary = f"当前话题: {', '.join(list(current_topics)[:5])}; 关联历史记忆: {len(related_memories)} 条"
@@ -289,7 +302,7 @@ class CrossSessionIntegrator:
 
         # 基于查询匹配相关记忆
         q_words = set()
-        for word in re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', query.lower()):
+        for word in re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", query.lower()):
             q_words.add(word)
 
         scored = []

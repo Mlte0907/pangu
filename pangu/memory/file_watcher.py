@@ -6,6 +6,7 @@
 3. 自动提取：新修改的文件自动提取内容存入记忆
 4. 状态管理：记录已监控的目录和处理进度
 """
+
 import json
 import logging
 import time
@@ -13,12 +14,27 @@ from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.file_watcher")
 
-WATCH_EXTS = {".py", ".js", ".ts", ".md", ".txt", ".json", ".yaml", ".yml",
-              ".toml", ".sh", ".sql", ".html", ".css", ".go", ".rs", ".java"}
+WATCH_EXTS = {
+    ".py",
+    ".js",
+    ".ts",
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".sh",
+    ".sql",
+    ".html",
+    ".css",
+    ".go",
+    ".rs",
+    ".java",
+}
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", ".idea", ".vscode", ".cache", "dist", "build"}
 
 
@@ -47,8 +63,9 @@ class FileWatcher:
         except Exception as e:
             logger.error(f"保存监控状态失败: {e}")
 
-    def watch_directory(self, dir_path: str, pattern: str = "*.md",
-                        recursive: bool = True, auto_store: bool = True) -> dict:
+    def watch_directory(
+        self, dir_path: str, pattern: str = "*.md", recursive: bool = True, auto_store: bool = True
+    ) -> dict:
         """扫描目录变更并提取记忆"""
         path = Path(dir_path).expanduser()
         if not path.exists() or not path.is_dir():
@@ -90,9 +107,11 @@ class FileWatcher:
             try:
                 if auto_store:
                     from ..memory.multimodal_pipeline import get_multimodal_pipeline
+
                     pipe = get_multimodal_pipeline(self.config)
                     result = pipe.ingest_file(
-                        str(f), wing="default",
+                        str(f),
+                        wing="default",
                         description=f"文件变更监控: {f.name}",
                         tags=["file_watcher", "auto"],
                     )
@@ -126,12 +145,14 @@ class FileWatcher:
         """获取所有监控的目录"""
         dirs = []
         for dir_path, info in self._state.get("watched_dirs", {}).items():
-            dirs.append({
-                "directory": dir_path,
-                "pattern": info.get("pattern", "*"),
-                "total_files": info.get("total_files", 0),
-                "last_scan": info.get("last_scan"),
-            })
+            dirs.append(
+                {
+                    "directory": dir_path,
+                    "pattern": info.get("pattern", "*"),
+                    "total_files": info.get("total_files", 0),
+                    "last_scan": info.get("last_scan"),
+                }
+            )
         return dirs
 
     def get_stats(self) -> dict:
