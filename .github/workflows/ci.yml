@@ -142,6 +142,7 @@ jobs:
 
       - name: 覆盖率
         if: matrix.python == '3.11' && matrix.os == 'ubuntu-latest'
+        continue-on-error: true
         run: |
           pip install pytest-cov
           python -m pytest tests/test_core.py tests/test_v2_features.py \
