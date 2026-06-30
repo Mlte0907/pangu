@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
   # 已合并到 ci.yml，不再自动触发
   # push:
-  #   branches: [master, develop]
+  #   branches: [main, develop]
   # pull_request:
-  #   branches: [master, develop]
+  #   branches: [main, develop]
 
 jobs:
   test:

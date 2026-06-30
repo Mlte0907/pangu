@@ -2,10 +2,10 @@ name: release-drafter
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
     types: [opened, reopened, synchronize, closed]
-    branches: [master]
+    branches: [main]
 
 permissions:
   contents: read
