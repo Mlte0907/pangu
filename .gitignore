@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+# dsh-pangu 插件的 lib/ 是源码目录（CommonJS 产物即源码），必须跟踪
+!plugins/dsh-pangu/lib/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+/tmp/
+
+# Cache
+.cache/
+.pytest_cache/
+
+# Data（运行时数据在 ~/.pangu，不在仓库内）
+*.db
+*.sqlite
+
+# ONNX models
+*.onnx
+
+# Environment
+.env
+.env.local
+
+# Reports (keep structure but not generated files)
+reports/*.xml
+reports/*.json
+reports/*.txt
+
+# Test artifacts
+.coverage
+htmlcov/
+plugins/dsh-pangu/node_modules/
+
+# 运行时与内部文件（公开仓库不入库）
+*.pid
+api.pid
+pangu.pid
+logs/
+.mimosa/
+CLAUDE.md.local
+reports/
+benchmarks/

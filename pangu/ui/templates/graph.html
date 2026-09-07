@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>盘古 — 知识图谱</title>
+<style>
+:root[data-theme="dark"] {
+    --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#c9d1d9;
+    --text2:#8b949e; --accent:#58a6ff; --green:#3fb950; --red:#f85149;
+    --yellow:#d29922; --purple:#bc8cff;
+}
+:root[data-theme="light"] {
+    --bg:#f6f8fa; --card:#fff; --border:#d0d7de; --text:#1f2328;
+    --text2:#656d76; --accent:#0969da; --green:#1a7f37; --red:#cf222e;
+    --yellow:#9a6700; --purple:#8250df;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+.header { background:var(--card); padding:12px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+.header h1 { font-size:16px; color:var(--accent); }
+.controls { display:flex; gap:8px; align-items:center; }
+.btn { background:var(--border); color:var(--text); border:1px solid var(--border); padding:4px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
+.btn:hover { background:var(--text2); }
+.btn.active { background:var(--accent); color:#fff; }
+.stats { font-size:12px; color:var(--text2); }
+.graph-container { flex:1; position:relative; overflow:hidden; }
+canvas { display:block; }
+.sidebar { position:absolute; top:0; right:0; width:280px; max-height:100%; overflow-y:auto; background:var(--card); border-left:1px solid var(--border); padding:16px; font-size:13px; display:none; }
+.sidebar.active { display:block; }
+.sidebar h3 { color:var(--accent); margin-bottom:8px; font-size:14px; }
+.sidebar .close { position:absolute; top:8px; right:8px; cursor:pointer; color:var(--text2); font-size:18px; }
+.sidebar .field { margin-bottom:6px; }
+.sidebar .label { color:var(--text2); font-size:11px; }
+.sidebar .value { color:var(--text); }
+.legend { position:absolute; bottom:16px; left:16px; background:var(--card); border:1px solid var(--border); border-radius:6px; padding:10px 14px; font-size:11px; }
+.legend-item { display:flex; align-items:center; gap:6px; margin:3px 0; }
+.legend-dot { width:10px; height:10px; border-radius:50%; }
+.search-box { background:var(--border); border:1px solid var(--border); border-radius:6px; padding:4px 10px; color:var(--text); font-size:12px; width:180px; }
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>盘古 — 知识图谱</h1>
+    <div class="controls">
+        <input class="search-box" id="searchInput" placeholder="搜索实体..." oninput="filterGraph(this.value)">
+        <button class="btn" onclick="resetView()">重置视图</button>
+        <button class="btn" id="btnLayout" onclick="toggleLayout()">力导向</button>
+        <button class="btn" id="themeBtn" onclick="toggleTheme()">🌙</button>
+        <span class="stats" id="statsText"></span>
+    </div>
+</div>
+<div class="graph-container">
+    <canvas id="canvas"></canvas>
+    <div class="legend" id="legend"></div>
+    <div class="sidebar" id="sidebar">
+        <span class="close" onclick="closeSidebar()">×</span>
+        <div id="sidebarContent"></div>
+    </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const COLORS = {
+    person:'#58a6ff', org:'#3fb950', tech:'#d29922', concept:'#bc8cff',
+    event:'#f85149', location:'#79c0ff', memory:'#56d364', default:'#8b949e',
+};
+
+let nodes=[], edges=[], filtered_nodes=[], filtered_edges=[];
+let dragNode=null, offsetX=0, offsetY=0;
+let hoverNode=null, selectedNode=null;
+let zoom=1, panX=0, panY=0;
+let isPanning=false, lastMouseX=0, lastMouseY=0;
+let layoutMode='force';
+let animFrame=null;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+    const c = document.querySelector('.graph-container');
+    canvas.width = c.clientWidth;
+    canvas.height = c.clientHeight;
+}
+window.addEventListener('resize', () => { resize(); draw(); });
+resize();
+
+async function loadGraph() {
+    try {
+        const res = await fetch(`${API}/api/v2/graph`);
+        const data = await res.json();
+        nodes = (data.data?.nodes || []).map((n,i) => ({
+            ...n, x: 200 + (i % 10) * 80 + Math.random()*40,
+            y: 150 + Math.floor(i/10) * 80 + Math.random()*40,
+            vx: 0, vy: 0, radius: Math.min(20, 6 + (n.memory_count || 1) * 2),
+        }));
+        edges = data.data?.edges || [];
+        filtered_nodes = [...nodes];
+        filtered_edges = [...edges];
+        document.getElementById('statsText').textContent = `${nodes.length} 实体, ${edges.length} 关系`;
+        buildLegend();
+        if (layoutMode === 'force') runForceLayout();
+        draw();
+    } catch(e) { console.error('Failed to load graph:', e); }
+}
+
+function buildLegend() {
+    const types = new Set(nodes.map(n => n.type));
+    const el = document.getElementById('legend');
+    el.innerHTML = '<div style="font-weight:600;margin-bottom:4px;">图例</div>';
+    types.forEach(t => {
+        el.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${COLORS[t]||COLORS.default}"></div>${t} (${nodes.filter(n=>n.type===t).length})</div>`;
+    });
+}
+
+function filterGraph(query) {
+    if (!query) { filtered_nodes=[...nodes]; filtered_edges=[...edges]; }
+    else {
+        const q = query.toLowerCase();
+        filtered_nodes = nodes.filter(n => (n.name||'').toLowerCase().includes(q) || (n.type||'').toLowerCase().includes(q));
+        const ids = new Set(filtered_nodes.map(n=>n.id));
+        filtered_edges = edges.filter(e => ids.has(e.source) || ids.has(e.target));
+    }
+    draw();
+}
+
+function resetView() {
+    zoom=1; panX=0; panY=0;
+    const cx=canvas.width/2, cy=canvas.height/2;
+    nodes.forEach((n,i) => { n.x=cx+(i%10)*80-400+Math.random()*40; n.y=cy+Math.floor(i/10)*80-200+Math.random()*40; n.vx=0; n.vy=0; });
+    if(layoutMode==='force') runForceLayout();
+    draw();
+}
+
+function toggleLayout() {
+    layoutMode = layoutMode==='force'?'radial':'force';
+    document.getElementById('btnLayout').textContent = layoutMode==='force'?'力导向':'径向';
+    if(layoutMode==='radial') runRadialLayout();
+    else runForceLayout();
+}
+
+function toggleTheme() {
+    const t = document.documentElement.getAttribute('data-theme');
+    const n = t==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme', n);
+    document.getElementById('themeBtn').textContent = n==='dark'?'☀️':'🌙';
+    localStorage.setItem('pangu-theme', n);
+}
+
+// ── Force-directed layout ──
+function runForceLayout() {
+    const nodeMap = new Map(nodes.map(n=>[n.id,n]));
+    const W=canvas.width, H=canvas.height;
+    let alpha=1;
+    function tick() {
+        if(alpha<0.01) return;
+        alpha *= 0.95;
+        // Repulsion
+        for(let i=0;i<nodes.length;i++) {
+            for(let j=i+1;j<nodes.length;j++) {
+                let dx=nodes[j].x-nodes[i].x, dy=nodes[j].y-nodes[i].y;
+                let d=Math.sqrt(dx*dx+dy*dy)||1;
+                let f=200/(d*d)*alpha;
+                nodes[i].vx-=dx*f; nodes[i].vy-=dy*f;
+                nodes[j].vx+=dx*f; nodes[j].vy+=dy*f;
+            }
+        }
+        // Attraction (edges)
+        filtered_edges.forEach(e => {
+            const s=nodeMap.get(e.source), t_=nodeMap.get(e.target);
+            if(!s||!t_) return;
+            let dx=t_.x-s.x, dy=t_.y-s.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+            let f=(d-100)*0.005*alpha;
+            s.vx+=dx*f; s.vy+=dy*f;
+            t_.vx-=dx*f; t_.vy-=dy*f;
+        });
+        // Center gravity
+        nodes.forEach(n => {
+            n.vx+=(W/2-n.x)*0.001*alpha;
+            n.vy+=(H/2-n.y)*0.001*alpha;
+            n.vx*=0.8; n.vy*=0.8;
+            if(n!==dragNode) { n.x+=n.vx; n.y+=n.vy; }
+            n.x=Math.max(20,Math.min(W-20,n.x));
+            n.y=Math.max(20,Math.min(H-20,n.y));
+        });
+        draw();
+        animFrame = requestAnimationFrame(tick);
+    }
+    if(animFrame) cancelAnimationFrame(animFrame);
+    tick();
+}
+
+function runRadialLayout() {
+    if(animFrame) cancelAnimationFrame(animFrame);
+    const cx=canvas.width/2, cy=canvas.height/2;
+    const types=[...new Set(nodes.map(n=>n.type))];
+    types.forEach((t,ti) => {
+        const group=nodes.filter(n=>n.type===t);
+        const angleStep=2*Math.PI/group.length;
+        const r=120+ti*80;
+        group.forEach((n,i) => {
+            n.x=cx+r*Math.cos(angleStep*i-Math.PI/2);
+            n.y=cy+r*Math.sin(angleStep*i-Math.PI/2);
+        });
+    });
+    draw();
+}
+
+// ── Rendering ──
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    ctx.translate(panX,panY);
+    ctx.scale(zoom,zoom);
+    const nodeMap=new Map(nodes.map(n=>[n.id,n]));
+
+    // Draw edges
+    filtered_edges.forEach(e => {
+        const s=nodeMap.get(e.source), t_=nodeMap.get(e.target);
+        if(!s||!t_) return;
+        ctx.beginPath();
+        ctx.moveTo(s.x,s.y);
+        ctx.lineTo(t_.x,t_.y);
+        ctx.strokeStyle = (hoverNode && (e.source===hoverNode.id||e.target===hoverNode.id)) ? 'var(--accent)' : 'rgba(139,148,158,0.2)';
+        ctx.lineWidth = (hoverNode && (e.source===hoverNode.id||e.target===hoverNode.id)) ? 2 : 1;
+        ctx.stroke();
+        // Edge label
+        const mx=(s.x+t_.x)/2, my=(s.y+t_.y)/2;
+        ctx.fillStyle='rgba(139,148,158,0.5)';
+        ctx.font='9px system-ui';
+        ctx.fillText(e.predicate||'',mx,my-4);
+    });
+
+    // Draw nodes
+    filtered_nodes.forEach(n => {
+        const color = COLORS[n.type]||COLORS.default;
+        const isHover = hoverNode && hoverNode.id===n.id;
+        const isSelected = selectedNode && selectedNode.id===n.id;
+        ctx.beginPath();
+        ctx.arc(n.x,n.y,n.radius,0,Math.PI*2);
+        ctx.fillStyle = isHover||isSelected ? color : color+'cc';
+        ctx.fill();
+        if(isHover||isSelected) { ctx.strokeStyle=color; ctx.lineWidth=3; ctx.stroke(); }
+        ctx.fillStyle=var_text();
+        ctx.font=`${isHover?'bold ':''}${Math.max(10,Math.min(12,n.radius))}px system-ui`;
+        ctx.textAlign='center';
+        const label=(n.name||n.id).substring(0,12);
+        ctx.fillText(label,n.x,n.y+n.radius+12);
+    });
+
+    ctx.restore();
+}
+
+function var_text() { return getComputedStyle(document.documentElement).getPropertyValue('--text').trim(); }
+
+// ── Interaction ──
+function getNode(mx,my) {
+    const x=(mx-panX)/zoom, y=(my-panY)/zoom;
+    for(let i=filtered_nodes.length-1;i>=0;i--) {
+        const n=filtered_nodes[i];
+        const dx=x-n.x, dy=y-n.y;
+        if(dx*dx+dy*dy <= n.radius*n.radius) return n;
+    }
+    return null;
+}
+
+canvas.addEventListener('mousedown', e => {
+    const n=getNode(e.offsetX,e.offsetY);
+    if(n) { dragNode=n; offsetX=e.offsetX/zoom-panX/zoom-n.x; offsetY=e.offsetY/zoom-panY/zoom-n.y; }
+    else { isPanning=true; lastMouseX=e.offsetX; lastMouseY=e.offsetY; }
+});
+
+canvas.addEventListener('mousemove', e => {
+    if(dragNode) {
+        dragNode.x=(e.offsetX-panX)/zoom-offsetX;
+        dragNode.y=(e.offsetY-panY)/zoom-offsetY;
+        dragNode.vx=0; dragNode.vy=0;
+        draw();
+    } else if(isPanning) {
+        panX+=e.offsetX-lastMouseX; panY+=e.offsetY-lastMouseY;
+        lastMouseX=e.offsetX; lastMouseY=e.offsetY;
+        draw();
+    } else {
+        const n=getNode(e.offsetX,e.offsetY);
+        if(n!==hoverNode) { hoverNode=n; canvas.style.cursor=n?'pointer':'default'; draw(); }
+    }
+});
+
+canvas.addEventListener('mouseup', () => { dragNode=null; isPanning=false; });
+canvas.addEventListener('dblclick', e => {
+    const n=getNode(e.offsetX,e.offsetY);
+    if(n) showSidebar(n);
+});
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY>0?0.9:1.1;
+    zoom*=factor;
+    panX=e.offsetX-(e.offsetX-panX)*factor;
+    panY=e.offsetY-(e.offsetY-panY)*factor;
+    draw();
+}, {passive:false});
+
+function showSidebar(n) {
+    selectedNode=n;
+    const el=document.getElementById('sidebar');
+    const content=document.getElementById('sidebarContent');
+    const related=edges.filter(e=>e.source===n.id||e.target===n.id);
+    content.innerHTML=`
+        <h3>${n.name||n.id}</h3>
+        <div class="field"><div class="label">类型</div><div class="value" style="color:${COLORS[n.type]||COLORS.default}">${n.type||'unknown'}</div></div>
+        ${n.memory_count?`<div class="field"><div class="label">关联记忆</div><div class="value">${n.memory_count} 条</div></div>`:''}
+        ${n.description?`<div class="field"><div class="label">描述</div><div class="value">${n.description}</div></div>`:''}
+        <div class="field"><div class="label">关系 (${related.length})</div>
+        ${related.map(r=>{
+            const other=r.source===n.id?nodeMap[r.target]:nodeMap[r.source];
+            return `<div style="font-size:12px;margin:2px 0;color:var(--text2)">→ ${r.predicate}: ${other?.name||r.target}</div>`;
+        }).join('')}
+        </div>
+    `;
+    el.classList.add('active');
+    const nodeMap=new Map(nodes.map(n=>[n.id,n]));
+}
+
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('active');
+    selectedNode=null;
+}
+
+// ── Init ──
+loadGraph();
+</script>
+</body>
+</html>

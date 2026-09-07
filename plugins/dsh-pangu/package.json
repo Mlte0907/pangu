@@ -1,0 +1,38 @@
+{
+  "name": "dsh-pangu",
+  "version": "1.4.0",
+  "description": "\u76d8\u53e4\u8bb0\u5fc6\u7cfb\u7edf DSH \u63d2\u4ef6: MCP \u63a5\u5165(421\u5de5\u5177\u767d\u540d\u5355\u6536\u655b) + \u5185\u5d4c\u4eea\u8868\u76d8(\u4fa7\u8fb9\u680f/\u8bbe\u7f6e\u9875/\u7528\u91cf)",
+  "keywords": [
+    "dsh",
+    "pangu",
+    "memory",
+    "mcp"
+  ],
+  "private": false,
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./typert": {
+      "default": "./lib/typert.host.mjs"
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

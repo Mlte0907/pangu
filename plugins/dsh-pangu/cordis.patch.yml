@@ -1,0 +1,24 @@
+# dsh-pangu bundle patch: 盘古 MCP 接入(白名单) + 仪表盘宿主
+- insert:
+    - id: mcp-pangu
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: pangu
+        transport: streamable-http
+        url: http://127.0.0.1:19529/mcp
+        toolCallTimeoutMs: 60000
+        tools:
+          allow:
+            - pangu_add_memory
+            - pangu_search_memories
+            - pangu_get_memory
+            - pangu_list_memories
+            - pangu_delete_memory
+            - pangu_update_memory
+            - pangu_get_stats
+            - pangu_export_memories
+            - pangu_import_memories
+            - pangu_backup
+            - pangu_restore
+    - id: pangu-dashboard
+      name: dsh-pangu

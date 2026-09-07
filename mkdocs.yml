@@ -1,0 +1,183 @@
+site_name: 盘古 — LMM+Wiki 超智能记忆系统
+site_description: 专业的智能体记忆系统，专注存储、检索、组织、分类、知识结晶
+site_author: Pangu Team
+site_url: https://xiaoxin.github.io/pangu/
+repo_url: https://github.com/xiaoxin/pangu
+repo_name: xiaoxin/pangu
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+# 主题：Material for MkDocs
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换到暗色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换到亮色
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+# 扩展
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 4
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.keys
+  - pymdownx.smartsymbols
+  - pymdownx.tilde
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.arithmatex:
+      generic: true
+
+plugins:
+  - search:
+      lang: zh
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - git-revision-date-localized:
+      type: date
+      fallback_to_build_date: true
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
+
+# 导航
+nav:
+  - 首页: index.md
+
+  - 入门:
+      - 快速开始: getting-started.md
+      - 安装: getting-started/installation.md
+      - 第一条记忆: getting-started/first-memory.md
+      - 配置: getting-started/configuration.md
+      - 配置参考: configuration.md
+
+  - 架构:
+      - 概览: architecture.md
+      - 深度解析: architecture/overview.md
+      - 4 层记忆栈: architecture.md
+      - 记忆宫殿: architecture.md
+      - 知识图谱: architecture.md
+
+  - 接口:
+      - REST API: api-rest.md
+      - MCP 协议: api-mcp.md
+      - CLI 工具: api-cli.md
+      - MCP 工具列表: api/mcp-tools.md
+      - 鉴权: auth.md
+
+  - 部署:
+      - 部署指南: deployment.md
+      - Docker: deploy/docker.md
+      - systemd: deployment.md
+      - 反向代理: deployment.md
+      - 备份与恢复: operations/backup.md
+
+  - 运维:
+      - 故障排除: troubleshooting.md
+      - 监控与可观测性: observability.md
+      - 安全基线: security.md
+      - MCP 集成指南: guides/mcp-integration.md
+      - LLM 缓存指南: guides/llm-cache.md
+
+  - 开发者:
+      - 模块总览: development/modules.md
+      - 测试指南: development/testing.md
+      - 贡献规范: development/contributing.md
+
+# 严格模式：警告视为错误（CI 开启；本地构建可关）
+strict: false
+
+# 校验（宽松）
+validation:
+  nav:
+    omitted_files: ignore
+    not_found: ignore
+    absolute_links: ignore
+  links:
+    not_found: ignore
+    absolute_links: warn
+    unrecognized_links: ignore
+    anchors: ignore
+
+# 额外
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/xiaoxin/pangu
+      name: GitHub
+    - icon: fontawesome/brands/docker
+      link: https://github.com/xiaoxin/pangu/pkgs/container/pangu
+      name: Docker
+  alternate:
+    - name: 简体中文
+      link: /
+      lang: zh
+    - name: English
+      link: /en/
+      lang: en
+
+extra_css:
+  - assets/extra.css
+extra_javascript:
+  - assets/extra.js

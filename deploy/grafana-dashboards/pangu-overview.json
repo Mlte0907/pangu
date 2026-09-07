@@ -1,0 +1,834 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "id": 100,
+      "title": "📊 概览",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "title": "服务健康",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1}
+            ]
+          },
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "UP", "color": "green"}}}
+          ]
+        }
+      },
+      "targets": [
+        {"expr": "up{job=\"pangu\"}", "refId": "A", "legendFormat": "{{instance}}"}
+      ]
+    },
+    {
+      "id": 2,
+      "title": "总记忆数",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {"expr": "pangu_memory_count", "refId": "A", "legendFormat": "记忆数"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "活跃记忆",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}
+        }
+      },
+      "targets": [
+        {"expr": "pangu_active_memories", "refId": "A", "legendFormat": "活跃"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "数据库大小",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        }
+      },
+      "targets": [
+        {"expr": "pangu_db_size_bytes", "refId": "A", "legendFormat": "DB"}
+      ]
+    },
+    {
+      "id": 5,
+      "title": "LLM 缓存命中率",
+      "type": "gauge",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 50},
+              {"color": "green", "value": 80}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {"expr": "pangu_llm_cache_hit_rate", "refId": "A", "legendFormat": "{{model}}"}
+      ]
+    },
+    {
+      "id": 6,
+      "title": "嵌入断路器",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value_and_name",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "CLOSED ✓", "color": "green"}, "1": {"text": "OPEN ✗", "color": "red"}}}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        }
+      },
+      "targets": [
+        {"expr": "pangu_embed_circuit_open", "refId": "A", "legendFormat": "断路器"}
+      ]
+    },
+
+    {
+      "type": "row",
+      "id": 101,
+      "title": "🌐 API 网关",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "title": "API QPS（按方法+端点）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10}}
+      },
+      "targets": [
+        {
+          "expr": "sum by (method, path) (rate(pangu_api_requests_total[1m]))",
+          "refId": "A",
+          "legendFormat": "{{method}} {{path}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "API 错误率（4xx/5xx）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {"drawStyle": "bars", "fillOpacity": 50, "stacking": {"mode": "normal"}}
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_api_requests_total{status_code=~\"4..\"}[5m])) / sum(rate(pangu_api_requests_total[5m]))",
+          "refId": "A",
+          "legendFormat": "4xx 比例"
+        },
+        {
+          "expr": "sum(rate(pangu_api_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(pangu_api_requests_total[5m]))",
+          "refId": "B",
+          "legendFormat": "5xx 比例"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "API 响应延迟 P50/P95/P99",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(pangu_api_request_duration_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pangu_api_request_duration_seconds_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(pangu_api_request_duration_seconds_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "API 状态码分布",
+      "type": "piechart",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "pieType": "donut",
+        "displayLabels": ["name", "percent"],
+        "legend": {"displayMode": "list", "placement": "right"}
+      },
+      "targets": [
+        {
+          "expr": "sum by (status_code) (increase(pangu_api_requests_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{status_code}}"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "id": 102,
+      "title": "🧠 记忆引擎",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "title": "记忆创建速率（按 wing）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 23},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"]},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 15}}
+      },
+      "targets": [
+        {
+          "expr": "sum by (wing) (rate(pangu_memory_created_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{wing}}"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "记忆访问速率（按 wing）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 23},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"]},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 15}}
+      },
+      "targets": [
+        {
+          "expr": "sum by (wing) (rate(pangu_memory_accessed_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{wing}}"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "搜索 vs 创建 vs 删除",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 23},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {"expr": "rate(pangu_memory_search_total[5m])", "refId": "A", "legendFormat": "搜索"},
+        {"expr": "sum(rate(pangu_memory_created_total[5m]))", "refId": "B", "legendFormat": "创建"},
+        {"expr": "rate(pangu_memory_deleted_total[5m])", "refId": "C", "legendFormat": "删除"}
+      ]
+    },
+    {
+      "id": 23,
+      "title": "引擎执行时长 P95（按引擎）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 31},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, engine_name) (rate(pangu_engine_run_duration_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "{{engine_name}}"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "引擎错误率",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 31},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "ops", "custom": {"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}}
+      },
+      "targets": [
+        {
+          "expr": "sum by (engine_name) (rate(pangu_engine_errors_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{engine_name}}"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "id": 103,
+      "title": "🧬 嵌入服务（Embedding）",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "title": "嵌入请求速率（按 mode+outcome）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}}
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (mode, outcome) (rate(pangu_embed_requests_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{mode}}/{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "嵌入延迟 P50/P95/P99",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(pangu_embed_latency_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pangu_embed_latency_seconds_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(pangu_embed_latency_seconds_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "嵌入批大小分布（heatmap）",
+      "type": "heatmap",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48},
+      "options": {
+        "calculate": false,
+        "yAxis": {"axisPlacement": "left", "unit": "short", "decimals": 0},
+        "color": {"scheme": "Spectral", "mode": "scheme", "exponent": 0.5, "fill": "dark-orange", "scale": "exponential", "steps": 64},
+        "cellGap": 2,
+        "tooltip": {"show": true, "yHistogram": true}
+      },
+      "targets": [
+        {
+          "expr": "sum by (le) (increase(pangu_embed_batch_size_bucket[5m]))",
+          "refId": "A",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "title": "嵌入缓存大小 & 连续失败计数",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 48},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {"expr": "pangu_embed_cache_size", "refId": "A", "legendFormat": "缓存条数"},
+        {"expr": "pangu_embed_fail_count", "refId": "B", "legendFormat": "连续失败"}
+      ]
+    },
+
+    {
+      "type": "row",
+      "id": 104,
+      "title": "🤖 LLM 调用 & 缓存",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 56},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 40,
+      "title": "LLM 调用速率 vs 缓存命中",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 57},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}}}
+      },
+      "targets": [
+        {
+          "expr": "sum by (provider, model) (rate(pangu_llm_calls_total[5m]))",
+          "refId": "A",
+          "legendFormat": "实际调用 {{model}}"
+        },
+        {
+          "expr": "sum by (provider, model) (rate(pangu_llm_cache_hits_total[5m]))",
+          "refId": "B",
+          "legendFormat": "缓存命中 {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "title": "LLM 缓存命中率趋势",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 57},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 15}
+        }
+      },
+      "targets": [
+        {
+          "expr": "pangu_llm_cache_hit_rate",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "title": "LLM Token 用量（按 prompt/completion）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 65},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "stacking": {"mode": "normal"}}
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (model, type) (rate(pangu_llm_tokens_total[5m])) * 60",
+          "refId": "A",
+          "legendFormat": "{{model}}/{{type}}"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "title": "LLM 累计成本（USD）",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 65},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10},
+              {"color": "red", "value": 100}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (model) (pangu_llm_cost_usd_total)",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "title": "LLM 缓存容量（条 & 字节）",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 65},
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {
+          "expr": "pangu_llm_cache_size",
+          "refId": "A",
+          "legendFormat": "条数-{{layer}}"
+        },
+        {
+          "expr": "pangu_llm_cache_bytes / 1024 / 1024",
+          "refId": "B",
+          "legendFormat": "磁盘 MB"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "title": "LLM 延迟 P50/P95/P99",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 73},
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2}}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(pangu_llm_latency_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(pangu_llm_latency_seconds_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(pangu_llm_latency_seconds_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "title": "Miss/Hit 比例（按模型）",
+      "type": "bargauge",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 73},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 50}]}
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(pangu_llm_cache_misses_total[5m])) / sum by (model) (rate(pangu_llm_cache_hits_total[5m]) + rate(pangu_llm_cache_misses_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "id": 105,
+      "title": "⚙️ 系统运行时",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 81},
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 50,
+          "title": "进程 CPU 使用率",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 82},
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}},
+          "targets": [
+            {"expr": "rate(process_cpu_seconds_total[5m]) * 100", "refId": "A", "legendFormat": "{{instance}}"}
+          ]
+        },
+        {
+          "id": 51,
+          "title": "进程内存 (RSS)",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 82},
+          "fieldConfig": {"defaults": {"unit": "bytes"}},
+          "targets": [
+            {"expr": "process_resident_memory_bytes", "refId": "A", "legendFormat": "RSS"},
+            {"expr": "process_virtual_memory_bytes", "refId": "B", "legendFormat": "VSZ"}
+          ]
+        },
+        {
+          "id": 52,
+          "title": "Python GC 耗时",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 90},
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "targets": [
+            {"expr": "rate(python_gc_duration_seconds_sum[5m])", "refId": "A", "legendFormat": "GC {{generation}}"}
+          ]
+        },
+        {
+          "id": 53,
+          "title": "打开文件描述符",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 90},
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "targets": [
+            {"expr": "process_open_fds", "refId": "A", "legendFormat": "open"},
+            {"expr": "process_max_fds", "refId": "B", "legendFormat": "max"}
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["pangu", "memory", "agent"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "Prometheus", "value": "Prometheus"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "数据源",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {"selected": false, "text": "All", "value": "$__all"},
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "definition": "label_values(pangu_api_requests_total, method)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "HTTP 方法",
+        "multi": true,
+        "name": "method",
+        "options": [],
+        "query": {"query": "label_values(pangu_api_requests_total, method)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {"selected": false, "text": "All", "value": "$__all"},
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "definition": "label_values(pangu_memory_created_total, wing)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Wing",
+        "multi": true,
+        "name": "wing",
+        "options": [],
+        "query": {"query": "label_values(pangu_memory_created_total, wing)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+  },
+  "timezone": "browser",
+  "title": "盘古 — Memory System 监控",
+  "uid": "pangu-memory",
+  "version": 1,
+  "weekStart": ""
+}

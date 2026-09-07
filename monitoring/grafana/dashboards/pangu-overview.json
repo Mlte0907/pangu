@@ -1,0 +1,322 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "title": "盘古 — 记忆系统总览",
+  "tags": ["pangu", "memory"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "id": 1,
+      "title": "服务状态",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "up{job='pangu'}",
+          "legendFormat": "API Up",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" } }, "type": "value" },
+            { "options": { "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none" }
+    },
+    {
+      "type": "stat",
+      "id": 2,
+      "title": "活跃记忆数",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "pangu_active_memories",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "API QPS",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_api_requests_total[1m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "P95 延迟 (s)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pangu_api_request_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
+    },
+    {
+      "type": "graph",
+      "id": 5,
+      "title": "记忆写入速率",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_memory_created_total[1m])) by (wing)",
+          "legendFormat": "{{wing}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "ops" }, { "format": "short" }]
+    },
+    {
+      "type": "graph",
+      "id": 6,
+      "title": "API 请求速率 (按状态码)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_api_requests_total[1m])) by (status_code)",
+          "legendFormat": "{{status_code}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "reqps" }, { "format": "short" }]
+    },
+    {
+      "type": "graph",
+      "id": 7,
+      "title": "引擎运行耗时 P50/P95/P99",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(pangu_engine_run_duration_seconds_bucket[5m])) by (le, engine_name))",
+          "legendFormat": "P50 {{engine_name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pangu_engine_run_duration_seconds_bucket[5m])) by (le, engine_name))",
+          "legendFormat": "P95 {{engine_name}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(pangu_engine_run_duration_seconds_bucket[5m])) by (le, engine_name))",
+          "legendFormat": "P99 {{engine_name}}",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [{ "format": "s" }, { "format": "short" }]
+    },
+    {
+      "type": "graph",
+      "id": 8,
+      "title": "嵌入 API 延迟 + 成功率",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pangu_embed_latency_seconds_bucket[5m])) by (le, mode))",
+          "legendFormat": "P95 {{mode}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(pangu_embed_requests_total{outcome='success'}[5m])) / sum(rate(pangu_embed_requests_total[5m]))",
+          "legendFormat": "Success Rate",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        { "format": "s" },
+        { "format": "percentunit", "max": 1, "min": 0 }
+      ]
+    },
+    {
+      "type": "graph",
+      "id": 9,
+      "title": "引擎错误率",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_engine_errors_total[5m])) by (engine_name)",
+          "legendFormat": "{{engine_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "ops" }, { "format": "short" }]
+    },
+    {
+      "type": "graph",
+      "id": 10,
+      "title": "Top 10 慢 API 端点",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "expr": "topk(10, histogram_quantile(0.95, sum(rate(pangu_api_request_duration_seconds_bucket[5m])) by (le, path)))",
+          "legendFormat": "{{path}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "s" }, { "format": "short" }]
+    },
+    {
+      "type": "stat",
+      "id": 11,
+      "title": "LLM 缓存命中率",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 28 },
+      "description": "所有 LLM 调用的平均缓存命中率",
+      "targets": [
+        { "expr": "avg(pangu_llm_cache_hit_rate)", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 50 },
+            { "color": "green", "value": 80 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "id": 12,
+      "title": "LLM 缓存条目",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 28 },
+      "description": "内存+磁盘总条目数",
+      "targets": [
+        { "expr": "sum(pangu_llm_cache_size)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "id": 13,
+      "title": "累计成本 (USD)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 28 },
+      "description": "所有 LLM 调用的累计估算成本",
+      "targets": [
+        { "expr": "sum(pangu_llm_cost_usd_total)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 } }
+    },
+    {
+      "type": "timeseries",
+      "id": 14,
+      "title": "LLM 缓存命中 vs 实际调用",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "description": "缓存有效性的核心可视化",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_cache_hits_total[1m]))",
+          "refId": "A",
+          "legendFormat": "缓存命中"
+        },
+        {
+          "expr": "sum(rate(pangu_llm_calls_total[1m]))",
+          "refId": "B",
+          "legendFormat": "实际 API 调用"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "fillOpacity": 30, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "id": 15,
+      "title": "节省 Token (累计)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 32 },
+      "description": "通过缓存命中累计节省的 token 数（≈ 节省的费用）",
+      "targets": [
+        { "expr": "sum(pangu_llm_tokens_saved_total)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "id": 16,
+      "title": "持久化缓存磁盘占用",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 32 },
+      "description": "SQLite 缓存文件大小（MB）",
+      "targets": [
+        { "expr": "sum(pangu_llm_persistent_cache_bytes) / 1024 / 1024", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 50 },
+            { "color": "red", "value": 90 }
+          ]}
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 17,
+      "title": "节省成本速率 (USD/h)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "description": "通过缓存命中按小时估算的节省成本",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_cost_usd_total[1h])) * (avg(pangu_llm_cache_hit_rate) / 100)",
+          "refId": "A",
+          "legendFormat": "节省成本"
+        },
+        {
+          "expr": "sum(rate(pangu_llm_cost_usd_total[1h]))",
+          "refId": "B",
+          "legendFormat": "实际成本"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": { "fillOpacity": 30, "lineWidth": 2 }
+        }
+      }
+    }
+  ]
+}

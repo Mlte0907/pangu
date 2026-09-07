@@ -1,0 +1,30 @@
+# PR 自动 labeler — 按改动文件路径自动打 scope label
+feature:
+  - pangu/api/**
+  - pangu/server/**
+  - pangu/cli.py
+fix:
+  - pangu/**/*.py
+perf:
+  - pangu/memory/**
+  - pangu/search/**
+  - pangu/core/cache.py
+security:
+  - pangu/api/server.py
+  - pangu/api/auth.py
+  - pangu/core/config.py
+docs:
+  - docs/**
+  - '**/*.md'
+test:
+  - tests/**
+ci:
+  - .github/**
+chore:
+  - 'pyproject.toml'
+  - 'requirements*.txt'
+  - 'Dockerfile*'
+config:
+  - '*.yml'
+  - '*.yaml'
+  - '*.toml'

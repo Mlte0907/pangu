@@ -1,0 +1,79 @@
+# 盘古 — Docker 构建忽略
+# 目的：减小上下文，加速构建
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+env/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# 测试与覆盖率
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# 缓存与日志
+.cache/
+.mypy_cache/
+.ruff_cache/
+.pyright_cache/
+.idea/
+.vscode/
+*.log
+*.pid
+*.sock
+
+# 临时文件
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 文档构建产物（CI 内单独构建）
+site/
+docs/_build
+
+# 数据与备份
+data/
+*.db
+*.sqlite3
+*.sqlite
+*.bak
+*.tar.gz
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# 不需要的运行时
+node_modules/
+npm-debug.log*
+
+# 报告（CI artifact）
+reports/
+
+# 大型模型文件
+*.onnx
+*.bin
+*.safetensors
+*.gguf

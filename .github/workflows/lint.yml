@@ -1,0 +1,39 @@
+# 盘古 — Lint 工作流
+# =====================
+# 触发：push / pull_request
+
+name: Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  ruff:
+    name: Ruff Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: 安装 ruff
+        run: pip install "ruff>=0.4.0"
+
+      - name: 检查
+        run: |
+          ruff check pangu/ tests/
+          ruff format --check pangu/ tests/
+
+      - name: 自动修复（仅 PR）
+        if: github.event_name == 'pull_request'
+        run: ruff check --fix --unsafe-fixes pangu/ tests/ || true

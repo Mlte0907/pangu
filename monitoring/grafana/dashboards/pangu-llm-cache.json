@@ -1,0 +1,440 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "title": "盘古 — LLM 缓存大盘",
+  "tags": ["pangu", "llm", "cache"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "id": 1,
+      "title": "缓存命中率",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "description": "LLM 响应缓存命中率（百分比 0-100）",
+      "targets": [
+        { "expr": "avg(pangu_llm_cache_hit_rate)", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "orange", "value": 30 },
+            { "color": "yellow", "value": 60 },
+            { "color": "green", "value": 80 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "id": 2,
+      "title": "节省成本 (USD)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "description": "通过缓存节省的 LLM 调用成本估算",
+      "targets": [
+        {
+          "expr": "sum(increase(pangu_llm_cost_usd_total[24h])) * (avg(pangu_llm_cache_hit_rate) / 100)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "调用次数/分钟",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "description": "实际 LLM API 调用速率（缓存未命中）",
+      "targets": [
+        { "expr": "sum(rate(pangu_llm_calls_total[1m])) * 60", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "P95 延迟 (ms)",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "description": "LLM 调用 P95 延迟",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pangu_llm_latency_seconds_bucket[5m])) by (le, provider, model)) * 1000",
+          "refId": "A",
+          "legendFormat": "{{provider}}/{{model}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 5,
+      "title": "缓存命中率时间线",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "description": "按 provider/model 拆分",
+      "targets": [
+        {
+          "expr": "pangu_llm_cache_hit_rate",
+          "refId": "A",
+          "legendFormat": "{{provider}}/{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 30, "lineWidth": 2 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "id": 6,
+      "title": "缓存命中数（按层）",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "description": "内存层 vs 磁盘层 命中数",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_cache_hits_total[1m])) by (layer)",
+          "refId": "A",
+          "legendFormat": "layer={{layer}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "fillOpacity": 50, "stacking": { "mode": "normal" } }
+        }
+      }
+    },
+    {
+      "type": "piechart",
+      "id": 7,
+      "title": "缓存来源分布",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "description": "内存 vs 磁盘 命中占比",
+      "targets": [
+        {
+          "expr": "sum(pangu_llm_cache_hits_total) by (layer)",
+          "refId": "A",
+          "legendFormat": "{{layer}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 8,
+      "title": "Token 使用量",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "description": "按 type (prompt/completion) 拆分",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_tokens_total[5m])) by (type)",
+          "refId": "A",
+          "legendFormat": "{{type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 50, "stacking": { "mode": "normal" } }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 9,
+      "title": "成本累积",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "description": "LLM 成本按 provider 累积",
+      "targets": [
+        {
+          "expr": "sum(increase(pangu_llm_cost_usd_total[1h])) by (provider)",
+          "refId": "A",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+    },
+    {
+      "type": "bargauge",
+      "id": 10,
+      "title": "内存缓存大小",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 22 },
+      "description": "LRU 内存缓存当前条目数",
+      "targets": [
+        { "expr": "pangu_llm_memory_cache_size", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 100 },
+            { "color": "red", "value": 120 }
+          ]}
+        }
+      }
+    },
+    {
+      "type": "bargauge",
+      "id": 11,
+      "title": "持久化缓存大小",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 22 },
+      "description": "SQLite 磁盘缓存条目数",
+      "targets": [
+        { "expr": "pangu_llm_cache_size{layer=\"persistent\"}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "gauge",
+      "id": 12,
+      "title": "磁盘占用 (MB)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 22 },
+      "description": "持久化缓存磁盘占用",
+      "targets": [
+        { "expr": "pangu_llm_cache_bytes / 1024 / 1024", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 50 },
+            { "color": "red", "value": 90 }
+          ]}
+        }
+      }
+    },
+    {
+      "type": "heatmap",
+      "id": 13,
+      "title": "LLM 调用延迟热力图",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "description": "按时间分桶的延迟分布",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_latency_seconds_bucket[5m])) by (le)",
+          "refId": "A",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "id": 14,
+      "title": "Provider / Model 性能对比",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "description": "按 provider/model 聚合的关键指标",
+      "targets": [
+        {
+          "expr": "pangu_llm_calls_total",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        { "id": "seriesToColumns", "options": { "byField": "provider" } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 15,
+      "title": "累计命中次数",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 36 },
+      "description": "持久化缓存的累计命中数（重启后保持）",
+      "targets": [
+        {
+          "expr": "pangu_llm_persistent_cache_hit_count_total",
+          "refId": "A",
+          "legendFormat": "{{provider}}/{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 16,
+      "title": "Provider/Model 命中率拆分",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "description": "按 provider/model 拆分缓存命中率",
+      "targets": [
+        {
+          "expr": "pangu_llm_cache_hit_rate",
+          "refId": "A",
+          "legendFormat": "{{provider}}/{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+    },
+    {
+      "type": "barchart",
+      "id": 17,
+      "title": "Provider 调用量分布",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "description": "按 provider 聚合的累计 LLM 调用次数",
+      "targets": [
+        {
+          "expr": "sum(pangu_llm_calls_total) by (provider)",
+          "refId": "A",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "orientation": "horizontal", "fillOpacity": 80 }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 18,
+      "title": "缓存写入速率 (ops/s)",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 50 },
+      "description": "持久化缓存的写入速率（节流后）",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_cache_writes_total[1m])) by (provider)",
+          "refId": "A",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "fillOpacity": 50, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "id": 19,
+      "title": "累计节省 Token",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 50 },
+      "description": "通过缓存累计节省的 token 数",
+      "targets": [
+        { "expr": "sum(pangu_llm_persistent_cache_tokens_saved_total)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "gauge",
+      "id": 20,
+      "title": "磁盘使用率",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 50 },
+      "description": "持久化缓存磁盘占用百分比",
+      "targets": [
+        {
+          "expr": "pangu_llm_persistent_cache_bytes / on() pangu_llm_persistent_cache_max_bytes * 100",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 60 },
+            { "color": "orange", "value": 80 },
+            { "color": "red", "value": 95 }
+          ]}
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "每次调用成本 (USD)",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 56 },
+      "description": "LLM 实际调用成本速率（不含缓存）",
+      "targets": [
+        {
+          "expr": "sum(rate(pangu_llm_cost_usd_total[5m])) by (provider)",
+          "refId": "A",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": { "fillOpacity": 30, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "type": "table",
+      "id": 22,
+      "title": "Provider 健康度总览",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 56 },
+      "description": "每个 provider 的核心指标一览",
+      "targets": [
+        {
+          "expr": "pangu_llm_calls_total",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "expr": "pangu_llm_cache_hit_rate",
+          "refId": "B",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "expr": "pangu_llm_avg_latency_ms",
+          "refId": "C",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "expr": "pangu_llm_cost_usd_total",
+          "refId": "D",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        { "id": "seriesToColumns", "options": { "byField": "provider" } },
+        { "id": "organize", "options": {
+          "excludeByName": { "model": true, "Time": true, "job": true, "instance": true, "service": true, "monitor": true }
+        }}
+      ]
+    }
+  ]
+}

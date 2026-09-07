@@ -1,0 +1,46 @@
+# Release Drafter 配置 — 自动从 PR 标题 / label 聚合 release notes
+# https://github.com/release-drafter/release-drafter
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+version-resolver:
+  major:
+    labels: ['breaking', 'major']
+  minor:
+    labels: ['feature', 'minor']
+  patch:
+    labels: ['fix', 'patch', 'docs', 'chore', 'refactor', 'test', 'perf', 'security']
+  default: patch
+categories:
+  - title: '🚨 Breaking Changes'
+    labels: ['breaking']
+    exclude-defaults: true
+  - title: '✨ New Features'
+    labels: ['feature', 'minor']
+  - title: '🐛 Bug Fixes'
+    labels: ['fix', 'bug']
+  - title: '⚡ Performance'
+    labels: ['perf']
+  - title: '🔒 Security'
+    labels: ['security', 'CVE']
+  - title: '📚 Documentation'
+    labels: ['docs']
+  - title: '🧪 Tests'
+    labels: ['test']
+  - title: '🔧 Maintenance'
+    labels: ['chore', 'refactor']
+  - title: '📦 Dependencies'
+    labels: ['dependencies']
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+exclude-labels: ['skip-changelog', 'duplicate', 'invalid']
+template: |
+  # 盘古 $RESOLVED_VERSION
+
+  $CHANGES
+
+  ---
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+  ## 📊 Stats
+  - Contributors: $CONTRIBUTOR_COUNT
+  - Open issues: https://github.com/$OWNER/$REPOSITORY/issues

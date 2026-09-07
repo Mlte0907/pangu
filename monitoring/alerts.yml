@@ -1,0 +1,265 @@
+# Prometheus 告警规则
+# =====================================
+# 盘古系统监控告警
+
+groups:
+  - name: pangu_api_alerts
+    interval: 30s
+    rules:
+      # ── API 健康度告警 ──
+      - alert: PanguAPIDown
+        expr: up{job="pangu"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "盘古 API 服务不可用"
+          description: "盘古 API 已停止响应超过 1 分钟"
+
+      - alert: PanguAPIHighErrorRate
+        expr: |
+          rate(pangu_api_requests_total{status_code=~"5.."}[5m])
+          / rate(pangu_api_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 API 5xx 错误率过高 (>5%)"
+          description: "API 5xx 错误率: {{ $value | humanizePercentage }}"
+
+      - alert: PanguAPISlowResponse
+        expr: |
+          histogram_quantile(0.95,
+            rate(pangu_api_request_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 API P95 响应时间 > 1s"
+          description: "P95 响应: {{ $value }}s"
+
+  - name: pangu_memory_alerts
+    interval: 30s
+    rules:
+      # ── 记忆系统告警 ──
+      - alert: PanguMemoryGrowthExplosion
+        expr: |
+          rate(pangu_memory_created_total[5m]) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古记忆增长过快 (>100/分钟)"
+          description: "可能存在写入循环或异常客户端"
+
+      - alert: PanguMemorySearchErrors
+        expr: |
+          rate(pangu_memory_search_total{status="error"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "记忆搜索错误率过高"
+          description: "搜索错误率: {{ $value }}"
+
+  - name: pangu_embedding_alerts
+    interval: 30s
+    rules:
+      # ── 嵌入服务告警 ──
+      - alert: PanguEmbedServiceDown
+        expr: |
+          (
+            rate(pangu_embed_requests_total{outcome="success"}[5m]) == 0
+          ) and (
+            rate(pangu_embed_requests_total[5m]) > 0
+          )
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "盘古嵌入服务疑似故障"
+          description: "所有嵌入请求都失败"
+
+      - alert: PanguEmbedHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(pangu_embed_latency_seconds_bucket[5m])
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "嵌入 API P95 延迟 > 2s"
+          description: "P95 延迟: {{ $value }}s"
+
+  - name: pangu_engine_alerts
+    interval: 30s
+    rules:
+      # ── 引擎告警 ──
+      - alert: PanguEngineErrorSpike
+        expr: |
+          rate(pangu_engine_errors_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古引擎错误率飙升"
+          description: "引擎 {{ $labels.engine_name }} 错误率: {{ $value }}/s"
+
+      - alert: PanguEngineStuck
+        expr: |
+          histogram_quantile(0.99,
+            rate(pangu_engine_run_duration_seconds_bucket[5m])
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古引擎运行超时 (P99 > 30s)"
+          description: "引擎 {{ $labels.engine_name }} P99 耗时: {{ $value }}s"
+
+  - name: pangu_llm_cache_alerts
+    interval: 30s
+    rules:
+      # ── LLM 缓存告警 (v0.1.2) ──
+      - alert: PanguLLMCacheLowHitRate
+        expr: |
+          pangu_llm_cache_hit_rate < 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM 缓存命中率偏低 (<30%)"
+          description: |
+            {{ $labels.provider }}/{{ $labels.model }} 缓存命中率仅 {{ $value | humanize }}%。
+            可能原因：1) 调用模式高度随机；2) cache 未启用；3) TTL 过期过快。
+            建议：检查 llm_cache_persist 配置，启用持久化缓存以提高命中率。
+
+      - alert: PanguLLMCacheDisabled
+        expr: |
+          pangu_llm_calls_total > 100 and pangu_llm_cache_hits_total == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM 缓存未生效（>100 次调用 0 命中）"
+          description: "已调用 {{ $value }} 次 LLM，但 0 命中。请检查缓存开关"
+
+      - alert: PanguLLMHighCost
+        expr: |
+          increase(pangu_llm_cost_usd_total[1h]) > 5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM 1 小时成本 > $5"
+          description: |
+            {{ $labels.provider }}/{{ $labels.model }} 1 小时累计成本 ${{ $value }}。
+            建议：1) 检查缓存命中率；2) 切换到更便宜的模型；3) 优化 prompt 减少 token。
+
+      - alert: PanguLLMPersistentCacheLarge
+        expr: |
+          pangu_llm_cache_bytes > 104857600
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "盘古 LLM 持久化缓存 > 100MB"
+          description: "当前占用 {{ $value | humanize1024 }}B，可考虑清理"
+
+      - alert: PanguLLMSlowCalls
+        expr: |
+          histogram_quantile(0.95,
+            rate(pangu_llm_latency_seconds_bucket[5m])
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM P95 延迟 > 10s"
+          description: "{{ $labels.provider }}/{{ $labels.model }} P95 延迟: {{ $value }}s"
+
+  - name: pangu_llm_cache_advanced_alerts
+    interval: 30s
+    rules:
+      # ── LLM 缓存高级告警 (v0.1.3) ──
+      - alert: PanguLLMCacheDiskNearFull
+        expr: |
+          pangu_llm_persistent_cache_bytes
+          / pangu_llm_persistent_cache_max_bytes > 0.9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM 持久化缓存磁盘占用 > 90%"
+          description: |
+            磁盘占用率 {{ $value | humanizePercentage }}，即将触发 LRU 自动清理。
+            建议：1) 调大 llm_cache_max_disk_mb；2) 调小 TTL；3) 手动 VACUUM 释放碎片。
+
+      - alert: PanguLLMCacheDiskCritical
+        expr: |
+          pangu_llm_persistent_cache_bytes
+          / pangu_llm_persistent_cache_max_bytes > 0.98
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "盘古 LLM 持久化缓存磁盘即将写满 (>98%)"
+          description: "磁盘占用率 {{ $value | humanizePercentage }}，强烈建议清理"
+
+      - alert: PanguLLMMemoryCacheExhausted
+        expr: |
+          pangu_llm_memory_cache_size >= pangu_llm_cache_max
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "盘古 LLM 内存 LRU 缓存容量触顶"
+          description: |
+            内存缓存已使用 {{ $value }} 条（= llm_cache_max）。
+            说明 LLM 调用模式命中范围较广，可考虑调大 llm_cache_max。
+
+      - alert: PanguLLMCacheWritesFailure
+        expr: |
+          rate(pangu_llm_cache_writes_total[5m]) == 0
+          and rate(pangu_llm_calls_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM 持久化缓存未在写入（API 调用进行中）"
+          description: |
+            已记录实际 LLM 调用，但 0 次持久化写入。
+            可能原因：1) 持久化缓存被禁用；2) SQLite 写入失败；3) 权限不足。
+            检查 ~/.pangu/llm_cache.db 状态。
+
+      - alert: PanguLLMCacheHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(pangu_llm_cache_lookup_duration_seconds_bucket[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "盘古 LLM 缓存查找 P95 延迟 > 50ms"
+          description: "缓存查找 P95: {{ $value }}s（可能 SQLite 索引膨胀，考虑 VACUUM）"
+
+  - name: pangu_llm_warmup_alerts
+    interval: 1m
+    rules:
+      # ── 启动预热告警 (v0.1.3) ──
+      - alert: PanguLLMWarmupNoRecords
+        expr: |
+          time() - pangu_llm_warmup_last_success_timestamp > 86400
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "盘古 LLM 启动预热超过 24h 未成功"
+          description: |
+            最近一次成功预热已过去 24 小时。
+            如启用了 warmup_on_start，请检查：
+            1) ~/.pangu/logs/llm_cache_warmup.log 中的错误
+            2) LLM provider 是否仍可用
