@@ -5,12 +5,11 @@
 name: Test
 
 on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
-  # 已合并到 ci.yml，不再自动触发
-  # push:
-  #   branches: [main, develop]
-  # pull_request:
-  #   branches: [main, develop]
 
 jobs:
   test:
