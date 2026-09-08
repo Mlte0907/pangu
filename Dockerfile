@@ -11,7 +11,7 @@
 #
 # 构建示例：
 #   # 默认（runtime，最常见）
-#   docker buildx build --platform linux/amd64,linux/arm64 -t pangu:3.0.0 .
+#   docker buildx build --platform linux/amd64,linux/arm64 -t pangu:0.1.0 .
 #
 #   # Alpine 小镜像
 #   docker buildx build --target runtime-slim -t pangu:slim .

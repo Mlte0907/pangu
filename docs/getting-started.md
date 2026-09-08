@@ -12,7 +12,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 
 # 方式 B：使用 Docker
-docker run -p 19529:19529 pangu/pangu:1.0.0
+docker run -p 19529:19529 pangu/pangu:0.1.0
 ```
 
 ## 2. 启动服务

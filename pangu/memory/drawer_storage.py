@@ -190,7 +190,7 @@ class SqliteDrawerStorage(DrawerStorage):
             # 记录存储版本
             conn.execute(
                 "INSERT OR REPLACE INTO storage_info (key, value, updated_at) VALUES (?, ?, ?)",
-                ("version", "1.0.0", time.time())
+                ("version", "0.1.0", time.time())
             )
     
     def load(self) -> List[Drawer]:

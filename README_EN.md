@@ -1,6 +1,6 @@
 # Pangu — AI Agent Memory System
 
-> **Note**: the canonical, up-to-date documentation is the Chinese [README.md](README.md) (v1.0.0).
+> **Note**: the canonical, up-to-date documentation is the Chinese [README.md](README.md) (v0.1.0).
 > This English file is kept for historical reference; see also
 > [docs/memory-system-internals.md](docs/memory-system-internals.md) for the memory internals.
 
@@ -10,7 +10,7 @@ Pangu is not a complete Agent framework, but a dedicated memory intelligence sys
 
 | Metric | Value | Metric | Value |
 |:---|:---|:---|:---|
-| Version | v1.0.0 | Port | 19529 |
+| Version | v0.1.0 | Port | 19529 |
 | Git Commits | — | Tech Stack | Python 3.12, ONNX, FAISS, SQLite |
 | Test Cases | — | Runtime Data | `~/.pangu/` |
 | MCP Tools | 28+ | Modules | 17 |

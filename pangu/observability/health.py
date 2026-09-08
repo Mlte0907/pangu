@@ -11,7 +11,7 @@ try:
 
     __version__ = _get_version("pangu")
 except Exception:
-    __version__ = "3.0.0"
+    __version__ = "0.1.0"
 
 from pangu.memory.embedding import get_embedding_service
 

@@ -142,9 +142,9 @@ def create_app() -> FastAPI:
         logger.info("盘古 server stopped")
 
     app = FastAPI(
-        title="盘古 v3.7 — AI Agent 多模态记忆系统",
+        title="盘古 v0.1 — AI Agent 多模态记忆系统",
         description="421个MCP工具 + 4种模态输入（文本/图片/视频/音频）+ 跨模态搜索 + 自主管理",
-        version="3.7.0",
+        version="0.1.0",
         lifespan=lifespan,
     )
 
@@ -564,7 +564,7 @@ def create_app() -> FastAPI:
             "message": "ok",
             "data": {
                 "name": "盘古",
-                "version": "3.0.0",
+                "version": "0.1.0",
                 "health": quick_health_check(),
                 "config": {
                     "host": config.host,

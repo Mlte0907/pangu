@@ -15,10 +15,10 @@ services:
       dockerfile: Dockerfile
       target: runtime
       args:
-        VERSION: 3.0.0
+        VERSION: 0.1.0
         BUILD_DATE: ${BUILD_DATE:-}
         VCS_REF: ${VCS_REF:-}
-    image: pangu:1.0.0
+    image: pangu:0.1.0
     container_name: pangu
     restart: unless-stopped
     ports:

@@ -8,7 +8,7 @@ class AutoTaggerPlugin(Plugin):
     def __init__(self):
         super().__init__(PluginInfo(
             name="auto_tagger",
-            version="1.0.0",
+            version="0.1.0",
             description="根据内容自动添加标签",
             hooks=[HookPoint.PRE_MEMORY_ADD],
         ))

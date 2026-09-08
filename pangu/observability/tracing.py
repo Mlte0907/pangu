@@ -34,7 +34,7 @@ def _init_tracer():
             resource=trace.Resource.create(
                 {
                     "service.name": "pangu",
-                    "service.version": "1.0.0",
+                    "service.version": "0.1.0",
                 }
             )
         )
@@ -56,7 +56,7 @@ def _init_tracer():
             provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
         trace.set_tracer_provider(provider)
-        _tracer = trace.get_tracer("pangu", "1.0.0")
+        _tracer = trace.get_tracer("pangu", "0.1.0")
         _available = True
         return _tracer
     except ImportError:

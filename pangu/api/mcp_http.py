@@ -28,7 +28,7 @@ async def _mcp_handle(request: Request) -> Response:
                         "jsonrpc": "2.0",
                         "result": {
                             "protocolVersion": "2024-11-05",
-                            "serverInfo": {"name": "pangu", "version": "3.7.0"},
+                            "serverInfo": {"name": "pangu", "version": "0.1.0"},
                             "capabilities": {"tools": {}},
                             "endpoints": {"mcp": message_url},
                         },
@@ -59,7 +59,7 @@ async def _mcp_handle(request: Request) -> Response:
                 "jsonrpc": "2.0",
                 "result": {
                     "protocolVersion": "2024-11-05",
-                    "serverInfo": {"name": "pangu", "version": "3.7.0"},
+                    "serverInfo": {"name": "pangu", "version": "0.1.0"},
                     "capabilities": {"tools": {}},
                 },
             }

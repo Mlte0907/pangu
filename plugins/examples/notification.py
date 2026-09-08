@@ -11,7 +11,7 @@ class NotificationPlugin(Plugin):
     def __init__(self):
         super().__init__(PluginInfo(
             name="notification",
-            version="1.0.0",
+            version="0.1.0",
             description="记忆变更通知",
             hooks=[HookPoint.POST_MEMORY_ADD, HookPoint.POST_MEMORY_FORGET],
         ))

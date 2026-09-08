@@ -139,7 +139,7 @@ spec:
     spec:
       containers:
       - name: pangu
-        image: ghcr.io/xiaoxin/pangu:v1.0.0
+        image: ghcr.io/xiaoxin/pangu:v0.1.0
         ports:
         - containerPort: 19528
         env:

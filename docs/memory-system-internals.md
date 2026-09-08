@@ -1,6 +1,6 @@
 # 盘古记忆系统（pangu）内部原理报告
 
-> 调研基线：仓库 `/home/xiaoxin/pangu`，pyproject 版本 **3.7.0**（`pyproject.toml:3`）。本文所有结论均附文件路径 + 行号。
+> 调研基线：仓库 `/home/xiaoxin/pangu`，pyproject 版本 **0.1.0**（`pyproject.toml:3`）。本文所有结论均附文件路径 + 行号。
 
 ## 1. 仓库全貌
 
@@ -27,10 +27,10 @@ README.md / README_EN.md / CHANGELOG.md / AGENTS.md / ROADMAP_V2.md
 
 | 项 | 值 | 证据 |
 |---|---|---|
-| 包名/版本 | `pangu` / `3.7.0` | `pyproject.toml:2-3` |
+| 包名/版本 | `pangu` / `0.1.0` | `pyproject.toml:2-3` |
 | 描述 | "盘古 — AI Agent 多模态记忆系统" | `pyproject.toml:4` |
 | 控制台入口 | `pangu = "pangu.cli:app"` | `pyproject.toml:60-61` |
-| API 标题 | "盘古 v3.7 — AI Agent 多模态记忆系统" | `pangu/api/server.py:144-147` |
+| API 标题 | "盘古 v0.1 — AI Agent 多模态记忆系统" | `pangu/api/server.py:144-147` |
 
 ### 1.3 三种运行形态
 

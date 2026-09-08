@@ -8,7 +8,7 @@ class DedupGuardPlugin(Plugin):
     def __init__(self, threshold: float = 0.95):
         super().__init__(PluginInfo(
             name="dedup_guard",
-            version="1.0.0",
+            version="0.1.0",
             description="写入前检查重复内容",
             hooks=[HookPoint.PRE_MEMORY_ADD],
         ))

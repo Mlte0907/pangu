@@ -1,6 +1,6 @@
 # 盘古（Pangu）— AI Agent 多模态记忆系统
 
-<p align="center"><b>v1.0.0</b> · 分层工具暴露 · MCP Server + REST API · 让 Agent 拥有会遗忘、会联想、会巩固的长期记忆</p>
+<p align="center"><b>v0.1.0</b> · 分层工具暴露 · MCP Server + REST API · 让 Agent 拥有会遗忘、会联想、会巩固的长期记忆</p>
 
 盘古以"记忆宫殿"为隐喻，把 Agent 的记忆组织为 **Wing（翼）→ Room（房间）→ Drawer（抽屉）** 三级空间，
 配以 **混合检索（向量 + 全文 + RRF）**、**艾宾浩斯个性化遗忘曲线**、**海马体神经激活扩散** 与

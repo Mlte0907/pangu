@@ -43,7 +43,7 @@ try:
     app = create_app()
     check("app.create_app", app is not None)
     check("app.title", "盘古" in app.title, app.title)
-    check("app.version", app.version == "1.0.0", app.version)
+    check("app.version", app.version == "0.1.0", app.version)
 except Exception as e:
     check("app.create_app", False, str(e))
     print(f"  cannot proceed: {e}")
