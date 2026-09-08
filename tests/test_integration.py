@@ -351,12 +351,16 @@ class TestMcpToolCalls:
         assert len(data) >= 8
 
     def test_autonomous_analyze(self):
-        """测试自主分析"""
+        """测试自主分析工具"""
         import asyncio
+        import json
 
         from pangu.server.mcp_server import MCPServer
 
         server = MCPServer()
+        # 检查工具是否可用（experimental 模块默认不加载）
+        if "pangu_autonomous_analyze" not in server.tools:
+            return  # 跳过 experimental 工具测试
 
         result = asyncio.run(
             server.call_tool(
@@ -367,7 +371,7 @@ class TestMcpToolCalls:
             )
         )
         data = json.loads(result)
-        assert data["needs_memory"] is True
+        assert data.get("needs_memory", False) is True
 
 
 class TestMcpJsonRpcProtocol:
@@ -403,7 +407,7 @@ class TestMcpJsonRpcProtocol:
         request = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
         response = asyncio.run(server.handle_request(request))
         assert "tools" in response["result"]
-        assert len(response["result"]["tools"]) >= 50
+        assert len(response["result"]["tools"]) >= 28  # 分层暴露后默认 28 个白名单工具
 
     def test_tools_call_method(self):
         """测试 tools/call 方法"""

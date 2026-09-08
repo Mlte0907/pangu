@@ -43,6 +43,7 @@ _FTS_SPECIAL_RE = re.compile(r'\b(AND|OR|NOT|NEAR)\b|[()"*^]')
 
 from .utils import LRUCache
 _SEARCH_CACHE = LRUCache(max_size=100, ttl_seconds=60)
+_CACHE_TTL = 60  # 搜索缓存 TTL（秒）
 
 
 def _sanitize_fts_query(query: str) -> str:
