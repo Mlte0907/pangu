@@ -44,7 +44,8 @@ class TestMcpServerTools:
 
         server = MCPServer()
         tools = server.tools
-        assert len(tools) >= 50  # 至少 50 个工具
+        # 分层暴露后默认 28 个白名单工具
+        assert len(tools) >= 28
 
     def test_fuxi_tools_registered(self):
         """测试伏羲移植工具已注册"""
