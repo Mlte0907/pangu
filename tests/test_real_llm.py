@@ -285,7 +285,7 @@ class TestRealLLMMemoryMethods:
         engine = LLMEngine(cfg)
 
         memories = [
-            {"wing": "work", "room": "project", "content": "完成盘古 v0.1.0 的核心架构"},
+            {"wing": "work", "room": "project", "content": "完成盘古 v1.0.0 的核心架构"},
             {"wing": "work", "room": "project", "content": "新增 ONNX 本地加速嵌入模块，CPU 性能提升 10x"},
             {"wing": "study", "room": "ai", "content": "学习 sentence-transformers 的 ONNX 转换方法"},
         ]
@@ -513,7 +513,7 @@ async def test_quick_smoke():
 
     # 测试 3: 记忆摘要
     memories = [
-        {"wing": "work", "content": "完成盘古 v0.1.0"},
+        {"wing": "work", "content": "完成盘古 v1.0.0"},
         {"wing": "work", "content": "集成 ONNX 加速"},
     ]
     start = time.time()

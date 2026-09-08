@@ -326,10 +326,20 @@ class PanguConfig(BaseSettings):
         data = self.model_dump(
             exclude={"api_key", "llm_api_key", "siliconflow_key", "jwt_secret", "jwt_default_password"}
         )
-        # 转换 Path 对象为字符串
-        for k, v in data.items():
-            if isinstance(v, Path):
-                data[k] = str(v)
+
+        # 递归转换：Path → str, set → list
+        def _convert(obj):
+            if isinstance(obj, Path):
+                return str(obj)
+            elif isinstance(obj, set):
+                return list(obj)
+            elif isinstance(obj, dict):
+                return {k: _convert(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_convert(item) for item in obj]
+            return obj
+
+        data = _convert(data)
 
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)

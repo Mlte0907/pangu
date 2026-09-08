@@ -412,7 +412,7 @@ class TestMiners:
 
         config = PanguConfig()
         miner = ConvoMiner(config)
-        drawers = miner.parse_claude_jsonl(str(convo_file), wing="test")
+        drawers = miner.parse_jsonl_session(str(convo_file), wing="test")
 
         assert len(drawers) == 2
 
