@@ -95,6 +95,28 @@ curl -s -X POST http://127.0.0.1:19529/mcp \
 - **密钥从不回显**：`pangu_config_set` 对密钥类字段回显 `****`；
   插件的 `configService.get` 把密钥脱敏成 `*_set` / `*_hint`（尾 4 位）。
   前端拿不到明文，因此「留空」语义是**保持原值**，清空必须显式传 `null`。
+- **判定「Key 已配置」必须看密钥文件，不能只看 config.json**：
+  `config.json` 因 `save()` 的 `exclude` 永远不含密钥，所以只读它会永远
+  得出「未配置」——用户保存成功后刷新设置页仍显示未配置，看起来像没生效。
+  `configService.get()` 需在 `config.json` 无密钥时补读
+  `~/.pangu/.llm_api_key`（仅用于判定状态与生成尾 4 位提示，明文不出函数）。
+- **`pangu_config_get` 的全量接口主动排除密钥字段**（`handlers/system.py` 的
+  `model_dump(exclude=...)`），所以 `config_get({})` 里**没有** `llm_api_key`。
+  要单查某字段请传 `key` 参数：`pangu_config_get({key:"llm_api_key"})`。
+  排查「配置没生效」时若用全量接口取值，会误判成密钥丢失。
+
+**测试脚手架的坑（写渲染测试前必读）**
+
+- **`react-dom` 必须在 `global.window` 就绪之后再 `require`**：它在加载时会捕获
+  当时的全局环境，过早加载会绑定到错误的 document。表现为**事件派发后组件状态
+  不更新**（输入框 DOM 值已变，但 React 的 state 没变，保存按钮恒 `disabled`），
+  且不报任何错——极易误判成业务代码有 bug。同理 `act` 要与 `react-dom` 同源。
+- **`node:test` 同进程内多次初始化 jsdom + React 会串**：事件绑定可能落到前一个
+  document 上。跨多个挂载场景的测试建议拆成独立进程脚本（见
+  `plugins/dsh-pangu/test/settings/save-semantics.mjs`）。
+- 本机 `npm install` 不可用（`Class extends value undefined`），测试依赖靠软链到
+  宿主的 `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>`；DSH 自带 jsdom 29
+  与 react 18，可直接复用。
 
 **协议与运行时**
 
