@@ -9,6 +9,7 @@
  */
 'use strict'
 
+const crypto = require('crypto')
 const fsp = require('fs/promises')
 const os = require('os')
 const path = require('path')
@@ -29,6 +30,10 @@ const CONFIG_PATH = path.join(os.homedir(), '.pangu', 'config.json')
 // 所以判断「Key 是否已配置」必须看这个文件，光读 config.json 会永远显示未配置。
 const SECRET_FILE = path.join(os.homedir(), '.pangu', '.llm_api_key')
 const HTTP_TIMEOUT_MS = 8000
+// OpenCode Go 网关要求每个请求携带稳定的会话标识，缺失会直接 400。
+// 与 pangu/core/llm.py 的 httpx 默认头保持一致（同样可用 PANGU_LLM_SESSION_ID 固定），
+// 否则「测试连接」会比真实调用更容易失败/更容易成功，失去验证意义。
+const LLM_SESSION_ID = process.env.PANGU_LLM_SESSION_ID || crypto.randomBytes(8).toString('hex')
 
 async function apply(ctx) {
   async function fetchJson(url, options = {}) {
@@ -350,6 +355,34 @@ async function apply(ctx) {
     }
   }
 
+  /**
+   * 读取运行中盘古服务的**生效**配置。
+   *
+   * config.json 只落盘用户改过的键，embedding_model / palace_path 这类从未写过
+   * 的字段不会出现，设置页「只读信息」就会空白。默认值由 Python 侧 PanguConfig
+   * 持有，这里经 pangu_config_get 取回，避免把默认值硬编码进插件造成两处漂移。
+   * 服务不可达时返回 null，调用方保持原样（仅相应行空白，不报错）。
+   */
+  async function effectiveConfig() {
+    try {
+      const body = await fetchJson(`${PANGU_BASE}/mcp`, {
+        method: 'POST',
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'pangu_config_get', arguments: {} },
+        }),
+      })
+      const text = body?.result?.content?.[0]?.text
+      const parsed = text ? JSON.parse(text) : null
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch (_) {
+      return null
+    }
+  }
+
+  // 只允许用生效配置**补全**这些只读字段；用户显式写入 config.json 的值优先。
+  const READONLY_FALLBACK_KEYS = ['embedding_model', 'palace_path']
+
   const configService = {
     async get() {
       const config = await readConfig()
@@ -361,6 +394,12 @@ async function apply(ctx) {
           const secret = (await fsp.readFile(SECRET_FILE, 'utf8')).trim()
           if (secret) config.llm_api_key = secret
         } catch (_) { /* 文件不存在 = 未配置 */ }
+      }
+      const live = await effectiveConfig()
+      if (live) {
+        for (const key of READONLY_FALLBACK_KEYS) {
+          if (config[key] === undefined || config[key] === '') config[key] = live[key]
+        }
       }
       return { ok: true, config: redactConfig(config) }
     },
@@ -417,6 +456,7 @@ async function apply(ctx) {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
+            'x-opencode-session': LLM_SESSION_ID,
             ...(key ? { authorization: `Bearer ${key}` } : {}),
           },
           body: JSON.stringify({
@@ -436,8 +476,12 @@ async function apply(ctx) {
           const msg = data?.error?.message || data?.message || raw.slice(0, 200)
           return { ok: false, ms, status: res.status, model, provider, baseUrl: base, error: `HTTP ${res.status}: ${msg}` }
         }
-        const sample = data?.choices?.[0]?.message?.content || ''
-        return { ok: true, ms, status: res.status, model, provider, baseUrl: base, sample: String(sample).slice(0, 120) }
+        // 部分推理模型（minimax-m3 等）把思考过程内联在 content 里；探测结果只需要
+        // 可见回复，剥掉 <think>…</think>（含被 max_tokens 截断而未闭合的情况）。
+        const sample = String(data?.choices?.[0]?.message?.content || '')
+          .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+          .trim()
+        return { ok: true, ms, status: res.status, model, provider, baseUrl: base, sample: sample.slice(0, 120) }
       } catch (e) {
         const ms = Date.now() - started
         const hint = e?.name === 'AbortError' ? '请求超时(20s)，请检查 Base URL 是否可达' : String(e)

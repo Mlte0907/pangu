@@ -114,6 +114,17 @@ const okResultSchema = z.object({
   value: z.any().optional(),
 })
 
+const testLlmResultSchema = z.object({
+  ok: _bool,
+  ms: _number.optional(),
+  status: _number.optional(),
+  model: _string.optional(),
+  provider: _string.optional(),
+  baseUrl: _string.optional(),
+  sample: _string.optional(),
+  error: _string.optional(),
+})
+
 export const TYPERT = {
   package: 'dsh-pangu',
   face: 'host',
@@ -218,6 +229,15 @@ export const TYPERT = {
       }],
       result: { mode: 'strict', typeSymbol: 'dsh-pangu#SaveResult', schema: okResultSchema },
     },
+    {
+      id: 'dsh-pangu#panguConfig/testLlm',
+      service: 'panguConfig',
+      namespace: 'panguConfig',
+      method: 'testLlm',
+      invocation: { kind: 'direct' },
+      parameters: [],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#TestLlmResult', schema: testLlmResultSchema },
+    },
   ],
   model: {
     services: [
@@ -251,6 +271,7 @@ export const TYPERT = {
         members: [
           { kind: 'method', name: 'get', signature: 'get(): ConfigData', summary: '读取盘古配置。' },
           { kind: 'method', name: 'save', signature: 'save(patch): SaveResult', summary: '保存盘古配置。' },
+          { kind: 'method', name: 'testLlm', signature: 'testLlm(): TestLlmResult', summary: '用当前已落盘配置实际请求一次 LLM 端点，验证 provider/Base URL/模型/Key 组合可用。' },
         ],
         types: [],
       },
