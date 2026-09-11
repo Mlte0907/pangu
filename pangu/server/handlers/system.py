@@ -150,6 +150,7 @@ async def handle_config_set(server, drawers, arguments):
                 else:
                     setattr(server.config, key, value)
                     from ...core.config import write_secret_file
+
                     write_secret_file(str(server.config.base_dir / f".{key}"), str(value or ""))
             except Exception:
                 setattr(server.config, key, value)
@@ -168,8 +169,7 @@ async def handle_config_set(server, drawers, arguments):
         # 密钥类字段不回显明文（响应会进入调用方会话/日志）
         shown = "****" if key in secret_keys else str(value)
         return json.dumps(
-            {"status": "updated", "key": key, "value": shown,
-             "persisted": True, "invalidated": dropped},
+            {"status": "updated", "key": key, "value": shown, "persisted": True, "invalidated": dropped},
             ensure_ascii=False,
         )
     return json.dumps({"error": f"unknown config key: {key}"})
@@ -188,8 +188,12 @@ async def handle_config_reload(server, drawers, arguments):
     # server.config 引用，LLMEngine 等仍用旧值——静默失败。
     dropped = server.invalidate_config_dependents()
     return json.dumps(
-        {"status": "reloaded", "llm_provider": new_cfg.llm_provider,
-         "llm_model": new_cfg.llm_model, "invalidated": dropped},
+        {
+            "status": "reloaded",
+            "llm_provider": new_cfg.llm_provider,
+            "llm_model": new_cfg.llm_model,
+            "invalidated": dropped,
+        },
         ensure_ascii=False,
     )
 

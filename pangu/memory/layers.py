@@ -313,12 +313,14 @@ class MemoryStack:
         """初始化存储后端"""
         if self._use_sqlite:
             from .drawer_storage import SqliteDrawerStorage
+
             db_path = Path(self.config.palace_path) / "drawers.db"
             self._storage = SqliteDrawerStorage(str(db_path))
         else:
             from .drawer_storage import JsonDrawerStorage
+
             self._storage = JsonDrawerStorage(str(self._drawers_file))
-    
+
     @property
     def consolidator(self):
         """懒加载巩固引擎"""
@@ -399,7 +401,7 @@ class MemoryStack:
         """
         # 仅取主文件来源的 drawer 做脏检查与落盘
         primary_drawers = [d for d in self._drawers if d.id in self._primary_ids]
-        
+
         if self._storage:
             try:
                 # 使用存储后端保存
@@ -409,7 +411,7 @@ class MemoryStack:
             except Exception as e:
                 logger.error(f"存储后端保存失败: {e}")
                 # 回退到 JSON 文件
-        
+
         # JSON 文件保存逻辑
         try:
             if self._drawers_file.exists():
@@ -436,7 +438,7 @@ class MemoryStack:
     def invalidate_cache(self) -> None:
         """手动刷新缓存"""
         self._cache.invalidate()
-    
+
     def close(self) -> None:
         """关闭存储后端"""
         if self._storage:

@@ -5,11 +5,12 @@
 """
 
 import threading
-import numpy as np
-from typing import List, Sequence, Union
+from collections.abc import Sequence
 
+import numpy as np
 
 # ── 线程安全单例工厂 ──
+
 
 def make_singleton(factory, *args, **kwargs):
     """线程安全的单例创建（双重检查锁定模式）
@@ -42,6 +43,7 @@ class ThreadSafeSingleton:
 
         engine = MyEngine.get_instance(config)
     """
+
     _instances: dict = {}
     _lock = threading.Lock()
 
@@ -67,6 +69,7 @@ class LRUCache:
 
     def __init__(self, max_size: int = 100, ttl_seconds: float = 300):
         from collections import OrderedDict
+
         self._cache: OrderedDict = OrderedDict()
         self._max_size = max_size
         self._ttl = ttl_seconds
@@ -87,6 +90,7 @@ class LRUCache:
     def set(self, key: str, value):
         """设置缓存值，超容量时淘汰最久未访问的"""
         import time as _time
+
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
@@ -107,7 +111,7 @@ class LRUCache:
 import time
 
 
-def cosine_similarity(a: Union[Sequence[float], np.ndarray], b: Union[Sequence[float], np.ndarray]) -> float:
+def cosine_similarity(a: Sequence[float] | np.ndarray, b: Sequence[float] | np.ndarray) -> float:
     """计算两个向量的余弦相似度（统一实现）
 
     使用 numpy 向量化计算，比纯 Python 循环快 10-100 倍。
@@ -130,107 +134,102 @@ def cosine_similarity(a: Union[Sequence[float], np.ndarray], b: Union[Sequence[f
         return 0.0
     if size_a == 0 or size_b == 0:
         return 0.0
-    
+
     # 转换为 numpy 数组
     vec_a = np.array(a, dtype=np.float32)
     vec_b = np.array(b, dtype=np.float32)
-    
+
     # 截断到相同长度
     min_len = min(len(vec_a), len(vec_b))
     if min_len == 0:
         return 0.0
-    
+
     vec_a = vec_a[:min_len]
     vec_b = vec_b[:min_len]
-    
+
     # 计算余弦相似度
     norm_a = np.linalg.norm(vec_a)
     norm_b = np.linalg.norm(vec_b)
-    
+
     if norm_a < 1e-8 or norm_b < 1e-8:
         return 0.0
-    
+
     return float(np.dot(vec_a, vec_b) / (norm_a * norm_b))
 
 
 def cosine_similarity_batch(
-    query: Union[Sequence[float], np.ndarray],
-    vectors: Union[Sequence[Sequence[float]], np.ndarray],
-    threshold: float = 0.0
-) -> List[tuple[int, float]]:
+    query: Sequence[float] | np.ndarray, vectors: Sequence[Sequence[float]] | np.ndarray, threshold: float = 0.0
+) -> list[tuple[int, float]]:
     """批量计算查询向量与多个向量的余弦相似度
-    
+
     使用 numpy 向量化计算，避免 O(n²) 循环。
-    
+
     Args:
         query: 查询向量
         vectors: 候选向量列表
         threshold: 相似度阈值，低于此值的结果不返回
-        
+
     Returns:
         [(index, similarity), ...] 按相似度降序排列
     """
     if not query or not vectors:
         return []
-    
+
     # 转换为 numpy 数组
     query_arr = np.array(query, dtype=np.float32)
     vectors_arr = np.array(vectors, dtype=np.float32)
-    
+
     # 归一化查询向量
     query_norm = np.linalg.norm(query_arr)
     if query_norm < 1e-8:
         return []
     query_arr = query_arr / query_norm
-    
+
     # 归一化所有候选向量
     vector_norms = np.linalg.norm(vectors_arr, axis=1, keepdims=True)
     vector_norms = np.where(vector_norms > 1e-8, vector_norms, 1.0)
     vectors_arr = vectors_arr / vector_norms
-    
+
     # 向量化点积计算相似度
     similarities = np.dot(vectors_arr, query_arr)
-    
+
     # 过滤并排序
     results = []
     for i, sim in enumerate(similarities):
         if sim > threshold:
             results.append((i, float(sim)))
-    
+
     # 按相似度降序排列
     results.sort(key=lambda x: -x[1])
-    
+
     return results
 
 
-def batch_cosine_similarity(
-    queries: List[List[float]], 
-    vectors: List[List[float]]
-) -> np.ndarray:
+def batch_cosine_similarity(queries: list[list[float]], vectors: list[list[float]]) -> np.ndarray:
     """计算两组向量之间的余弦相似度矩阵
-    
+
     Args:
         queries: 查询向量列表 (m x d)
         vectors: 候选向量列表 (n x d)
-        
+
     Returns:
         相似度矩阵 (m x n)
     """
     if not queries or not vectors:
         return np.array([])
-    
+
     # 转换为 numpy 数组
     queries_arr = np.array(queries, dtype=np.float32)
     vectors_arr = np.array(vectors, dtype=np.float32)
-    
+
     # 归一化
     query_norms = np.linalg.norm(queries_arr, axis=1, keepdims=True)
     query_norms = np.where(query_norms > 1e-8, query_norms, 1.0)
     queries_arr = queries_arr / query_norms
-    
+
     vector_norms = np.linalg.norm(vectors_arr, axis=1, keepdims=True)
     vector_norms = np.where(vector_norms > 1e-8, vector_norms, 1.0)
     vectors_arr = vectors_arr / vector_norms
-    
+
     # 计算相似度矩阵
     return np.dot(queries_arr, vectors_arr.T)

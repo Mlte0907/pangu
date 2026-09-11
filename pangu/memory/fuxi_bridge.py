@@ -65,12 +65,14 @@ class FuxiBridge:
         # 找出低频主题
         low_freq = {t: c for t, c in topics.items() if c <= 2 and t not in ["general", "auto_extracted"]}
         if low_freq:
-            insights.append(Insight(
-                insight_type="gap",
-                content=f"以下主题知识较少：{', '.join(list(low_freq.keys())[:5])}",
-                confidence=0.7,
-                evidence=[f"{t}: {c}条" for t, c in low_freq.items()],
-            ))
+            insights.append(
+                Insight(
+                    insight_type="gap",
+                    content=f"以下主题知识较少：{', '.join(list(low_freq.keys())[:5])}",
+                    confidence=0.7,
+                    evidence=[f"{t}: {c}条" for t, c in low_freq.items()],
+                )
+            )
 
         # 2. 检查时间覆盖
         dates = set()
@@ -84,11 +86,13 @@ class FuxiBridge:
                     pass
 
         if len(dates) < 7:
-            insights.append(Insight(
-                insight_type="gap",
-                content=f"知识时间跨度较短（{len(dates)}天），建议增加历史知识",
-                confidence=0.6,
-            ))
+            insights.append(
+                Insight(
+                    insight_type="gap",
+                    content=f"知识时间跨度较短（{len(dates)}天），建议增加历史知识",
+                    confidence=0.6,
+                )
+            )
 
         return insights
 
@@ -113,12 +117,14 @@ class FuxiBridge:
 
             if decision_topics:
                 topic_counts = Counter(decision_topics).most_common(3)
-                insights.append(Insight(
-                    insight_type="pattern",
-                    content=f"用户频繁决策的主题：{', '.join([t for t, _ in topic_counts])}",
-                    confidence=0.8,
-                    evidence=[f"{t}: {c}次" for t, c in topic_counts],
-                ))
+                insights.append(
+                    Insight(
+                        insight_type="pattern",
+                        content=f"用户频繁决策的主题：{', '.join([t for t, _ in topic_counts])}",
+                        confidence=0.8,
+                        evidence=[f"{t}: {c}次" for t, c in topic_counts],
+                    )
+                )
 
         # 2. 关注领域
         tag_counts = Counter()
@@ -129,12 +135,14 @@ class FuxiBridge:
 
         top_tags = tag_counts.most_common(5)
         if top_tags:
-            insights.append(Insight(
-                insight_type="pattern",
-                content=f"用户关注领域：{', '.join([t for t, _ in top_tags])}",
-                confidence=0.9,
-                evidence=[f"{t}: {c}条" for t, c in top_tags],
-            ))
+            insights.append(
+                Insight(
+                    insight_type="pattern",
+                    content=f"用户关注领域：{', '.join([t for t, _ in top_tags])}",
+                    confidence=0.9,
+                    evidence=[f"{t}: {c}条" for t, c in top_tags],
+                )
+            )
 
         return insights
 
@@ -178,12 +186,14 @@ class FuxiBridge:
                         overlap += len(content1 & content2)
 
                 if overlap > 10:
-                    insights.append(Insight(
-                        insight_type="connection",
-                        content=f"主题 '{tag1}' 和 '{tag2}' 有较强关联",
-                        confidence=0.7,
-                        evidence=[f"内容重叠词数: {overlap}"],
-                    ))
+                    insights.append(
+                        Insight(
+                            insight_type="connection",
+                            content=f"主题 '{tag1}' 和 '{tag2}' 有较强关联",
+                            confidence=0.7,
+                            evidence=[f"内容重叠词数: {overlap}"],
+                        )
+                    )
 
         return insights[:3]  # 最多返回3条
 
@@ -196,19 +206,25 @@ class FuxiBridge:
         for d in drawers:
             content = d.get("content", "")
             score = 0
-            if len(content) > 100: score += 30
-            if len(content) > 50: score += 20
-            if len(d.get("tags", [])) >= 2: score += 20
-            if re.search(r"[：:]", content): score += 10
+            if len(content) > 100:
+                score += 30
+            if len(content) > 50:
+                score += 20
+            if len(d.get("tags", [])) >= 2:
+                score += 20
+            if re.search(r"[：:]", content):
+                score += 10
             scores.append(score)
 
         avg_score = sum(scores) / len(scores) if scores else 0
         if avg_score < 50:
-            insights.append(Insight(
-                insight_type="suggestion",
-                content=f"平均记忆质量分偏低（{avg_score:.0f}/100），建议补充更多高质量内容",
-                confidence=0.8,
-            ))
+            insights.append(
+                Insight(
+                    insight_type="suggestion",
+                    content=f"平均记忆质量分偏低（{avg_score:.0f}/100），建议补充更多高质量内容",
+                    confidence=0.8,
+                )
+            )
 
         # 2. 检查知识新鲜度
         recent_count = 0
@@ -219,11 +235,13 @@ class FuxiBridge:
                 recent_count += 1
 
         if recent_count < 5:
-            insights.append(Insight(
-                insight_type="suggestion",
-                content="最近新增知识较少，建议增加知识提取频率",
-                confidence=0.7,
-            ))
+            insights.append(
+                Insight(
+                    insight_type="suggestion",
+                    content="最近新增知识较少，建议增加知识提取频率",
+                    confidence=0.7,
+                )
+            )
 
         return insights
 
@@ -245,8 +263,7 @@ class FuxiBridge:
             "total_memories": len(drawers),
             "total_insights": len(all_insights),
             "insights_by_type": {
-                k: [{"content": i.content, "confidence": i.confidence} for i in v]
-                for k, v in by_type.items()
+                k: [{"content": i.content, "confidence": i.confidence} for i in v] for k, v in by_type.items()
             },
             "timestamp": datetime.now().isoformat(),
         }

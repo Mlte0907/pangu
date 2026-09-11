@@ -217,8 +217,8 @@ class MCPServer:
 
     @property
     def tools(self) -> list[dict]:
-        from .handlers import TOOLS
         from .exposure import get_exposure_filter
+        from .handlers import TOOLS
 
         return get_exposure_filter(self.config).apply(TOOLS)
 

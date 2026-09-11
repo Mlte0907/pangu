@@ -31,7 +31,10 @@ TOOLS = [
     {"name": "pangu_session_stats", "description": "\u4f1a\u8bdd\u7edf\u8ba1"},
     {"name": "pangu_session_inject", "description": "\u8de8\u4f1a\u8bdd\u4e0a\u4e0b\u6587\u6ce8\u5165"},
     {"name": "pangu_session_start", "description": "记录会话开始。⚠️ 会话开始时调用，建立上下文桥接。"},
-    {"name": "pangu_session_end", "description": "记录会话结束并生成摘要。⚠️ 会话结束前必须调用：总结学到了什么、踩了什么坑、关键决策、文件变更。不总结 = 教训丢失。"},
+    {
+        "name": "pangu_session_end",
+        "description": "记录会话结束并生成摘要。⚠️ 会话结束前必须调用：总结学到了什么、踩了什么坑、关键决策、文件变更。不总结 = 教训丢失。",
+    },
     {
         "name": "pangu_session_resume",
         "description": "\u83b7\u53d6\u4e0a\u4e00\u4e2a\u4f1a\u8bdd\u7684\u6062\u590d\u4e0a\u4e0b\u6587",

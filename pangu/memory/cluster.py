@@ -107,6 +107,7 @@ def get_cluster_summary(clusters: dict[str, list[dict]]) -> list[dict]:
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """余弦相似度（委托给统一实现）"""
     from .utils import cosine_similarity
+
     return cosine_similarity(a, b)
 
 

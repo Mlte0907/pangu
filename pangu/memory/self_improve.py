@@ -30,19 +30,21 @@ logger = logging.getLogger("pangu.memory.self_improve")
 MCP_TOOL_INVOCATION_EVENT = "mcp.tool_invocation"
 
 # 不值得采集的工具名（噪声工具 / 元查询 / 本身即写记忆的工具）
-EXCLUDED_TOOLS = frozenset({
-    "ping",
-    "health_check",
-    "list_tools",
-    "get_tool_info",
-    "stats",
-    "metrics",
-    "pangu_add_memory",
-    "pangu_update_memory",
-    "pangu_delete_memory",
-    "pangu_export_memories",
-    "pangu_purge_memories",
-})
+EXCLUDED_TOOLS = frozenset(
+    {
+        "ping",
+        "health_check",
+        "list_tools",
+        "get_tool_info",
+        "stats",
+        "metrics",
+        "pangu_add_memory",
+        "pangu_update_memory",
+        "pangu_delete_memory",
+        "pangu_export_memories",
+        "pangu_purge_memories",
+    }
+)
 
 # 触发采集的最低有效字符数
 MIN_CONTENT_CHARS = 60
@@ -105,7 +107,9 @@ class SelfImproveWorker:
         self._stop.clear()
         self._thread = threading.Thread(target=self._consume_loop, name="pangu-self-improve", daemon=True)
         self._thread.start()
-        logger.info(f"SelfImproveWorker 已启动 (base={self._base_url}, interval={self._flush_interval}s, batch={self._batch_size})")
+        logger.info(
+            f"SelfImproveWorker 已启动 (base={self._base_url}, interval={self._flush_interval}s, batch={self._batch_size})"
+        )
 
     def stop(self) -> None:
         self._stop.set()

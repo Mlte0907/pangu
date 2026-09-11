@@ -305,8 +305,7 @@ class TestConcurrencyBench:
         budget = float(os.environ.get(self._BUDGET_ENV, self._BUDGET_DEFAULT_MS))
         avg_ms = (elapsed / 100) * 1000
         assert avg_ms < budget, (
-            f"平均搜索耗时 {avg_ms:.1f}ms 超过预算 {budget:.0f}ms"
-            f"（可用 {self._BUDGET_ENV} 调整；该值受机器性能影响）"
+            f"平均搜索耗时 {avg_ms:.1f}ms 超过预算 {budget:.0f}ms（可用 {self._BUDGET_ENV} 调整；该值受机器性能影响）"
         )
 
     @pytest.mark.asyncio

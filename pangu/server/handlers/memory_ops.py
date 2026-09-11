@@ -6,8 +6,14 @@ import uuid
 from ...core.palace import Drawer
 
 TOOLS = [
-    {"name": "pangu_add_memory", "description": "添加记忆片段。⚠️ 强制：完成有意义的工作后必须调用此工具记录学到了什么、踩了什么坑、下次怎么做。不记录 = 白做。"},
-    {"name": "pangu_search_memories", "description": "搜索记忆。⚠️ 强制：每次收到用户消息后必须先调用此工具搜索相关历史，再执行任务。不搜索 = 可能重复踩坑。"},
+    {
+        "name": "pangu_add_memory",
+        "description": "添加记忆片段。⚠️ 强制：完成有意义的工作后必须调用此工具记录学到了什么、踩了什么坑、下次怎么做。不记录 = 白做。",
+    },
+    {
+        "name": "pangu_search_memories",
+        "description": "搜索记忆。⚠️ 强制：每次收到用户消息后必须先调用此工具搜索相关历史，再执行任务。不搜索 = 可能重复踩坑。",
+    },
     {"name": "pangu_recall", "description": "按 Wing/Room 回忆记忆"},
     {"name": "pangu_wake_up", "description": "获取 L0+L1 唤醒上下文"},
     {
@@ -117,9 +123,7 @@ async def handle_delete_memory(server, drawers, arguments):
     removed = server.memory.remove_drawer(memory_id)
     if not removed:
         return json.dumps({"code": 2004, "error": f"删除失败: {memory_id}"}, ensure_ascii=False)
-    return json.dumps(
-        {"status": "removed", "memory_id": memory_id, "removed": True}, ensure_ascii=False
-    )
+    return json.dumps({"status": "removed", "memory_id": memory_id, "removed": True}, ensure_ascii=False)
 
 
 HANDLERS["pangu_delete_memory"] = handle_delete_memory

@@ -155,7 +155,7 @@ class VectorEmbedder:
             "请任选其一：\n"
             "  1) 安装 ONNX 依赖（推荐，轻量）：pip install onnxruntime tokenizers\n"
             "  2) 安装 sentence-transformers（体积大，会引入 torch）："
-            "pip install -e \".[multimodal]\""
+            'pip install -e ".[multimodal]"'
         )
 
     # ── 嵌入实现 ──────────────────────────────────────────────
@@ -193,7 +193,7 @@ class VectorEmbedder:
         if not self._init_sentence_transformers():
             raise ImportError(
                 "sentence-transformers 未安装。默认的 ONNX 后端无需它；"
-                "如确需此后端请运行: pip install -e \".[multimodal]\""
+                '如确需此后端请运行: pip install -e ".[multimodal]"'
             )
         self._backend = self._backend or "st"
         return self._model

@@ -335,9 +335,7 @@ class PanguConfig(BaseSettings):
                 with open(config_path, encoding="utf-8") as f:
                     json_data = json.load(f)
             except (json.JSONDecodeError, OSError) as e:
-                logger.warning(
-                    f"配置文件加载失败({e})，回退默认暴露面"
-                )
+                logger.warning(f"配置文件加载失败({e})，回退默认暴露面")
 
         # 移除敏感字段（仅当对应环境变量已设置时）
         # 这样保持向后兼容：没有设置环境变量时仍从 JSON 读取
@@ -354,10 +352,7 @@ class PanguConfig(BaseSettings):
                 removed_keys.append(key)
                 del json_data[key]
         if removed_keys:
-            logger.warning(
-                f"从 config.json 中移除了敏感字段 {removed_keys}，"
-                "请通过环境变量（PANGU_ 前缀）设置这些值。"
-            )
+            logger.warning(f"从 config.json 中移除了敏感字段 {removed_keys}，请通过环境变量（PANGU_ 前缀）设置这些值。")
 
         # 用 pydantic-settings 创建实例（自动从环境变量覆盖）
         config = cls(**json_data)

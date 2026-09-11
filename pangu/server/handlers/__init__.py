@@ -22,73 +22,90 @@ HANDLERS: dict[str, Any] = {}
 
 # 核心模块（6 个）
 from . import memory_ops
+
 TOOLS.extend(memory_ops.TOOLS)
 HANDLERS.update(memory_ops.HANDLERS)
 
 from . import search
+
 TOOLS.extend(search.TOOLS)
 HANDLERS.update(search.HANDLERS)
 
 from . import system
+
 TOOLS.extend(system.TOOLS)
 HANDLERS.update(system.HANDLERS)
 
 from . import io_tools
+
 TOOLS.extend(io_tools.TOOLS)
 HANDLERS.update(io_tools.HANDLERS)
 
 from . import palace
+
 TOOLS.extend(palace.TOOLS)
 HANDLERS.update(palace.HANDLERS)
 
 from . import batch
+
 TOOLS.extend(batch.TOOLS)
 HANDLERS.update(batch.HANDLERS)
 
 # 可选模块（10 个，默认加载，由暴露面过滤器控制可见性）
 from . import analytics
+
 TOOLS.extend(analytics.TOOLS)
 HANDLERS.update(analytics.HANDLERS)
 
 from . import consolidation
+
 TOOLS.extend(consolidation.TOOLS)
 HANDLERS.update(consolidation.HANDLERS)
 
 from . import embed
+
 TOOLS.extend(embed.TOOLS)
 HANDLERS.update(embed.HANDLERS)
 
 from . import knowledge_graph
+
 TOOLS.extend(knowledge_graph.TOOLS)
 HANDLERS.update(knowledge_graph.HANDLERS)
 
 from . import llm_tools
+
 TOOLS.extend(llm_tools.TOOLS)
 HANDLERS.update(llm_tools.HANDLERS)
 
 from . import multimodal
+
 TOOLS.extend(multimodal.TOOLS)
 HANDLERS.update(multimodal.HANDLERS)
 
 from . import quality
+
 TOOLS.extend(quality.TOOLS)
 HANDLERS.update(quality.HANDLERS)
 
 from . import session
+
 TOOLS.extend(session.TOOLS)
 HANDLERS.update(session.HANDLERS)
 
 from . import timeline
+
 TOOLS.extend(timeline.TOOLS)
 HANDLERS.update(timeline.HANDLERS)
 
 from . import wiki
+
 TOOLS.extend(wiki.TOOLS)
 HANDLERS.update(wiki.HANDLERS)
 
 # advanced 模块（实验容器，默认不加载，由暴露面过滤器控制）
 # 注意：advanced 中的实验工具已被提取到 experimental/，此处仅作兼容
 from . import advanced
+
 TOOLS.extend(advanced.TOOLS)
 HANDLERS.update(advanced.HANDLERS)
 
@@ -171,10 +188,7 @@ def load_experimental_tools(config: Any) -> None:
             # 批工具。后果不只是数字变大：**MCP 服务端要求工具名唯一，
             # 重名会让官方 SDK 整表拒收**（tools/list 全废）。
             existing = {t.get("name") for t in TOOLS}
-            added = [
-                t for t in getattr(mod, "TOOLS", [])
-                if t.get("name") not in existing
-            ]
+            added = [t for t in getattr(mod, "TOOLS", []) if t.get("name") not in existing]
             if added:
                 TOOLS.extend(added)
                 existing.update(t.get("name") for t in added)
@@ -193,6 +207,7 @@ def get_total_tools() -> int:
 def get_total_handlers() -> int:
     """返回当前处理器总数（含实验模块）"""
     return len(HANDLERS)
+
 
 # ── MCP 规范合规后处理 ──
 # 标准 MCP 客户端（官方 SDK / DSH mcp-client）对 tools/list 做强 schema 校验：

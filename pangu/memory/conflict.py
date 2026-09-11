@@ -108,6 +108,7 @@ class ConflictDetector:
     @staticmethod
     def _cosine_sim(a, b) -> float:
         from .utils import cosine_similarity
+
         return cosine_similarity(a, b)
 
     def detect_conflicts(

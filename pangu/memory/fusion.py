@@ -40,6 +40,7 @@ class FusionEngine:
     @staticmethod
     def _cosine_sim(a, b) -> float:
         from .utils import cosine_similarity
+
         return cosine_similarity(a, b)
 
     def __init__(self, config: PanguConfig = None):

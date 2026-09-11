@@ -5,7 +5,7 @@ comparisons, logical operators, and membership tests.
 """
 
 import ast
-from typing import Any, Dict, Set
+from typing import Any
 
 # Allowed attribute names for each object type (by class name)
 ALLOWED_ATTRIBUTES = {
@@ -19,34 +19,45 @@ ALLOWED_BUILTINS = {"True", "False", "None"}
 
 # Allowed operators
 ALLOWED_OPS = {
-    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
-    ast.In, ast.NotIn,
-    ast.And, ast.Or, ast.Not,
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.In,
+    ast.NotIn,
+    ast.And,
+    ast.Or,
+    ast.Not,
 }
+
 
 class SafeEvalError(Exception):
     """Raised when an expression is not safe to evaluate."""
+
     pass
+
 
 class _SafeEvaluator(ast.NodeVisitor):
     """AST visitor that evaluates safe expressions."""
-    
-    def __init__(self, namespace: Dict[str, Any]):
+
+    def __init__(self, namespace: dict[str, Any]):
         self.namespace = namespace
-    
+
     def eval(self, expression: str) -> Any:
         """Evaluate a safe expression."""
         try:
-            tree = ast.parse(expression, mode='eval')
+            tree = ast.parse(expression, mode="eval")
         except SyntaxError as e:
             raise SafeEvalError(f"Syntax error: {e}") from e
-        
+
         # Check that the expression is safe
         self._check_node(tree.body)
-        
+
         # Evaluate
         return self._eval_node(tree.body)
-    
+
     def _check_node(self, node: ast.AST) -> None:
         """Recursively check that a node is safe."""
         if isinstance(node, ast.Expression):
@@ -117,7 +128,7 @@ class _SafeEvaluator(ast.NodeVisitor):
             raise SafeEvalError("Function calls not allowed")
         else:
             raise SafeEvalError(f"Unsafe node type: {type(node).__name__}")
-    
+
     def _eval_node(self, node: ast.AST) -> Any:
         """Evaluate an AST node."""
         if isinstance(node, ast.Expression):
@@ -160,7 +171,7 @@ class _SafeEvaluator(ast.NodeVisitor):
                     cmp_result = left not in right
                 else:
                     raise SafeEvalError(f"Unsupported operator: {type(op).__name__}")
-                
+
                 result = result and cmp_result
                 left = right  # For chained comparisons
             return result
@@ -190,16 +201,16 @@ class _SafeEvaluator(ast.NodeVisitor):
             raise SafeEvalError(f"Unsupported node type: {type(node).__name__}")
 
 
-def safe_eval(expression: str, namespace: Dict[str, Any]) -> Any:
+def safe_eval(expression: str, namespace: dict[str, Any]) -> Any:
     """Safely evaluate an expression with the given namespace.
-    
+
     Args:
         expression: Python expression string to evaluate
         namespace: Dictionary of variables available in the expression
-        
+
     Returns:
         The result of evaluating the expression
-        
+
     Raises:
         SafeEvalError: If the expression contains unsafe operations
     """

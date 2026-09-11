@@ -722,6 +722,7 @@ HANDLERS["pangu_search_explain"] = handle_search_explain
 
 # ── 主动提醒工具 ──────────────────────────────────────────────
 
+
 async def handle_proactive_remind(server, drawers, arguments):
     """主动提醒：检测重复问题，推送相关记忆"""
     from ...memory.proactive_reminder import get_proactive_engine
@@ -779,28 +780,33 @@ HANDLERS["pangu_repeated_questions"] = handle_repeated_questions
 
 # ── 自评估+自修复工具 ──────────────────────────────────────────
 
+
 async def handle_self_evaluate(server, drawers, arguments):
     """运行自评估，检查系统健康状况"""
     from ...memory.self_repair import get_self_repair_engine
 
     engine = get_self_repair_engine()
     report = engine.run_evaluation()
-    return json.dumps({
-        "health_score": report.health_score,
-        "total_memories": report.total_memories,
-        "issues_found": report.issues_found,
-        "issues": [
-            {
-                "type": i.issue_type,
-                "severity": i.severity,
-                "description": i.description,
-                "count": len(i.memory_ids),
-                "fixable": i.fixable,
-            }
-            for i in report.issues
-        ],
-        "summary": report.summary,
-    }, ensure_ascii=False, indent=2)
+    return json.dumps(
+        {
+            "health_score": report.health_score,
+            "total_memories": report.total_memories,
+            "issues_found": report.issues_found,
+            "issues": [
+                {
+                    "type": i.issue_type,
+                    "severity": i.severity,
+                    "description": i.description,
+                    "count": len(i.memory_ids),
+                    "fixable": i.fixable,
+                }
+                for i in report.issues
+            ],
+            "summary": report.summary,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 HANDLERS["pangu_self_evaluate"] = handle_self_evaluate
@@ -812,17 +818,21 @@ async def handle_self_repair(server, drawers, arguments):
 
     engine = get_self_repair_engine()
     fixes = engine.run_repair()
-    return json.dumps({
-        "fixes": [
-            {
-                "type": f.issue_type,
-                "fixed_count": f.fixed_count,
-                "details": f.details,
-            }
-            for f in fixes
-        ],
-        "total_fixed": sum(f.fixed_count for f in fixes),
-    }, ensure_ascii=False, indent=2)
+    return json.dumps(
+        {
+            "fixes": [
+                {
+                    "type": f.issue_type,
+                    "fixed_count": f.fixed_count,
+                    "details": f.details,
+                }
+                for f in fixes
+            ],
+            "total_fixed": sum(f.fixed_count for f in fixes),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 HANDLERS["pangu_self_repair"] = handle_self_repair
@@ -842,6 +852,7 @@ HANDLERS["pangu_health_report"] = handle_health_report
 
 # ── Fuxi 桥接工具 ──────────────────────────────────────────────
 
+
 async def handle_fuxi_insights(server, drawers, arguments):
     """获取 Fuxi 深度洞察"""
     from ...memory.fuxi_bridge import get_fuxi_bridge
@@ -860,10 +871,14 @@ async def handle_knowledge_gaps(server, drawers, arguments):
 
     bridge = get_fuxi_bridge()
     gaps = bridge.discover_knowledge_gaps()
-    return json.dumps({
-        "gaps": [{"content": g.content, "confidence": g.confidence} for g in gaps],
-        "total": len(gaps),
-    }, ensure_ascii=False, indent=2)
+    return json.dumps(
+        {
+            "gaps": [{"content": g.content, "confidence": g.confidence} for g in gaps],
+            "total": len(gaps),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 HANDLERS["pangu_knowledge_gaps"] = handle_knowledge_gaps
@@ -875,10 +890,14 @@ async def handle_user_behavior(server, drawers, arguments):
 
     bridge = get_fuxi_bridge()
     patterns = bridge.analyze_user_patterns()
-    return json.dumps({
-        "patterns": [{"content": p.content, "confidence": p.confidence} for p in patterns],
-        "total": len(patterns),
-    }, ensure_ascii=False, indent=2)
+    return json.dumps(
+        {
+            "patterns": [{"content": p.content, "confidence": p.confidence} for p in patterns],
+            "total": len(patterns),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 HANDLERS["pangu_user_behavior"] = handle_user_behavior

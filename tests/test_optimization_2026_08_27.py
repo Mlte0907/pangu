@@ -120,6 +120,7 @@ class _FakeLLM:
 # R1-A：4 个受影响工具不再 NameError（真实 handler 调用 + 真实 hybrid_search）
 # ────────────────────────────────────────────────────────────────
 
+
 class TestR1SearchHandlers:
     @pytest.fixture(autouse=True)
     def _isolate_fts_disk(self, monkeypatch, tmp_path):
@@ -127,9 +128,7 @@ class TestR1SearchHandlers:
         避免覆写现网 ~/.pangu/fts_index.json 缓存。"""
         from pangu.memory import fts_search
 
-        monkeypatch.setattr(
-            fts_search.FTS5SearchEngine, "_get_index_path", lambda self: tmp_path / "fts_index.json"
-        )
+        monkeypatch.setattr(fts_search.FTS5SearchEngine, "_get_index_path", lambda self: tmp_path / "fts_index.json")
 
     async def _run(self, handler, cfg, drawers):
         return json.loads(await handler(FakeServer(cfg), drawers, {"query": "DSH", "limit": 5}))
@@ -189,6 +188,7 @@ class TestR1SearchHandlers:
 # R1-B：memory_insights 返回完整结果（analysis/top_memories/patterns）
 # ────────────────────────────────────────────────────────────────
 
+
 class TestR1MemoryInsights:
     @pytest.mark.asyncio
     async def test_memory_insights_full_result(self, tmp_path):
@@ -211,6 +211,7 @@ class TestR1MemoryInsights:
 # ────────────────────────────────────────────────────────────────
 # R1-C：工具级异常被 ErrorMonitor 捕获；成功调用不增 total_errors
 # ────────────────────────────────────────────────────────────────
+
 
 class TestR1ErrorStats:
     @pytest.mark.asyncio
@@ -257,6 +258,7 @@ class TestR1ErrorStats:
 # R1 e2e：真实 MCP tools/call 复现用例（对应验收「复现用例通过」）
 # ────────────────────────────────────────────────────────────────
 
+
 class TestR1E2EToolsCall:
     @pytest.mark.asyncio
     async def test_tools_call_cluster_by_tags_ok(self, tmp_path, monkeypatch):
@@ -264,9 +266,7 @@ class TestR1E2EToolsCall:
         from pangu.memory.layers import MemoryStack
         from pangu.server.mcp_server import MCPServer
 
-        monkeypatch.setattr(
-            fts_search.FTS5SearchEngine, "_get_index_path", lambda self: tmp_path / "fts_index.json"
-        )
+        monkeypatch.setattr(fts_search.FTS5SearchEngine, "_get_index_path", lambda self: tmp_path / "fts_index.json")
         cfg = _make_config(tmp_path)
         stack = MemoryStack(cfg)
         stack.add_drawers(
@@ -344,6 +344,7 @@ class TestR1E2EToolsCall:
 # R2：LLM 路由 fallback（无 key + llm_base_url 允许本地端点；两缺提示）
 # ────────────────────────────────────────────────────────────────
 
+
 class TestR2LLMRouting:
     @pytest.mark.asyncio
     async def test_no_key_no_base_url_keeps_missing_prompt(self, tmp_path):
@@ -391,9 +392,7 @@ class TestR2LLMRouting:
         import pangu.core.config as cmod
         import pangu.memory.production as production
 
-        cfg = _make_config(
-            tmp_path, llm_provider="openai", llm_base_url="http://127.0.0.1:9999/v1", llm_api_key=""
-        )
+        cfg = _make_config(tmp_path, llm_provider="openai", llm_base_url="http://127.0.0.1:9999/v1", llm_api_key="")
         monkeypatch.setattr(cmod.PanguConfig, "load", staticmethod(lambda: cfg))
         checks = production.check_environment()
         assert checks["llm"]["route"] == "local_base_url_no_key"
@@ -418,6 +417,7 @@ class TestR2LLMRouting:
 # ────────────────────────────────────────────────────────────────
 # R3-A：统一重复口径（组簇/可回收/对）同源可换算 + health 带标签
 # ────────────────────────────────────────────────────────────────
+
 
 class TestR3Duplicates:
     def test_analyze_duplicates_three_calibers_consistent(self, tmp_path):
@@ -457,8 +457,9 @@ class TestR3Duplicates:
         assert "口径" in check.detail
 
     def test_find_duplicates_output_has_caliber(self, tmp_path):
-        from pangu.server.handlers.quality import handle_find_duplicates as h
         import asyncio
+
+        from pangu.server.handlers.quality import handle_find_duplicates as h
 
         cfg = _make_config(tmp_path)
         drawers = [
@@ -476,6 +477,7 @@ class TestR3Duplicates:
 # ────────────────────────────────────────────────────────────────
 # R3-B：TTL 字段语义化命名
 # ────────────────────────────────────────────────────────────────
+
 
 class TestR3TTLNames:
     def test_memory_stack_ttl_semantic_field(self, tmp_path):
@@ -498,6 +500,7 @@ class TestR3TTLNames:
 # ────────────────────────────────────────────────────────────────
 # R4-A：ingest_text 兼容 content / text，缺参报明确错误
 # ────────────────────────────────────────────────────────────────
+
 
 class TestR4IngestText:
     """ingest_text 参数兼容 + F1 真实落库回归（检索可见、立即可删，不再假落库）"""
@@ -619,6 +622,7 @@ class TestR4IngestText:
 # R4-B/C：delete_memory / archive_memory 行为与留痕
 # ────────────────────────────────────────────────────────────────
 
+
 class TestR4DeleteArchive:
     @pytest.mark.asyncio
     async def test_delete_memory_removes(self, tmp_path):
@@ -693,7 +697,7 @@ class TestR4DeleteArchive:
         assert out["code"] == 2001
 
     def test_new_tools_schema_and_registration(self):
-        from pangu.server.handlers import HANDLERS, TOOLS, _TOOL_SCHEMAS
+        from pangu.server.handlers import _TOOL_SCHEMAS, HANDLERS, TOOLS
 
         names = {t["name"] for t in TOOLS}
         assert "pangu_delete_memory" in names
@@ -706,16 +710,23 @@ class TestR4DeleteArchive:
         # 不破坏既有 421+2 结构（无重名、schema 合规）
         assert len(names) == len(TOOLS)
 
+
 def test_semantic_duplicates_skip_encrypted():
     """Fernet 密文共享标签不应被聚类为语义重复（遗留项修复：加密误报）"""
-    from pangu.memory.semantic_compression import SemanticCompressor
     from pangu.memory.layers import Drawer
+    from pangu.memory.semantic_compression import SemanticCompressor
 
     comp = SemanticCompressor()
     # 5 条加密内容 + 共享 self_improve/tool_usage 标签
     encrypted = [
-        Drawer(id=f"enc{i}", content=f"gAAAAAB{i:032d}encryptedblob{i}",
-               tags=["self_improve", "tool_usage"], importance=1, wing="default", room="general")
+        Drawer(
+            id=f"enc{i}",
+            content=f"gAAAAAB{i:032d}encryptedblob{i}",
+            tags=["self_improve", "tool_usage"],
+            importance=1,
+            wing="default",
+            room="general",
+        )
         for i in range(5)
     ]
     dups = comp.find_semantic_duplicates(encrypted, threshold=0.8)
@@ -723,8 +734,14 @@ def test_semantic_duplicates_skip_encrypted():
 
     # 明文相同前缀仍应被检出
     plain = [
-        Drawer(id=f"p{i}", content="這是一段完全相同的記憶內容 test abc",
-               tags=["x"], importance=1, wing="default", room="general")
+        Drawer(
+            id=f"p{i}",
+            content="這是一段完全相同的記憶內容 test abc",
+            tags=["x"],
+            importance=1,
+            wing="default",
+            room="general",
+        )
         for i in range(2)
     ]
     dups2 = comp.find_semantic_duplicates(plain)

@@ -18,8 +18,8 @@
 """
 
 import json
-import sys
 import os
+import sys
 import time
 import traceback
 
@@ -47,22 +47,92 @@ def run_all_phases():
     # Phase 1: 基础功能验证（记忆 CRUD + 搜索）
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 1: 基础 CRUD + 搜索"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 1.1 写入记忆
     test_memories = [
-        {"content": "Python 是一种解释型高级编程语言，由 Guido van Rossum 于 1991 年创造", "wing": "test_wing", "room": "test_room", "hall": "facts", "importance": 4, "tags": ["python", "编程", "语言"]},
-        {"content": "ONNX 是微软开发的开放神经网络交换格式，用于模型互操作", "wing": "test_wing", "room": "test_room", "hall": "facts", "importance": 3, "tags": ["onnx", "深度学习", "模型"]},
-        {"content": "SQLite 是一个 C 语言库，实现了小型、快速、自包含的 SQL 数据库引擎", "wing": "test_wing", "room": "tech", "hall": "facts", "importance": 3, "tags": ["sqlite", "数据库", "存储"]},
-        {"content": "盘古记忆系统是 AI Agent 的大脑组件，通过 MCP 协议提供记忆服务", "wing": "test_wing", "room": "tech", "hall": "concepts", "importance": 5, "tags": ["盘古", "记忆系统", "mcp"]},
-        {"content": "2024年3月15日，项目完成了 v2.0 重大升级，新增了神经记忆系统", "wing": "test_wing", "room": "history", "hall": "events", "importance": 4, "tags": ["里程碑", "v2.0", "升级"]},
-        {"content": "用户偏好使用暗色主题进行编码，字体大小设置为 14px", "wing": "test_wing", "room": "personal", "hall": "preferences", "importance": 2, "tags": ["偏好", "主题", "编码"]},
-        {"content": "部署建议：生产环境应使用 Docker Compose，配合 Nginx 反向代理", "wing": "prod_wing", "room": "deploy", "hall": "suggestions", "importance": 4, "tags": ["部署", "docker", "nginx"]},
-        {"content": "FAISS 是 Facebook 开源的高效相似性搜索库，支持十亿级向量检索", "wing": "prod_wing", "room": "tech", "hall": "facts", "importance": 3, "tags": ["faiss", "向量", "搜索"]},
-        {"content": "团队成员包括：Alice（后端）、Bob（前端）、Carol（运维）", "wing": "test_wing", "room": "team", "hall": "relations", "importance": 3, "tags": ["团队", "成员", "关系"]},
-        {"content": "结论：混合搜索（FTS + 向量）比纯向量搜索召回率提升约 35%", "wing": "prod_wing", "room": "research", "hall": "discoveries", "importance": 5, "tags": ["发现", "搜索", "性能"]},
+        {
+            "content": "Python 是一种解释型高级编程语言，由 Guido van Rossum 于 1991 年创造",
+            "wing": "test_wing",
+            "room": "test_room",
+            "hall": "facts",
+            "importance": 4,
+            "tags": ["python", "编程", "语言"],
+        },
+        {
+            "content": "ONNX 是微软开发的开放神经网络交换格式，用于模型互操作",
+            "wing": "test_wing",
+            "room": "test_room",
+            "hall": "facts",
+            "importance": 3,
+            "tags": ["onnx", "深度学习", "模型"],
+        },
+        {
+            "content": "SQLite 是一个 C 语言库，实现了小型、快速、自包含的 SQL 数据库引擎",
+            "wing": "test_wing",
+            "room": "tech",
+            "hall": "facts",
+            "importance": 3,
+            "tags": ["sqlite", "数据库", "存储"],
+        },
+        {
+            "content": "盘古记忆系统是 AI Agent 的大脑组件，通过 MCP 协议提供记忆服务",
+            "wing": "test_wing",
+            "room": "tech",
+            "hall": "concepts",
+            "importance": 5,
+            "tags": ["盘古", "记忆系统", "mcp"],
+        },
+        {
+            "content": "2024年3月15日，项目完成了 v2.0 重大升级，新增了神经记忆系统",
+            "wing": "test_wing",
+            "room": "history",
+            "hall": "events",
+            "importance": 4,
+            "tags": ["里程碑", "v2.0", "升级"],
+        },
+        {
+            "content": "用户偏好使用暗色主题进行编码，字体大小设置为 14px",
+            "wing": "test_wing",
+            "room": "personal",
+            "hall": "preferences",
+            "importance": 2,
+            "tags": ["偏好", "主题", "编码"],
+        },
+        {
+            "content": "部署建议：生产环境应使用 Docker Compose，配合 Nginx 反向代理",
+            "wing": "prod_wing",
+            "room": "deploy",
+            "hall": "suggestions",
+            "importance": 4,
+            "tags": ["部署", "docker", "nginx"],
+        },
+        {
+            "content": "FAISS 是 Facebook 开源的高效相似性搜索库，支持十亿级向量检索",
+            "wing": "prod_wing",
+            "room": "tech",
+            "hall": "facts",
+            "importance": 3,
+            "tags": ["faiss", "向量", "搜索"],
+        },
+        {
+            "content": "团队成员包括：Alice（后端）、Bob（前端）、Carol（运维）",
+            "wing": "test_wing",
+            "room": "team",
+            "hall": "relations",
+            "importance": 3,
+            "tags": ["团队", "成员", "关系"],
+        },
+        {
+            "content": "结论：混合搜索（FTS + 向量）比纯向量搜索召回率提升约 35%",
+            "wing": "prod_wing",
+            "room": "research",
+            "hall": "discoveries",
+            "importance": 5,
+            "tags": ["发现", "搜索", "性能"],
+        },
     ]
 
     created_ids = []
@@ -82,8 +152,10 @@ def run_all_phases():
                 status = "WARN"
         else:
             detail = r.error or "写入失败"
-        report.record(phase, f"写入记忆 #{i+1} ({mem['hall']})", status, detail, r.elapsed_ms)
-        print(f"  {'✅' if status=='PASS' else '❌'} 写入记忆 #{i+1} [{mem['hall']}] {detail} ({r.elapsed_ms:.0f}ms)")
+        report.record(phase, f"写入记忆 #{i + 1} ({mem['hall']})", status, detail, r.elapsed_ms)
+        print(
+            f"  {'✅' if status == 'PASS' else '❌'} 写入记忆 #{i + 1} [{mem['hall']}] {detail} ({r.elapsed_ms:.0f}ms)"
+        )
 
     # 1.2 搜索记忆
     search_tests = [
@@ -109,7 +181,9 @@ def run_all_phases():
                 detail = "返回格式异常"
                 status = "WARN"
         report.record(phase, f"搜索: {label}", status, detail, r.elapsed_ms)
-        print(f"  {'✅' if status=='PASS' else '⚠️' if status=='WARN' else '❌'} 搜索 [{query}] {detail} ({r.elapsed_ms:.0f}ms)")
+        print(
+            f"  {'✅' if status == 'PASS' else '⚠️' if status == 'WARN' else '❌'} 搜索 [{query}] {detail} ({r.elapsed_ms:.0f}ms)"
+        )
 
     # 1.3 列出记忆
     r = mcp.call("pangu_stats", {})
@@ -123,7 +197,7 @@ def run_all_phases():
         except Exception:
             detail = "返回格式解析成功"
     report.record(phase, "系统统计", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 系统统计 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 系统统计 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 1.4 删除测试记忆（清理）
     delete_count = 0
@@ -131,17 +205,21 @@ def run_all_phases():
         r = mcp.call("pangu_delete_memory", {"memory_id": mid})
         if r.success:
             delete_count += 1
-    report.record(phase, f"清理测试记忆", "PASS" if delete_count == len(created_ids) else "WARN",
-                  f"删除 {delete_count}/{len(created_ids)}")
+    report.record(
+        phase,
+        "清理测试记忆",
+        "PASS" if delete_count == len(created_ids) else "WARN",
+        f"删除 {delete_count}/{len(created_ids)}",
+    )
     print(f"  🧹 清理测试记忆: {delete_count}/{len(created_ids)}")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 2: 四层记忆栈验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 2: 四层记忆栈"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 2.1 L0 身份层
     r = mcp.call("pangu_identity", {})
@@ -157,17 +235,22 @@ def run_all_phases():
         except Exception:
             detail = "返回可解析" if r.result else "返回空"
     report.record(phase, "L0 身份层", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '⚠️'} L0 身份层 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '⚠️'} L0 身份层 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 2.2 写入足够多的记忆来触发各层
     stack_test_ids = []
     for i in range(20):
-        r = mcp.call("pangu_add_memory", {
-            "content": f"记忆栈测试条目 #{i+1}：这是用于验证四层记忆栈功能的测试数据，包含足够的内容以触发 L1 摘要层的生成",
-            "wing": "stack_test", "room": "general",
-            "hall": "facts", "importance": (i % 5) + 1,
-            "tags": [f"tag_{i}", "测试", "记忆栈"]
-        })
+        r = mcp.call(
+            "pangu_add_memory",
+            {
+                "content": f"记忆栈测试条目 #{i + 1}：这是用于验证四层记忆栈功能的测试数据，包含足够的内容以触发 L1 摘要层的生成",
+                "wing": "stack_test",
+                "room": "general",
+                "hall": "facts",
+                "importance": (i % 5) + 1,
+                "tags": [f"tag_{i}", "测试", "记忆栈"],
+            },
+        )
         if r.success:
             try:
                 data = json.loads(r.result)
@@ -176,9 +259,13 @@ def run_all_phases():
                     stack_test_ids.append(mid)
             except Exception:
                 pass
-    report.record(phase, "写入20条记忆栈测试数据", "PASS" if len(stack_test_ids) >= 15 else "WARN",
-                  f"成功 {len(stack_test_ids)}/20")
-    print(f"  {'✅' if len(stack_test_ids)>=15 else '⚠️'} 写入记忆栈测试数据: {len(stack_test_ids)}/20")
+    report.record(
+        phase,
+        "写入20条记忆栈测试数据",
+        "PASS" if len(stack_test_ids) >= 15 else "WARN",
+        f"成功 {len(stack_test_ids)}/20",
+    )
+    print(f"  {'✅' if len(stack_test_ids) >= 15 else '⚠️'} 写入记忆栈测试数据: {len(stack_test_ids)}/20")
 
     # 2.3 带 wing/room 过滤的搜索（L2 按需层）
     r = mcp.call("pangu_search_memories", {"query": "记忆栈测试", "wing": "stack_test", "limit": 10})
@@ -196,7 +283,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "L2 按需层（wing/room 过滤）", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '⚠️'} L2 按需层过滤 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '⚠️'} L2 按需层过滤 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 2.4 L3 深度搜索
     r = mcp.call("pangu_search_memories", {"query": "测试数据 验证 功能", "limit": 20})
@@ -211,7 +298,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "L3 深度搜索", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} L3 深度搜索 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} L3 深度搜索 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 2.5 清理
     for mid in stack_test_ids:
@@ -221,20 +308,48 @@ def run_all_phases():
     # Phase 3: 搜索子系统深度验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 3: 搜索子系统"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 写入搜索测试数据
     search_test_ids = []
     search_data = [
-        {"content": "Python Flask 框架用于构建 Web 应用程序", "wing": "search_test", "tags": ["python", "flask", "web"]},
-        {"content": "Django 是 Python 最流行的 Web 框架之一", "wing": "search_test", "tags": ["python", "django", "web"]},
-        {"content": "FastAPI 是现代高性能 Python Web 框架", "wing": "search_test", "tags": ["python", "fastapi", "api"]},
-        {"content": "React 是 Facebook 开发的前端 JavaScript 库", "wing": "search_test", "tags": ["react", "frontend", "javascript"]},
-        {"content": "Vue.js 是渐进式 JavaScript 框架", "wing": "search_test", "tags": ["vue", "frontend", "javascript"]},
-        {"content": "机器学习是人工智能的一个分支，让计算机从数据中学习", "wing": "search_test", "tags": ["ml", "ai", "学习"]},
-        {"content": "深度学习使用神经网络模型进行特征学习", "wing": "search_test", "tags": ["dl", "neural", "深度学习"]},
+        {
+            "content": "Python Flask 框架用于构建 Web 应用程序",
+            "wing": "search_test",
+            "tags": ["python", "flask", "web"],
+        },
+        {
+            "content": "Django 是 Python 最流行的 Web 框架之一",
+            "wing": "search_test",
+            "tags": ["python", "django", "web"],
+        },
+        {
+            "content": "FastAPI 是现代高性能 Python Web 框架",
+            "wing": "search_test",
+            "tags": ["python", "fastapi", "api"],
+        },
+        {
+            "content": "React 是 Facebook 开发的前端 JavaScript 库",
+            "wing": "search_test",
+            "tags": ["react", "frontend", "javascript"],
+        },
+        {
+            "content": "Vue.js 是渐进式 JavaScript 框架",
+            "wing": "search_test",
+            "tags": ["vue", "frontend", "javascript"],
+        },
+        {
+            "content": "机器学习是人工智能的一个分支，让计算机从数据中学习",
+            "wing": "search_test",
+            "tags": ["ml", "ai", "学习"],
+        },
+        {
+            "content": "深度学习使用神经网络模型进行特征学习",
+            "wing": "search_test",
+            "tags": ["dl", "neural", "深度学习"],
+        },
         {"content": "自然语言处理让计算机理解和生成人类语言", "wing": "search_test", "tags": ["nlp", "语言", "处理"]},
     ]
     for mem in search_data:
@@ -261,7 +376,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "FTS 全文搜索", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} FTS 全文搜索 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} FTS 全文搜索 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 3.2 向量语义搜索（语义相近但关键词不同）
     r = mcp.call("pangu_search_memories", {"query": "人工智能算法", "limit": 5})
@@ -276,7 +391,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "向量语义搜索", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '⚠️'} 向量语义搜索 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '⚠️'} 向量语义搜索 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 3.3 混合搜索
     r = mcp.call("pangu_hybrid_search", {"query": "Web 开发框架", "limit": 5})
@@ -291,7 +406,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "混合搜索(FTS+向量+KG)", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 混合搜索 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 混合搜索 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 3.4 查询改写
     r = mcp.call("pangu_rewrite_query", {"query": "py"})
@@ -307,7 +422,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "查询改写", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '⚠️'} 查询改写 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '⚠️'} 查询改写 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 3.5 搜索建议
     r = mcp.call("pangu_search_suggestions", {"query": "不存在的查询xyz123"})
@@ -321,7 +436,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "搜索建议", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '⚠️'} 搜索建议 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '⚠️'} 搜索建议 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 3.6 搜索解释
     r = mcp.call("pangu_explain_search", {"query": "Python 框架"})
@@ -337,7 +452,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "搜索解释", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '⚠️'} 搜索解释 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '⚠️'} 搜索解释 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 3.7 搜索统计
     r = mcp.call("pangu_search_stats", {})
@@ -351,7 +466,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "搜索统计", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 搜索统计 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 搜索统计 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 清理搜索测试数据
     for mid in search_test_ids:
@@ -361,9 +476,9 @@ def run_all_phases():
     # Phase 4: 神经记忆系统验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 4: 神经记忆系统"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 4.1 神经记忆统计
     r = mcp.call("pangu_neural_stats", {})
@@ -379,7 +494,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "神经记忆统计", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 神经记忆统计 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 神经记忆统计 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 4.2 睡眠巩固
     r = mcp.call("pangu_neural_sleep", {"cycles": 1})
@@ -393,7 +508,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "睡眠巩固 (neural_sleep)", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 睡眠巩固 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 睡眠巩固 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 4.3 激活扩散
     r = mcp.call("pangu_neural_spreading", {"query": "Python 编程"})
@@ -407,7 +522,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "激活扩散 (neural_spreading)", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 激活扩散 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 激活扩散 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 4.4 竞争抑制
     r = mcp.call("pangu_neural_inhibition", {})
@@ -421,7 +536,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "竞争抑制 (neural_inhibition)", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 竞争抑制 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 竞争抑制 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 4.5 神经衰减
     r = mcp.call("pangu_neural_decay", {})
@@ -435,7 +550,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "神经衰减 (neural_decay)", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 神经衰减 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 神经衰减 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 4.6 巩固统计
     r = mcp.call("pangu_consolidation_stats", {})
@@ -448,7 +563,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "巩固统计", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 巩固统计 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 巩固统计 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 4.7 遗忘评估
     r = mcp.call("pangu_evaluate_forgetting", {})
@@ -462,15 +577,15 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "遗忘评估", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 遗忘评估 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 遗忘评估 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 5: 知识图谱验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 5: 知识图谱"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 5.1 添加实体
     entities = [
@@ -491,26 +606,26 @@ def run_all_phases():
             except Exception:
                 pass
         report.record(phase, f"添加实体: {ent['name']}", status, "", r.elapsed_ms)
-        print(f"  {'✅' if status=='PASS' else '❌'} 添加实体: {ent['name']} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if status == 'PASS' else '❌'} 添加实体: {ent['name']} ({r.elapsed_ms:.0f}ms)")
 
     # 5.2 添加关系
     if len(entity_ids) >= 2:
-        r = mcp.call("pangu_kg_add_relation", {
-            "subject_id": entity_ids[0], "predicate": "used_by",
-            "object_id": entity_ids[1], "confidence": 0.9
-        })
+        r = mcp.call(
+            "pangu_kg_add_relation",
+            {"subject_id": entity_ids[0], "predicate": "used_by", "object_id": entity_ids[1], "confidence": 0.9},
+        )
         status = "PASS" if r.success else "FAIL"
         report.record(phase, "添加关系: Python used_by Flask", status, "", r.elapsed_ms)
-        print(f"  {'✅' if status=='PASS' else '❌'} 添加关系: Python → Flask ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if status == 'PASS' else '❌'} 添加关系: Python → Flask ({r.elapsed_ms:.0f}ms)")
 
         if len(entity_ids) >= 3:
-            r = mcp.call("pangu_kg_add_relation", {
-                "subject_id": entity_ids[0], "predicate": "uses",
-                "object_id": entity_ids[2], "confidence": 0.85
-            })
+            r = mcp.call(
+                "pangu_kg_add_relation",
+                {"subject_id": entity_ids[0], "predicate": "uses", "object_id": entity_ids[2], "confidence": 0.85},
+            )
             status = "PASS" if r.success else "FAIL"
             report.record(phase, "添加关系: Python uses SQLite", status, "", r.elapsed_ms)
-            print(f"  {'✅' if status=='PASS' else '❌'} 添加关系: Python → SQLite ({r.elapsed_ms:.0f}ms)")
+            print(f"  {'✅' if status == 'PASS' else '❌'} 添加关系: Python → SQLite ({r.elapsed_ms:.0f}ms)")
 
     # 5.3 查询图谱
     r = mcp.call("pangu_kg_query", {"entity_name": "Python"})
@@ -524,7 +639,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "查询实体关系", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 查询实体关系 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 查询实体关系 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 5.4 邻居查询
     if entity_ids:
@@ -539,10 +654,12 @@ def run_all_phases():
             except Exception:
                 detail = "可解析"
         report.record(phase, "邻居查询", status, detail, r.elapsed_ms)
-        print(f"  {'✅' if status=='PASS' else '❌'} 邻居查询 {detail} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if status == 'PASS' else '❌'} 邻居查询 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 5.5 自动实体提取
-    r = mcp.call("pangu_kg_auto_extract", {"content": "项目使用 Python 和 ONNX 进行深度学习模型部署，数据存储在 SQLite 中"})
+    r = mcp.call(
+        "pangu_kg_auto_extract", {"content": "项目使用 Python 和 ONNX 进行深度学习模型部署，数据存储在 SQLite 中"}
+    )
     status = "PASS" if r.success else "FAIL"
     detail = ""
     if r.success:
@@ -553,7 +670,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "自动实体提取", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 自动实体提取 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 自动实体提取 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 5.6 图谱统计
     r = mcp.call("pangu_graph_stats", {})
@@ -568,15 +685,15 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "图谱统计", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 图谱统计 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 图谱统计 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 6: 主动注入与预测验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 6: 主动注入与预测"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 6.1 上下文注入
     r = mcp.call("pangu_inject_context", {"context": "我正在调试 Python 代码中的数据库连接问题"})
@@ -590,13 +707,13 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "上下文注入", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 上下文注入 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 上下文注入 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 6.2 更新上下文
     r = mcp.call("pangu_update_context", {"context": "我正在优化搜索算法的性能"})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "更新上下文", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 更新上下文 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 更新上下文 ({r.elapsed_ms:.0f}ms)")
 
     # 6.3 当前上下文
     r = mcp.call("pangu_current_context", {})
@@ -610,13 +727,13 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "获取当前上下文", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 当前上下文 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 当前上下文 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 6.4 注入统计
     r = mcp.call("pangu_injection_stats", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "注入统计", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 注入统计 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 注入统计 ({r.elapsed_ms:.0f}ms)")
 
     # 6.5 预测性记忆推荐
     r = mcp.call("pangu_proactive_predict", {"context": "开发 Web 应用"})
@@ -630,21 +747,21 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "预测性记忆推荐", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 预测性推荐 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 预测性推荐 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 6.6 主动提醒
     r = mcp.call("pangu_proactive_remind", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "主动提醒", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 主动提醒 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 主动提醒 ({r.elapsed_ms:.0f}ms)")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 7: 多模态处理验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 7: 多模态处理"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 7.1 图片嵌入（需要测试图片）
     r = mcp.call("pangu_image_embed", {"image_path": "/dev/null"})
@@ -659,7 +776,9 @@ def run_all_phases():
     else:
         detail = "图片嵌入成功"
     report.record(phase, "图片嵌入", status, detail, r.elapsed_ms)
-    print(f"  {'⏭️' if status=='SKIP' else '✅' if status=='PASS' else '❌'} 图片嵌入 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(
+        f"  {'⏭️' if status == 'SKIP' else '✅' if status == 'PASS' else '❌'} 图片嵌入 {detail} ({r.elapsed_ms:.0f}ms)"
+    )
 
     # 7.2 视频元数据
     r = mcp.call("pangu_video_metadata", {"video_path": "/dev/null"})
@@ -669,7 +788,9 @@ def run_all_phases():
         detail = "预期失败：无测试视频文件"
         status = "SKIP"
     report.record(phase, "视频元数据", status, detail, r.elapsed_ms)
-    print(f"  {'⏭️' if status=='SKIP' else '✅' if status=='PASS' else '❌'} 视频元数据 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(
+        f"  {'⏭️' if status == 'SKIP' else '✅' if status == 'PASS' else '❌'} 视频元数据 {detail} ({r.elapsed_ms:.0f}ms)"
+    )
 
     # 7.3 音频转写
     r = mcp.call("pangu_audio_transcribe", {"audio_path": "/dev/null"})
@@ -679,7 +800,9 @@ def run_all_phases():
         detail = "预期失败：无测试音频文件"
         status = "SKIP"
     report.record(phase, "音频转写", status, detail, r.elapsed_ms)
-    print(f"  {'⏭️' if status=='SKIP' else '✅' if status=='PASS' else '❌'} 音频转写 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(
+        f"  {'⏭️' if status == 'SKIP' else '✅' if status == 'PASS' else '❌'} 音频转写 {detail} ({r.elapsed_ms:.0f}ms)"
+    )
 
     # 7.4 跨模态搜索
     r = mcp.call("pangu_multimodal_search", {"query": "风景照片", "limit": 5})
@@ -693,21 +816,21 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "跨模态搜索", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 跨模态搜索 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 跨模态搜索 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 7.5 多模态摘要
     r = mcp.call("pangu_multimodal_summary", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "多模态摘要", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 多模态摘要 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 多模态摘要 ({r.elapsed_ms:.0f}ms)")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 8: 自主管理与自进化验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 8: 自主管理"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 8.1 自动融合
     r = mcp.call("pangu_auto_fusion", {})
@@ -721,7 +844,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "自动融合", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 自动融合 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 自动融合 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 8.2 自动衰减
     r = mcp.call("pangu_auto_forget", {})
@@ -735,7 +858,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "自动衰减/遗忘", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 自动衰减 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 自动衰减 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 8.3 压缩记忆
     r = mcp.call("pangu_compress_memories", {})
@@ -749,7 +872,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "压缩记忆", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 压缩记忆 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 压缩记忆 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 8.4 冲突检测
     r = mcp.call("pangu_detect_conflicts", {})
@@ -763,7 +886,7 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "冲突检测", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 冲突检测 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 冲突检测 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 8.5 去重检测
     r = mcp.call("pangu_find_duplicates", {})
@@ -777,33 +900,33 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "去重检测", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 去重检测 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 去重检测 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 8.6 自动驾驶状态
     r = mcp.call("pangu_autopilot_status", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "自动驾驶状态", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 自动驾驶状态 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 自动驾驶状态 ({r.elapsed_ms:.0f}ms)")
 
     # 8.7 自进化统计
     r = mcp.call("pangu_evolution_stats", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "自进化统计", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 自进化统计 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 自进化统计 ({r.elapsed_ms:.0f}ms)")
 
     # 8.8 自我诊断
     r = mcp.call("pangu_self_diagnose", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "自我诊断", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 自我诊断 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 自我诊断 ({r.elapsed_ms:.0f}ms)")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 9: REST API + Web UI 验证
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 9: REST API"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     import requests as req
 
@@ -813,7 +936,7 @@ def run_all_phases():
         status = "PASS" if r.status_code in (200, 307, 404) else "FAIL"
         detail = f"HTTP {r.status_code}"
         report.record(phase, "REST API 根路径", status, detail, 0)
-        print(f"  {'✅' if status=='PASS' else '❌'} REST 根路径 {detail}")
+        print(f"  {'✅' if status == 'PASS' else '❌'} REST 根路径 {detail}")
     except Exception as e:
         report.record(phase, "REST API 根路径", "FAIL", str(e))
         print(f"  ❌ REST 根路径 {e}")
@@ -824,7 +947,7 @@ def run_all_phases():
         status = "PASS" if r.status_code == 200 else "WARN"
         detail = f"HTTP {r.status_code}, 内容长度 {len(r.text)}"
         report.record(phase, "Dashboard", status, detail, 0)
-        print(f"  {'✅' if status=='PASS' else '⚠️'} Dashboard {detail}")
+        print(f"  {'✅' if status == 'PASS' else '⚠️'} Dashboard {detail}")
     except Exception as e:
         report.record(phase, "Dashboard", "FAIL", str(e))
         print(f"  ❌ Dashboard {e}")
@@ -835,7 +958,7 @@ def run_all_phases():
         status = "PASS" if r.status_code == 200 else "WARN"
         detail = f"HTTP {r.status_code}"
         report.record(phase, "API 文档 (/docs)", status, detail, 0)
-        print(f"  {'✅' if status=='PASS' else '⚠️'} API 文档 {detail}")
+        print(f"  {'✅' if status == 'PASS' else '⚠️'} API 文档 {detail}")
     except Exception as e:
         report.record(phase, "API 文档", "FAIL", str(e))
         print(f"  ❌ API 文档 {e}")
@@ -846,7 +969,7 @@ def run_all_phases():
         status = "PASS" if r.status_code in (200, 401) else "WARN"
         detail = f"HTTP {r.status_code}"
         report.record(phase, "REST API /api/v2/memories", status, detail, 0)
-        print(f"  {'✅' if status=='PASS' else '⚠️'} REST memories {detail}")
+        print(f"  {'✅' if status == 'PASS' else '⚠️'} REST memories {detail}")
     except Exception as e:
         report.record(phase, "REST API /api/v2/memories", "FAIL", str(e))
         print(f"  ❌ REST memories {e}")
@@ -863,36 +986,45 @@ def run_all_phases():
         except Exception:
             detail = "可解析"
     report.record(phase, "系统健康检查", status, detail, r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 系统健康 {detail} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 系统健康 {detail} ({r.elapsed_ms:.0f}ms)")
 
     # 9.6 系统指标
     r = mcp.call("pangu_system_metrics", {})
     status = "PASS" if r.success else "FAIL"
     report.record(phase, "系统指标", status, "", r.elapsed_ms)
-    print(f"  {'✅' if status=='PASS' else '❌'} 系统指标 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if status == 'PASS' else '❌'} 系统指标 ({r.elapsed_ms:.0f}ms)")
 
     # ═══════════════════════════════════════════════════════════
     # Phase 10: 功能清单全量遍历（423 工具逐个调用）
     # ═══════════════════════════════════════════════════════════
     phase = "Phase 10: 全量工具遍历"
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"📋 {phase} — 调用全部 {len(tools)} 个 MCP 工具")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # 已在前面测试过的工具（跳过避免副作用）
     skip_tools = {
         "pangu_add_memory",  # 已测
         "pangu_delete_memory",  # 已测
         "pangu_search_memories",  # 已测多轮
-        "pangu_ingest_file", "pangu_ingest_url",  # 需要外部文件/URL
-        "pangu_image_embed", "pangu_image_classify",  # 需要图片文件
-        "pangu_video_ingest", "pangu_video_frames",  # 需要视频文件
-        "pangu_audio_transcribe", "pangu_audio_ingest",  # 需要音频文件
-        "pangu_git_commit", "pangu_git_push",  # 有副作用
-        "pangu_feishu_send", "pangu_feishu_card",  # 有副作用
+        "pangu_ingest_file",
+        "pangu_ingest_url",  # 需要外部文件/URL
+        "pangu_image_embed",
+        "pangu_image_classify",  # 需要图片文件
+        "pangu_video_ingest",
+        "pangu_video_frames",  # 需要视频文件
+        "pangu_audio_transcribe",
+        "pangu_audio_ingest",  # 需要音频文件
+        "pangu_git_commit",
+        "pangu_git_push",  # 有副作用
+        "pangu_feishu_send",
+        "pangu_feishu_card",  # 有副作用
         "pangu_watch_directory",  # 有副作用
-        "pangu_collect_file", "pangu_collect_dir", "pangu_collect_all",  # 需要文件路径
-        "pangu_plugin_enable", "pangu_plugin_disable",  # 修改配置
+        "pangu_collect_file",
+        "pangu_collect_dir",
+        "pangu_collect_all",  # 需要文件路径
+        "pangu_plugin_enable",
+        "pangu_plugin_disable",  # 修改配置
         "pangu_config_set",  # 修改配置
         "pangu_restore_backup",  # 有副作用
         "pangu_api_server_start",  # 启动服务
@@ -918,16 +1050,16 @@ def run_all_phases():
             tool_results["errors"].append((name, error_short))
             report.record(phase, name, "FAIL", error_short, r.elapsed_ms)
 
-    print(f"\n  📊 全量遍历结果:")
+    print("\n  📊 全量遍历结果:")
     print(f"     ✅ 通过: {tool_results['pass']}")
     print(f"     ❌ 失败: {tool_results['fail']}")
     print(f"     ⏭️  跳过: {tool_results['skip']}")
     if tool_results["errors"]:
-        print(f"\n  🔍 失败工具详情:")
+        print("\n  🔍 失败工具详情:")
         for name, err in tool_results["errors"][:20]:
             print(f"     ❌ {name}: {err}")
         if len(tool_results["errors"]) > 20:
-            print(f"     ... 还有 {len(tool_results['errors'])-20} 个失败")
+            print(f"     ... 还有 {len(tool_results['errors']) - 20} 个失败")
 
     # ═══════════════════════════════════════════════════════════
     # 生成最终报告
@@ -936,7 +1068,7 @@ def run_all_phases():
 
     # 打印 MCP 调用统计
     summary = mcp.get_summary()
-    print(f"\n📡 MCP 调用统计:")
+    print("\n📡 MCP 调用统计:")
     print(f"   总调用: {summary['total_calls']}")
     print(f"   成功: {summary['success']} ({summary['success_rate']})")
     print(f"   失败: {summary['failed']}")
@@ -1112,9 +1244,6 @@ def _get_default_args(tool_name: str) -> dict:
         "pangu_injection_stats": {},
         "pangu_auto_inject": {},
         # 遗忘
-        "pangu_evaluate_forgetting": {},
-        "pangu_auto_forget": {},
-        "pangu_get_archive": {},
         "pangu_forget_stats": {},
         # 蒸馏
         "pangu_distill": {},
@@ -1399,14 +1528,8 @@ def _get_default_args(tool_name: str) -> dict:
         # 规划
         "pangu_evolution_plan": {},
         # 分析
-        "pangu_analyze": {},
         # 元认知
-        "pangu_metacognition_monitor": {},
-        "pangu_metacognition_reconfig": {},
         # 自适应
-        "pangu_adaptive_params": {},
-        "pangu_adaptive_evaluate": {},
-        "pangu_cold_hot": {},
     }
     return defaults.get(tool_name, {})
 

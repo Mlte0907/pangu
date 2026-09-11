@@ -157,10 +157,27 @@ class KnowledgeExtractor:
 
         # 诗意/文学内容过滤
         poetic_markers = [
-            "像", "如同", "仿佛", "like", "the ", "and ",
-            "黄昏", "夜空", "灯光", "桥", "散落", "骨头",
-            "幽灵", "果子", "星座", "石子", "日记本",
-            "I ", "We ", "The ", "And ",
+            "像",
+            "如同",
+            "仿佛",
+            "like",
+            "the ",
+            "and ",
+            "黄昏",
+            "夜空",
+            "灯光",
+            "桥",
+            "散落",
+            "骨头",
+            "幽灵",
+            "果子",
+            "星座",
+            "石子",
+            "日记本",
+            "I ",
+            "We ",
+            "The ",
+            "And ",
         ]
         poetic_count = sum(1 for m in poetic_markers if m in content)
         if poetic_count >= 2:
@@ -206,7 +223,7 @@ class KnowledgeExtractor:
             "nginx": "nginx",
             "redis": "redis",
             "postgres": "postgres",
-            "openclaw": "openclaw"  # 保留为词典数据，非适配代码,
+            "openclaw": "openclaw",  # 保留为词典数据，非适配代码
             "fuxi": "fuxi",
             "pangu": "pangu",
             "feishu": "feishu",
@@ -244,10 +261,28 @@ class KnowledgeExtractor:
 
         # 包含技术关键词加分
         tech_words = [
-            "config", "setting", "fix", "bug", "error", "deploy",
-            "配置", "修复", "部署", "错误", "问题", "解决",
-            "决定", "确认", "选择", "采用", "切换", "建议",
-            "deepseek", "glm", "model", "模型",
+            "config",
+            "setting",
+            "fix",
+            "bug",
+            "error",
+            "deploy",
+            "配置",
+            "修复",
+            "部署",
+            "错误",
+            "问题",
+            "解决",
+            "决定",
+            "确认",
+            "选择",
+            "采用",
+            "切换",
+            "建议",
+            "deepseek",
+            "glm",
+            "model",
+            "模型",
         ]
         if any(w in content.lower() for w in tech_words):
             confidence += 0.1
@@ -303,11 +338,7 @@ class KnowledgeExtractor:
 
                     # 处理 content 列表格式
                     if isinstance(content, list):
-                        texts = [
-                            c.get("text", "")
-                            for c in content
-                            if isinstance(c, dict) and c.get("type") == "text"
-                        ]
+                        texts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
                         content = " ".join(texts)
 
                     if isinstance(content, str) and len(content) > 5:
@@ -323,9 +354,7 @@ class KnowledgeExtractor:
 
         return messages
 
-    def _extract_from_exchange(
-        self, user_msg: str, assistant_msg: str, session_id: str
-    ) -> list[ExtractedKnowledge]:
+    def _extract_from_exchange(self, user_msg: str, assistant_msg: str, session_id: str) -> list[ExtractedKnowledge]:
         """从一轮对话中提取知识"""
         extracted = []
 
@@ -412,9 +441,7 @@ class KnowledgeExtractor:
                     i += 1
 
                 # 提取知识
-                knowledge = self._extract_from_exchange(
-                    user_content, assistant_content, session_id
-                )
+                knowledge = self._extract_from_exchange(user_content, assistant_content, session_id)
                 extracted.extend(knowledge)
             else:
                 i += 1
@@ -472,10 +499,7 @@ class KnowledgeExtractor:
             # 去重
             if content_hash in seen_hashes:
                 continue
-            if any(
-                d.get("metadata", {}).get("content_hash") == content_hash
-                for d in existing
-            ):
+            if any(d.get("metadata", {}).get("content_hash") == content_hash for d in existing):
                 continue
 
             seen_hashes.add(content_hash)

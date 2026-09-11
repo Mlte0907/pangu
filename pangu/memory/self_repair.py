@@ -13,8 +13,8 @@
     fix_result = engine.run_repair()
 """
 
-import json
 import hashlib
+import json
 import logging
 import re
 from collections import Counter, defaultdict

@@ -31,6 +31,7 @@ def _cache_get(query: str, limit: int) -> list[dict] | None:
     """从缓存获取搜索结果"""
     try:
         from pangu.memory.search_cache import get_search_cache
+
         cache = get_search_cache()
         return cache.get(query, limit=limit)
     except Exception as e:
@@ -42,6 +43,7 @@ def _cache_set(query: str, results: list[dict], limit: int) -> None:
     """将搜索结果存入缓存"""
     try:
         from pangu.memory.search_cache import get_search_cache
+
         cache = get_search_cache()
         cache.set(query, results, limit=limit)
     except Exception as e:
@@ -57,6 +59,7 @@ def _fts_recall(
     fts_ranks: dict[str, int] = {}
     try:
         from pangu.memory.fts_search import _get_fts_engine
+
         fts = _get_fts_engine()
         if not fts._indexed or fts._indexed_count != len(drawers):
             fts.build_index(drawers)
@@ -80,7 +83,7 @@ def _vector_recall(
         query_vec = _get_query_embedding(query)
         if query_vec is None:
             return vector_ranks
-        
+
         scored = []
         for d in drawers:
             stored_vec = d.metadata.get("embedding")
@@ -109,6 +112,7 @@ def _get_query_embedding(query: str) -> list[float] | None:
     # ONNX 优先
     try:
         from pangu.memory.onnx_embedder import get_onnx_embedder
+
         onnx = get_onnx_embedder()
         if onnx.is_available:
             query_vec = onnx.embed(query)
@@ -116,10 +120,11 @@ def _get_query_embedding(query: str) -> list[float] | None:
                 return query_vec
     except Exception as e:
         logger.debug(ONNX_EMBED_FAILED_MSG.format(e))
-    
+
     # 降级到 embedding service
     try:
         from pangu.memory.embedding import get_embedding_service
+
         embed_svc = get_embedding_service()
         return embed_svc.embed(query)
     except Exception as e:
@@ -136,6 +141,7 @@ def _kg_recall(
     kg_ranks: dict[str, int] = {}
     try:
         from pangu.memory.knowledge_graph import KnowledgeGraph
+
         kg = KnowledgeGraph(config)
         keywords = [w for w in query.split() if len(w) >= KG_KEYWORD_MIN_LEN]
         kg_entities = set()
@@ -173,7 +179,7 @@ def _rrf_fusion(
     for ranks, weight in all_ranks:
         for mid, rank in ranks.items():
             rrf_scores[mid] = rrf_scores.get(mid, 0.0) + weight / (RRF_K + rank)
-    
+
     # 归一化 RRF 分数到 0-1
     if rrf_scores:
         max_score = max(rrf_scores.values())
@@ -222,6 +228,7 @@ def _rerank_results(
     """语义重排序"""
     try:
         from pangu.memory.reranker import rerank_search_results
+
         return rerank_search_results(query, results, drawers=drawers, limit=limit)
     except Exception as e:
         logger.debug(RERANKING_SKIPPED_MSG.format(e))
@@ -235,6 +242,7 @@ def _explain_results(
     """生成搜索解释"""
     try:
         from pangu.memory.search_explainer import get_search_explainer
+
         explainer = get_search_explainer()
         for r in results:
             exp = explainer.explain(query, r, all_results=results)
@@ -272,7 +280,7 @@ def hybrid_search(
     cached = _cache_get(query, limit)
     if cached is not None:
         return cached
-    
+
     config = config or PanguConfig.load()
     all_ids = {d.id: d for d in drawers}
 
@@ -283,27 +291,35 @@ def hybrid_search(
 
     # RRF 融合
     rrf_scores = _rrf_fusion(
-        fts_ranks, vector_ranks, kg_ranks,
-        fts_weight, vector_weight, kg_weight,
+        fts_ranks,
+        vector_ranks,
+        kg_ranks,
+        fts_weight,
+        vector_weight,
+        kg_weight,
     )
-    
+
     # 排序
     sorted_ids = sorted(rrf_scores.keys(), key=lambda x: -rrf_scores[x])
-    
+
     # 构建结果
     results = _build_results(
-        sorted_ids, all_ids, rrf_scores,
-        fts_ranks, vector_ranks, kg_ranks,
+        sorted_ids,
+        all_ids,
+        rrf_scores,
+        fts_ranks,
+        vector_ranks,
+        kg_ranks,
         limit,
     )
-    
+
     # 语义重排序
     results = _rerank_results(query, results, drawers, limit)
-    
+
     # 生成搜索解释
     _explain_results(query, results)
-    
+
     # 存入缓存
     _cache_set(query, results, limit)
-    
+
     return results

@@ -18,7 +18,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-
 # ── 实验工具前缀映射（design 4.3 / spec 6.2）──
 
 EXPERIMENTAL_PREFIXES: dict[str, list[str]] = {
@@ -61,46 +60,49 @@ def _extract_experimental_from_tools(tools: list[dict]) -> list[str]:
 
 # ── 白名单清单（单一事实源，spec 6.1）──
 
-CORE_WHITELIST: frozenset[str] = frozenset({
-    # 记忆 CRUD 与召回 (7)
-    "pangu_add_memory",
-    "pangu_recall",
-    "pangu_search_memories",
-    "pangu_hybrid_search",
-    "pangu_delete_memory",
-    "pangu_archive_memory",
-    "pangu_wake_up",
-    # 关联与统计 (5)
-    "pangu_find_related",
-    "pangu_stats",
-    "pangu_search_stats",
-    "pangu_system_health",
-    "pangu_backup_stats",
-    # 备份与迁移 (6)
-    "pangu_backup",
-    "pangu_restore_backup",
-    "pangu_list_backups",
-    "pangu_export",
-    "pangu_import",
-    "pangu_list_exports",
-    # 项目与配置 (4)
-    "pangu_project_list",
-    "pangu_project_switch",
-    "pangu_config_get",
-    "pangu_config_set",
-    # 内容采集 (2)
-    "pangu_collect_file",
-    "pangu_collect_dir",
-    # 宫殿浏览 (2)
-    "pangu_list_wings",
-    "pangu_list_rooms",
-    # 批量导入 (2)
-    "pangu_batch_import",
-    "pangu_batch_stats",
-})  # 共 28 个
+CORE_WHITELIST: frozenset[str] = frozenset(
+    {
+        # 记忆 CRUD 与召回 (7)
+        "pangu_add_memory",
+        "pangu_recall",
+        "pangu_search_memories",
+        "pangu_hybrid_search",
+        "pangu_delete_memory",
+        "pangu_archive_memory",
+        "pangu_wake_up",
+        # 关联与统计 (5)
+        "pangu_find_related",
+        "pangu_stats",
+        "pangu_search_stats",
+        "pangu_system_health",
+        "pangu_backup_stats",
+        # 备份与迁移 (6)
+        "pangu_backup",
+        "pangu_restore_backup",
+        "pangu_list_backups",
+        "pangu_export",
+        "pangu_import",
+        "pangu_list_exports",
+        # 项目与配置 (4)
+        "pangu_project_list",
+        "pangu_project_switch",
+        "pangu_config_get",
+        "pangu_config_set",
+        # 内容采集 (2)
+        "pangu_collect_file",
+        "pangu_collect_dir",
+        # 宫殿浏览 (2)
+        "pangu_list_wings",
+        "pangu_list_rooms",
+        # 批量导入 (2)
+        "pangu_batch_import",
+        "pangu_batch_stats",
+    }
+)  # 共 28 个
 
 
 # ── 模块注册表 ──
+
 
 @dataclass(frozen=True)
 class ModuleEntry:
@@ -181,9 +183,7 @@ def _build_module_registry() -> list[ModuleEntry]:
 
         # 提取实验工具（前缀匹配）
         # 注意：experimental 层级的模块不移除实验工具
-        experimental_in_module = {
-            name for name in tool_names if _is_experimental(name)
-        }
+        experimental_in_module = {name for name in tool_names if _is_experimental(name)}
         all_experimental.update(experimental_in_module)
 
         # 从原模块中移除实验工具（experimental 层级除外）
@@ -233,6 +233,7 @@ MODULE_REGISTRY: list[ModuleEntry] = _build_module_registry()
 
 
 # ── 派生查询函数 ──
+
 
 def core_tool_names() -> frozenset[str]:
     """返回所有 core 模块的工具名集合"""

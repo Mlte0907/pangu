@@ -63,6 +63,7 @@ def _embed_text(text: str) -> list[float] | None:
 def _cosine_similarity(a: list, b: list) -> float:
     """余弦相似度（使用统一实现）"""
     from .utils import cosine_similarity
+
     return cosine_similarity(a, b)
 
 
@@ -70,6 +71,7 @@ def _sanitize_text(raw_text: str) -> str:
     """脱敏处理文本"""
     try:
         from pangu.memory.sanitizer import MemorySanitizer
+
         sanitized, _ = MemorySanitizer.sanitize(raw_text, level="standard")
         return sanitized
     except Exception as e:
@@ -81,6 +83,7 @@ def _encrypt_text(raw_text: str) -> str:
     """加密处理文本（如果启用）"""
     try:
         from pangu.memory.encryption import encrypt, is_enabled
+
         if is_enabled():
             return encrypt(raw_text)
     except Exception as e:
@@ -225,6 +228,7 @@ def _extract_wikilinks(
     """提取 Wikilink 实体链接"""
     try:
         from pangu.memory.wikilink import extract_entity_links
+
         links = extract_entity_links(raw_text, item_id, existing_drawers or [])
         if links:
             drawer.metadata["wikilinks"] = links
@@ -236,6 +240,7 @@ def _index_vector(drawer: Drawer, item_id: str) -> None:
     """更新向量索引"""
     try:
         from pangu.memory.vector_index import get_vector_index
+
         idx = get_vector_index()
         emb = drawer.metadata.get("embedding")
         if emb:
@@ -249,6 +254,7 @@ def _neural_encode(drawer: Drawer, item_id: str) -> None:
     """神经记忆编码"""
     try:
         from pangu.memory.neural_memory import get_neural_engine
+
         engine = get_neural_engine()
         engine.encode(drawer)
         logger.debug(f"Neural encoding: {item_id[:8]}")
@@ -261,6 +267,7 @@ def _detect_conflicts(drawer: Drawer, existing_drawers: list[Drawer], item_id: s
     if existing_drawers and len(existing_drawers) >= CONFLICT_MIN_EXISTING:
         try:
             from pangu.memory.conflict import ConflictDetector
+
             detector = ConflictDetector()
             conflicts = detector.detect_conflicts([drawer] + existing_drawers[-CONFLICT_LOOKBACK:])
             if conflicts:

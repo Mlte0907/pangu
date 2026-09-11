@@ -89,8 +89,37 @@ class ProactiveReminderEngine:
     def _extract_keywords(self, text: str) -> list[str]:
         """提取关键词"""
         # 简单分词 + 过滤
-        stop_words = {"的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好", "自己", "这"}
-        
+        stop_words = {
+            "的",
+            "了",
+            "在",
+            "是",
+            "我",
+            "有",
+            "和",
+            "就",
+            "不",
+            "人",
+            "都",
+            "一",
+            "一个",
+            "上",
+            "也",
+            "很",
+            "到",
+            "说",
+            "要",
+            "去",
+            "你",
+            "会",
+            "着",
+            "没有",
+            "看",
+            "好",
+            "自己",
+            "这",
+        }
+
         # 提取中文词和英文词
         words = re.findall(r"[\u4e00-\u9fff]+|[a-zA-Z]+", text)
         return [w for w in words if len(w) >= 2 and w not in stop_words]
@@ -106,41 +135,43 @@ class ProactiveReminderEngine:
         """计算两个问题的相似度"""
         kw1 = set(self._extract_keywords(q1))
         kw2 = set(self._extract_keywords(q2))
-        
+
         if not kw1 or not kw2:
             return 0.0
-        
+
         intersection = kw1 & kw2
         union = kw1 | kw2
-        
+
         return len(intersection) / len(union) if union else 0.0
 
     def _find_similar_questions(self, question: str, threshold: float = 0.5) -> list[dict]:
         """查找相似的历史问题"""
         similar = []
-        
+
         for record in self._history[-100:]:  # 只看最近100条
             history_q = record.get("question", "")
             similarity = self._calculate_similarity(question, history_q)
-            
+
             if similarity >= threshold:
-                similar.append({
-                    "question": history_q,
-                    "timestamp": record.get("timestamp", ""),
-                    "similarity": similarity,
-                    "topic": record.get("topic", ""),
-                })
-        
+                similar.append(
+                    {
+                        "question": history_q,
+                        "timestamp": record.get("timestamp", ""),
+                        "similarity": similarity,
+                        "topic": record.get("topic", ""),
+                    }
+                )
+
         return sorted(similar, key=lambda x: x["similarity"], reverse=True)
 
     def on_new_question(self, question: str) -> list[Reminder]:
         """处理新问题，返回主动提醒"""
         reminders = []
-        
+
         # 记录问题
         keywords = self._extract_keywords(question)
         topic = self._extract_topic(question)
-        
+
         record = {
             "question": question,
             "timestamp": datetime.now().isoformat(),
@@ -148,86 +179,94 @@ class ProactiveReminderEngine:
             "keywords": keywords,
         }
         self._history.append(record)
-        
+
         # 更新主题统计
         self._topic_stats[topic] = self._topic_stats.get(topic, 0) + 1
-        
+
         # 保存历史
         self._save_history()
-        
+
         # 检测重复问题
         similar = self._find_similar_questions(question)
         if len(similar) >= 2:
             # 发现重复提问模式
-            reminders.append(Reminder(
-                memory_id="pattern_repeat",
-                content=f"你之前问过 {len(similar)} 次类似问题：{similar[0]['question']}",
-                relevance_score=0.9,
-                reason=f"检测到重复提问模式（{len(similar)}次）",
-                reminder_type="repeated_question",
-                tags=["pattern", "repeat"],
-            ))
-        
+            reminders.append(
+                Reminder(
+                    memory_id="pattern_repeat",
+                    content=f"你之前问过 {len(similar)} 次类似问题：{similar[0]['question']}",
+                    relevance_score=0.9,
+                    reason=f"检测到重复提问模式（{len(similar)}次）",
+                    reminder_type="repeated_question",
+                    tags=["pattern", "repeat"],
+                )
+            )
+
         # 搜索相关记忆
         related_memories = self._search_related_memories(question)
         for mem in related_memories[:3]:  # 最多推送3条
-            reminders.append(Reminder(
-                memory_id=mem["id"],
-                content=mem["content"],
-                relevance_score=mem["score"],
-                reason=f"与当前问题相关（{mem['match_type']}）",
-                reminder_type="related_topic",
-                tags=mem.get("tags", []),
-            ))
-        
+            reminders.append(
+                Reminder(
+                    memory_id=mem["id"],
+                    content=mem["content"],
+                    relevance_score=mem["score"],
+                    reason=f"与当前问题相关（{mem['match_type']}）",
+                    reminder_type="related_topic",
+                    tags=mem.get("tags", []),
+                )
+            )
+
         # 检查是否有新知识
         fresh = self._find_fresh_knowledge(keywords)
         if fresh:
-            reminders.append(Reminder(
-                memory_id=fresh["id"],
-                content=fresh["content"],
-                relevance_score=0.7,
-                reason="最近提取的新知识",
-                reminder_type="fresh_knowledge",
-                tags=fresh.get("tags", []),
-            ))
-        
+            reminders.append(
+                Reminder(
+                    memory_id=fresh["id"],
+                    content=fresh["content"],
+                    relevance_score=0.7,
+                    reason="最近提取的新知识",
+                    reminder_type="fresh_knowledge",
+                    tags=fresh.get("tags", []),
+                )
+            )
+
         return reminders
 
     def _search_related_memories(self, question: str) -> list[dict]:
         """搜索相关记忆"""
         try:
-            from pangu.memory.fts_search import FTS5SearchEngine
             from pangu.core.palace import Drawer
-            
+            from pangu.memory.fts_search import FTS5SearchEngine
+
             # 加载记忆
             drawers_file = Path(self.config.palace_path) / "drawers.json"
             if not drawers_file.exists():
                 return []
-            
+
             with open(drawers_file, encoding="utf-8") as f:
                 data = json.load(f)
             drawers = [Drawer.from_dict(d) for d in data]
-            
+
             # 搜索
             engine = FTS5SearchEngine()
             engine.build_index(drawers)
-            
+
             scores = engine._fts_search(question, drawers, limit=5)
-            
+
             results = []
             drawer_map = {d.id: d for d in drawers}
             for did, score in sorted(scores.items(), key=lambda x: -x[1])[:5]:
                 d = drawer_map.get(did)
                 if d and score > 0.3:
-                    results.append({
-                        "id": did,
-                        "content": d.content[:200],
-                        "score": score,
-                        "tags": d.tags,
-                        "match_type": "fts",
-                    })
-            
+                    results.append(
+                        {
+                            "id": did,
+                            "content": d.content[:200],
+                            "score": score,
+                            "tags": d.tags,
+                            "match_type": "fts",
+                        }
+                    )
+
             return results
         except Exception as e:
             logger.error(f"Search related memories failed: {e}")
@@ -239,20 +278,20 @@ class ProactiveReminderEngine:
             drawers_file = Path(self.config.palace_path) / "drawers.json"
             if not drawers_file.exists():
                 return None
-            
+
             with open(drawers_file, encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             # 查找最近24小时内提取的知识
             cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
-            
+
             for d in reversed(data):  # 从最新开始
                 if "auto_extracted" not in d.get("tags", []):
                     continue
                 created = d.get("created_at", "")
                 if created < cutoff:
                     break
-                
+
                 # 检查关键词匹配
                 content = d.get("content", "").lower()
                 for kw in keywords:
@@ -262,7 +301,7 @@ class ProactiveReminderEngine:
                             "content": d.get("content", "")[:200],
                             "tags": d.get("tags", []),
                         }
-            
+
             return None
         except Exception as e:
             logger.error(f"Find fresh knowledge failed: {e}")
@@ -272,11 +311,11 @@ class ProactiveReminderEngine:
         """获取用户关注模式"""
         if not self._history:
             return {"total_questions": 0, "top_topics": [], "frequency": {}}
-        
+
         # 主题频率
         topic_counts = Counter(r.get("topic", "") for r in self._history)
         top_topics = topic_counts.most_common(10)
-        
+
         # 时间频率
         hourly = defaultdict(int)
         for r in self._history:
@@ -287,7 +326,7 @@ class ProactiveReminderEngine:
                     hourly[dt.hour] += 1
                 except Exception:
                     pass
-        
+
         return {
             "total_questions": len(self._history),
             "top_topics": [{"topic": t, "count": c} for t, c in top_topics],
@@ -298,20 +337,20 @@ class ProactiveReminderEngine:
     def get_repeated_questions(self, min_count: int = 2) -> list[dict]:
         """获取重复提问的问题"""
         question_counts = Counter(r.get("question", "") for r in self._history)
-        
+
         repeated = []
         for q, count in question_counts.most_common():
             if count >= min_count:
-                repeated.append({
-                    "question": q,
-                    "count": count,
-                    "last_asked": next(
-                        (r.get("timestamp", "") for r in reversed(self._history) 
-                         if r.get("question") == q),
-                        ""
-                    ),
-                })
-        
+                repeated.append(
+                    {
+                        "question": q,
+                        "count": count,
+                        "last_asked": next(
+                            (r.get("timestamp", "") for r in reversed(self._history) if r.get("question") == q), ""
+                        ),
+                    }
+                )
+
         return repeated
 
 

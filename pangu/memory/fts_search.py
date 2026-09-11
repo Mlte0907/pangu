@@ -42,6 +42,7 @@ def _get_jieba():
 _FTS_SPECIAL_RE = re.compile(r'\b(AND|OR|NOT|NEAR)\b|[()"*^]')
 
 from .utils import LRUCache
+
 _SEARCH_CACHE = LRUCache(max_size=100, ttl_seconds=60)
 _CACHE_TTL = 60  # 搜索缓存 TTL（秒）
 
@@ -59,6 +60,7 @@ def _make_cache_key(*args) -> str:
 def cosine_similarity(a: list, b: list) -> float:
     """计算余弦相似度，支持不同维度向量（委托给统一实现）"""
     from .utils import cosine_similarity as _cos_sim
+
     return _cos_sim(a, b)
 
 

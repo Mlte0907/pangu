@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """盘古记忆系统全面测试"""
-import sys
+
 import json
+import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, '/home/xiaoxin/pangu')
+sys.path.insert(0, "/home/xiaoxin/pangu")
 
 from pangu.core.config import PanguConfig
-from pangu.core.palace import Palace, Drawer
-from pangu.memory.consolidation import MemoryConsolidator, ForgettingCurve
+from pangu.core.palace import Drawer, Palace
+from pangu.memory.consolidation import ForgettingCurve, MemoryConsolidator
 
 # 加载配置
 config = PanguConfig.load()
 palace_path = Path(config.palace_path)
 
 # 加载现有 drawers
-drawers_file = palace_path / 'drawers.json'
+drawers_file = palace_path / "drawers.json"
 if drawers_file.exists():
-    with open(drawers_file, encoding='utf-8') as f:
+    with open(drawers_file, encoding="utf-8") as f:
         existing = [Drawer.from_dict(d) for d in json.load(f)]
 else:
     existing = []
@@ -78,7 +79,7 @@ print("  ✓ 压缩判定测试通过")
 print("\n[测试7] 间隔重复")
 for i in range(6):
     interval = MemoryConsolidator.next_review_interval(i)
-    print(f"  第{i+1}次复习间隔: {interval:.0f}小时 ({interval/24:.1f}天)")
+    print(f"  第{i + 1}次复习间隔: {interval:.0f}小时 ({interval / 24:.1f}天)")
 print("  ✓ 间隔重复测试通过")
 
 # 测试8: 访问追踪

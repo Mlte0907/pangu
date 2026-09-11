@@ -158,11 +158,7 @@ class ExposureFilter:
                 return True
         from pangu.server.module_registry import EXPERIMENTAL_PREFIXES
 
-        return any(
-            tool_name.startswith(prefix)
-            for prefixes in EXPERIMENTAL_PREFIXES.values()
-            for prefix in prefixes
-        )
+        return any(tool_name.startswith(prefix) for prefixes in EXPERIMENTAL_PREFIXES.values() for prefix in prefixes)
 
     def _build_error_message(self, tool_name: str) -> str:
         """构建错误消息
@@ -173,16 +169,10 @@ class ExposureFilter:
         for entry in MODULE_REGISTRY:
             if tool_name in entry.tool_names:
                 if entry.level == "optional":
-                    return (
-                        f"模块 {entry.name} 未启用，"
-                        f"请在配置 exposure.enabled_optional_modules 中添加 '{entry.name}'"
-                    )
+                    return f"模块 {entry.name} 未启用，请在配置 exposure.enabled_optional_modules 中添加 '{entry.name}'"
                 elif entry.level == "experimental":
                     group = get_experimental_group(tool_name)
-                    return (
-                        f"实验模块 {group} 未启用，"
-                        f"请在配置 exposure.enabled_experiments 中添加 '{group}'"
-                    )
+                    return f"实验模块 {group} 未启用，请在配置 exposure.enabled_experiments 中添加 '{group}'"
                 else:
                     return f"工具 {tool_name} 不在当前暴露面中"
 
@@ -192,10 +182,7 @@ class ExposureFilter:
         for group_name, prefixes in EXPERIMENTAL_PREFIXES.items():
             for prefix in prefixes:
                 if tool_name.startswith(prefix):
-                    return (
-                        f"实验模块 {group_name} 未启用，"
-                        f"请在配置 exposure.enabled_experiments 中添加 '{group_name}'"
-                    )
+                    return f"实验模块 {group_name} 未启用，请在配置 exposure.enabled_experiments 中添加 '{group_name}'"
 
         # 工具不存在
         return f"未知工具: {tool_name}"

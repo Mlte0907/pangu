@@ -15,7 +15,6 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional
 
 from ..core.palace import Drawer
 
@@ -24,15 +23,15 @@ logger = logging.getLogger("pangu.memory.drawer_storage")
 
 class DrawerStorage:
     """抽屉存储抽象基类"""
-    
-    def load(self) -> List[Drawer]:
+
+    def load(self) -> list[Drawer]:
         """加载所有抽屉"""
         raise NotImplementedError
-    
-    def save(self, drawers: List[Drawer]) -> None:
+
+    def save(self, drawers: list[Drawer]) -> None:
         """保存所有抽屉"""
         raise NotImplementedError
-    
+
     def close(self) -> None:
         """关闭存储"""
         pass
@@ -40,22 +39,22 @@ class DrawerStorage:
 
 class JsonDrawerStorage(DrawerStorage):
     """JSON 文件存储（现有实现）"""
-    
+
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)
         self._cache = {}
         self._cache_ttl = 30.0
         self._last_cache_time = 0.0
-    
-    def load(self) -> List[Drawer]:
+
+    def load(self) -> list[Drawer]:
         """从 JSON 文件加载抽屉"""
         cache_key = f"drawers_{self.file_path}"
         now = time.time()
-        
+
         if self._cache_ttl > 0 and (now - self._last_cache_time) < self._cache_ttl:
             if cache_key in self._cache:
                 return self._cache[cache_key]
-        
+
         drawers = []
         if self.file_path.exists():
             try:
@@ -65,12 +64,12 @@ class JsonDrawerStorage(DrawerStorage):
                     drawers.append(Drawer.from_dict(d))
             except Exception as e:
                 logger.warning(f"JSON 文件读取失败: {e}")
-        
+
         self._cache[cache_key] = drawers
         self._last_cache_time = now
         return drawers
-    
-    def save(self, drawers: List[Drawer]) -> None:
+
+    def save(self, drawers: list[Drawer]) -> None:
         """保存抽屉到 JSON 文件（原子写入）"""
         tmp_file = self.file_path.with_suffix(".json.tmp")
         try:
@@ -79,18 +78,18 @@ class JsonDrawerStorage(DrawerStorage):
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_file, self.file_path)
-            
+
             # 清除缓存
             cache_key = f"drawers_{self.file_path}"
             self._cache.pop(cache_key, None)
-            
+
         except Exception as e:
             logger.error(f"JSON 文件写入失败: {e}")
             # 清理临时文件
             if tmp_file.exists():
                 tmp_file.unlink()
             raise
-    
+
     def close(self) -> None:
         """关闭存储"""
         self._cache.clear()
@@ -98,15 +97,15 @@ class JsonDrawerStorage(DrawerStorage):
 
 class SqliteDrawerStorage(DrawerStorage):
     """SQLite 存储后端（支持并发读写）"""
-    
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._conn_pool = threading.local()
         self._lock = threading.RLock()
-        
+
         # 初始化数据库
         self._init_db()
-    
+
     def _create_connection(self) -> sqlite3.Connection:
         """创建 SQLite 连接并设置性能优化 PRAGMA"""
         conn = sqlite3.connect(
@@ -115,21 +114,21 @@ class SqliteDrawerStorage(DrawerStorage):
             isolation_level=None,  # 自动提交模式
             check_same_thread=False,
         )
-        
+
         # 性能优化 PRAGMA
         conn.execute("PRAGMA journal_mode=WAL")  # WAL 模式支持并发读写
         conn.execute("PRAGMA synchronous=NORMAL")  # 平衡性能和安全性
         conn.execute("PRAGMA cache_size=-64000")  # 64MB 缓存
         conn.execute("PRAGMA temp_store=MEMORY")  # 临时表存储在内存
-        
+
         # 尝试启用内存映射（如果支持）
         try:
             conn.execute("PRAGMA mmap_size=268435456")  # 256MB
         except sqlite3.DatabaseError:
             pass
-        
+
         return conn
-    
+
     def _get_conn(self) -> sqlite3.Connection:
         """获取当前线程的连接"""
         conn = getattr(self._conn_pool, "conn", None)
@@ -137,7 +136,7 @@ class SqliteDrawerStorage(DrawerStorage):
             conn = self._create_connection()
             self._conn_pool.conn = conn
         return conn
-    
+
     @contextmanager
     def _connect(self):
         """连接上下文管理器"""
@@ -147,11 +146,11 @@ class SqliteDrawerStorage(DrawerStorage):
         except Exception as e:
             logger.error(f"SQLite 操作失败: {e}")
             raise
-    
+
     def _init_db(self) -> None:
         """初始化数据库表结构"""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
-        
+
         with self._connect() as conn:
             conn.executescript("""
                 -- 抽屉主表
@@ -171,14 +170,14 @@ class SqliteDrawerStorage(DrawerStorage):
                     updated_at REAL NOT NULL,
                     created_timestamp REAL NOT NULL
                 );
-                
+
                 -- 索引优化查询性能
                 CREATE INDEX IF NOT EXISTS idx_drawers_wing ON drawers(wing);
                 CREATE INDEX IF NOT EXISTS idx_drawers_room ON drawers(room);
                 CREATE INDEX IF NOT EXISTS idx_drawers_importance ON drawers(importance DESC);
                 CREATE INDEX IF NOT EXISTS idx_drawers_created_at ON drawers(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_drawers_updated_at ON drawers(updated_at DESC);
-                
+
                 -- 版本信息表
                 CREATE TABLE IF NOT EXISTS storage_info (
                     key TEXT PRIMARY KEY,
@@ -186,19 +185,19 @@ class SqliteDrawerStorage(DrawerStorage):
                     updated_at REAL NOT NULL
                 );
             """)
-            
+
             # 记录存储版本
             conn.execute(
                 "INSERT OR REPLACE INTO storage_info (key, value, updated_at) VALUES (?, ?, ?)",
-                ("version", "0.1.0", time.time())
+                ("version", "0.1.0", time.time()),
             )
-    
-    def load(self) -> List[Drawer]:
+
+    def load(self) -> list[Drawer]:
         """从 SQLite 加载所有抽屉"""
         with self._connect() as conn:
             cursor = conn.execute("SELECT * FROM drawers")
             rows = cursor.fetchall()
-            
+
             drawers = []
             for row in rows:
                 drawer_dict = {
@@ -216,80 +215,27 @@ class SqliteDrawerStorage(DrawerStorage):
                     "metadata": json.loads(row[11]) if row[11] else {},
                 }
                 drawers.append(Drawer.from_dict(drawer_dict))
-            
+
             return drawers
-    
-    def save(self, drawers: List[Drawer]) -> None:
+
+    def save(self, drawers: list[Drawer]) -> None:
         """保存所有抽屉到 SQLite（事务性写入）"""
         with self._lock:  # 确保线程安全
             with self._connect() as conn:
                 try:
                     # 开始事务
                     conn.execute("BEGIN IMMEDIATE")
-                    
+
                     # 清空现有数据
                     conn.execute("DELETE FROM drawers")
-                    
+
                     # 批量插入
                     insert_data = []
                     current_time = time.time()
-                    
+
                     for drawer in drawers:
-                        insert_data.append((
-                            drawer.id,
-                            drawer.content,
-                            drawer.wing,
-                            drawer.room,
-                            drawer.hall,
-                            drawer.importance,
-                            drawer.emotional_weight,
-                            drawer.source_file,
-                            json.dumps(drawer.tags, ensure_ascii=False),
-                            drawer.author,
-                            drawer.created_at,
-                            json.dumps(drawer.metadata, ensure_ascii=False),
-                            current_time,  # updated_at
-                            current_time,  # created_timestamp
-                        ))
-                    
-                    conn.executemany(
-                        """INSERT INTO drawers 
-                           (id, content, wing, room, hall, importance, emotional_weight,
-                            source_file, tags, author, created_at, metadata, updated_at, created_timestamp)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        insert_data
-                    )
-                    
-                    # 提交事务
-                    conn.execute("COMMIT")
-                    
-                    logger.info(f"成功保存 {len(drawers)} 个抽屉到 SQLite")
-                    
-                except Exception as e:
-                    conn.execute("ROLLBACK")
-                    logger.error(f"SQLite 保存失败: {e}")
-                    raise
-    
-    def save_incremental(self, drawers: List[Drawer], drawer_ids: set) -> None:
-        """增量保存指定 ID 的抽屉（优化性能）"""
-        with self._lock:
-            with self._connect() as conn:
-                try:
-                    conn.execute("BEGIN IMMEDIATE")
-                    
-                    # 删除指定 ID 的抽屉
-                    if drawer_ids:
-                        placeholders = ",".join(["?" for _ in drawer_ids])
-                        conn.execute(f"DELETE FROM drawers WHERE id IN ({placeholders})", 
-                                    list(drawer_ids))
-                    
-                    # 插入新数据
-                    insert_data = []
-                    current_time = time.time()
-                    
-                    for drawer in drawers:
-                        if drawer.id in drawer_ids:
-                            insert_data.append((
+                        insert_data.append(
+                            (
                                 drawer.id,
                                 drawer.content,
                                 drawer.wing,
@@ -302,26 +248,82 @@ class SqliteDrawerStorage(DrawerStorage):
                                 drawer.author,
                                 drawer.created_at,
                                 json.dumps(drawer.metadata, ensure_ascii=False),
-                                current_time,
-                                current_time,
-                            ))
-                    
+                                current_time,  # updated_at
+                                current_time,  # created_timestamp
+                            )
+                        )
+
+                    conn.executemany(
+                        """INSERT INTO drawers
+                           (id, content, wing, room, hall, importance, emotional_weight,
+                            source_file, tags, author, created_at, metadata, updated_at, created_timestamp)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        insert_data,
+                    )
+
+                    # 提交事务
+                    conn.execute("COMMIT")
+
+                    logger.info(f"成功保存 {len(drawers)} 个抽屉到 SQLite")
+
+                except Exception as e:
+                    conn.execute("ROLLBACK")
+                    logger.error(f"SQLite 保存失败: {e}")
+                    raise
+
+    def save_incremental(self, drawers: list[Drawer], drawer_ids: set) -> None:
+        """增量保存指定 ID 的抽屉（优化性能）"""
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+
+                    # 删除指定 ID 的抽屉
+                    if drawer_ids:
+                        placeholders = ",".join(["?" for _ in drawer_ids])
+                        conn.execute(f"DELETE FROM drawers WHERE id IN ({placeholders})", list(drawer_ids))
+
+                    # 插入新数据
+                    insert_data = []
+                    current_time = time.time()
+
+                    for drawer in drawers:
+                        if drawer.id in drawer_ids:
+                            insert_data.append(
+                                (
+                                    drawer.id,
+                                    drawer.content,
+                                    drawer.wing,
+                                    drawer.room,
+                                    drawer.hall,
+                                    drawer.importance,
+                                    drawer.emotional_weight,
+                                    drawer.source_file,
+                                    json.dumps(drawer.tags, ensure_ascii=False),
+                                    drawer.author,
+                                    drawer.created_at,
+                                    json.dumps(drawer.metadata, ensure_ascii=False),
+                                    current_time,
+                                    current_time,
+                                )
+                            )
+
                     if insert_data:
                         conn.executemany(
-                            """INSERT INTO drawers 
+                            """INSERT INTO drawers
                                (id, content, wing, room, hall, importance, emotional_weight,
                                 source_file, tags, author, created_at, metadata, updated_at, created_timestamp)
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                            insert_data
+                            insert_data,
                         )
-                    
+
                     conn.execute("COMMIT")
-                    
+
                 except Exception as e:
                     conn.execute("ROLLBACK")
                     logger.error(f"SQLite 增量保存失败: {e}")
                     raise
-    
+
     def close(self) -> None:
         """关闭 SQLite 连接"""
         conn = getattr(self._conn_pool, "conn", None)
@@ -331,7 +333,7 @@ class SqliteDrawerStorage(DrawerStorage):
             except Exception:
                 pass
             self._conn_pool.conn = None
-    
+
     def backup(self, backup_path: str) -> bool:
         """备份数据库"""
         try:
@@ -342,22 +344,22 @@ class SqliteDrawerStorage(DrawerStorage):
         except Exception as e:
             logger.error(f"数据库备份失败: {e}")
             return False
-    
+
     def get_stats(self) -> dict:
         """获取存储统计信息"""
         with self._connect() as conn:
             # 记录数
             cursor = conn.execute("SELECT COUNT(*) FROM drawers")
             count = cursor.fetchone()[0]
-            
+
             # 数据库大小
             cursor = conn.execute("SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()")
             size_bytes = cursor.fetchone()[0]
-            
+
             # 最后更新时间
             cursor = conn.execute("SELECT MAX(updated_at) FROM drawers")
             last_updated = cursor.fetchone()[0]
-            
+
             return {
                 "backend": "sqlite",
                 "count": count,
@@ -370,15 +372,15 @@ class SqliteDrawerStorage(DrawerStorage):
 
 class StorageFactory:
     """存储工厂 — 根据配置创建合适的存储后端"""
-    
+
     @staticmethod
     def create(palace_path: str, use_sqlite: bool = False) -> DrawerStorage:
         """创建存储实例
-        
+
         Args:
             palace_path: 宫殿路径
             use_sqlite: 是否使用 SQLite 存储
-            
+
         Returns:
             存储实例
         """
@@ -388,15 +390,15 @@ class StorageFactory:
         else:
             file_path = os.path.join(palace_path, "drawers.json")
             return JsonDrawerStorage(file_path)
-    
+
     @staticmethod
     def migrate_json_to_sqlite(json_path: str, db_path: str) -> bool:
         """将 JSON 文件迁移到 SQLite
-        
+
         Args:
             json_path: JSON 文件路径
             db_path: SQLite 数据库路径
-            
+
         Returns:
             是否迁移成功
         """
@@ -404,33 +406,33 @@ class StorageFactory:
             # 读取 JSON 文件
             json_storage = JsonDrawerStorage(json_path)
             drawers = json_storage.load()
-            
+
             if not drawers:
                 logger.warning(f"JSON 文件为空或不存在: {json_path}")
                 return False
-            
+
             # 创建 SQLite 存储
             sqlite_storage = SqliteDrawerStorage(db_path)
-            
+
             # 保存数据
             sqlite_storage.save(drawers)
-            
+
             # 验证迁移结果
             loaded_drawers = sqlite_storage.load()
             if len(loaded_drawers) != len(drawers):
                 logger.error(f"迁移验证失败：期望 {len(drawers)} 条，实际 {len(loaded_drawers)} 条")
                 return False
-            
+
             # 备份原 JSON 文件
             backup_path = f"{json_path}.bak"
             if os.path.exists(json_path):
                 os.rename(json_path, backup_path)
                 logger.info(f"原 JSON 文件备份到: {backup_path}")
-            
+
             sqlite_storage.close()
             logger.info(f"成功迁移 {len(drawers)} 条记忆到 SQLite")
             return True
-            
+
         except Exception as e:
             logger.error(f"迁移失败: {e}")
             return False

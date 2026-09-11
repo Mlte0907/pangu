@@ -299,9 +299,8 @@ class WikiMiner:
 
         return drawers
 
-
-# OpenClawMiner 类已移除（适配剥离）
-# 如需 JSONL 会话解析，请使用 SessionMiner.parse_jsonl_session()
+    # OpenClawMiner 类已移除（适配剥离）
+    # 如需 JSONL 会话解析，请使用 SessionMiner.parse_jsonl_session()
 
     # ── 内部工具方法 ──
 

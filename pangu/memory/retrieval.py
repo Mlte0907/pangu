@@ -99,6 +99,7 @@ def _safe_execute(func, default=None, error_msg: str = "") -> Any:
 def _cosine_similarity(a: list, b: list) -> float:
     """余弦相似度（委托给统一实现）"""
     from .utils import cosine_similarity
+
     return cosine_similarity(a, b)
 
 

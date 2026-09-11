@@ -391,7 +391,8 @@ class TestAttentionSystem:
 import pytest
 
 try:
-    from pangu.memory.auto_collector import ConversationParser, ImportanceFilter, CategoryClassifier, AutoCollector
+    from pangu.memory.auto_collector import AutoCollector, CategoryClassifier, ConversationParser, ImportanceFilter
+
     AUTO_COLLECTOR_AVAILABLE = True
 except ImportError:
     AUTO_COLLECTOR_AVAILABLE = False

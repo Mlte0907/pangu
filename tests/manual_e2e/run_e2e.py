@@ -7,21 +7,21 @@
 """
 
 import json
-import sys
 import os
-import time
 import socket
-import urllib.request
+import sys
+import time
 import urllib.error
-from urllib.parse import urlparse
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Optional
-
+from urllib.parse import urlparse
 
 # ─────────────────────────────────────────────────
 # 安全：仅允许连接本地回环地址
 # ─────────────────────────────────────────────────
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
 
 def _validate_host(url: str) -> bool:
     parsed = urlparse(url)
@@ -38,6 +38,7 @@ def _validate_host(url: str) -> bool:
         pass
     return False
 
+
 def _local_post(url: str, payload: dict, timeout: int = 30) -> dict:
     if not _validate_host(url):
         raise ValueError(f"安全限制：仅允许连接本地回环地址，目标 {url} 被拒绝")
@@ -45,6 +46,7 @@ def _local_post(url: str, payload: dict, timeout: int = 30) -> dict:
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
 
 def _local_get(url: str, timeout: int = 5) -> dict:
     if not _validate_host(url):
@@ -62,7 +64,7 @@ class MCPResult:
     tool: str
     success: bool
     result: Any = None
-    error: Optional[str] = None
+    error: str | None = None
     elapsed_ms: float = 0.0
 
 
@@ -76,7 +78,12 @@ class MCPClient:
 
     def call(self, tool: str, args: dict = None) -> MCPResult:
         self._count += 1
-        payload = {"jsonrpc": "2.0", "id": self._count, "method": "tools/call", "params": {"name": tool, "arguments": args or {}}}
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._count,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": args or {}},
+        }
         t0 = time.time()
         try:
             data = _local_post(self.mcp_url, payload, self.timeout)
@@ -84,7 +91,9 @@ class MCPClient:
             if "error" in data:
                 r = MCPResult(tool, False, error=str(data["error"])[:200], elapsed_ms=ms)
             else:
-                texts = [c.get("text", "") for c in data.get("result", {}).get("content", []) if c.get("type") == "text"]
+                texts = [
+                    c.get("text", "") for c in data.get("result", {}).get("content", []) if c.get("type") == "text"
+                ]
                 r = MCPResult(tool, True, result="".join(texts), elapsed_ms=ms)
         except Exception as e:
             ms = (time.time() - t0) * 1000
@@ -102,7 +111,11 @@ class MCPClient:
         return {"_error": r.error}
 
     def list_tools(self) -> list:
-        return _local_post(self.mcp_url, {"jsonrpc": "2.0", "id": 0, "method": "tools/list", "params": {}}, self.timeout).get("result", {}).get("tools", [])
+        return (
+            _local_post(self.mcp_url, {"jsonrpc": "2.0", "id": 0, "method": "tools/list", "params": {}}, self.timeout)
+            .get("result", {})
+            .get("tools", [])
+        )
 
     def http_get(self, path: str) -> dict:
         return _local_get(f"{self.base_url}{path}")
@@ -110,9 +123,14 @@ class MCPClient:
     def summary(self) -> dict:
         total = len(self._results)
         ok = sum(1 for r in self._results if r.success)
-        return {"total": total, "pass": ok, "fail": total - ok, "rate": f"{ok/max(total,1)*100:.1f}%",
-                "avg_ms": f"{sum(r.elapsed_ms for r in self._results)/max(total,1):.1f}",
-                "failed": [r.tool for r in self._results if not r.success]}
+        return {
+            "total": total,
+            "pass": ok,
+            "fail": total - ok,
+            "rate": f"{ok / max(total, 1) * 100:.1f}%",
+            "avg_ms": f"{sum(r.elapsed_ms for r in self._results) / max(total, 1):.1f}",
+            "failed": [r.tool for r in self._results if not r.success],
+        }
 
 
 # ─────────────────────────────────────────────────
@@ -139,7 +157,10 @@ class Report:
             f = sum(1 for t in tests if t["s"] == "FAIL")
             w = sum(1 for t in tests if t["s"] == "WARN")
             s = sum(1 for t in tests if t["s"] == "SKIP")
-            tp += p; tf += f; tw += w; ts += s
+            tp += p
+            tf += f
+            tw += w
+            ts += s
             icon = "✅" if f == 0 else "❌"
             print(f"\n{icon} {phase}: {p}P {f}F {w}W {s}S")
             for t in tests:
@@ -148,7 +169,7 @@ class Report:
                 det = f" — {t['d']}" if t["d"] else ""
                 print(f"{si} {t['name']}{lat}{det}")
         print(f"\n{'=' * 70}")
-        print(f"总计: {tp}P {tf}F {tw}W {ts}S | 通过率: {tp/max(tp+tf,1)*100:.1f}%")
+        print(f"总计: {tp}P {tf}F {tw}W {ts}S | 通过率: {tp / max(tp + tf, 1) * 100:.1f}%")
         if self.bugs:
             print(f"\n🐛 {len(self.bugs)} 个功能缺陷:")
             for b in self.bugs:
@@ -527,7 +548,6 @@ def _args(tool: str) -> dict:
         "pangu_synthesis_cross_cluster": {},
         "pangu_synthesis_gaps": {},
         "pangu_evolution_plan": {},
-        "pangu_cognitive_loop": {},
         "pangu_image_search_by_text": {"query": "风景"},
         "pangu_image_search_by_image": {"image_path": "test"},
         "pangu_multimodal_search": {"query": "风景"},
@@ -550,47 +570,79 @@ def _args(tool: str) -> dict:
 
 # 有副作用的工具 — 跳过
 SKIP = {
-    "pangu_add_memory", "pangu_delete_memory", "pangu_search_memories",
-    "pangu_ingest_file", "pangu_ingest_url",
-    "pangu_image_embed", "pangu_image_classify", "pangu_image_search_by_image",
-    "pangu_video_ingest", "pangu_video_frames", "pangu_video_metadata",
-    "pangu_audio_transcribe", "pangu_audio_ingest", "pangu_audio_metadata",
-    "pangu_git_commit", "pangu_git_push",
-    "pangu_feishu_send", "pangu_feishu_card",
-    "pangu_watch_directory", "pangu_watch_status",
-    "pangu_collect_file", "pangu_collect_dir", "pangu_collect_all",
-    "pangu_plugin_enable", "pangu_plugin_disable",
-    "pangu_config_set", "pangu_config_reload",
-    "pangu_restore_backup", "pangu_api_server_start",
-    "pangu_create_wing", "pangu_create_room",
-    "pangu_import", "pangu_import_smart",
-    "pangu_backup", "pangu_verify_backup",
-    "pangu_event_emit", "pangu_event_webhook_add",
-    "pangu_session_start", "pangu_session_end",
-    "pangu_session_record", "pangu_session_resume",
-    "pangu_sync_record", "pangu_sync_apply",
-    "pangu_portal_write", "pangu_portal_maintain",
-    "pangu_project_create", "pangu_project_delete",
-    "pangu_project_switch", "pangu_project_save",
-    "pangu_wm_push", "pangu_wm_clear",
+    "pangu_add_memory",
+    "pangu_delete_memory",
+    "pangu_search_memories",
+    "pangu_ingest_file",
+    "pangu_ingest_url",
+    "pangu_image_embed",
+    "pangu_image_classify",
+    "pangu_image_search_by_image",
+    "pangu_video_ingest",
+    "pangu_video_frames",
+    "pangu_video_metadata",
+    "pangu_audio_transcribe",
+    "pangu_audio_ingest",
+    "pangu_audio_metadata",
+    "pangu_git_commit",
+    "pangu_git_push",
+    "pangu_feishu_send",
+    "pangu_feishu_card",
+    "pangu_watch_directory",
+    "pangu_watch_status",
+    "pangu_collect_file",
+    "pangu_collect_dir",
+    "pangu_collect_all",
+    "pangu_plugin_enable",
+    "pangu_plugin_disable",
+    "pangu_config_set",
+    "pangu_config_reload",
+    "pangu_restore_backup",
+    "pangu_api_server_start",
+    "pangu_create_wing",
+    "pangu_create_room",
+    "pangu_import",
+    "pangu_import_smart",
+    "pangu_backup",
+    "pangu_verify_backup",
+    "pangu_event_emit",
+    "pangu_event_webhook_add",
+    "pangu_session_start",
+    "pangu_session_end",
+    "pangu_session_record",
+    "pangu_session_resume",
+    "pangu_sync_record",
+    "pangu_sync_apply",
+    "pangu_portal_write",
+    "pangu_portal_maintain",
+    "pangu_project_create",
+    "pangu_project_delete",
+    "pangu_project_switch",
+    "pangu_project_save",
+    "pangu_wm_push",
+    "pangu_wm_clear",
     "pangu_create_tunnel",
     "pangu_create_wiki_page",
-    "pangu_multi_register", "pangu_multi_write",
-    "pangu_agent_register", "pangu_agent_share",
-    "pangu_comment_add", "pangu_vote",
+    "pangu_multi_register",
+    "pangu_multi_write",
+    "pangu_agent_register",
+    "pangu_agent_share",
+    "pangu_comment_add",
+    "pangu_vote",
     "pangu_importance_feedback",
     "pangu_recommend_feedback",
-    "pangu_vote",
     "pangu_sanitize",
     "pangu_compress_by_tags",
     "pangu_counterfactual",
     "pangu_root_cause",
     "pangu_attention_switch",
-    "pangu_autopilot_activate", "pangu_autopilot_deactivate",
+    "pangu_autopilot_activate",
+    "pangu_autopilot_deactivate",
     "pangu_self_repair",
     "pangu_debate_run",
     "pangu_index_cleanup",
-    "pangu_cache_clear", "pangu_cache_invalidate",
+    "pangu_cache_clear",
+    "pangu_cache_invalidate",
     "pangu_llm_cache_clear",
     "pangu_merge_duplicates",
 }
@@ -610,19 +662,89 @@ def run():
 
     # ═══ Phase 1: 基础 CRUD ═══
     P = "Phase 1: 基础 CRUD"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     mems = [
-        {"content": "Python是解释型高级编程语言", "wing": "e2e", "room": "general", "hall": "facts", "importance": 4, "tags": "['python','编程']"},
-        {"content": "ONNX是微软的开放神经网络交换格式", "wing": "e2e", "room": "general", "hall": "facts", "importance": 3, "tags": "['onnx','模型']"},
-        {"content": "SQLite是自包含的SQL数据库引擎", "wing": "e2e", "room": "tech", "hall": "facts", "importance": 3, "tags": "['sqlite','数据库']"},
-        {"content": "盘古是AI Agent的记忆系统", "wing": "e2e", "room": "tech", "hall": "concepts", "importance": 5, "tags": "['盘古','记忆']"},
-        {"content": "2024年3月完成v2.0升级", "wing": "e2e", "room": "history", "hall": "events", "importance": 4, "tags": "['里程碑','v2.0']"},
-        {"content": "用户偏好暗色主题编码", "wing": "e2e", "room": "personal", "hall": "preferences", "importance": 2, "tags": "['偏好','主题']"},
-        {"content": "部署建议使用Docker Compose", "wing": "prod", "room": "deploy", "hall": "suggestions", "importance": 4, "tags": "['部署','docker']"},
-        {"content": "FAISS支持十亿级向量检索", "wing": "prod", "room": "tech", "hall": "facts", "importance": 3, "tags": "['faiss','向量']"},
-        {"content": "团队：Alice后端Bob前端Carol运维", "wing": "e2e", "room": "team", "hall": "relations", "importance": 3, "tags": "['团队','成员']"},
-        {"content": "混合搜索比纯向量搜索召回率提升35%", "wing": "prod", "room": "research", "hall": "discoveries", "importance": 5, "tags": "['发现','搜索']"},
+        {
+            "content": "Python是解释型高级编程语言",
+            "wing": "e2e",
+            "room": "general",
+            "hall": "facts",
+            "importance": 4,
+            "tags": "['python','编程']",
+        },
+        {
+            "content": "ONNX是微软的开放神经网络交换格式",
+            "wing": "e2e",
+            "room": "general",
+            "hall": "facts",
+            "importance": 3,
+            "tags": "['onnx','模型']",
+        },
+        {
+            "content": "SQLite是自包含的SQL数据库引擎",
+            "wing": "e2e",
+            "room": "tech",
+            "hall": "facts",
+            "importance": 3,
+            "tags": "['sqlite','数据库']",
+        },
+        {
+            "content": "盘古是AI Agent的记忆系统",
+            "wing": "e2e",
+            "room": "tech",
+            "hall": "concepts",
+            "importance": 5,
+            "tags": "['盘古','记忆']",
+        },
+        {
+            "content": "2024年3月完成v2.0升级",
+            "wing": "e2e",
+            "room": "history",
+            "hall": "events",
+            "importance": 4,
+            "tags": "['里程碑','v2.0']",
+        },
+        {
+            "content": "用户偏好暗色主题编码",
+            "wing": "e2e",
+            "room": "personal",
+            "hall": "preferences",
+            "importance": 2,
+            "tags": "['偏好','主题']",
+        },
+        {
+            "content": "部署建议使用Docker Compose",
+            "wing": "prod",
+            "room": "deploy",
+            "hall": "suggestions",
+            "importance": 4,
+            "tags": "['部署','docker']",
+        },
+        {
+            "content": "FAISS支持十亿级向量检索",
+            "wing": "prod",
+            "room": "tech",
+            "hall": "facts",
+            "importance": 3,
+            "tags": "['faiss','向量']",
+        },
+        {
+            "content": "团队：Alice后端Bob前端Carol运维",
+            "wing": "e2e",
+            "room": "team",
+            "hall": "relations",
+            "importance": 3,
+            "tags": "['团队','成员']",
+        },
+        {
+            "content": "混合搜索比纯向量搜索召回率提升35%",
+            "wing": "prod",
+            "room": "research",
+            "hall": "discoveries",
+            "importance": 5,
+            "tags": "['发现','搜索']",
+        },
     ]
     ids = []
     for i, m in enumerate(mems):
@@ -634,13 +756,15 @@ def run():
                 j = json.loads(r.result)
                 mid = j.get("id") or j.get("memory_id") or j.get("drawer_id", "")
                 if mid:
-                    ids.append(mid); d = f"id={mid}"
+                    ids.append(mid)
+                    d = f"id={mid}"
             except Exception:
-                d = "格式异常"; s = "WARN"
+                d = "格式异常"
+                s = "WARN"
         else:
             d = r.error or "失败"
-        rpt.rec(P, f"写入#{i+1}[{m['hall']}]", s, d, r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} 写入#{i+1} [{m['hall']}] {d} ({r.elapsed_ms:.0f}ms)")
+        rpt.rec(P, f"写入#{i + 1}[{m['hall']}]", s, d, r.elapsed_ms)
+        print(f"  {'✅' if s == 'PASS' else '❌'} 写入#{i + 1} [{m['hall']}] {d} ({r.elapsed_ms:.0f}ms)")
 
     for q, label in [("Python编程", "关键词"), ("数据库引擎", "语义"), ("e2e", "按wing")]:
         r = mcp.call("pangu_search_memories", {"query": q, "limit": 5})
@@ -650,16 +774,18 @@ def run():
             try:
                 j = json.loads(r.result)
                 n = len(j.get("results", j.get("memories", [])))
-                d = f"{n}条"; s = "PASS" if n > 0 else "WARN"
+                d = f"{n}条"
+                s = "PASS" if n > 0 else "WARN"
             except Exception:
-                d = "格式异常"; s = "WARN"
+                d = "格式异常"
+                s = "WARN"
         rpt.rec(P, f"搜索[{label}]", s, d, r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '⚠️'} 搜索[{label}] {d} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '⚠️'} 搜索[{label}] {d} ({r.elapsed_ms:.0f}ms)")
 
     r = mcp.call("pangu_stats", {})
     s = "PASS" if r.success else "FAIL"
     rpt.rec(P, "系统统计", s, "", r.elapsed_ms)
-    print(f"  {'✅' if s=='PASS' else '❌'} 系统统计 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if s == 'PASS' else '❌'} 系统统计 ({r.elapsed_ms:.0f}ms)")
 
     for mid in ids:
         mcp.call("pangu_delete_memory", {"memory_id": mid})
@@ -667,7 +793,7 @@ def run():
 
     # ═══ Phase 2: 四层记忆栈 ═══
     P = "Phase 2: 四层记忆栈"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     r = mcp.call("pangu_identity", {})
     s = "PASS" if r.success else "FAIL"
@@ -679,35 +805,48 @@ def run():
         except Exception:
             d = "可解析"
     rpt.rec(P, "L0身份层", s, d, r.elapsed_ms)
-    print(f"  {'✅' if s=='PASS' else '⚠️'} L0身份 {d} ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if s == 'PASS' else '⚠️'} L0身份 {d} ({r.elapsed_ms:.0f}ms)")
 
     sids = []
     for i in range(20):
-        r = mcp.call("pangu_add_memory", {"content": f"栈测试#{i+1}：验证四层记忆栈的测试数据", "wing": "stack", "room": "g", "hall": "facts", "importance": (i%5)+1, "tags": f"['tag{i}','测试']"})
+        r = mcp.call(
+            "pangu_add_memory",
+            {
+                "content": f"栈测试#{i + 1}：验证四层记忆栈的测试数据",
+                "wing": "stack",
+                "room": "g",
+                "hall": "facts",
+                "importance": (i % 5) + 1,
+                "tags": f"['tag{i}','测试']",
+            },
+        )
         if r.success:
             try:
                 j = json.loads(r.result)
                 mid = j.get("id") or j.get("memory_id") or j.get("drawer_id", "")
-                if mid: sids.append(mid)
-            except Exception: pass
-    rpt.rec(P, "写入20条栈数据", "PASS" if len(sids)>=15 else "WARN", f"{len(sids)}/20")
-    print(f"  {'✅' if len(sids)>=15 else '⚠️'} 栈数据: {len(sids)}/20")
+                if mid:
+                    sids.append(mid)
+            except Exception:
+                pass
+    rpt.rec(P, "写入20条栈数据", "PASS" if len(sids) >= 15 else "WARN", f"{len(sids)}/20")
+    print(f"  {'✅' if len(sids) >= 15 else '⚠️'} 栈数据: {len(sids)}/20")
 
     r = mcp.call("pangu_search_memories", {"query": "栈测试", "wing": "stack", "limit": 10})
     s = "PASS" if r.success else "FAIL"
     rpt.rec(P, "L2按需层", s, "", r.elapsed_ms)
-    print(f"  {'✅' if s=='PASS' else '❌'} L2按需层 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if s == 'PASS' else '❌'} L2按需层 ({r.elapsed_ms:.0f}ms)")
 
     r = mcp.call("pangu_search_memories", {"query": "测试数据 验证 功能", "limit": 20})
     s = "PASS" if r.success else "FAIL"
     rpt.rec(P, "L3深度搜索", s, "", r.elapsed_ms)
-    print(f"  {'✅' if s=='PASS' else '❌'} L3深度搜索 ({r.elapsed_ms:.0f}ms)")
+    print(f"  {'✅' if s == 'PASS' else '❌'} L3深度搜索 ({r.elapsed_ms:.0f}ms)")
 
-    for mid in sids: mcp.call("pangu_delete_memory", {"memory_id": mid})
+    for mid in sids:
+        mcp.call("pangu_delete_memory", {"memory_id": mid})
 
     # ═══ Phase 3: 搜索子系统 ═══
     P = "Phase 3: 搜索子系统"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     sids2 = []
     for m in [
@@ -725,8 +864,10 @@ def run():
             try:
                 j = json.loads(r.result)
                 mid = j.get("id") or j.get("memory_id") or j.get("drawer_id", "")
-                if mid: sids2.append(mid)
-            except Exception: pass
+                if mid:
+                    sids2.append(mid)
+            except Exception:
+                pass
 
     for tool, q, label in [
         ("pangu_fts_search", "Python 框架", "FTS全文"),
@@ -742,13 +883,14 @@ def run():
         r = mcp.call(tool, args)
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
-    for mid in sids2: mcp.call("pangu_delete_memory", {"memory_id": mid})
+    for mid in sids2:
+        mcp.call("pangu_delete_memory", {"memory_id": mid})
 
     # ═══ Phase 4: 神经记忆 ═══
     P = "Phase 4: 神经记忆"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     for tool, label in [
         ("pangu_neural_stats", "统计"),
@@ -764,27 +906,32 @@ def run():
         r = mcp.call(tool, args)
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
     # ═══ Phase 5: 知识图谱 ═══
     P = "Phase 5: 知识图谱"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     eids = []
-    for name, typ in [("Python","language"),("Flask","framework"),("SQLite","database")]:
+    for name, typ in [("Python", "language"), ("Flask", "framework"), ("SQLite", "database")]:
         r = mcp.call("pangu_kg_add_entity", {"name": name, "type": typ, "description": f"测试实体{name}"})
         s = "PASS" if r.success else "FAIL"
         if r.success:
             try:
                 j = json.loads(r.result)
                 eid = j.get("id") or j.get("entity_id", "")
-                if eid: eids.append(eid)
-            except Exception: pass
+                if eid:
+                    eids.append(eid)
+            except Exception:
+                pass
         rpt.rec(P, f"添加实体:{name}", s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} 实体:{name} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} 实体:{name} ({r.elapsed_ms:.0f}ms)")
 
     if len(eids) >= 2:
-        r = mcp.call("pangu_kg_add_relation", {"subject_id": eids[0], "predicate": "uses", "object_id": eids[1], "confidence": 0.9})
+        r = mcp.call(
+            "pangu_kg_add_relation",
+            {"subject_id": eids[0], "predicate": "uses", "object_id": eids[1], "confidence": 0.9},
+        )
         rpt.rec(P, "添加关系", "PASS" if r.success else "FAIL", "", r.elapsed_ms)
         print(f"  {'✅' if r.success else '❌'} 关系:Python→Flask ({r.elapsed_ms:.0f}ms)")
 
@@ -794,15 +941,19 @@ def run():
         ("pangu_kg_auto_extract", "自动提取"),
         ("pangu_graph_stats", "图谱统计"),
     ]:
-        args = {"entity_name": "Python"} if "query" in tool or "neighbor" in tool else ({"content": "Python用ONNX部署"} if "extract" in tool else {})
+        args = (
+            {"entity_name": "Python"}
+            if "query" in tool or "neighbor" in tool
+            else ({"content": "Python用ONNX部署"} if "extract" in tool else {})
+        )
         r = mcp.call(tool, args)
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
     # ═══ Phase 6: 主动注入 ═══
     P = "Phase 6: 主动注入"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     for tool, args, label in [
         ("pangu_inject_context", {"context": "调试Python数据库连接"}, "上下文注入"),
@@ -816,11 +967,11 @@ def run():
         r = mcp.call(tool, args)
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
     # ═══ Phase 7: 多模态 ═══
     P = "Phase 7: 多模态"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     for tool, args, label in [
         ("pangu_multimodal_search", {"query": "风景", "limit": 5}, "跨模态搜索"),
@@ -831,11 +982,11 @@ def run():
         r = mcp.call(tool, args)
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
     # ═══ Phase 8: 自主管理 ═══
     P = "Phase 8: 自主管理"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
     for tool, label in [
         ("pangu_auto_fusion", "自动融合"),
@@ -854,19 +1005,24 @@ def run():
         r = mcp.call(tool, {})
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
     # ═══ Phase 9: REST API ═══
     P = "Phase 9: REST API"
-    print(f"\n{'='*60}\n📋 {P}\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P}\n{'=' * 60}")
 
-    for path, label in [("/", "根路径"), ("/dashboard", "Dashboard"), ("/docs", "API文档"), ("/api/v2/memories", "REST memories")]:
+    for path, label in [
+        ("/", "根路径"),
+        ("/dashboard", "Dashboard"),
+        ("/docs", "API文档"),
+        ("/api/v2/memories", "REST memories"),
+    ]:
         try:
             resp = mcp.http_get(path)
             s = "PASS" if resp["status"] in (200, 307) else "WARN"
             d = f"HTTP {resp['status']}"
             rpt.rec(P, label, s, d)
-            print(f"  {'✅' if s=='PASS' else '⚠️'} {label} {d}")
+            print(f"  {'✅' if s == 'PASS' else '⚠️'} {label} {d}")
         except Exception as e:
             rpt.rec(P, label, "FAIL", str(e)[:80])
             print(f"  ❌ {label} {e}")
@@ -875,18 +1031,19 @@ def run():
         r = mcp.call(tool, {})
         s = "PASS" if r.success else "FAIL"
         rpt.rec(P, label, s, "", r.elapsed_ms)
-        print(f"  {'✅' if s=='PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
+        print(f"  {'✅' if s == 'PASS' else '❌'} {label} ({r.elapsed_ms:.0f}ms)")
 
     # ═══ Phase 10: 全量工具遍历 ═══
     P = "Phase 10: 全量遍历"
-    print(f"\n{'='*60}\n📋 {P} — {len(tools)}个工具\n{'='*60}")
+    print(f"\n{'=' * 60}\n📋 {P} — {len(tools)}个工具\n{'=' * 60}")
 
     ok = fail = skip = 0
     errs = []
     for tool in tools:
         name = tool["name"]
         if name in SKIP:
-            skip += 1; continue
+            skip += 1
+            continue
         r = mcp.call(name, _args(name))
         if r.success:
             ok += 1
@@ -902,7 +1059,7 @@ def run():
         for n, e in errs[:30]:
             print(f"     ❌ {n}: {e}")
         if len(errs) > 30:
-            print(f"     ... 还有{len(errs)-30}个")
+            print(f"     ... 还有{len(errs) - 30}个")
 
     # ═══ 报告 ═══
     rpt.print()

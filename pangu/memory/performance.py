@@ -87,6 +87,7 @@ class HNSWVectorIndex:
     def _cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
         """余弦相似度（委托给统一实现）"""
         from .utils import cosine_similarity
+
         return cosine_similarity(a, b)
 
     def _batch_cosine_sim(self, query: np.ndarray, matrix: np.ndarray) -> np.ndarray:
