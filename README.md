@@ -78,18 +78,41 @@ docker compose up -d
 
 - **记忆注入**：`system-prompt/assemble` waterfall 每轮取会话意图检索相关记忆（top-5，
   每条 200 字符），以 `[盘古记忆系统]` 上下文块注入——异常时静默降级，永不阻塞会话；
-- **工具直连**：服务端全部 MCP 工具经宿主 MCP 客户端直连（streamable-http，60s 超时）。
-  > ⚠️ **工具白名单暂不可用**：本插件早期版本在 `cordis.patch.yml` 中配置了
-  > `tools.allow` 白名单（11 个工具），但 `@deepseek-ai/dsh-mcp-client` 的配置
-  > schema 并不接受 `tools` 键，该键会被静默忽略——**白名单不会生效，且无告警**。
-  > 因此服务端注册的**全部**工具（含 `pangu_delete_memory`、`pangu_import_memories`
-  > 等破坏性操作）都会暴露给会话。如确需收敛范围，请在**服务端**裁剪 `/mcp`
-  > 的 `tools/list` 输出。相关配置已从 patch 中移除，以免造成"看似有保护"的误判。
+- **工具暴露**：服务端默认收敛为 **28 个核心工具**的白名单（见下方说明），
+  经宿主 MCP 客户端直连（streamable-http，60s 超时）。
+  > **关于"白名单"的两层含义** —— 容易混淆，这里说清楚：
+  >
+  > 1. **服务端白名单（真实生效）**：盘古自身有三级工具暴露机制
+  >    （`core` / `optional` / `experimental`，见 `pangu/server/exposure.py`
+  >    与 `pangu/core/config.py:39`）。**缺省即收敛为 28 个核心工具**，
+  >    其余 100+ 个工具不会出现在 `/mcp` 的 `tools/list` 中。若要放开，
+  >    在 `~/.pangu/config.json` 配置：
+  >    ```json
+  >    { "exposure": {
+  >        "enabled_optional_modules": ["multimodal", "knowledge_graph"],
+  >        "enabled_experiments": ["causal"] } }
+  >    ```
+  >    可选模块：`multimodal / timeline / analytics / quality / consolidation /
+  >    embed / knowledge_graph / wiki / llm_tools / session`。
+  >
+  > 2. **客户端白名单（不生效，已移除）**：本插件早期在 `cordis.patch.yml`
+  >    中配置过 `tools.allow`，但 `@deepseek-ai/dsh-mcp-client` 的 Config
+  >    schema **不含 `tools` 键**，该键会被 schemastery 非严格模式静默忽略
+  >    且无告警——工具照样全部注册。因此该配置已删除，以免造成
+  >    "看似有保护、实际没有"的错误预期。**要限制工具范围，请用上面第 1 种。**
 - **仪表盘**：侧栏指标卡 + "盘古"标签页（概览 / 3D 星系记忆图谱 / 知识卡片）+ 设置页配置读写。
 
 **安装插件**（`plugins/dsh-pangu` 的 `lib/` 为入库源码，但 `node_modules` 被
 `.gitignore` 忽略，需先装其自身依赖，否则 `lib/typert.host.mjs` 会因缺少 `zod` 而
 导致宿主启动失败）：
+
+```sh
+# 推荐：用仓库自带脚本（幂等，含依赖与配置自检）
+scripts/install_dsh_plugin.sh          # 默认装到 web profile
+scripts/install_dsh_plugin.sh tui      # 指定 profile
+```
+
+或手动两步：
 
 ```sh
 # 1) 先装插件的运行时依赖（必需，否则启动报 ERR_MODULE_NOT_FOUND: zod）

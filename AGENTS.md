@@ -68,9 +68,14 @@ curl -s -X POST http://127.0.0.1:19529/mcp \
   `lib/typert.host.mjs` 会被宿主 typert-loader 自动 import，缺 `zod` 会导致
   DSH 启动失败（`ERR_MODULE_NOT_FOUND`）。安装插件请用
   `scripts/install_dsh_plugin.sh`（幂等，含自检）。
-- **`tools.allow` 白名单不生效**：`@deepseek-ai/dsh-mcp-client` 的 Config schema
-  不接受 `tools` 键，该键被静默忽略且无告警，服务端**全部**工具都会注册。
-  需要收敛范围请在服务端裁剪 `tools/list`。
+- **`tools.allow` 白名单不生效（仅指客户端侧）**：`@deepseek-ai/dsh-mcp-client`
+  的 Config schema 不接受 `tools` 键，该键被静默忽略且无告警。
+  **工具范围的真正控制点在服务端**：盘古有三级暴露机制
+  （`core` / `optional` / `experimental`，见 `pangu/server/exposure.py`），
+  **缺省收敛为 28 个核心工具**（`pangu/core/config.py:39`），其余不会出现在
+  `tools/list`；用 `call_tool` 调未暴露工具会被拒（code=1002）。
+  放开需改 `~/.pangu/config.json` 的 `exposure` 段。
+  ⚠ 这两个"白名单"极易混淆，写文档时务必区分：客户端那个无效，服务端那个有效。
 
 **协议与运行时**
 

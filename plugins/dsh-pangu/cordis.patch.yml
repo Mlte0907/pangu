@@ -13,13 +13,13 @@
         # `tools` 键（streamable-http 分支仅接受 transport / serverName /
         # url / headers / toolCallTimeoutMs / failOnStartupError / reconnect），
         # schemastery 在非严格模式下会原样保留该未知键，客户端随后将其忽略。
-        # 结果是白名单**完全不生效**、且无任何告警——服务端全部工具都会被注册。
+        # 结果是该白名单**完全不生效**、且无任何告警。
         # 为避免"看似有保护、实际没有"的错误预期，这里已移除该配置。
         #
-        # 若将来 dsh-mcp-client 支持工具过滤，可在此追加：
-        #   tools:
-        #     allow: [pangu_add_memory, pangu_search_memories, ...]
-        #
-        # 当前若确需限制工具范围，请在**服务端**裁剪 /mcp 的 tools/list 输出。
+        # 工具范围的真正控制点在**服务端**：盘古有三级暴露机制
+        # （core / optional / experimental，见 pangu/server/exposure.py），
+        # 缺省即收敛为 28 个核心工具，其余工具不会出现在 tools/list 中。
+        # 需要放开时改 ~/.pangu/config.json：
+        #   { "exposure": { "enabled_optional_modules": ["multimodal"] } }
     - id: pangu-dashboard
       name: dsh-pangu
