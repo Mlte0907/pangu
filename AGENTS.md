@@ -74,7 +74,39 @@ curl -s -X POST http://127.0.0.1:19529/mcp \
   （`core` / `optional` / `experimental`，见 `pangu/server/exposure.py`），
   **缺省收敛为 28 个核心工具**（`pangu/core/config.py:39`），其余不会出现在
   `tools/list`；用 `call_tool` 调未暴露工具会被拒（code=1002）。
-  放开需改 `~/.pangu/config.json` 的 `exposure` 段。
+  放开需改 `~/.pangu/config.json` 的 `exposure` 段：
+
+  ```json
+  { "exposure": {
+      "enabled_optional_modules": ["multimodal", "timeline"],
+      "enabled_core_modules":     ["search", "palace"],   // 展开 core 层非白名单工具
+      "enabled_experiments":      ["causal", "cognitive"] // 实验组，或 "advanced"
+  } }
+  ```
+
+  - `enabled_core_modules`：core 层默认启用，但此前**只有 28 个白名单工具**
+    能暴露，其余约 76 个（`pangu_fts_search` / `pangu_holographic_encode` /
+    `pangu_wm_push` …）**没有任何配置途径**可展开。列出模块名即可展开该模块
+    的全部工具。默认为空集，保持"开箱 28 个"不变。
+  - 实验组除按**前缀**匹配（`pangu_causal_*`）外，也按**模块名**匹配——
+    因为 `advanced` 是 experimental 层的容器模块，其工具名不带实验前缀，
+    只做前缀匹配会让它们永远不可达。
+  - 实测：默认 28 → 全开 optional+experiments 192 → 加 core 288 →
+    再加 `advanced` **408**，且零"已暴露但无 handler"的工具。
+
+  **错误码语义（1001 vs 1002）**：
+
+  | code | 含义 | 怎么办 |
+  | --- | --- | --- |
+  | 1001 | 工具**不存在**于任何模块登记 | 改配置永远修不好，检查工具名或先注册 |
+  | 1002 | 工具**存在**，但所在模块/实验组未启用 | 在 `exposure` 段开启对应模块 |
+  | 5000 | handler 执行时抛异常 | 看 error 字段的异常信息 |
+
+  早期版本两者共用 1002 且文案都是"未知工具"，调用方按提示去开模块
+  却怎么也修不好。另：**未登记在模块中的工具（第三方扩展通过 `HANDLERS`
+  注册点加入）一律放行**——暴露面只约束它自己登记过的工具，否则扩展点
+  会被永久锁死。
+
   ⚠ 这两个"白名单"极易混淆，写文档时务必区分：客户端那个无效，服务端那个有效。
   **另注**：`pangu_config_reload` 也不在默认暴露面内，调它得 code=1002；
   改配置请用 `pangu_config_set`（它自己会落盘 + 失效组件缓存）。

@@ -90,10 +90,20 @@ docker compose up -d
   >    ```json
   >    { "exposure": {
   >        "enabled_optional_modules": ["multimodal", "knowledge_graph"],
-  >        "enabled_experiments": ["causal"] } }
+  >        "enabled_core_modules":     ["search", "palace"],
+  >        "enabled_experiments":      ["causal", "advanced"] } }
   >    ```
   >    可选模块：`multimodal / timeline / analytics / quality / consolidation /
   >    embed / knowledge_graph / wiki / llm_tools / session`。
+  >    - `enabled_core_modules` 用来展开 **core 层**的非白名单工具
+  >      （`pangu_fts_search` / `pangu_holographic_encode` 等约 76 个）。
+  >      core 层默认启用，但这些工具此前没有任何配置途径可以暴露。
+  >    - `enabled_experiments` 按实验组名启用，`advanced` 是 experimental
+  >      层的容器模块（其工具名不带实验前缀）。
+  >    - 实测规模：默认 28 → 全开 408 个工具。
+  >
+  >    **错误码**：`1001` = 工具不存在；`1002` = 工具存在但所在模块未启用
+  >    （按提示在 `exposure` 段开启即可）；`5000` = handler 抛出异常。
   >
   > 2. **客户端白名单（不生效，已移除）**：本插件早期在 `cordis.patch.yml`
   >    中配置过 `tools.allow`，但 `@deepseek-ai/dsh-mcp-client` 的 Config
