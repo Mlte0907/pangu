@@ -136,9 +136,17 @@ class EmbeddingService:
         else:
             use_api = True
 
+        # 未配置 API URL 时不要走 API 分支：`_embed_batch_api` 会返回 None，
+        # 让 `return` 直接把 None 交给调用方（调用方需自行判空），
+        # 同时避免下面那条误导性的 "Batch API failed" WARNING。
+        if not self.config.embed_api_url:
+            use_api = False
+
         if use_api and self.config.embedding_model:
             try:
-                return self._embed_batch_api(texts)
+                result = self._embed_batch_api(texts)
+                if result is not None:
+                    return result
             except Exception as e:
                 logger.warning(f"Batch API failed, falling back to ONNX: {e}")
 
@@ -183,6 +191,15 @@ class EmbeddingService:
 
         if uncached_texts:
             vecs = self._call_api_batch(uncached_texts)
+            # `_call_api_batch` 在未配置 `embed_api_url` 时返回 None（见其
+            # 首行守卫）。此前这里直接 `enumerate(vecs)`，于是**任何没配
+            # API URL 的部署**（默认就是空字符串）每次批量嵌入都抛
+            # TypeError: 'NoneType' object is not iterable，被 embed_batch
+            # 的 except 吞掉后打一条 WARNING 再回退 ONNX。
+            # 功能侥幸正确（有回退），但每次都在做无用功并刷警告，
+            # 掩盖了真正需要关注的 API 故障。未配置是正常状态，直接返回 None。
+            if vecs is None:
+                return None
             for j, vec in enumerate(vecs):
                 idx = uncached_indices[j]
                 resolved_vec = vec if vec else self._local_embed(uncached_texts[j])
