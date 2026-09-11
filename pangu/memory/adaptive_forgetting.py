@@ -8,9 +8,11 @@
 5. 遗忘效果追踪：追踪遗忘后的系统改善
 """
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger("pangu.memory.adaptive_forgetting")
 
@@ -47,6 +49,53 @@ class AdaptiveForgetting:
         self.config = config
         self._forgetting_history: list[dict] = []
         self._archive: list[dict] = []
+        # 归档落盘路径：与 palace 同级的 forgetting_archive.json。
+        # 此前归档只存内存，服务重启即丢——而「归档」的语义就是把记忆
+        # 移出活跃检索但**保留可查**，丢失等于静默删除。
+        self._archive_file: Path | None = self._resolve_archive_file(config)
+        self._load_archive()
+
+    @staticmethod
+    def _resolve_archive_file(config) -> Path | None:
+        """定位归档文件路径（配置不可用时不落盘，保持内存模式）"""
+        if config is None:
+            return None
+        try:
+            palace = getattr(config, "palace_path", None)
+            if palace:
+                return Path(palace).parent / "forgetting_archive.json"
+            base = getattr(config, "base_dir", None)
+            if base:
+                return Path(base) / "forgetting_archive.json"
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    def _load_archive(self) -> None:
+        """从磁盘恢复归档（损坏则忽略，不阻断启动）"""
+        if self._archive_file is None or not self._archive_file.exists():
+            return
+        try:
+            data = json.loads(self._archive_file.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                self._archive = data
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    def _persist_archive(self) -> None:
+        """把归档表写回磁盘（原子替换，避免半截文件）"""
+        if self._archive_file is None:
+            return
+        try:
+            self._archive_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._archive_file.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps(self._archive, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            tmp.replace(self._archive_file)
+        except OSError:
+            pass
 
     def _compute_decision(self, forget_score: float, content_len: int) -> tuple[str, str]:
         if forget_score > 0.8:
@@ -137,6 +186,7 @@ class AdaptiveForgetting:
                         "id": d.id,
                         "content": d.content[:200],
                         "wing": d.wing,
+                        "room": getattr(d, "room", "general"),
                         "importance": d.importance,
                         "archived_at": datetime.now().isoformat(),
                     }
@@ -154,6 +204,8 @@ class AdaptiveForgetting:
                 "forgotten": len(forgotten),
             }
         )
+        if archived:
+            self._persist_archive()
 
         return {
             "evaluated": report.total_evaluated,
@@ -163,6 +215,28 @@ class AdaptiveForgetting:
             "forgotten": len(forgotten),
             "tokens_freed": report.estimated_tokens_freed,
         }
+
+    def archive_memory(self, drawer) -> dict:
+        """归档单条记忆（供 pangu_archive_memory 工具使用）
+
+        与 `auto_forget` 的归档分支写入同一结构（含 room），使
+        `get_archive()` / `get_forgetting_stats()` 对两条路径的结果口径一致。
+
+        Returns:
+            写入归档表的条目（含 archived_at / wing / room）。
+        """
+        entry = {
+            "id": drawer.id,
+            "content": drawer.content[:200],
+            "wing": getattr(drawer, "wing", "default"),
+            "room": getattr(drawer, "room", "general"),
+            "importance": getattr(drawer, "importance", 0.0),
+            "archived_at": datetime.now().isoformat(),
+            "reason": "manual_archive",
+        }
+        self._archive.append(entry)
+        self._persist_archive()
+        return entry
 
     def get_archive(self, limit: int = 20) -> list[dict]:
         """获取归档记忆"""

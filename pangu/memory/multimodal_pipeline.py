@@ -333,10 +333,43 @@ class MultimodalPipeline:
 
 
 _pipeline: MultimodalPipeline | None = None
+_pipeline_config_key: tuple | None = None
+
+
+def _config_key(config: PanguConfig | None) -> tuple:
+    """提取判定「同一份配置」所需的最小指纹。
+
+    用存储相关路径而非对象 id：调用方每次 PanguConfig.load() 都会得到
+    新对象，若按 id 比较会导致每次都重建（丢失缓存收益）；而路径相同
+    就说明指向同一份数据，可以安全复用。
+    """
+    if config is None:
+        return ("<default>",)
+    return (
+        str(getattr(config, "palace_path", "") or ""),
+        str(getattr(config, "base_dir", "") or ""),
+        str(getattr(config, "db_path", "") or ""),
+    )
 
 
 def get_multimodal_pipeline(config: PanguConfig = None) -> MultimodalPipeline:
-    global _pipeline
-    if _pipeline is None:
+    """获取多模态流水线单例。
+
+    注意：单例**绑定配置**。若调用方传入的 config 指向不同存储路径，
+    则丢弃旧实例并重建——否则会出现「写入后查不到」：流水线仍持着
+    上一个配置的 MemoryStack，把记忆写进了另一个目录
+    （与 llm / search / wiki 的配置缓存坑同类）。
+    """
+    global _pipeline, _pipeline_config_key
+    key = _config_key(config)
+    if _pipeline is None or _pipeline_config_key != key:
         _pipeline = MultimodalPipeline(config)
+        _pipeline_config_key = key
     return _pipeline
+
+
+def reset_multimodal_pipeline() -> None:
+    """重置多模态流水线单例（测试与配置热加载用）"""
+    global _pipeline, _pipeline_config_key
+    _pipeline = None
+    _pipeline_config_key = None

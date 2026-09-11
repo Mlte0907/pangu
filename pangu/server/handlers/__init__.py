@@ -141,7 +141,19 @@ def load_experimental_tools(config: Any) -> None:
 
         module_name = group_to_module.get(group_name)
         if not module_name:
-            logger.warning(f"未知实验组: {group_name}，跳过")
+            # advanced 是 experimental 层的容器模块（handlers/advanced.py），
+            # 它的 TOOLS/HANDLERS 在模块导入时已随本包一并加载，无需再次
+            # import——它没有独立的 pangu.experimental.advanced 模块。
+            # 若在此报"未知实验组"并跳过，会让人误以为启用失败：实际上
+            # tools/list 会因 exposure 侧按模块名放行而列出这些工具，
+            # 但 handler 缺失导致 tools/call 调用即失败，问题极难定位。
+            from pangu.server.module_registry import MODULE_REGISTRY as _REG
+
+            if any(e.name == group_name and e.level == "experimental" for e in _REG):
+                _EXPERIMENTAL_LOADED.add(group_name)
+                logger.info(f"实验组 {group_name} 为内置容器模块，已由包导入加载")
+            else:
+                logger.warning(f"未知实验组: {group_name}，跳过")
             continue
 
         try:
@@ -151,10 +163,24 @@ def load_experimental_tools(config: Any) -> None:
                 locals(),
                 fromlist=["TOOLS", "HANDLERS"],
             )
-            TOOLS.extend(getattr(mod, "TOOLS", []))
+            # 按工具名去重后再追加。
+            #
+            # 这些实验工具的 schema 在包导入时已随 handlers/advanced.py 一并
+            # 进入 TOOLS（advanced 是 experimental 层的容器模块，两者内容
+            # 重叠），此处按 enabled_experiments 再 import 会重复追加同一
+            # 批工具。后果不只是数字变大：**MCP 服务端要求工具名唯一，
+            # 重名会让官方 SDK 整表拒收**（tools/list 全废）。
+            existing = {t.get("name") for t in TOOLS}
+            added = [
+                t for t in getattr(mod, "TOOLS", [])
+                if t.get("name") not in existing
+            ]
+            if added:
+                TOOLS.extend(added)
+                existing.update(t.get("name") for t in added)
             HANDLERS.update(getattr(mod, "HANDLERS", {}))
             _EXPERIMENTAL_LOADED.add(group_name)
-            logger.info(f"已加载实验组: {group_name}")
+            logger.info(f"已加载实验组: {group_name}（新增 {len(added)} 个工具）")
         except Exception as e:
             logger.error(f"加载实验组 {group_name} 失败: {e}")
 

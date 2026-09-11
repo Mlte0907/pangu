@@ -379,9 +379,21 @@ class TestVectorIndex:
         import tempfile
 
         tmpdir = tempfile.mkdtemp()
+        # 保存并恢复原值，而不是直接 pop。
+        #
+        # 此前这里 `os.environ.pop("PANGU_CACHE_DIR")` 把 conftest 的
+        # session 级隔离变量一并删掉，后续所有用例回退到**用户真实**的
+        # `~/.cache/pangu/`，索引缓存互相覆盖：先跑的用例写进去的向量会
+        # 被后面的用例当成"已有数据"，`vi.size == N` 断言凭空翻倍。
+        prev = os.environ.get("PANGU_CACHE_DIR")
         os.environ["PANGU_CACHE_DIR"] = tmpdir
-        vi = VectorIndex(dim=dim)
-        os.environ.pop("PANGU_CACHE_DIR", None)
+        try:
+            vi = VectorIndex(dim=dim)
+        finally:
+            if prev is None:
+                os.environ.pop("PANGU_CACHE_DIR", None)
+            else:
+                os.environ["PANGU_CACHE_DIR"] = prev
         return vi
 
     def test_init(self):

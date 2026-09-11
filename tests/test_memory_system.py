@@ -284,10 +284,19 @@ class TestMemoryConsolidation:
         assert consolidator.get_access_count("mem_2") == 1
 
     def test_next_review_interval(self):
-        """间隔重复间隔应递增"""
+        """复习间隔应递增
+
+        注意排除第 0 次（从未访问）：它不属于同一条单调曲线。
+        权威规格为 [24, 6, 24, 72, 168, 720]——「从未访问」给 24h 观察
+        窗口，「访问过 1 次」起进入密集复习期并逐次拉长间隔
+        （精确值断言见 tests/test_core.py::test_next_review_interval）。
+        """
         intervals = [MemoryConsolidator.next_review_interval(i) for i in range(6)]
-        for i in range(len(intervals) - 1):
-            assert intervals[i] < intervals[i + 1]
+        # 从第 1 次起严格递增
+        for i in range(1, len(intervals) - 1):
+            assert intervals[i] < intervals[i + 1], f"第 {i}→{i + 1} 次复习间隔未递增: {intervals}"
+        # 未访问的缓冲窗口大于首次复习间隔
+        assert intervals[0] > intervals[1]
 
     def test_compressible_detection(self):
         """超过阈值应触发压缩"""

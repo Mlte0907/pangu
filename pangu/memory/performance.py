@@ -498,6 +498,17 @@ class ObjectPool(Generic[T]):
         with self._lock:
             self._pool.clear()
 
+    @property
+    def size(self) -> int:
+        """当前池中可复用对象数（与 stats()["pool_size"] 同值）"""
+        with self._lock:
+            return len(self._pool)
+
+    @property
+    def max_size(self) -> int:
+        """池的最大容量"""
+        return self._max_size
+
     def stats(self) -> dict:
         """池统计"""
         with self._lock:
@@ -590,6 +601,16 @@ class BatchProcessor:
     def on_flush(self, callback: Callable[[list], None]) -> None:
         """注册批量刷新回调"""
         self._flush_callbacks.append(callback)
+
+    @property
+    def batch(self) -> "BatchProcessor":
+        """内部写缓冲的访问入口
+
+        `add_write` / `force_flush` / `stats` 与写缓冲同属本对象，
+        保留 `batch` 这个名字是为了让调用方可以写成
+        `bp.batch.stats()["buffer_size"]` 这样显式表达「我在看缓冲区」。
+        """
+        return self
 
     @staticmethod
     def batch_encode(

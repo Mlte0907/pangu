@@ -105,13 +105,31 @@ HANDLERS["pangu_check_pair"] = handle_check_pair
 
 
 async def handle_find_duplicates(server, drawers, arguments):
-    """检测重复或高度相似的记忆"""
+    """检测重复或高度相似的记忆
+
+    输出统一口径（R3-A）：三口径同源可换算，并附 caliber 说明，避免
+    「同一份数据在不同工具里得到三个互相矛盾的数字」。
+    `duplicates` / `count` 保留以兼容既有调用方。
+    """
     from ...memory.semantic_compression import get_compressor
 
     comp = get_compressor(server.config)
     threshold = arguments.get("threshold", 0.8)
     dups = comp.find_semantic_duplicates(drawers, threshold)
-    return json.dumps({"duplicates": dups, "count": len(dups)}, ensure_ascii=False, indent=2)
+    analysis = comp.analyze_duplicates(drawers, threshold)
+    return json.dumps(
+        {
+            "duplicates": dups,
+            "count": len(dups),
+            "duplicate_groups": analysis["duplicate_groups"],
+            "total_recoverable": analysis["total_recoverable"],
+            "pairs": analysis["pairs"],
+            "total_memories": analysis["total_memories"],
+            "caliber": analysis["caliber"],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 HANDLERS["pangu_find_duplicates"] = handle_find_duplicates
@@ -252,19 +270,6 @@ async def handle_compress_by_tags(server, drawers, arguments):
 
 
 HANDLERS["pangu_compress_by_tags"] = handle_compress_by_tags
-
-
-async def handle_find_duplicates(server, drawers, arguments):
-    """发现语义重复记忆"""
-    from ...memory.semantic_compression import get_compressor
-
-    comp = get_compressor(server.config)
-    threshold = arguments.get("threshold", 0.8)
-    dups = comp.find_semantic_duplicates(drawers, threshold)
-    return json.dumps({"duplicates": dups, "count": len(dups)}, ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_find_duplicates"] = handle_find_duplicates
 
 
 async def handle_reassess_importance(server, drawers, arguments):

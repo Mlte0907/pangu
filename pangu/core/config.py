@@ -66,13 +66,23 @@ class ExposureConfig(BaseModel):
     控制三层工具暴露：
     - enabled_optional_modules: 已启用的可选模块集合
     - enabled_experiments: 已启用的实验组集合
+    - enabled_core_modules: 额外展开的 core 模块集合（见下方说明）
 
     缺省时暴露面自动收敛为白名单 28 个核心工具。
     extra="ignore" 保证旧配置（无 exposure 段）被接受。
+
+    enabled_core_modules 说明：
+      core 层模块（memory_ops / search / system / io_tools / palace / batch）
+      默认启用，但其中只有 28 个白名单工具默认暴露，余下约 76 个工具
+      （如 pangu_fts_search、pangu_holographic_encode、pangu_wm_push）
+      此前**没有任何配置途径**可以展开——只判断了 optional 层，形成死区。
+      该字段用于按需展开某个 core 模块的全部工具，默认空集以保持
+      "开箱 28 个工具"的既有行为不变。
     """
 
     enabled_optional_modules: set[str] = Field(default_factory=set)
     enabled_experiments: set[str] = Field(default_factory=set)
+    enabled_core_modules: set[str] = Field(default_factory=set)
 
 
 class PanguConfig(BaseSettings):

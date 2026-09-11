@@ -140,7 +140,19 @@ class MemoryConsolidator:
     # ── 遗忘判定 ──
 
     def should_forget(self, drawer: Drawer) -> bool:
-        """判断一条记忆是否应该被遗忘"""
+        """判断一条记忆是否应该被遗忘
+
+        `importance` 是用户/调用方显式给出的 1-5 分标注，属于权威信号；
+        而 `calculate_importance()` 的结果还叠加了时间衰减、标签密度、
+        内容长度等启发式修正（短内容有 0.9 的降权）。因此一条标了满分 5.0
+        的记忆，可能因内容短、刚创建等无关因素算出 4.5 这样的低分。
+
+        满分标注意味着「明确标记为重要」，不应被这些启发式修正抹掉——
+        这里对 importance 达到满分（>= 5.0）的记忆直接豁免遗忘，
+        避免用户的显式意图被间接推翻。
+        """
+        if drawer.importance >= 5.0:
+            return False
         effective = self.calculate_importance(drawer)
         return effective < self.config.min_importance_threshold
 
@@ -223,13 +235,19 @@ class MemoryConsolidator:
     def next_review_interval(access_count: int) -> float:
         """计算下次复习间隔（小时间隔）
 
-        基于间隔重复算法：
-        - 第 0 次（未访问）: 24 小时
-        - 第 1 次: 6 小时
-        - 第 2 次: 24 小时
-        - 第 3 次: 3 天
-        - 第 4 次: 7 天
-        - 第 5 次+: 30 天
+        间隔表语义（已被 tests/test_core.py 作为规格固定）：
+
+        - 第 0 次（从未被访问）: 24 小时 —— 归属「未激活」记忆，
+          给 1 天观察窗口再复习
+        - 第 1 次: 6 小时 —— 一旦被访问过就进入密集复习期
+        - 第 2 次: 24 小时（1 天）
+        - 第 3 次: 72 小时（3 天）
+        - 第 4 次: 168 小时（7 天）
+        - 第 5 次+: 720 小时（30 天）起按 1.5 倍指数增长
+
+        注意首个区间（24h）大于第二个（6h）并非笔误：它区分的是
+        「从未访问」与「访问过一次」两种不同状态，而不是同一条单调
+        曲线上的相邻点。从第 1 次起，间隔严格单调递增。
         """
         intervals = [24, 6, 24, 72, 168, 720]
         if access_count < len(intervals):

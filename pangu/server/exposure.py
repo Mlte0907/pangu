@@ -44,7 +44,8 @@ class ExposureFilter:
     def _compute_exposed_set(self, config: PanguConfig) -> set[str]:
         """计算暴露集合
 
-        暴露集合 = 白名单 ∪ 已启用可选模块工具集 ∪ 已启用实验组工具集
+        暴露集合 = 白名单 ∪ 已启用可选模块的工具集
+                   ∪ 已启用 core 模块的工具集 ∪ 已启用实验组的工具集
 
         复杂度：O(|白名单| + |已启用模块工具| + |已启用实验工具|) ≤ O(423)
         """
@@ -53,11 +54,27 @@ class ExposureFilter:
         exposure = config.exposure
         enabled_optional = exposure.enabled_optional_modules
         enabled_experiments = exposure.enabled_experiments
+        # 兼容旧配置：该字段可能不存在（extra="ignore" 场景）
+        enabled_core = getattr(exposure, "enabled_core_modules", set()) or set()
 
         # 添加已启用可选模块的工具
         for entry in MODULE_REGISTRY:
             if entry.level == "optional" and entry.name in enabled_optional:
                 exposed.update(entry.tool_names)
+
+        # 添加已启用 core 模块的**非白名单**工具
+        #
+        # 为什么需要这一段：core 层（memory_ops / search / system / io_tools /
+        # palace / batch）默认启用，但此前只有 28 个白名单工具能暴露，其余
+        # 约 76 个工具（pangu_fts_search、pangu_holographic_encode、
+        # pangu_wm_push 等）**没有任何配置途径**可以展开——因为下面只判断了
+        # optional 层。结果是 core 层的 default_enabled=True 形同虚设，
+        # 一批已实现且已注册的工具永远不可达。
+        # 默认空集，保持「开箱 28 个工具」行为不变；按需展开某个 core 模块时
+        # 在 exposure.enabled_core_modules 中列出模块名即可。
+        for entry in MODULE_REGISTRY:
+            if entry.level == "core" and entry.name in enabled_core:
+                exposed.update(entry.tool_names - CORE_WHITELIST)
 
         # 添加已启用实验组的工具
         # 实验工具在 module_registry 中已被提取归入 experimental 层级
@@ -66,16 +83,24 @@ class ExposureFilter:
             from pangu.server.module_registry import EXPERIMENTAL_PREFIXES
 
             for group_name in enabled_experiments:
+                # ① 按实验组名前缀匹配（pangu_causal_* 等）
                 prefixes = EXPERIMENTAL_PREFIXES.get(group_name, [])
-                if not prefixes:
-                    continue
-                # 从所有模块中匹配实验工具
+                if prefixes:
+                    for entry in MODULE_REGISTRY:
+                        for tool_name in entry.tool_names:
+                            for prefix in prefixes:
+                                if tool_name.startswith(prefix):
+                                    exposed.add(tool_name)
+                                    break
+                # ② 按模块名匹配
+                #
+                # 为什么还需要这一条：experimental 层的模块（如 advanced）
+                # 其工具名并不带实验前缀（pangu_verify、pangu_wm_push、
+                # pangu_judge_memory …），只做前缀匹配会让这些工具永远
+                # 无法暴露——和 core 层非白名单工具是同一类死区。
                 for entry in MODULE_REGISTRY:
-                    for tool_name in entry.tool_names:
-                        for prefix in prefixes:
-                            if tool_name.startswith(prefix):
-                                exposed.add(tool_name)
-                                break
+                    if entry.level == "experimental" and entry.name == group_name:
+                        exposed.update(entry.tool_names)
 
         return exposed
 
@@ -99,16 +124,45 @@ class ExposureFilter:
             tool_name: 工具名
 
         Returns:
-            (True, None) 如果工具可调用
-            (False, error_json) 如果工具不可调用，error_json 含 code=1002 与可操作错误信息
+            (True, None) 如果工具可调用（含未登记在模块中的扩展工具）
+            (False, error_json) 如果工具是被暴露面过滤掉的内置工具，
+                error_json 含 code=1002 与可操作错误信息（提示开启哪个模块/实验组）
+
+        「工具不存在」不再由本方法判定：那属于存在性检查，由
+        MCPServer.call_tool 在查到 HANDLERS 无对应项时返回 code=1001。
+        此前两种情况共用 1002，「未知工具」的文案会让调用方误以为
+        是配置问题，按提示去开模块却永远开不好。
         """
         if tool_name in self._exposed_set:
             return True, None
 
+        # 未登记在任何模块中的工具 → 放行。
+        #
+        # 暴露面的职责是「按模块/实验组收敛内置工具集」，它只能约束自己
+        # 登记过的工具。第三方扩展、插件、测试注入的工具通过公开的
+        # HANDLERS 注册点加入，本就不属于任何模块——若在这里拦下，等于
+        # 扩展点被永久锁死，且报错指向「配置未启用某模块」，永远修不好。
+        # 未知工具的存在性检查由调用方（MCPServer.call_tool）负责。
+        if not self._is_registered(tool_name):
+            return True, None
+
         # 判断被过滤原因，给出可操作错误信息
         error_msg = self._build_error_message(tool_name)
-        error_json = json.dumps({"code": 1002, "error": error_msg}, ensure_ascii=False)
-        return False, error_json
+        return False, json.dumps({"code": 1002, "error": error_msg}, ensure_ascii=False)
+
+    @staticmethod
+    def _is_registered(tool_name: str) -> bool:
+        """工具是否登记在某个模块（含实验前缀）中"""
+        for entry in MODULE_REGISTRY:
+            if tool_name in entry.tool_names:
+                return True
+        from pangu.server.module_registry import EXPERIMENTAL_PREFIXES
+
+        return any(
+            tool_name.startswith(prefix)
+            for prefixes in EXPERIMENTAL_PREFIXES.values()
+            for prefix in prefixes
+        )
 
     def _build_error_message(self, tool_name: str) -> str:
         """构建错误消息

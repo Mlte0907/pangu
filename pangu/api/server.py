@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import time
 import hmac
 from contextlib import asynccontextmanager
@@ -48,8 +49,33 @@ def create_app() -> FastAPI:
     from pangu.core.config import config as _orig_cfg
 
     _loaded = _Cfg.load()
-    # 用加载后的配置替换全局单例，使整个模块统一使用 config.json 的值
+    _loaded.config_path = getattr(_loaded, "config_path", "")
+    # 用配置文件的值替换全局单例，使整个模块统一使用 config.json 的内容。
+    #
+    # 关键：只覆盖 config.json 里**显式写明的**字段，而不是无差别地铺一层
+    # `_loaded` 的全部字段。原因：`_Cfg.load()` 返回的是一个「磁盘 JSON +
+    # 环境变量 + 字段默认值」三者合成的完整对象，其中字段默认值会盖掉
+    # 调用方刚刚在进程内设好的值。不加这层过滤时，会出现两类难以排查的问题：
+    #   1) 测试用 monkeypatch 设好的 api_key / jwt_default_password 被默认值
+    #      清空，鉴权随即失效（无 Key 也能 200、登录恒 401）
+    #      —— 见 tests/test_auth.py::TestHTTPAuth；
+    #   2) 测试用 PANGU_* 环境变量配置的 jwt_users / abac_user_attrs 被默认值
+    #      覆盖，RBAC/ABAC 联调全部失败
+    #      —— 见 tests/test_e2e_rbac_abac.py。
+    # 保留语义：config.json 里写了的字段以文件为准（运维期望）；
+    # 没写的字段不干预进程内现值（环境变量与程序化设置的期望）。
+    _json_keys: set[str] = set()
+    _cfg_path = getattr(_loaded, "config_path", "") or os.path.expanduser("~/.pangu/config.json")
+    try:
+        if os.path.exists(_cfg_path):
+            with open(_cfg_path, encoding="utf-8") as _f:
+                _json_keys = set(json.load(_f).keys())
+    except (json.JSONDecodeError, OSError):
+        _json_keys = set()
+
     for _field in _loaded.model_fields:
+        if _field not in _json_keys:
+            continue
         try:
             setattr(_orig_cfg, _field, getattr(_loaded, _field))
         except Exception:
@@ -311,7 +337,10 @@ def create_app() -> FastAPI:
             "/dashboard",
             "/graph",
             "/performance",
-            "/api/v2/system/info",
+            # 注意：/api/v2/system/info 曾被豁免，但它会返回 host / port /
+            # backend / llm_provider / embedding_model 以及认证状态、
+            # 用户数与角色列表——认证启用时这等于把系统画像交给未认证调用方。
+            # 该端点现已纳入鉴权（tests/test_auth.py 断言无 Key 时 401）。
             "/api/v2/autonomous/status",
             "/api/v2/graph",
             "/api/v2/tools",
@@ -334,21 +363,54 @@ def create_app() -> FastAPI:
                 return
 
             path = scope.get("path", "")
-            if (
+            _exempt = (
                 path in self._EXEMPT_PATHS
                 or path in self._EXEMPT_EXACT
                 or any(path.startswith(p) for p in self._EXEMPT_PREFIXES)
-            ):
-                await self.app(scope, receive, send)
-                return
+            )
 
-            # 归一化 headers
+            # 归一化 headers（豁免路径也需要，用于尽力解析身份）
             headers: dict[str, str] = {}
             for k, v in scope.get("headers", []):
                 try:
                     headers[k.decode("latin-1").lower()] = v.decode("latin-1", errors="ignore")
                 except Exception:
                     continue
+
+            if _exempt:
+                # 豁免路径不拦截请求，但仍**尽力解析**凭据并注入身份。
+                #
+                # 原因：/api/v2/memories 这类豁免前缀下的路由自己做细粒度
+                # RBAC/ABAC 授权（见 pangu/api/routes_memory.py 的
+                # `get_principal(request)`）。而 get_principal 读的是本中间件
+                # 注入的 `scope["state"]["auth"]`——若豁免时直接放行、不解析，
+                # 路由永远只能看到 anonymous，于是带着合法 Bearer 也会被
+                # 自己的路由判成未认证（HTTP 200 但 body.code=401）。
+                #
+                # 分层意图：中间件负责粗粒度网关，路由负责细粒度授权。
+                # 因此这里静默解析、失败不拦截，把授权决定权留给路由。
+                try:
+                    _res = verify_credentials(
+                        headers=headers,
+                        api_key=self.api_key,
+                        secret=self.secret,
+                        algorithm=self.algorithm,
+                        user_store=self.user_store,
+                    )
+                    if _res.ok and _res.method == "jwt" and _res.claims:
+                        scope["state"] = scope.get("state", {})
+                        scope["state"]["auth"] = {
+                            "method": _res.method,
+                            "user_id": _res.user_id,
+                            "claims": _res.claims,
+                        }
+                    elif _res.ok and _res.method == "api_key":
+                        scope["state"] = scope.get("state", {})
+                        scope["state"]["auth"] = {"method": _res.method, "user_id": "api_key_user"}
+                except Exception:
+                    pass
+                await self.app(scope, receive, send)
+                return
 
             result = verify_credentials(
                 headers=headers,

@@ -141,26 +141,55 @@ class HealthMonitor:
             return HealthCheck("content", "healthy", 1.0, f"内容质量正常: {total} 条", "")
 
     def check_duplicates(self, drawers: list) -> HealthCheck:
-        """检查重复"""
+        """检查重复（统一口径 R3-A）
+
+        口径由 `SemanticCompressor.analyze_duplicates` 唯一提供，本检查只
+        负责把它翻译成健康度结论。此前这里自带一套 `content[:30]` 计数，
+        与 find_duplicates / merge_candidates 的数字互不相容——同一份数据
+        在不同入口给出不同结果，用户无法判断该信哪个。
+        """
         if not drawers:
             return HealthCheck("duplicates", "critical", 0.0, "无数据", "")
 
-        seen = {}
-        dupes = 0
-        for d in drawers:
-            key = d.content[:30]
-            if key in seen:
-                dupes += 1
-            else:
-                seen[key] = d.id
+        try:
+            from .semantic_compression import get_compressor
 
-        dupe_rate = dupes / len(drawers)
-        if dupe_rate > 0.2:
+            analysis = get_compressor(self.config).analyze_duplicates(drawers, threshold=0.8)
+        except Exception:  # noqa: BLE001
+            # 压缩器不可用时退回计数法，至少给出可读结论（不阻断健康检查）
+            seen = {}
+            dupes = 0
+            for d in drawers:
+                key = d.content[:30]
+                if key in seen:
+                    dupes += 1
+                else:
+                    seen[key] = d.id
+            dupe_rate = dupes / len(drawers)
+            detail = f"重复率: {dupe_rate:.0%} ({dupes}/{len(drawers)})（降级口径）"
             return HealthCheck(
-                "duplicates", "warning", 0.3, f"重复率: {dupe_rate:.0%} ({dupes}/{len(drawers)})", "运行去重清理"
+                "duplicates",
+                "warning" if dupe_rate > 0.2 else "healthy",
+                0.3 if dupe_rate > 0.2 else 1.0,
+                detail,
+                "运行去重清理" if dupe_rate > 0.2 else "",
             )
-        else:
-            return HealthCheck("duplicates", "healthy", 1.0, f"重复率: {dupe_rate:.0%}", "")
+
+        groups = analysis["duplicate_groups"]
+        recoverable = analysis["total_recoverable"]
+        pairs = analysis["pairs"]
+        total = analysis["total_memories"]
+        # 健康率以「可回收条数占比」为准，与 warning 阈值同源
+        recoverable_rate = recoverable / total if total else 0.0
+
+        detail = (
+            f"组簇: {groups} | 可回收条数: {recoverable} | 对数: {pairs} | "
+            f"记忆总数: {total} | 可回收率: {recoverable_rate:.0%} | "
+            f"口径: {analysis['caliber']['algorithm']}（阈值 {analysis['caliber']['threshold']}）"
+        )
+        if recoverable_rate > 0.2:
+            return HealthCheck("duplicates", "warning", 0.3, detail, "运行去重清理")
+        return HealthCheck("duplicates", "healthy", 1.0, detail, "")
 
     def full_check(self, drawers: list) -> dict:
         """全面健康检查"""

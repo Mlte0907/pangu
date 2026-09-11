@@ -45,6 +45,16 @@ class MCPServer:
 
         load_experimental_tools(self.config)
 
+        # 启动期预热：llm_cache_warmup_on_start=True 且配置了 prompts 时，
+        # 在构造阶段就把缓存预热调度为后台任务。
+        #
+        # 此前只在 `llm` property 内惰性调度，结果是「启动预热」名不副实：
+        # 若服务启动后一直没人用到 LLM，预热永远不会发生，首次真实请求要
+        # 承担全部冷启动延迟——而这正是该配置项要消除的问题。
+        # 调度内部自带事件循环检测（无 loop 时安全跳过），且对已调度的情况
+        # 幂等，因此在同步上下文构造对象也不会出问题。
+        self._maybe_schedule_warmup()
+
     @property
     def palace(self):
         if self._palace is None:
@@ -142,10 +152,15 @@ class MCPServer:
         - 配置 llm_cache_warmup_on_start=False → 跳过
         - 配置 llm_cache_warmup_prompts 为空 → 跳过
         - 无运行中的事件循环（如单元测试中） → 跳过
+        - 已调度过 → 跳过（幂等：__init__ 与 llm property 都会调用本方法）
         """
         if not getattr(self.config, "llm_cache_warmup_on_start", False):
             return
         if not getattr(self.config, "llm_cache_warmup_prompts", []):
+            return
+        if self._warmup_task is not None:
+            # 幂等保护。同时防止重入：下面要访问 self.llm，而 llm property
+            # 内部又会回调本方法，若无此短路会无限递归。
             return
         try:
             loop = asyncio.get_running_loop()
@@ -219,19 +234,23 @@ class MCPServer:
         drawers = self.memory.get_drawers()
 
         from .exposure import get_exposure_filter
+        from .handlers import HANDLERS
+
+        # 先判存在、再判暴露。
+        #
+        # 顺序很关键：HANDLERS 里存在但未被任何模块登记的工具（测试注入、
+        # 第三方扩展注册）若先走暴露面检查，会被判 code=1002「不在当前暴露面」——
+        # 而真实原因是它不属于任何模块，报错信息完全指错方向，极难排查。
+        handler = HANDLERS.get(tool_name)
+        if handler is None:
+            return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
 
         # 暴露面前置校验：未暴露工具返回 code=1002 结构化错误
         allowed, error_json = get_exposure_filter(self.config).check_callable(tool_name)
         if not allowed:
             return error_json
 
-        from .handlers import HANDLERS
-
-        handler = HANDLERS.get(tool_name)
-        if handler:
-            return await handler(self, drawers, arguments)
-        else:
-            return json.dumps({"code": 1001, "error": f"未知工具: {tool_name}"})
+        return await handler(self, drawers, arguments)
 
     # ── MCP 协议 ──
 

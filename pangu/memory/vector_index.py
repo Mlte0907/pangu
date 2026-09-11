@@ -33,11 +33,20 @@ class VectorIndex:
     4. 增量更新 + 磁盘持久化
     """
 
-    def __init__(self, dim: int = 384):
+    def __init__(self, dim: int = 384, persist: bool = False):
         import os
         from pathlib import Path
 
         self.dim = dim
+        # 是否持久化到全局缓存目录。
+        #
+        # 默认 False：`build()` / `add_batch()` 会调 `_save()`，而缓存文件名
+        # 只由维度决定，于是任何**临时实例**（测试、多模型并存的调用方）
+        # 构建索引时都会覆盖全局单例的索引文件。之后单例从磁盘加载到别人
+        # 的数据——`size` 凭空变大、`np.vstack` 维度不符被吞成"加了 0 条"、
+        # 搜索返回错误结果。只有真正的进程级单例（get_vector_index）才该
+        # 写入共享缓存，构造函数直接使用时应显式传 persist=True。
+        self._persist = persist
         self._index: np.ndarray | None = None  # numpy 模式
         self._faiss_index = None  # FAISS 模式
         self._hnsw_index = None  # hnswlib 模式
@@ -47,11 +56,18 @@ class VectorIndex:
         self._use_faiss: bool = False
         self._use_hnsw: bool = False
         self._cache_dir = Path(os.environ.get("PANGU_CACHE_DIR", str(Path.home() / ".cache" / "pangu")))
-        self._index_file = self._cache_dir / "vector_index.npz"
-        self._faiss_file = self._cache_dir / "vector_index.faiss"
-        self._faiss_ids_file = self._cache_dir / "vector_index_ids.json"
-        self._hnsw_file = self._cache_dir / "vector_index.hnsw"
-        self._hnsw_ids_file = self._cache_dir / "vector_index_hnsw_ids.json"
+        # 按维度区分文件名。
+        #
+        # 此前所有维度的实例共用 `vector_index.npz`：一个 dim=4 的实例
+        # （测试、或多模型混用场景）构建索引时会**覆盖** dim=384 的主索引，
+        # 之后主索引从磁盘加载到 4 维数据，`np.vstack` 与 384 维新向量不
+        # 匹配 → add_batch 静默失败 → 搜索恒为空。维度是索引身份的一部分。
+        suffix = "" if dim == 384 else f".d{dim}"
+        self._index_file = self._cache_dir / f"vector_index{suffix}.npz"
+        self._faiss_file = self._cache_dir / f"vector_index{suffix}.faiss"
+        self._faiss_ids_file = self._cache_dir / f"vector_index_ids{suffix}.json"
+        self._hnsw_file = self._cache_dir / f"vector_index{suffix}.hnsw"
+        self._hnsw_ids_file = self._cache_dir / f"vector_index_hnsw_ids{suffix}.json"
         # 写入缓冲
         self._pending_vectors: list[np.ndarray] = []
         self._pending_ids: list[str] = []
@@ -61,7 +77,9 @@ class VectorIndex:
         self._load()  # 启动时自动加载
 
     def _save(self) -> None:
-        """保存索引到磁盘"""
+        """保存索引到磁盘（仅当实例声明持久化）"""
+        if not self._persist:
+            return
         try:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
             if self._use_hnsw and self._hnsw_index is not None:
@@ -83,7 +101,9 @@ class VectorIndex:
             logger.warning(f"Vector index save failed: {e}")
 
     def _load(self) -> None:
-        """从磁盘加载索引"""
+        """从磁盘加载索引（仅当实例声明持久化）"""
+        if not self._persist:
+            return
         try:
             # 尝试加载 hnswlib
             if self._hnsw_file.exists() and self._hnsw_ids_file.exists():
@@ -113,7 +133,18 @@ class VectorIndex:
             # 降级到 numpy
             if self._index_file.exists():
                 data = np.load(self._index_file)
-                self._index = data["vectors"]
+                loaded = data["vectors"]
+                # 维度自检：拒绝加载与实例维度不符的索引。
+                # 读到不匹配的数据会让后续 add_batch 的 np.vstack 抛错，
+                # 而错误被吞成"加了 0 条"，表现为搜索永远为空——
+                # 在这里直接跳过并告警，让问题在加载点可见。
+                if loaded.ndim != 2 or loaded.shape[1] != self.dim:
+                    logger.warning(
+                        f"忽略维度不匹配的索引缓存 {self._index_file}: "
+                        f"文件 {getattr(loaded, 'shape', None)} vs 期望 dim={self.dim}"
+                    )
+                    return
+                self._index = loaded
                 self._ids = list(data["ids"])
                 self._is_built = True
                 self._size = len(self._ids)
@@ -297,13 +328,30 @@ class VectorIndex:
                 self._build_faiss(self._index)
 
     def add_batch(self, vectors: list[list[float]], ids: list[str]) -> int:
-        """批量添加向量（线程安全）"""
+        """批量添加向量（线程安全）
+
+        返回**实际加入**的条数。维度与已有索引不一致时抛 ValueError：
+        此前这里 `except Exception: return 0`，把「维度不匹配」和
+        「什么都没加」混成同一个返回值 0，调用方只看到「加了 0 条」，
+        既不知道失败也不知道为什么——索引里 4 维数据与 384 维调用方
+        共存时会永久静默失效。
+        """
         if len(vectors) != len(ids):
             return 0
 
         with self._lock:
+            batch = np.array(vectors, dtype=np.float32)
+            # 维度自检：与已有索引不一致必须显式报错，不能静默丢弃
+            if self._is_built and self._index is not None and self._index.size:
+                existing_dim = self._index.shape[1] if self._index.ndim == 2 else None
+                if existing_dim is not None and existing_dim != batch.shape[1]:
+                    raise ValueError(
+                        f"向量维度不匹配: 索引已存 {existing_dim} 维，"
+                        f"本次传入 {batch.shape[1]} 维。索引可能来自其他"
+                        f"模型或陈旧缓存（{self._index_file}），"
+                        f"请清理缓存或重建索引。"
+                    )
             try:
-                batch = np.array(vectors, dtype=np.float32)
                 batch = self._normalize(batch)
 
                 self._add_to_backend(batch, ids)
@@ -490,7 +538,9 @@ class HolographicIndex:
                     ids.append(holo.item_id)
 
             if vectors:
-                idx = VectorIndex(dim=PROJECTION_DIMS.get(dim, 384))
+                # 全息子索引按维度落盘（文件名含维度，彼此不冲突），
+                # 归全息单例所有，因此声明持久化。
+                idx = VectorIndex(dim=PROJECTION_DIMS.get(dim, 384), persist=True)
                 idx.build(vectors, ids)
                 self._indices[dim] = idx
 
@@ -546,15 +596,54 @@ _vector_index: VectorIndex | None = None
 _holographic_index: HolographicIndex | None = None
 _vector_index_lock = threading.Lock()
 _holographic_index_lock = threading.Lock()
+_vector_index_key: tuple | None = None
+
+
+def _vector_index_fingerprint(dim: int) -> tuple:
+    """索引身份指纹：缓存目录 + 维度
+
+    两者任一变化都必须换新实例——缓存目录决定落盘/加载位置，维度决定
+    `_index` 的形状。指纹相同但实例为 None 时才复用，避免把 A 目录的
+    索引当成 B 目录的数据继续用。
+    """
+    import os
+    from pathlib import Path
+
+    cache_dir = os.environ.get("PANGU_CACHE_DIR", str(Path.home() / ".cache" / "pangu"))
+    return (cache_dir, dim)
 
 
 def get_vector_index(dim: int = 384) -> VectorIndex:
-    global _vector_index
-    if _vector_index is None:
+    global _vector_index, _vector_index_key
+    key = _vector_index_fingerprint(dim)
+    if _vector_index is None or _vector_index_key != key:
         with _vector_index_lock:
-            if _vector_index is None:
-                _vector_index = VectorIndex(dim=dim)
+            if _vector_index is None or _vector_index_key != key:
+                _vector_index = VectorIndex(dim=dim, persist=True)
+                _vector_index_key = key
     return _vector_index
+
+
+def reset_vector_index() -> None:
+    """丢弃向量索引单例，下次获取时按当前缓存目录重新加载。
+
+    单例一旦建立就长期持有已加载的 `_index` 数据与后端句柄。缓存目录被
+    切换（测试隔离）或索引数据被外部替换后，旧单例会把**陈旧数据**当作
+    "已有向量"继续使用——维度不符时 `add_batch` 抛错并被吞，搜索恒为空。
+    与 `reset_multimodal_pipeline()` / `reset_exposure_filter()` 同一类
+    重置入口：持有持久化状态或 config 的单例都必须能被显式复位。
+    """
+    global _vector_index, _vector_index_key
+    with _vector_index_lock:
+        _vector_index = None
+        _vector_index_key = None
+
+
+def reset_holographic_index() -> None:
+    """丢弃全息索引单例（理由同 reset_vector_index）"""
+    global _holographic_index
+    with _holographic_index_lock:
+        _holographic_index = None
 
 
 def get_holographic_index() -> HolographicIndex:

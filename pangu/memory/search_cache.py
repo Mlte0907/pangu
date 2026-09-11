@@ -61,6 +61,9 @@ class SearchCache:
         return {
             "size": len(self._cache),
             "max_size": self._max_size,
+            # 语义化命名（R3）：与 memory_stack 的同名字段区分开。
+            # 旧字段保留以兼容既有调用方。
+            "search_cache_ttl_seconds": self._ttl,
             "ttl_seconds": self._ttl,
             "hits": self._stats["hits"],
             "misses": self._stats["misses"],

@@ -99,12 +99,31 @@ HANDLERS["pangu_ingest_url"] = handle_ingest_url
 
 
 async def handle_ingest_text(server, drawers, arguments):
-    """直接存入文本记忆（支持自定义模态标签）"""
+    """直接存入文本记忆（支持自定义模态标签）
+
+    参数兼容：主参数为 `text`，同时接受旧名 `content`（早期调用方使用）。
+    两者都缺失时返回结构化错误，而不是抛 KeyError。
+    """
     from ...memory.multimodal_pipeline import get_multimodal_pipeline
 
+    text = arguments.get("text")
+    if text is None:
+        text = arguments.get("content")
+    if text is None:
+        return json.dumps(
+            {"code": 1003, "error": "缺少必填参数 text（别名 content）", "data": None},
+            ensure_ascii=False,
+        )
+
     pipe = get_multimodal_pipeline(server.config)
+    # 复用调用方（server）的存储，而不是让流水线自建一个 MemoryStack。
+    # 否则写入落到与 server.memory 不同的实例/目录，表现为「写入成功但
+    # 立刻查不到、搜不到」（工具链回声三连会断在这里）。
+    memory = getattr(server, "memory", None)
+    if memory is not None:
+        pipe._memory = memory
     result = pipe.ingest_text(
-        arguments["text"],
+        text,
         wing=arguments.get("wing", "default"),
         description=arguments.get("description", ""),
         tags=arguments.get("tags", []),

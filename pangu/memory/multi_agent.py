@@ -424,7 +424,21 @@ class MultiAgentMemory:
             return refs
 
     def trace_lineage(self, memory_id: str, depth: int = 5) -> list[dict[str, Any]]:
-        """追溯记忆血缘链（引用链）"""
+        """追溯记忆血缘链（沿引用关系向上追溯祖先）
+
+        引用关系存在两个方向：
+        - `memory.references`：本记忆**引用了谁** → 用于向上找祖先（本方法）
+        - `self._references[id]`：**谁引用了本记忆** → 用于向下找后代
+          （见 `get_references_to`）
+
+        历史实现从 `_references` 出发，那是「谁引用了我」的反向索引，
+        于是从一条**叶子**记忆追溯时找不到任何祖先，只能返回它自己。
+        血缘追溯的语义是「这条记忆建立在哪些记忆之上」，故应沿
+        `memory.references` 向上遍历。
+
+        Returns:
+            血缘链，第一项为起点记忆自身，其后为逐级祖先。
+        """
         result = []
         visited = set()
         queue = [(memory_id, 0)]
@@ -448,9 +462,9 @@ class MultiAgentMemory:
                         "level": level,
                     }
                 )
-                # 向上追溯：谁引用了这条记忆
-                for ref in self._references.get(mid, []):
-                    queue.append((ref.referrer_id, level + 1))
+                # 向上追溯：本条记忆引用了哪些记忆（其祖先）
+                for ref_id in memory.references:
+                    queue.append((ref_id, level + 1))
 
         return result
 

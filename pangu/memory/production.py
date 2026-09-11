@@ -246,7 +246,38 @@ def check_environment() -> dict:
         "memory": {},
         "disk": {},
         "pangu": {},
+        "llm": {},
     }
+
+    # LLM 路由（R2）：与 core/llm.py 的判定保持同源——
+    # 配了 llm_base_url 即为「本地/自托管 OpenAI 兼容端点」，允许无 key 调用；
+    # 两者都缺才算不可用。此处只做只读报告，不发起任何网络请求。
+    try:
+        from ..core.config import PanguConfig
+
+        cfg = PanguConfig.load()
+        base_url = (getattr(cfg, "llm_base_url", "") or "").strip()
+        api_key = (getattr(cfg, "llm_api_key", "") or "").strip()
+        checks["llm"]["provider"] = getattr(cfg, "llm_provider", "") or ""
+        checks["llm"]["model"] = getattr(cfg, "llm_model", "") or ""
+        checks["llm"]["base_url_configured"] = bool(base_url)
+        checks["llm"]["api_key_configured"] = bool(api_key)
+        if base_url and not api_key:
+            checks["llm"]["route"] = "local_base_url_no_key"
+            checks["llm"]["status"] = "ok"
+        elif base_url and api_key:
+            checks["llm"]["route"] = "base_url_with_key"
+            checks["llm"]["status"] = "ok"
+        elif api_key:
+            checks["llm"]["route"] = "official_provider"
+            checks["llm"]["status"] = "ok"
+        else:
+            checks["llm"]["route"] = "unconfigured"
+            checks["llm"]["status"] = "missing_base_url"
+            checks["llm"]["hint"] = "请配置 llm_base_url（本地/自托管端点）或 llm_api_key"
+    except Exception as e:  # noqa: BLE001
+        checks["llm"]["status"] = "error"
+        checks["llm"]["error"] = str(e)
 
     # 内存
     try:

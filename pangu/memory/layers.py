@@ -774,6 +774,10 @@ class MemoryStack:
             "search_stats": search_stats,
             "total_drawers": len(drawers),
             "cache_size": len(self._cache),
+            # 语义化命名（R3）：`cache_ttl` 未标明单位与所属对象，多个组件
+            # 都有同名字段时无法区分。新名带对象前缀与单位后缀。
+            # 旧字段保留以兼容既有调用方。
+            "memory_stack_cache_ttl_seconds": self._cache_ttl,
             "cache_ttl": self._cache_ttl,
             "consolidation": self.get_consolidation_stats() if self.config.consolidation_enabled else None,
         }

@@ -217,7 +217,6 @@ TOOLS = [
     {"name": "pangu_git_recent", "description": "\u67e5\u770b\u6700\u8fd1\u7684 git \u64cd\u4f5c\u8bb0\u5f55"},
     {"name": "pangu_git_stats", "description": "\u67e5\u770b git \u64cd\u4f5c\u7edf\u8ba1"},
     {"name": "pangu_inject_stats", "description": "\u67e5\u770b\u6ce8\u5165\u7edf\u8ba1"},
-    {"name": "pangu_cache_stats", "description": "\u67e5\u770b\u641c\u7d22\u7f13\u5b58\u7edf\u8ba1"},
     {"name": "pangu_cache_clear", "description": "\u6e05\u7a7a\u641c\u7d22\u7f13\u5b58"},
     {"name": "pangu_error_recent", "description": "\u67e5\u770b\u6700\u8fd1\u7684\u9519\u8bef\u65e5\u5fd7"},
 ]

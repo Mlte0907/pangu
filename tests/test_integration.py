@@ -4,17 +4,65 @@ import json
 import os
 import tempfile
 
+import pytest
+
+
+def _all_modules_config():
+    """构造一份「全部模块都启用」的配置。
+
+    背景：v1.0.0 引入三级工具暴露（core / optional / experimental），
+    缺省只暴露 28 个核心白名单工具，其余工具不出现在 tools/list 中，
+    调用会被拒并返回 code=1002。本文件里的测试针对的是**工具本身能用**，
+    因此需要显式启用承载它们的模块，否则断言的是暴露面而非功能，
+    一改暴露策略就整组失败。
+
+    盘古的过滤器是按阶段缓存的单例（exposure.get_exposure_filter），
+    且 MCPServer() 无参会各自 PanguConfig.load() 出一份新配置，
+    所以这里必须：重置缓存单例 + 显式把同一份 config 传给 MCPServer。
+    """
+    from pangu.core.config import PanguConfig
+    from pangu.server.exposure import reset_exposure_filter
+    from pangu.server.module_registry import EXPERIMENTAL_PREFIXES, MODULE_REGISTRY
+
+    cfg = PanguConfig.load()
+    cfg.exposure.enabled_core_modules = [e.name for e in MODULE_REGISTRY if e.level == "core"]
+    cfg.exposure.enabled_optional_modules = [e.name for e in MODULE_REGISTRY if e.level == "optional"]
+    # advanced 是 experimental 层的容器模块，不带实验前缀，需按模块名启用
+    cfg.exposure.enabled_experiments = list(EXPERIMENTAL_PREFIXES.keys()) + ["advanced"]
+    reset_exposure_filter()
+    return cfg
+
+
+@pytest.fixture
+def full_server():
+    """返回启用了全部模块的 MCPServer（供工具功能类测试使用）。"""
+    from pangu.server.mcp_server import MCPServer
+
+    return MCPServer(config=_all_modules_config())
+
+
+@pytest.fixture(autouse=True)
+def _reset_exposure_after():
+    """每个用例后重置暴露面缓存，避免污染其它测试文件。"""
+    yield
+    from pangu.server.exposure import reset_exposure_filter
+
+    reset_exposure_filter()
+
 
 class TestApiServer:
     """测试 FastAPI 应用工厂"""
 
     def test_create_app(self):
         """测试应用创建"""
+        from pangu import __version__
         from pangu.api.server import create_app
 
         app = create_app()
         assert "盘古" in app.title
-        assert "3.7" in app.version
+        # 版本号以 pangu.__version__ 为唯一事实源。历史断言写死过 "3.7"，
+        # 版本统一为 0.1.0 后失效——不要把版本号硬编码进测试。
+        assert app.version == __version__
 
     def test_app_has_routes(self):
         """测试应用注册了路由"""
@@ -48,27 +96,37 @@ class TestMcpServerTools:
         assert len(tools) >= 28
 
     def test_fuxi_tools_registered(self):
-        """测试伏羲移植工具已注册"""
+        """测试伏羲移植工具已注册
+
+        「已注册」指工具存在于全量 TOOLS 中。这里同时断言启用模块后
+        它们出现在 tools/list，以覆盖暴露链路。
+        """
+        from pangu.server.handlers import TOOLS
         from pangu.server.mcp_server import MCPServer
 
-        server = MCPServer()
-        tool_names = {t["name"] for t in server.tools}
+        registered = {t["name"] for t in TOOLS}
+        server = MCPServer(config=_all_modules_config())
+        exposed = {t["name"] for t in server.tools}
 
         # 核心伏羲移植工具
-        assert "pangu_fts_search" in tool_names
-        assert "pangu_holographic_encode" in tool_names
-        assert "pangu_holographic_search" in tool_names
-        assert "pangu_judge_memory" in tool_names
-        assert "pangu_adaptive_params" in tool_names
-        assert "pangu_wm_push" in tool_names
-        assert "pangu_sanitize" in tool_names
-        assert "pangu_reconsolidate" in tool_names
-        assert "pangu_distill_knowledge" in tool_names
-        assert "pangu_attention_state" in tool_names
-        assert "pangu_enhanced_contradictions" in tool_names
-        assert "pangu_streaming_index" in tool_names
-        assert "pangu_verify" in tool_names
-        assert "pangu_privacy_stats" in tool_names
+        for name in (
+            "pangu_fts_search",
+            "pangu_holographic_encode",
+            "pangu_holographic_search",
+            "pangu_judge_memory",
+            "pangu_adaptive_params",
+            "pangu_wm_push",
+            "pangu_sanitize",
+            "pangu_reconsolidate",
+            "pangu_distill_knowledge",
+            "pangu_attention_state",
+            "pangu_enhanced_contradictions",
+            "pangu_streaming_index",
+            "pangu_verify",
+            "pangu_privacy_stats",
+        ):
+            assert name in registered, f"{name} 未注册到 TOOLS"
+            assert name in exposed, f"{name} 已注册但未暴露（检查 exposure 配置）"
 
     def test_base_tools_registered(self):
         """测试基础工具已注册"""
@@ -86,13 +144,11 @@ class TestMcpServerTools:
 class TestMcpToolCalls:
     """测试 MCP 工具调用（不依赖 LLM）"""
 
-    def test_sanitize_call(self):
+    def test_sanitize_call(self, full_server):
         """测试脱敏工具"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(
             server.call_tool(
@@ -107,13 +163,11 @@ class TestMcpToolCalls:
         assert "sanitized" in data
         assert "[EMAIL]" in data["sanitized"] or "[PHONE]" in data["sanitized"]
 
-    def test_sanitize_check_call(self):
+    def test_sanitize_check_call(self, full_server):
         """测试脱敏检查工具"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(
             server.call_tool(
@@ -127,26 +181,22 @@ class TestMcpToolCalls:
         data = json.loads(result)
         assert data["has_xss"] is True
 
-    def test_adaptive_params_get(self):
+    def test_adaptive_params_get(self, full_server):
         """测试自适应参数获取"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_adaptive_params", {"action": "get"}))
         data = json.loads(result)
         assert "decay_base" in data
         assert "vector_weight" in data
 
-    def test_wm_push_and_get(self):
+    def test_wm_push_and_get(self, full_server):
         """测试工作记忆推入和获取"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         # 推入
         result = asyncio.run(
@@ -168,51 +218,43 @@ class TestMcpToolCalls:
         data = json.loads(result)
         assert data["id"] == "test_wm_001"
 
-    def test_wm_stats(self):
+    def test_wm_stats(self, full_server):
         """测试工作记忆统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_wm_stats", {}))
         data = json.loads(result)
         assert "capacity" in data
         assert "slots_used" in data
 
-    def test_wm_clear(self):
+    def test_wm_clear(self, full_server):
         """测试工作记忆清空"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_wm_clear", {}))
         data = json.loads(result)
         assert data["status"] == "cleared"
 
-    def test_attention_state(self):
+    def test_attention_state(self, full_server):
         """测试注意力状态"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_attention_state", {}))
         data = json.loads(result)
         assert "active_strategy" in data
         assert "budget" in data
 
-    def test_attention_switch(self):
+    def test_attention_switch(self, full_server):
         """测试注意力策略切换"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(
             server.call_tool(
@@ -226,26 +268,22 @@ class TestMcpToolCalls:
         data = json.loads(result)
         assert data["new"] == "focus"
 
-    def test_privacy_stats(self):
+    def test_privacy_stats(self, full_server):
         """测试差分隐私统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_privacy_stats", {}))
         data = json.loads(result)
         assert "epsilon" in data
         assert "remaining_budget" in data
 
-    def test_privatize_count(self):
+    def test_privatize_count(self, full_server):
         """测试隐私化计数"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_privatize_count", {"count": 100}))
         data = json.loads(result)
@@ -253,111 +291,93 @@ class TestMcpToolCalls:
         assert data["original"] == 100
         assert "privatized" in data
 
-    def test_judge_stats(self):
+    def test_judge_stats(self, full_server):
         """测试记忆法官统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_judge_stats", {}))
         data = json.loads(result)
         assert "total" in data
 
-    def test_fts_search_stats(self):
+    def test_fts_search_stats(self, full_server):
         """测试 FTS 搜索统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_fts_search_stats", {}))
         data = json.loads(result)
         assert isinstance(data, dict)
 
-    def test_distill_stats(self):
+    def test_distill_stats(self, full_server):
         """测试蒸馏统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_distill_stats", {}))
         data = json.loads(result)
         assert "total_cards" in data
 
-    def test_vector_index_stats(self):
+    def test_vector_index_stats(self, full_server):
         """测试向量索引统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_vector_index_stats", {}))
         data = json.loads(result)
         assert "is_built" in data
 
-    def test_streaming_stats(self):
+    def test_streaming_stats(self, full_server):
         """测试流式索引统计"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_streaming_stats", {}))
         data = json.loads(result)
         assert "total_indexed" in data
 
-    def test_unknown_tool(self):
+    def test_unknown_tool(self, full_server):
         """测试未知工具返回错误"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_nonexistent_tool", {}))
         data = json.loads(result)
         assert "error" in data
 
-    def test_config_get(self):
+    def test_config_get(self, full_server):
         """测试配置获取"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_config_get", {"key": "llm_provider"}))
         data = json.loads(result)
         assert "llm_provider" in data
 
-    def test_schema_migrations(self):
+    def test_schema_migrations(self, full_server):
         """测试迁移列表"""
         import asyncio
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
 
         result = asyncio.run(server.call_tool("pangu_schema_migrations", {}))
         data = json.loads(result)
         assert isinstance(data, list)
         assert len(data) >= 8
 
-    def test_autonomous_analyze(self):
+    def test_autonomous_analyze(self, full_server):
         """测试自主分析工具"""
         import asyncio
         import json
 
-        from pangu.server.mcp_server import MCPServer
-
-        server = MCPServer()
+        server = full_server
         # 检查工具是否可用（experimental 模块默认不加载）
         if "pangu_autonomous_analyze" not in server.tools:
             return  # 跳过 experimental 工具测试

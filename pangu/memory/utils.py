@@ -120,7 +120,15 @@ def cosine_similarity(a: Union[Sequence[float], np.ndarray], b: Union[Sequence[f
     Returns:
         余弦相似度，范围 [-1, 1]
     """
-    if not a or not b:
+    # 判空：a / b 可能是 numpy 数组，不能用 `not a`——数组的真值判断会抛
+    # ValueError: truth value of an array with more than one element is ambiguous。
+    # 统一转成数组后按元素个数判断，同时兼容 list / tuple / ndarray。
+    try:
+        size_a = np.asarray(a).size
+        size_b = np.asarray(b).size
+    except Exception:
+        return 0.0
+    if size_a == 0 or size_b == 0:
         return 0.0
     
     # 转换为 numpy 数组

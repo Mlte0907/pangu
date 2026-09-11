@@ -22,8 +22,34 @@ from pangu.core.config import PanguConfig
 from pangu.core.palace import Drawer
 
 
+@pytest.fixture(autouse=True)
+def _reset_global_singletons():
+    """每个用例前后重置按配置缓存的全局单例。
+
+    暴露过滤器（exposure）与多模态流水线（multimodal_pipeline）都是
+    模块级单例，首次使用后绑定当时的 config。本文件的用例各自用
+    tmp_path 隔离配置，若不重置，第一个用例的 config 会泄漏到后续
+    用例——表现为「写入成功但立刻查不到」或工具莫名 code=1002。
+    """
+    from pangu.memory.multimodal_pipeline import reset_multimodal_pipeline
+    from pangu.server.exposure import reset_exposure_filter
+
+    reset_exposure_filter()
+    reset_multimodal_pipeline()
+    yield
+    reset_exposure_filter()
+    reset_multimodal_pipeline()
+
+
 def _make_config(tmp_path, **overrides) -> PanguConfig:
-    """隔离配置：临时 palace / 关闭 LLM 缓存持久化，避免触碰 ~/.pangu 现网数据"""
+    """隔离配置：临时 palace / 关闭 LLM 缓存持久化，避免触碰 ~/.pangu 现网数据
+
+    同时启用本文件涉及的工具所属模块。v1.0.0 引入三级工具暴露后，缺省
+    只暴露 28 个核心白名单工具，其余工具在 tools/call 时返回 code=1002。
+    本文件验证的是工具**功能**，故显式启用承载它们的模块。
+    """
+    from pangu.server.module_registry import EXPERIMENTAL_PREFIXES, MODULE_REGISTRY
+
     cfg = PanguConfig(
         palace_path=str(tmp_path / "palace"),
         config_path=str(tmp_path / "config.json"),
@@ -32,6 +58,9 @@ def _make_config(tmp_path, **overrides) -> PanguConfig:
         llm_cache_persist=False,
         llm_cache_warmup_on_start=False,
     )
+    cfg.exposure.enabled_core_modules = [e.name for e in MODULE_REGISTRY if e.level == "core"]
+    cfg.exposure.enabled_optional_modules = [e.name for e in MODULE_REGISTRY if e.level == "optional"]
+    cfg.exposure.enabled_experiments = list(EXPERIMENTAL_PREFIXES.keys()) + ["advanced"]
     for k, v in overrides.items():
         setattr(cfg, k, v)
     cfg.ensure_dirs()

@@ -161,7 +161,10 @@ async def handle_config_set(server, drawers, arguments):
                 pass
         # T6-F2：失效依赖 config 的缓存组件，否则 llm / search / wiki
         # 仍持有旧 config 对象，改动不生效且无任何报错。
-        dropped = server.invalidate_config_dependents()
+        # 调用做防御：这一点是「优化」而非「正确性前提」，持最小接口的
+        # server 实现（测试桩、嵌入式调用）不应因此直接崩溃。
+        invalidate = getattr(server, "invalidate_config_dependents", None)
+        dropped = invalidate() if callable(invalidate) else []
         # 密钥类字段不回显明文（响应会进入调用方会话/日志）
         shown = "****" if key in secret_keys else str(value)
         return json.dumps(
