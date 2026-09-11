@@ -76,6 +76,25 @@ curl -s -X POST http://127.0.0.1:19529/mcp \
   `tools/list`；用 `call_tool` 调未暴露工具会被拒（code=1002）。
   放开需改 `~/.pangu/config.json` 的 `exposure` 段。
   ⚠ 这两个"白名单"极易混淆，写文档时务必区分：客户端那个无效，服务端那个有效。
+  **另注**：`pangu_config_reload` 也不在默认暴露面内，调它得 code=1002；
+  改配置请用 `pangu_config_set`（它自己会落盘 + 失效组件缓存）。
+
+**配置热加载的坑（T6-F2）**
+
+- **只替换 `server.config` 引用是不够的**：`llm` / `search` / `wiki` 三个属性在
+  首次访问时就把**旧 config 对象**存进了实例（如 `LLMEngine(self.config)`）。
+  直接改 `config.json` 或只替换 `server.config`，这些已构造对象仍用旧值——
+  表现为「改了 LLM 模型/Key，保存后毫无变化，也不报错」。
+  修法：`MCPServer.invalidate_config_dependents()` 丢弃 `_llm`/`_search`/`_wiki`/
+  `_persistent_cache`，让它们按新 config 惰性重建。`config_set` 与
+  `config_reload` 都会调用它。**新增持有 config 的组件时，务必同步加进这个方法。**
+- **密钥不落 `config.json`**：`PanguConfig.save()` 用 `exclude` 排除了
+  `llm_api_key` / `api_key` 等字段（安全设计）。所以密钥**必须**另存独立文件
+  （`~/.pangu/.llm_api_key`，0600），否则通过设置页写入的 Key 只活在内存里，
+  **服务一重启就丢**。加载顺序：环境变量 > 密钥文件 > 空。
+- **密钥从不回显**：`pangu_config_set` 对密钥类字段回显 `****`；
+  插件的 `configService.get` 把密钥脱敏成 `*_set` / `*_hint`（尾 4 位）。
+  前端拿不到明文，因此「留空」语义是**保持原值**，清空必须显式传 `null`。
 
 **协议与运行时**
 

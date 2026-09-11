@@ -108,6 +108,33 @@ class MCPServer:
         _ = self.search
         _ = self.llm
 
+    def invalidate_config_dependents(self) -> list[str]:
+        """丢弃缓存中依赖 config 的组件，使其按新 config 惰性重建。
+
+        背景（T6-F2 修复）：`pangu_config_reload` / `pangu_config_set` 只替换
+        `server.config` 引用，但 `llm` / `search` / `wiki` 等属性在首次访问时已把
+        **旧 config 对象**存进各自实例（如 `LLMEngine(self.config)`）。
+        仅替换 `self.config` 不会影响这些已构造的对象——表现为「设置里改了
+        LLM 模型/Key，保存后仍然用旧值」，且无任何报错。
+
+        `memory` 与 `palace` 不在此列：它们的抽屉数据是长期状态，
+        重建代价高且与 LLM 配置无关；其内部 config 已按需读取。
+
+        Returns:
+            实际被丢弃的缓存组件名（用于回执与排障）。
+        """
+        dropped: list[str] = []
+        for attr in ("_llm", "_search", "_wiki"):
+            if getattr(self, attr, None) is not None:
+                setattr(self, attr, None)
+                dropped.append(attr.lstrip("_"))
+        # 持久化缓存句柄由 _llm 派生，必须同步清掉，否则
+        # persistent_cache 属性会继续返回旧 engine 的缓存对象。
+        if self._persistent_cache is not None:
+            self._persistent_cache = None
+            dropped.append("persistent_cache")
+        return dropped
+
     def _maybe_schedule_warmup(self) -> None:
         """在事件循环可用时把缓存预热调度为后台任务
 

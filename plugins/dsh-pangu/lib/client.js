@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
         { id: 'dsh-pangu#panguKG/graph', service: 'panguKG', namespace: 'panguKG', method: 'graph', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KGData', schema: okEnvelope } },
         { id: 'dsh-pangu#panguConfig/get', service: 'panguConfig', namespace: 'panguConfig', method: 'get', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#ConfigData', schema: okEnvelope } },
         { id: 'dsh-pangu#panguConfig/save', service: 'panguConfig', namespace: 'panguConfig', method: 'save', invocation: { kind: 'direct' }, parameters: [{ name: 'patch', wire: 'patch', source: 'json', schema: patchCodec, codec: { mode: 'strict', typeSymbol: 'dsh-pangu#SavePatch', schema: patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#SaveResult', schema: okEnvelope } },
+        { id: 'dsh-pangu#panguConfig/testLlm', service: 'panguConfig', namespace: 'panguConfig', method: 'testLlm', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#TestLlmResult', schema: okEnvelope } },
       ],
     }
 
@@ -220,8 +221,8 @@ window.__ModuleLoader__.load({
         typeLabel(type),
       )
     }
-    function SectionTitle({ children }) {
-      return h('div', { style: { fontSize: 11, fontWeight: 600, color: css.t3, margin: '18px 0 4px', textTransform: 'uppercase', letterSpacing: '0.6px' } }, children)
+    function SectionTitle({ children, style }) {
+      return h('div', { style: { fontSize: 11, fontWeight: 600, color: css.t3, margin: '18px 0 4px', textTransform: 'uppercase', letterSpacing: '0.6px', ...(style || {}) } }, children)
     }
     function InfoRow({ label, value }) {
       return h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '7px 0', borderBottom: `1px solid ${css.borderSoft}` } },
@@ -1023,11 +1024,55 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // 提供商预设：与 pangu/core/llm.py 的 PROVIDER_URLS 保持一致
+    const LLM_PROVIDERS = [
+      { id: 'openai', label: 'OpenAI', url: 'https://api.openai.com/v1', model: 'gpt-4o' },
+      { id: 'deepseek', label: 'DeepSeek', url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+      { id: 'zhipu', label: '智谱 GLM', url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-plus' },
+      { id: 'qwen', label: '通义千问', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+      { id: 'openrouter', label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o' },
+      { id: 'ollama', label: 'Ollama (本地)', url: 'http://localhost:11434/v1', model: 'llama3.1' },
+    ]
+
+    /** 受控文本输入框，风格与设置页一致 */
+    function TextField({ label, desc, value, onChange, placeholder, password, disabled, mono }) {
+      const [reveal, setReveal] = React.useState(false)
+      return h('div', { style: { padding: '10px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+        h('div', { style: { fontSize: 13, fontWeight: 500, color: css.t1, marginBottom: 5 } }, label),
+        desc && h('div', { style: { fontSize: 11, color: css.t3, marginBottom: 6, lineHeight: 1.5 } }, desc),
+        h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+          h('input', {
+            type: password && !reveal ? 'password' : 'text',
+            value: value ?? '',
+            placeholder: placeholder || '',
+            disabled,
+            spellCheck: false,
+            autoComplete: 'off',
+            onChange: (e) => onChange(e.target.value),
+            style: {
+              flex: 1, minWidth: 0, padding: '7px 10px', borderRadius: 7, fontSize: 12.5,
+              border: `1px solid ${css.border}`, background: disabled ? css.bg3 : css.bg2,
+              color: css.t1, outline: 'none', boxSizing: 'border-box',
+              fontFamily: mono ? 'ui-monospace,SFMono-Regular,Menlo,monospace' : 'inherit',
+            },
+          }),
+          password && h('button', {
+            onClick: () => setReveal((v) => !v),
+            title: reveal ? '隐藏' : '显示',
+            type: 'button',
+            style: { flexShrink: 0, padding: '6px 9px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 11, cursor: 'pointer' },
+          }, reveal ? '隐藏' : '显示'),
+        ),
+      )
+    }
+
     function PanguSettings() {
       const [config, setConfig] = React.useState(null)
       const [draft, setDraft] = React.useState(null)
       const [loadErr, setLoadErr] = React.useState(null)
       const [saveState, setSaveState] = React.useState({ s: 'idle', msg: '' })
+      const [testState, setTestState] = React.useState({ s: 'idle', msg: '', ok: false })
+      const [keyDirty, setKeyDirty] = React.useState(false)  // 用户是否重新输入了 Key
 
       const load = React.useCallback(async () => {
         try {
@@ -1037,7 +1082,13 @@ window.__ModuleLoader__.load({
           setDraft({
             ce: cfg.consolidation_enabled !== false,
             ci: Number(cfg.consolidation_interval_hours) || 24,
+            provider: cfg.llm_provider || 'openai',
+            model: cfg.llm_model || '',
+            baseUrl: cfg.llm_base_url || '',
+            // 明文 Key 永不下发，这里恒为空；placeholder 提示是否已设置
+            apiKey: '',
           })
+          setKeyDirty(false)
           setLoadErr(null)
         } catch (e) {
           setLoadErr(String(e.message || e))
@@ -1048,28 +1099,121 @@ window.__ModuleLoader__.load({
 
       const dirty = config && draft && (
         draft.ce !== (config.consolidation_enabled !== false) ||
-        draft.ci !== (Number(config.consolidation_interval_hours) || 24)
+        draft.ci !== (Number(config.consolidation_interval_hours) || 24) ||
+        draft.provider !== (config.llm_provider || 'openai') ||
+        draft.model !== (config.llm_model || '') ||
+        draft.baseUrl !== (config.llm_base_url || '') ||
+        keyDirty
       )
 
       const save = async () => {
         setSaveState({ s: 'saving', msg: '' })
         try {
-          const value = unwrap(await callRemote('panguConfig', 'save', { consolidation_enabled: draft.ce, consolidation_interval_hours: draft.ci }))
+          const patch = {
+            consolidation_enabled: draft.ce,
+            consolidation_interval_hours: draft.ci,
+            llm_provider: draft.provider,
+            llm_model: draft.model,
+            llm_base_url: draft.baseUrl,
+          }
+          // 仅在用户真的输入了新 Key 时才提交，避免用空串覆盖已存的 Key
+          if (keyDirty && draft.apiKey) patch.llm_api_key = draft.apiKey
+          const value = unwrap(await callRemote('panguConfig', 'save', patch))
           if (!value?.ok) throw new Error(value?.error || '写入失败')
-          setSaveState({ s: 'saved', msg: '' })
+          const rl = value.reload
+          setSaveState({
+            s: 'saved',
+            msg: rl && rl.ok === false ? '已保存，但服务端热加载失败：' + (rl.error || '未知原因') : '',
+          })
           await load()
-          setTimeout(() => setSaveState({ s: 'idle', msg: '' }), 2500)
+          setTimeout(() => setSaveState({ s: 'idle', msg: '' }), 3500)
         } catch (e) {
           setSaveState({ s: 'error', msg: String(e.message || e) })
         }
       }
 
+      const runTest = async () => {
+        setTestState({ s: 'testing', msg: '', ok: false })
+        try {
+          const value = unwrap(await callRemote('panguConfig', 'testLlm'))
+          if (value?.ok) {
+            setTestState({ s: 'done', ok: true, msg: `连接成功 · ${value.model} · ${value.ms}ms${value.sample ? ' · 返回「' + value.sample.trim() + '」' : ''}` })
+          } else {
+            setTestState({ s: 'done', ok: false, msg: value?.error || '连接失败' })
+          }
+        } catch (e) {
+          setTestState({ s: 'done', ok: false, msg: String(e.message || e) })
+        }
+      }
+
+      const pickProvider = (id) => {
+        const p = LLM_PROVIDERS.find((x) => x.id === id)
+        setDraft((prev) => ({
+          ...prev,
+          provider: id,
+          // 切换提供商时带出默认端点/模型，但不覆盖用户已手填的非默认值
+          baseUrl: p && (!prev.baseUrl || LLM_PROVIDERS.some((x) => x.url === prev.baseUrl)) ? p.url : prev.baseUrl,
+          model: p && !prev.model ? p.model : prev.model,
+        }))
+      }
+
       if (loadErr) return h('div', { style: { padding: 20, maxWidth: 520 } }, h('div', { style: { height: 220 } }, h(ErrorState, { text: '配置读取失败(' + loadErr + ')', onRetry: load })))
+
+      const keySet = config?.llm_api_key_set
+      const keyHint = config?.llm_api_key_hint
 
       return h('div', { style: { padding: 20, color: css.t1, maxWidth: 520, animation: 'panguFade .25s ease' } },
         h('div', { style: { fontSize: 15, fontWeight: 600, margin: '0 0 3px' } }, '记忆系统'),
-        h('div', { style: { fontSize: 12, color: css.t3, margin: '0 0 4px' } }, '以下设置直接读写 ~/.pangu/config.json,保存后生效'),
+        h('div', { style: { fontSize: 12, color: css.t3, margin: '0 0 4px' } }, '以下设置直接读写 ~/.pangu/config.json，保存后自动热加载生效'),
         draft ? [
+          h(SectionTitle, { key: 'llm-t', style: { marginTop: 14 } }, 'LLM 配置'),
+          h('div', { key: 'llm-d', style: { fontSize: 11, color: css.t3, margin: '2px 0 8px', lineHeight: 1.6 } },
+            '用于知识结晶、记忆蒸馏、摘要等需要语言模型的能力。未配置时这些功能会被静默跳过，其余记忆检索不受影响。',
+          ),
+          h(SettingRow, { key: 'prov', label: '提供商', desc: '选择后会带出默认 Base URL' },
+            h('select', {
+              value: draft.provider,
+              onChange: (e) => pickProvider(e.target.value),
+              style: { padding: '6px 9px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12.5, outline: 'none', cursor: 'pointer', minWidth: 150 },
+            }, LLM_PROVIDERS.map((p) => h('option', { key: p.id, value: p.id }, p.label))),
+          ),
+          h(TextField, {
+            key: 'model', label: '模型', value: draft.model,
+            placeholder: (LLM_PROVIDERS.find((p) => p.id === draft.provider) || {}).model || 'gpt-4o',
+            onChange: (v) => setDraft((p) => ({ ...p, model: v })), mono: true,
+          }),
+          h(TextField, {
+            key: 'base', label: 'Base URL', value: draft.baseUrl,
+            desc: '留空使用该提供商的默认端点。自建/代理端点填此处（OpenAI 兼容即可）。',
+            placeholder: (LLM_PROVIDERS.find((p) => p.id === draft.provider) || {}).url || '',
+            onChange: (v) => setDraft((p) => ({ ...p, baseUrl: v })), mono: true,
+          }),
+          h(TextField, {
+            key: 'key', label: 'API Key', value: draft.apiKey, password: true, mono: true,
+            desc: keySet
+              ? `已配置（${keyHint || '已设置'}）。出于安全考虑不回显明文，留空即保持原 Key 不变；填入新值则覆盖。`
+              : '尚未配置。Key 仅写入本机 ~/.pangu/config.json（权限 600），不会回传到界面。',
+            placeholder: keySet ? '留空保持不变' : '粘贴 API Key（Ollama 可留空）',
+            onChange: (v) => { setKeyDirty(true); setDraft((p) => ({ ...p, apiKey: v })) },
+          }),
+          h('div', { key: 'llm-actions', style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 } },
+            h('button', {
+              onClick: runTest, type: 'button', disabled: testState.s === 'testing',
+              style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 12, fontWeight: 500, cursor: testState.s === 'testing' ? 'default' : 'pointer' },
+            }, testState.s === 'testing' ? '测试中…' : '测试连接'),
+            testState.s === 'done' && h('span', {
+              style: { fontSize: 11.5, color: testState.ok ? css.ok : css.err, overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.5 },
+            }, testState.msg),
+            testState.s === 'done' && h('button', {
+              onClick: () => setTestState({ s: 'idle', msg: '', ok: false }), type: 'button',
+              style: { marginLeft: 'auto', padding: '3px 8px', borderRadius: 6, border: 'none', background: 'transparent', color: css.t3, fontSize: 11, cursor: 'pointer' },
+            }, '清除'),
+          ),
+          h('div', { key: 'llm-note', style: { fontSize: 11, color: css.t3, marginTop: 8, lineHeight: 1.6 } },
+            '测试连接使用「已保存」的配置。若刚改动过，请先点下方保存再测试。',
+          ),
+
+          h(SectionTitle, { key: 'mem-t', style: { marginTop: 22 } }, '记忆维护'),
           h(SettingRow, { key: 'ce', label: '自动巩固', desc: '定期合并相关记忆片段、衰减低价值记忆' },
             h(Toggle, { checked: draft.ce, onChange: () => setDraft((p) => ({ ...p, ce: !p.ce })) }),
           ),
@@ -1085,18 +1229,19 @@ window.__ModuleLoader__.load({
               ),
             ),
           ),
-          h('div', { key: 'save', style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 } },
+          h('div', { key: 'save', style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' } },
             h('button', { onClick: save, disabled: !dirty || saveState.s === 'saving', style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 16px', borderRadius: 8, border: 'none', background: dirty ? ACCENT : css.bg3, color: dirty ? '#fff' : css.t3, fontSize: 12.5, fontWeight: 600, cursor: dirty ? 'pointer' : 'default', transition: 'background .2s' } },
               h(Icon, { name: saveState.s === 'saved' ? 'check' : 'save', size: 13 }),
               saveState.s === 'saving' ? '保存中…' : '保存',
             ),
             dirty && saveState.s !== 'saving' && h('span', { style: { fontSize: 11.5, color: css.warn } }, '有未保存的更改'),
-            saveState.s === 'saved' && h('span', { style: { fontSize: 11.5, color: css.ok, display: 'inline-flex', alignItems: 'center', gap: 4 } }, '已保存并生效'),
+            saveState.s === 'saved' && h('span', { style: { fontSize: 11.5, color: css.ok, display: 'inline-flex', alignItems: 'center', gap: 4 } }, saveState.msg || '已保存并生效'),
             saveState.s === 'error' && h('span', { style: { fontSize: 11.5, color: css.err, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, saveState.msg),
           ),
-        ] : h('div', { style: { marginTop: 12 } }, [0, 1, 2].map((i) => h(Skeleton, { key: i, w: '100%', h: 40, r: 8, style: { marginBottom: 8 } }))),
+        ] : h('div', { style: { marginTop: 12 } }, [0, 1, 2, 3].map((i) => h(Skeleton, { key: i, w: '100%', h: 40, r: 8, style: { marginBottom: 8 } }))),
         h(SectionTitle, null, '只读信息'),
         h(InfoRow, { label: 'LLM', value: config ? [config.llm_provider, config.llm_model].filter(Boolean).join(' / ') : null }),
+        h(InfoRow, { label: 'API Key', value: keySet ? (keyHint || '已配置') : '未配置' }),
         h(InfoRow, { label: '嵌入模型', value: config?.embedding_model }),
         h(InfoRow, { label: '记忆库', value: config?.palace_path }),
         h(InfoRow, { label: 'MCP 服务', value: '127.0.0.1:19529' }),

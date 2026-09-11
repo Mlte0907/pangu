@@ -290,13 +290,147 @@ async function apply(ctx) {
   ctx.provide('panguKG', kgService)
 
   // ── Config Remote ──
+  // 敏感字段：读取时脱敏，避免明文 API Key 经过 Typert Remote 流入前端
+  // (前端一旦拿到明文就会出现在 React state / devtools / 可能的日志里)。
+  const SECRET_KEYS = ['llm_api_key', 'api_key']
+
+  /** 把配置里的密钥替换为「是否已设置」提示，永不返回明文 */
+  function redactConfig(cfg) {
+    const out = { ...cfg }
+    for (const k of SECRET_KEYS) {
+      const raw = out[k]
+      out[k] = ''
+      out[k + '_set'] = typeof raw === 'string' && raw.length > 0
+      // 仅在已设置时给出尾部 4 位，便于用户辨认自己填的是哪一把 Key
+      out[k + '_hint'] = typeof raw === 'string' && raw.length > 4 ? '****' + raw.slice(-4) : ''
+    }
+    return out
+  }
+
+  // 说明：不需要单独调用 pangu_config_reload —— 该工具**不在服务端默认暴露面内**
+  // （默认 28 个工具里只有 pangu_config_get / pangu_config_set），调它会得到
+  // code=1002。而 pangu_config_set 自身在落盘后就会失效依赖 config 的缓存组件
+  // （见 handle_config_set 的 invalidate_config_dependents），因此保存即生效。
+
+  /**
+   * 把配置推给运行中的盘古服务，使其立即生效。
+   *
+   * 为什么不能只写 config.json：服务端在启动时读一次配置，之后组件
+   * （LLMEngine / HybridSearch / WikiEngine）都持有该 config 对象。
+   * 直接改文件对已运行的进程没有任何影响。pangu_config_set 会
+   * setattr + 落盘 + 丢弃这些组件缓存，是唯一生效的通道。
+   */
+  async function pushToServer(patch) {
+    const applied = []
+    const failed = []
+    for (const [key, value] of Object.entries(patch || {})) {
+      try {
+        const body = await fetchJson(`${PANGU_BASE}/mcp`, {
+          method: 'POST',
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1, method: 'tools/call',
+            params: { name: 'pangu_config_set', arguments: { key, value } },
+          }),
+        })
+        const text = body?.result?.content?.[0]?.text
+        const parsed = text ? JSON.parse(text) : null
+        if (parsed?.status === 'updated') applied.push(key)
+        else failed.push(`${key}: ${parsed?.error || '未知响应'}`)
+      } catch (e) {
+        failed.push(`${key}: ${e}`)
+      }
+    }
+    return {
+      ok: failed.length === 0,
+      applied,
+      error: failed.length ? failed.join('; ') : undefined,
+    }
+  }
+
   const configService = {
     async get() {
       const config = await readConfig()
-      return { ok: true, config }
+      return { ok: true, config: redactConfig(config) }
     },
     async save(args) {
-      return saveConfig(args?.patch ?? args)
+      const patch = args?.patch ?? args
+      // 空字符串代表「不修改」（前端不会拿到明文，无法回填原值）；
+      // 若要真正清空密钥，前端需显式传 null。
+      const clean = {}
+      for (const [k, v] of Object.entries(patch || {})) {
+        if (SECRET_KEYS.includes(k)) {
+          if (v === null) clean[k] = ''
+          else if (typeof v === 'string' && v.length > 0) clean[k] = v
+          // undefined / '' → 跳过，保持原值
+        } else {
+          clean[k] = v
+        }
+      }
+      const res = await saveConfig(clean)
+      // saveConfig 直接改 ~/.pangu/config.json，但**运行中的服务不会自动感知**；
+      // 必须经 pangu_config_set 让服务端重读并失效旧组件缓存。
+      if (res.ok) res.reload = await pushToServer(clean)
+      return res
+    },
+    async testLlm() {
+      // 用当前已落盘配置直接打一次 LLM 端点，验证 provider/base_url/model/key
+      // 这个组合真的可用。不经过盘古的 LLM 工具（那些是缓存管理类，且默认
+      // 未暴露），而是复刻 LLMEngine._call_openai_compatible 的最小请求。
+      const cfg = await readConfig()
+      const started = Date.now()
+      const PROVIDER_URLS = {
+        openai: 'https://api.openai.com/v1',
+        openrouter: 'https://openrouter.ai/api/v1',
+        deepseek: 'https://api.deepseek.com/v1',
+        zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+        qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        ollama: 'http://localhost:11434/v1',
+        anthropic: 'https://api.anthropic.com/v1',
+      }
+      const provider = String(cfg.llm_provider || 'openai').toLowerCase()
+      const base = String(cfg.llm_base_url || PROVIDER_URLS[provider] || '').replace(/\/+$/, '')
+      const key = String(cfg.llm_api_key || '')
+      const model = String(cfg.llm_model || '')
+
+      if (!base) return { ok: false, ms: 0, error: `未知 provider「${provider}」，请填写 Base URL` }
+      if (!model) return { ok: false, ms: 0, error: '未填写模型名' }
+      if (!key && provider !== 'ollama') {
+        return { ok: false, ms: 0, error: '未填写 API Key（Ollama 等本地端点可留空）' }
+      }
+
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 20000)
+        const res = await fetch(`${base}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(key ? { authorization: `Bearer ${key}` } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: '回复两个字：可用' }],
+            max_tokens: 16,
+            temperature: 0,
+          }),
+          signal: ctrl.signal,
+        }).finally(() => clearTimeout(timer))
+
+        const raw = await res.text()
+        const ms = Date.now() - started
+        let data = null
+        try { data = JSON.parse(raw) } catch (_) {}
+        if (!res.ok) {
+          const msg = data?.error?.message || data?.message || raw.slice(0, 200)
+          return { ok: false, ms, status: res.status, model, provider, baseUrl: base, error: `HTTP ${res.status}: ${msg}` }
+        }
+        const sample = data?.choices?.[0]?.message?.content || ''
+        return { ok: true, ms, status: res.status, model, provider, baseUrl: base, sample: String(sample).slice(0, 120) }
+      } catch (e) {
+        const ms = Date.now() - started
+        const hint = e?.name === 'AbortError' ? '请求超时(20s)，请检查 Base URL 是否可达' : String(e)
+        return { ok: false, ms, model, provider, baseUrl: base, error: hint }
+      }
     },
   }
   Object.defineProperty(configService, 'typertRemote', {

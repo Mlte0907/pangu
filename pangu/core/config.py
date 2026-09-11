@@ -29,6 +29,37 @@ if _env_file.exists():
             os.environ.setdefault(k, v)
 
 
+# ── 密钥文件读写（0600）──────────────────────────────
+# 与 jwt_secret 的做法一致：敏感值不落 config.json，改存独立的受保护文件。
+def read_secret_file(path: str | os.PathLike) -> str:
+    """读取密钥文件，不存在或为空返回空串。"""
+    if not path:
+        return ""
+    try:
+        text = Path(path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    return text
+
+
+def write_secret_file(path: str | os.PathLike, value: str) -> None:
+    """写入密钥文件并收紧权限到 0600；value 为空则删除该文件。"""
+    if not path:
+        return
+    p = Path(path)
+    try:
+        if not value:
+            p.unlink(missing_ok=True)
+            return
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # 先创建再写，避免出现「先写后 chmod」的短暂可读窗口
+        p.touch(mode=0o600, exist_ok=True)
+        p.write_text(value, encoding="utf-8")
+        p.chmod(0o600)
+    except OSError as e:
+        logger.warning(f"LLM API Key 写入失败({e})，该 Key 将仅在当前进程内有效")
+
+
 class ExposureConfig(BaseModel):
     """工具暴露面配置（~/.pangu/config.json 的 exposure 段）
 
@@ -71,6 +102,9 @@ class PanguConfig(BaseSettings):
     # ── JWT 鉴权配置 ──
     jwt_secret: str = ""  # 留空时从 jwt_secret_file 自动加载/生成
     jwt_secret_file: str = ""  # 默认 {data_dir}/.jwt_secret
+    # LLM API Key 不入 config.json（save() 已将其排除），改存独立文件，
+    # 否则通过设置页/ pangu_config_set 写入的 Key 一重启就丢失。
+    llm_api_key_file: str = ""  # 默认 {data_dir}/.llm_api_key
     jwt_algorithm: str = "HS256"
     jwt_access_ttl: int = 3600  # access token 1 小时
     jwt_refresh_ttl: int = 7 * 86400  # refresh token 7 天
@@ -276,6 +310,8 @@ class PanguConfig(BaseSettings):
             self.backup_dir = self.base_dir / "backups"
         if not self.jwt_secret_file:
             self.jwt_secret_file = str(self.base_dir / ".jwt_secret")
+        if not self.llm_api_key_file:
+            self.llm_api_key_file = str(self.base_dir / ".llm_api_key")
 
     @classmethod
     def load(cls, config_path: str | None = None) -> "PanguConfig":
@@ -316,7 +352,17 @@ class PanguConfig(BaseSettings):
         # 用 pydantic-settings 创建实例（自动从环境变量覆盖）
         config = cls(**json_data)
         config.config_path = config_path
+        # 密钥类字段不入 config.json（见 save() 的 exclude），从独立文件回填。
+        # 优先级：环境变量 > 密钥文件 > 空。这样通过设置页写入的 Key
+        # 在服务重启后依然可用（此前只存在内存里，重启即丢）。
+        if not config.llm_api_key:
+            config.llm_api_key = read_secret_file(config.llm_api_key_file)
         return config
+
+    def save_llm_api_key(self, value: str) -> None:
+        """把 LLM API Key 写入独立密钥文件（0600），空串表示清除。"""
+        write_secret_file(self.llm_api_key_file, value)
+        self.llm_api_key = value
 
     def save(self, config_path: str | None = None) -> None:
         """保存配置到文件（保持向后兼容）"""

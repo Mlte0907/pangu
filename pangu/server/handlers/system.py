@@ -140,12 +140,35 @@ async def handle_config_set(server, drawers, arguments):
     key = arguments.get("key", "")
     value = arguments.get("value")
     if key and hasattr(server.config, key):
-        setattr(server.config, key, value)
-        try:
-            server.config.save()
-        except Exception:
-            pass
-        return json.dumps({"status": "updated", "key": key, "value": str(value), "persisted": True}, ensure_ascii=False)
+        # 密钥字段走独立文件的持久化路径（config.json 有意排除它们），
+        # 否则通过设置页写入的 Key 只存在于内存，重启即丢。
+        secret_keys = {"llm_api_key", "api_key", "siliconflow_key"}
+        if key in secret_keys:
+            try:
+                if key == "llm_api_key":
+                    server.config.save_llm_api_key(str(value or ""))
+                else:
+                    setattr(server.config, key, value)
+                    from ...core.config import write_secret_file
+                    write_secret_file(str(server.config.base_dir / f".{key}"), str(value or ""))
+            except Exception:
+                setattr(server.config, key, value)
+        else:
+            setattr(server.config, key, value)
+            try:
+                server.config.save()
+            except Exception:
+                pass
+        # T6-F2：失效依赖 config 的缓存组件，否则 llm / search / wiki
+        # 仍持有旧 config 对象，改动不生效且无任何报错。
+        dropped = server.invalidate_config_dependents()
+        # 密钥类字段不回显明文（响应会进入调用方会话/日志）
+        shown = "****" if key in secret_keys else str(value)
+        return json.dumps(
+            {"status": "updated", "key": key, "value": shown,
+             "persisted": True, "invalidated": dropped},
+            ensure_ascii=False,
+        )
     return json.dumps({"error": f"unknown config key: {key}"})
 
 
@@ -153,12 +176,19 @@ HANDLERS["pangu_config_set"] = handle_config_set
 
 
 async def handle_config_reload(server, drawers, arguments):
-    """热更新配置"""
+    """热更新配置（从磁盘重读，并失效依赖组件缓存）"""
     from ...core.config import PanguConfig
 
     new_cfg = PanguConfig.reload()
     server.config = new_cfg
-    return json.dumps({"status": "reloaded", "llm_provider": new_cfg.llm_provider}, ensure_ascii=False)
+    # T6-F2：必须丢弃已按旧 config 构造的实例，否则热加载只是替换了
+    # server.config 引用，LLMEngine 等仍用旧值——静默失败。
+    dropped = server.invalidate_config_dependents()
+    return json.dumps(
+        {"status": "reloaded", "llm_provider": new_cfg.llm_provider,
+         "llm_model": new_cfg.llm_model, "invalidated": dropped},
+        ensure_ascii=False,
+    )
 
 
 HANDLERS["pangu_config_reload"] = handle_config_reload
