@@ -25,6 +25,9 @@ const { createConsolidationWriter } = require('./proactive/consolidation-writer'
 
 const PANGU_BASE = 'http://127.0.0.1:19529'
 const CONFIG_PATH = path.join(os.homedir(), '.pangu', 'config.json')
+// 密钥不落 config.json（PanguConfig.save() 用 exclude 排除），而是独立存这个文件（0600）。
+// 所以判断「Key 是否已配置」必须看这个文件，光读 config.json 会永远显示未配置。
+const SECRET_FILE = path.join(os.homedir(), '.pangu', '.llm_api_key')
 const HTTP_TIMEOUT_MS = 8000
 
 async function apply(ctx) {
@@ -350,6 +353,15 @@ async function apply(ctx) {
   const configService = {
     async get() {
       const config = await readConfig()
+      // config.json 不含密钥（见 SECRET_FILE 注释），故单独读密钥文件来判定
+      // 「已配置」状态，否则设置页在保存后仍会显示未配置，看起来像没保存成功。
+      // 只取尾 4 位用于展示，明文不出本函数。
+      if (!config.llm_api_key) {
+        try {
+          const secret = (await fsp.readFile(SECRET_FILE, 'utf8')).trim()
+          if (secret) config.llm_api_key = secret
+        } catch (_) { /* 文件不存在 = 未配置 */ }
+      }
       return { ok: true, config: redactConfig(config) }
     },
     async save(args) {
