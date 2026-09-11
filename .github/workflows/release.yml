@@ -33,9 +33,12 @@ jobs:
       - name: 生成变更日志
         id: changelog
         run: |
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^v$VERSION" | head -1)
+          # 取当前标签之前最近的一个标签，用于界定「本次发布包含哪些提交」。
+          # 首次发布时没有任何先前标签，此时退回列出最近 50 条提交。
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^v$VERSION$" | head -1)
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_OUTPUT
           if [ -n "$PREV_TAG" ]; then
-            CHANGELOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s" --no-merges)
+            CHANGELOG=$(git log "$PREV_TAG..HEAD" --pretty=format:"- %s" --no-merges)
           else
             CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -n 50)
           fi
@@ -43,7 +46,9 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: 上传测试报告（可选）
+      - name: 打包测试报告（可选）
+        # reports/ 当前不存在，本步骤自动跳过；一旦 CI 开始产出该目录，
+        # 打包结果会由下方 files: 作为 Release 附件上传。
         continue-on-error: true
         run: |
           if [ -d reports/ ]; then
@@ -52,31 +57,52 @@ jobs:
               perf.json perf_baseline.json regression.json \
               security.json api_smoke.json junit-*.xml 2>/dev/null || true
             ls -la
+          else
+            echo "reports/ 不存在，跳过测试报告打包"
           fi
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
           name: "盘古 v${{ steps.version.outputs.VERSION }}"
+          # 正文只写真实可用的安装方式。此前模板写死了
+          # `pip install pangu==<ver>`——本仓库并未发布到 PyPI，PyPI 上的
+          # `pangu` 是第三方同名包，照做会装到不相干的库；
+          # 另宣称的 ghcr 镜像在未登录/未构建时不可拉取，测试报告目录
+          # reports/ 在本仓库并不存在（该步骤 continue-on-error 静默跳过）。
+          # 如需重新启用镜像或产物，请先确认其真实产出后再写回本节。
           body: |
             ## 盘古 v${{ steps.version.outputs.VERSION }}
 
             ### 变更内容
             ${{ steps.changelog.outputs.CHANGELOG }}
 
-            ### 镜像
-            - `docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}`
-            - `docker pull ghcr.io/${{ github.repository }}:latest`
-
             ### 安装
+
+            本项目**未发布到 PyPI**，请从源码安装：
+
             ```bash
-            pip install pangu==${{ steps.version.outputs.VERSION }}
+            git clone https://github.com/${{ github.repository }}.git
+            cd pangu
+            uv venv && uv pip install -r requirements.txt
             ```
 
-            ### 验证
-            - 测试报告：`test-report-${{ steps.version.outputs.VERSION }}.tar.gz`
+            ### DSH 插件
+
+            ```bash
+            ./scripts/install_dsh_plugin.sh
+            ```
+
+            安装后在 DSH 设置 →「盘古记忆系统」填写 LLM 提供商与 API Key，
+            点「测试连接」验证后保存。未配置 LLM 时记忆的存入与检索依然正常。
+
+            ### 完整变更
+
+            ${{ steps.changelog.outputs.PREV_TAG != '' && format('{0}/{1}/compare/{2}...v{3}', github.server_url, github.repository, steps.changelog.outputs.PREV_TAG, steps.version.outputs.VERSION) || format('{0}/{1}/releases', github.server_url, github.repository) }}
+          # 仅当 reports/ 存在并成功打包时才有匹配文件；无匹配时
+          # action-gh-release 不会报错，也不会上传任何附件。
           files: |
             reports/test-report-*.tar.gz
           draft: false
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
-          generate_release_notes: true
+          generate_release_notes: false
