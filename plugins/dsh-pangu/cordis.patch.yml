@@ -1,4 +1,4 @@
-# dsh-pangu bundle patch: 盘古 MCP 接入(白名单) + 仪表盘宿主
+# dsh-pangu bundle patch: 盘古 MCP 接入 + 仪表盘宿主
 - insert:
     - id: mcp-pangu
       name: '@deepseek-ai/dsh-mcp-client'
@@ -7,18 +7,19 @@
         transport: streamable-http
         url: http://127.0.0.1:19529/mcp
         toolCallTimeoutMs: 60000
-        tools:
-          allow:
-            - pangu_add_memory
-            - pangu_search_memories
-            - pangu_get_memory
-            - pangu_list_memories
-            - pangu_delete_memory
-            - pangu_update_memory
-            - pangu_get_stats
-            - pangu_export_memories
-            - pangu_import_memories
-            - pangu_backup
-            - pangu_restore
+        # ── 关于工具白名单 ──────────────────────────────────────────
+        # 早期版本此处配置了 `tools.allow` 白名单（11 个工具）。
+        # 但 `@deepseek-ai/dsh-mcp-client` 的 Config schema 并不包含
+        # `tools` 键（streamable-http 分支仅接受 transport / serverName /
+        # url / headers / toolCallTimeoutMs / failOnStartupError / reconnect），
+        # schemastery 在非严格模式下会原样保留该未知键，客户端随后将其忽略。
+        # 结果是白名单**完全不生效**、且无任何告警——服务端全部工具都会被注册。
+        # 为避免"看似有保护、实际没有"的错误预期，这里已移除该配置。
+        #
+        # 若将来 dsh-mcp-client 支持工具过滤，可在此追加：
+        #   tools:
+        #     allow: [pangu_add_memory, pangu_search_memories, ...]
+        #
+        # 当前若确需限制工具范围，请在**服务端**裁剪 /mcp 的 tools/list 输出。
     - id: pangu-dashboard
       name: dsh-pangu

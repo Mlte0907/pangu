@@ -27,7 +27,35 @@
 ```sh
 # 安装（Python ≥ 3.11）
 pip install -e .
+```
 
+> **依赖说明**
+>
+> 核心依赖**不含** `torch` / `sentence-transformers` / `chromadb` / `openai-whisper`。
+> 这些包会传递引入约 1.3GB 的 CUDA 轮子（`nvidia-cudnn` 620MB、`nvidia-cublas`
+> 517MB、`triton` 216MB 等），而它们的代码路径**全部是惰性导入**，在无 GPU 的机器上
+> 永不执行：
+>
+> | 包 | 引用位置 | 是否影响启动 |
+> | --- | --- | --- |
+> | `sentence-transformers` | `pangu/search/embedder.py:74`（`@property model` 内） | 否，默认走 ONNX |
+> | `torch` | `pangu/memory/image_engine.py:85,111,139`（CLIP 图像向量） | 否，try/except 降级 |
+> | `openai-whisper` | `pangu/memory/audio_engine.py:34`（`@property whisper` 内） | 否，失败降级 |
+> | `chromadb` | 全库无 import，仅 `config.backend` 默认值 | 否 |
+>
+> 默认嵌入路径是 **ONNX**（`onnx_enabled` 默认为 `True`，见 `pangu/core/config.py:135`），
+> 无需 torch。实测在 aarch64 无 GPU 环境下：核心依赖 **56 包 / 236MB / 约 20 秒**装完；
+> 而包含 torch 的完整集会下载 987MB 以上仍难以落盘。
+>
+> 需要图像 / 音频 / 备用嵌入能力时：
+>
+> ```sh
+> # 无 GPU 机器建议先装 CPU-only 轮子，可省下全部 CUDA 负载
+> pip install torch --index-url https://download.pytorch.org/whl/cpu
+> pip install -e ".[multimodal]"
+> ```
+
+```sh
 # 方式一：MCP over HTTP（API + MCP 同端口，生产推荐）
 python -m uvicorn pangu.api.server:create_app --host 127.0.0.1 --port 19529
 
@@ -50,9 +78,31 @@ docker compose up -d
 
 - **记忆注入**：`system-prompt/assemble` waterfall 每轮取会话意图检索相关记忆（top-5，
   每条 200 字符），以 `[盘古记忆系统]` 上下文块注入——异常时静默降级，永不阻塞会话；
-- **11 工具白名单**：`pangu_add_memory / search / get / list / delete / update / stats /
-  export / import / backup / restore` 经宿主 MCP 客户端直连（streamable-http，60s 超时）；
+- **工具直连**：服务端全部 MCP 工具经宿主 MCP 客户端直连（streamable-http，60s 超时）。
+  > ⚠️ **工具白名单暂不可用**：本插件早期版本在 `cordis.patch.yml` 中配置了
+  > `tools.allow` 白名单（11 个工具），但 `@deepseek-ai/dsh-mcp-client` 的配置
+  > schema 并不接受 `tools` 键，该键会被静默忽略——**白名单不会生效，且无告警**。
+  > 因此服务端注册的**全部**工具（含 `pangu_delete_memory`、`pangu_import_memories`
+  > 等破坏性操作）都会暴露给会话。如确需收敛范围，请在**服务端**裁剪 `/mcp`
+  > 的 `tools/list` 输出。相关配置已从 patch 中移除，以免造成"看似有保护"的误判。
 - **仪表盘**：侧栏指标卡 + "盘古"标签页（概览 / 3D 星系记忆图谱 / 知识卡片）+ 设置页配置读写。
+
+**安装插件**（`plugins/dsh-pangu` 的 `lib/` 为入库源码，但 `node_modules` 被
+`.gitignore` 忽略，需先装其自身依赖，否则 `lib/typert.host.mjs` 会因缺少 `zod` 而
+导致宿主启动失败）：
+
+```sh
+# 1) 先装插件的运行时依赖（必需，否则启动报 ERR_MODULE_NOT_FOUND: zod）
+cd plugins/dsh-pangu && pnpm install --prod && cd -
+
+# 2) 再把插件装进 DSH 的 profile
+dsh plugin --profile web add "$(pwd)/plugins/dsh-pangu"
+```
+
+第二步会同时把 `dsh-pangu` 写入 profile 的 `dependencies` 与
+`dsh.profile.bundles`（因其 `package.json` 声明了 `dsh.bundle`）。
+
+> 注：`cordis.patch.yml` 的 HMR 在 web 实例不生效，改后需重启 DSH。
 
 ```yaml
 # cordis.patch.yml（关键片段）

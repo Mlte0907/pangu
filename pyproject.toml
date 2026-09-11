@@ -8,8 +8,12 @@ license = { text = "MIT" }
 authors = [{name = "盘古团队"}]
 keywords = ["ai", "memory", "agent", "mcp", "multimodal"]
 dependencies = [
-    "chromadb>=0.5.0",
-    "sentence-transformers>=3.0.0",
+    # 注意：核心依赖**不含** chromadb / sentence-transformers / openai-whisper。
+    # 这些包会传递引入 torch 及其约 1.3GB 的 CUDA 轮子
+    # （nvidia-cudnn 620MB / nvidia-cublas 517MB / triton 216MB），
+    # 且在无 GPU 的机器上永不执行；它们的代码路径全部是惰性导入
+    # （multimodal 可选组内有逐项说明）。
+    # 需要图像 / 音频 / 备用嵌入能力时改装：pip install -e ".[multimodal]"
     "numpy>=1.24.0",
     "onnxruntime>=1.16.0",
     "tokenizers>=0.15.0",
@@ -33,7 +37,6 @@ dependencies = [
     "bcrypt>=4.1.0",
     "Pillow>=10.0.0",
     "pypdf>=3.0.0",
-    "openai-whisper>=20231117",
     "cryptography>=41.0.0",
 ]
 
@@ -55,6 +58,20 @@ docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.24.0",
+]
+# 图像 / 音频 / 备用嵌入能力（可选，体积大）。
+# 会引入 torch 及其 CUDA 轮子；无 GPU 时建议先装 CPU-only 轮子：
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -e ".[multimodal]"
+# 各项均为惰性导入，不装不影响服务启动：
+#   sentence-transformers → pangu/search/embedder.py:74（@property model 内）
+#   torch                 → pangu/memory/image_engine.py:85,111,139（CLIP 图像向量）
+#   openai-whisper        → pangu/memory/audio_engine.py:34（@property whisper 内）
+#   chromadb              → 当前代码库无任何 import，仅为兼容 config.backend 保留
+multimodal = [
+    "sentence-transformers>=3.0.0",
+    "openai-whisper>=20231117",
+    "chromadb>=0.5.0",
 ]
 
 [project.scripts]

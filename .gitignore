@@ -68,6 +68,7 @@ plugins/dsh-pangu/node_modules/
 api.pid
 pangu.pid
 logs/
+.deploy-logs/
 .mimosa/
 CLAUDE.md.local
 reports/
