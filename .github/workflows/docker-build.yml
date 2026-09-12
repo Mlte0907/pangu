@@ -89,10 +89,15 @@ jobs:
         id: scanref
         # metadata-action 对仓库名做了小写化，而显式拼接 env.IMAGE_NAME
         # 会保留原始大小写（Mlte0907/pangu）。OCI 引用必须全小写，否则
-        # Trivy 报 "could not parse reference"，故从 metadata 的真实输出中
-        # 取第一条 tag 作为扫描目标。该步骤只是字符串处理，不引入副作用。
+        # Trivy 报 "could not parse reference"，故从 metadata 的真实输出
+        # 中取扫描目标。优先取 :latest（与本步骤原本的意图一致），
+        # 无 latest 时退化为第一条。该步骤只做字符串处理，无副作用。
         run: |
-          REF=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          TAGS="${{ steps.meta.outputs.tags }}"
+          REF=$(printf '%s\n' "$TAGS" | grep -m1 ':latest$' || true)
+          if [ -z "$REF" ]; then
+            REF=$(printf '%s\n' "$TAGS" | head -n1)
+          fi
           if [ -z "$REF" ]; then
             echo "::error::metadata 未产出任何 tag，无法确定扫描目标"
             exit 1
