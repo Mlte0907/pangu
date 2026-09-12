@@ -232,6 +232,13 @@ COPY mkdocs.yml ./
 COPY requirements-docs.txt ./
 COPY docs/ ./docs/
 
+# mkdocs-git-revision-date-localized 依赖 gitpython，需要系统 git 可执行文件。
+# 构建上下文不含 .git，插件按 mkdocs.yml 的 fallback_to_build_date 退化为
+# 构建日期；这里只为满足其启动时的 git 存在性检查。
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+        && rm -rf /var/lib/apt/lists/*
+
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements-docs.txt
 
