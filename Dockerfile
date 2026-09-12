@@ -232,15 +232,24 @@ COPY mkdocs.yml ./
 COPY requirements-docs.txt ./
 COPY docs/ ./docs/
 
-# mkdocs-git-revision-date-localized 依赖 gitpython，需要系统 git 可执行文件。
-# 构建上下文不含 .git，插件按 mkdocs.yml 的 fallback_to_build_date 退化为
-# 构建日期；这里只为满足其启动时的 git 存在性检查。
+# mkdocs-git-revision-date-localized 需要：① 系统 git 可执行文件，
+# ② 可用的 git 仓库。二者缺一都会让插件每页输出一条 WARNING，而
+# `mkdocs build --strict` 下任何 WARNING 都会导致构建失败。
+# 构建上下文不含 .git，故就地初始化一个仓库并提交当前文档树，
+# 使插件能取到 revision 日期而非退化为告警。
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends git \
         && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements-docs.txt
+
+RUN git init -q \
+        && git config user.email "build@localhost" \
+        && git config user.name "docker-build" \
+        && git add -A \
+        && git -c commit.gpgsign=false commit -qm "docs snapshot" \
+        && git tag -a v0.0.0-docker -m "docs build snapshot"
 
 # 构建静态站点到 /site（CI 用）
 RUN mkdocs build --strict
