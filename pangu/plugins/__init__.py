@@ -48,7 +48,12 @@ class PluginInfo:
     """插件元信息"""
 
     name: str
-    version: str = "0.1.0"
+    # 插件**自身**的版本号，与盘古软件版本（pangu.__version__）无关——内置
+    # 插件未显式传 version 时落到此默认值，仅用于日志与注册表输出
+    # （见本文件 "插件已注册: {name} v{version}"、plugin_manager 的同名日志）。
+    # 它此前是 "0.1.0"，与软件版本偶然同值，容易被误读成「插件版本落后」；
+    # 改为独立的 "1.0.0" 以示与软件版本解耦，避免发版时的无谓同步。
+    version: str = "1.0.0"
     description: str = ""
     author: str = ""
     hooks: list[HookPoint] = field(default_factory=list)
