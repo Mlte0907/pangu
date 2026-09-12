@@ -227,12 +227,13 @@ CMD ["/bin/bash"]
 # ==============================================================
 FROM builder AS docs
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir mkdocs mkdocs-material
-
 WORKDIR /docs
 COPY mkdocs.yml ./
+COPY requirements-docs.txt ./
 COPY docs/ ./docs/
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements-docs.txt
 
 # 构建静态站点到 /site（CI 用）
 RUN mkdocs build --strict
