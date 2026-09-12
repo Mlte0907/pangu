@@ -24,6 +24,28 @@
 
 ## 快速开始
 
+### 一键安装（推荐）
+
+```sh
+git clone https://github.com/Mlte0907/pangu.git
+cd pangu
+./install.sh                 # 装依赖 + 预下载模型 + 注册 systemd 服务
+./install.sh --dsh-plugin    # 需要 DSH 集成时追加
+```
+
+脚本会做完整的环境自检，并在 **ONNX 模型下载失败时明确报错中止**
+（而不是让服务静默降级到无语义的 hash 向量，见
+[`docs/OPTIMIZATION.md`](docs/OPTIMIZATION.md#21-p0模型下载失败时静默降级检索质量静默错误)）：
+
+```
+./install.sh --help                    # 全部选项
+./install.sh --no-service              # 只装到目录，不注册服务
+./install.sh --port 19529              # 自定义端口
+./install.sh --offline-model m.onnx,tokenizer.json   # 内网/弱网：从本地文件装模型
+```
+
+### 手动安装
+
 ```sh
 # 安装（Python ≥ 3.11）
 pip install -e .
@@ -44,7 +66,17 @@ pip install -e .
 > | `chromadb` | 全库无 import，仅 `config.backend` 默认值 | 否 |
 >
 > 默认嵌入路径是 **ONNX**（`onnx_enabled` 默认为 `True`，见 `pangu/core/config.py:135`），
-> 无需 torch。实测在 aarch64 无 GPU 环境下：核心依赖 **56 包 / 236MB / 约 20 秒**装完；
+> 无需 torch。实测在 aarch64 无 GPU 环境下：核心依赖 **56 包 / 223MB**；
+> 安装耗时**因缓存状态而异**——
+>
+> | 场景 | 耗时 |
+> | --- | --- |
+> | uv **全局缓存已存在** | 约 20 秒 |
+> | **首次安装（冷缓存）** | **约 8 分 10 秒** |
+> | 加上 ONNX 模型下载（源可达） | +约 30 秒 |
+>
+> 首次安装请预留 **10 分钟以上**；`onnxruntime`(54MB) 与 `numpy`(55MB) 是大头，
+> 中途别中断（中断会导致缓存已下载但包未装好）。
 > 而包含 torch 的完整集会下载 987MB 以上仍难以落盘。
 >
 > 需要图像 / 音频 / 备用嵌入能力时：
@@ -54,6 +86,15 @@ pip install -e .
 > pip install torch --index-url https://download.pytorch.org/whl/cpu
 > pip install -e ".[multimodal]"
 > ```
+>
+> ⚠ **注意两个不同的服务**——最容易搞混的地方：
+>
+> | 端口 | 应用 | 启动方式 | 用途 |
+> | --- | --- | --- | --- |
+> | **19529** | `pangu/api/server.py` | `./install.sh` / `./start.sh` | **MCP + REST**，DSH 插件连这个 |
+> | 8866 | `pangu/server/web_server.py` | `pangu serve` | 浏览器仪表盘，**不含 MCP 接口** |
+>
+> `pangu serve` 启动的是 8866 的界面服务，**不能**替代 19529。
 
 ```sh
 # 方式一：MCP over HTTP（API + MCP 同端口，生产推荐）
