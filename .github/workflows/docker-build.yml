@@ -37,6 +37,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # upload-sarif 需写入 Code Scanning 结果，缺少此项会报
+      # "Resource not accessible by integration"（Trivy 自身扫描正常）。
+      security-events: write
 
     steps:
       - name: 检出代码
@@ -115,9 +118,11 @@ jobs:
           severity: "CRITICAL,HIGH"
 
       - name: 上传扫描结果
+        # Trivy 扫描失败时 trivy-results.sarif 不存在，此处无文件可传。
+        # continue-on-error 必须是步骤级键（与 uses/with 平级），
+        # 写进 with: 只会被当作 action 的输入参数而静默失效。
+        continue-on-error: true
         if: github.event_name != 'pull_request' && always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: "trivy-results.sarif"
-          # 扫描失败时无文件可传，跳过而非让本步骤也报错、掩盖真正原因
-          continue-on-error: true
