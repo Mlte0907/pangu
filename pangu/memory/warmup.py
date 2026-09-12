@@ -23,7 +23,21 @@ def warmup_jieba():
 
 
 def warmup_onnx():
-    """预热 ONNX 嵌入模型"""
+    """预热 ONNX 嵌入模型
+
+    ⚠ 这里构造的是**独立的 `ONNXEmbedder()` 实例**，不是
+    `EmbeddingService` 单例持有的那一个（后者由
+    `get_embedding_service()` 提供）。因此：
+
+    - 预热**不会**填充 `EmbeddingService` 的 `_cache`
+      （两个实例各有各的 `_cache`）；
+    - 预热也**不会**确定 `EmbeddingService._active_backend`。
+
+    这不影响"首次推理把模型权重载入内存"的部分收益（模型文件由
+    `ONNXEmbedder` 内部缓存/复用），但**不要**据此断言单例已就绪。
+    启动体检（`api/server.py`）因此自己触发一次嵌入来确定状态。
+    已记录为待优化项，见 docs/OPTIMIZATION.md。
+    """
     t0 = time.perf_counter()
     try:
         from pangu.memory.onnx_embedder import ONNXEmbedder

@@ -155,6 +155,44 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Warmup failed: {e}")
 
+        # 嵌入后端体检：若降级到 hash 向量，检索结果**没有语义能力**却照常返回，
+        # 必须让这件事可见（此前它完全静默，是 v0.1.3 修的 P0 之一）。
+        #
+        # ⚠ 不要指望 warmup 已经确定后端状态：`warmup_onnx()`（warmup.py:31）
+        # 构造的是**另一个** `ONNXEmbedder()` 实例，与这里的 EmbeddingService
+        # 单例无关，因此单例的 `_active_backend` 仍是 "unknown"。
+        # 实测踩过：体检报 "unknown（正常）"，把未确定当成了健康。
+        # 所以这里**自己触发一次嵌入**来确定状态，绝不把 unknown 当正常。
+        try:
+            from pangu.memory.embedding import get_embedding_service
+
+            _es = get_embedding_service()
+            _es.embed("启动体检")  # 触发惰性加载，确定 active_backend
+            _backend = _es.active_backend
+
+            if _backend == "unknown":
+                # 仍未确定 = 探针失效，必须报出来而不是当成正常
+                logger.warning(
+                    "启动体检：嵌入后端状态未能确定（active_backend=unknown）。"
+                    "这本身可能是缺陷，请检查 get_embedding_service() 与嵌入路径。"
+                )
+            elif _es.is_degraded:
+                logger.error(
+                    "启动体检：嵌入后端 = %s（降级），检索结果无语义能力。原因: %s",
+                    _backend,
+                    _es.stats.get("degraded_reason", "未知"),
+                )
+                if not getattr(config, "allow_hash_fallback", False):
+                    logger.error(
+                        "PANGU_ALLOW_HASH_FALLBACK 未开启：请安装 ONNX 模型"
+                        "（./install.sh 会预下载）或配置 embed_api_url。"
+                        "确认要在无语义能力下继续运行，请设 PANGU_ALLOW_HASH_FALLBACK=1。"
+                    )
+            else:
+                logger.info(f"启动体检：嵌入后端 = {_backend}")
+        except Exception as e:
+            logger.warning(f"Embedding health probe failed: {e}")
+
         # 预加载 MCPServer 实例（避免每次请求重建）
         try:
             from pangu.api.routes_tools import _get_server

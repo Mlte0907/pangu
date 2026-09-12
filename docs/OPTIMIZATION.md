@@ -9,13 +9,14 @@
 
 ## 摘要：五个最该做的事
 
-| 优先级 | 事项 | 为什么现在做 | 工作量 |
-| --- | --- | --- | --- |
-| **P0** | 模型下载失败静默降级 → 检索质量静默错误 | 用户拿到"能跑但结果是错的"系统，零提示 | 0.5 天 |
-| **P0** | 远程 Embed API 分支因缺 `aiohttp` 从未生效 | 配置了却静默无效，熔断语义被 ImportError 污染 | 0.5 天 |
-| **P0** | 安装流程（12 分钟 + 三个认知陷阱） | 首次体验决定留存，且当前 README 数字失真 | 1 天 ✅已做 |
-| **P1** | 向量检索全量重算，无增量索引 | 30 条记忆时无感，1000 条时每次检索 45 秒 | 3-5 天 |
-| **P2** | 24 个死测试伪装成环境跳过 + 555 行死代码 | 掩盖真实失效，长期漏修 | 1 天 |
+| 优先级 | 事项 | 为什么现在做 | 工作量 | 状态 |
+| --- | --- | --- | --- | --- |
+| **P0** | 模型下载失败静默降级 → 检索质量静默错误 | 用户拿到"能跑但结果是错的"系统，零提示 | 0.5 天 | ✅ **v0.1.3 已修** |
+| **P0** | 远程 Embed API 分支因缺 `aiohttp` 从未生效 | 配置了却静默无效，熔断语义被 ImportError 污染 | 0.5 天 | ✅ **v0.1.3 已修** |
+| **P0** | 安装流程（12 分钟 + 三个认知陷阱） | 首次体验决定留存，且当前 README 数字失真 | 1 天 | ✅ **已做** |
+| **P0** | 19529 无 CLI 入口，用户不知如何启动 | 影响面最广的可用性缺口 | 0.5 天 | ✅ **v0.1.3 已修** |
+| **P1** | 向量检索全量重算，无增量索引 | 30 条记忆时无感，1000 条时每次检索 45 秒 | 3-5 天 | ⏳ v0.2.0 |
+| **P2** | 24 个死测试伪装成环境跳过 + 555 行死代码 | 掩盖真实失效，长期漏修 | 1 天 | ⏳ v0.2.x |
 
 > 前两条**同属"静默失效"家族**：系统不报错、照常服务，但用户以为在用的能力
 > 实际从未生效。这类缺陷比崩溃危险得多——崩溃会被发现，静默错误不会。
@@ -204,31 +205,83 @@ onnx 状态: {'model_loaded': False, ...}    ← 只有这里能看出问题
 - 若用户指望用远程 embed API（有些部署会这么配），**它从未生效过，且没有任何提示**。
 - `tests/` 对 `_call_api|circuit|half_open` grep **零命中** —— 整条错误链无测试。
 
-> 修法二选一：
-> 1. 把 `aiohttp` 加为正式依赖；或
-> 2. **改用 `httpx`（推荐）**——`httpx>=0.27.0` 已是正式依赖
->    （`pyproject.toml:25`），venv 中实际为 0.28.1，且**同仓库已有范例**：
->    `pangu/memory/onnx_embedder.py:140` 就是用它下载模型的。
->    同项目内统一到一个 HTTP 客户端也减少依赖。
+> **修法（v0.1.3 已实施）**：改用 **`httpx`**——`httpx>=0.27.0` 已是正式依赖
+> （`pyproject.toml:25`），且**同仓库已有范例**：`pangu/memory/onnx_embedder.py:140`
+> 就是用它下载模型的。同项目内统一到一个 HTTP 客户端也少一份依赖。
 >
-> 无论哪种，**都要补测试**：断言 `_fail_count` 增长与熔断状态转换
-> （当前 `tests/` 对 `_call_api|circuit|half_open` grep 零命中）。
+> 改动（`pangu/memory/embedding.py`）：
+> - `_call_api` / `_call_api_batch` 内的 `aiohttp` 异步代码（含
+>   `self._embed_executor.submit(asyncio.run, ...)`）替换为同步 `httpx.post`；
+> - 随之删除**已无用的** `import asyncio`、`import concurrent.futures`，
+>   以及只为上面那行而存在的 `_embed_executor`（死代码）；
+> - 连带修掉 `except (concurrent.futures.TimeoutError, Exception)` 这处
+>   **冗余且误导**的写法——`Exception` 已覆盖前者，写两个只让人以为
+>   超时有特殊处理（实际没有）。
+>
+> 测试（`tests/test_embedding_remote_api.py`，9 条）：起**真实 HTTP 服务**
+> 验证 `_call_api` / `_call_api_batch` 真的返回向量、`embed()` 上报
+> `backend="api"`；另验证 500 错误路径降级、熔断在 5 次后打开。
+> **不用 mock**——mock 会替换掉 `httpx.post` 本身，从而永远发现不了
+> import 缺失，这正是该 bug 能长期潜伏的原因。
+> 另有一条测试直接断言 `embedding.py` 不再 import `aiohttp`，防止回退。
 
-### 建议修法
+### 修法（v0.1.3 已实施：A+B 组合）
 
-| 方案 | 说明 | 取舍 |
+采用 **A+B**：默认可感知降级 + 显式 opt-in，落点在四处——
+
+| # | 位置 | 改动 |
 | --- | --- | --- |
-| **A. 启动即失败**（推荐） | `lifespan` 中校验 `model_loaded`，失败则拒绝启动并给出修复指引 | 最安全，但弱网环境完全不可用 |
-| **B. 降级但显式**（推荐组合） | `/health` 返回 `status: "degraded"` + `embedding_backend: "hash"`，日志 ERROR 级 | 保留可用性，可被监控发现 |
-| C. 允许显式降级 | 新增 `PANGU_ALLOW_HASH_FALLBACK=1`，默认关闭 | 需 A 或 B 打底 |
+| 1 | `pangu/memory/embedding.py` | 新增 `_active_backend` / `_degraded_reason`；`_mark_backend()` 在 `embed()`、`embed_batch()` 各降级点如实记录实际后端；新增 `active_backend` / `is_degraded` 属性；`stats` 暴露 `active_backend` + `degraded` + `degraded_reason` |
+| 2 | `pangu/observability/health.py` | `_check_embedding_health()` **改写判据**：不再看"有没有向量"，改看**实际后端**；`quick_health_check()` 也不再无条件返回 `ok` |
+| 3 | `pangu/api/server.py` | `lifespan` 中新增**启动体检**：自己触发一次 `embed()` 确定后端，降级则打 ERROR 级日志 |
+| 4 | `pangu/core/config.py` | 新增 `allow_hash_fallback: bool = False`（`PANGU_ALLOW_HASH_FALLBACK`） |
 
-**推荐 A+B 组合**：默认拒绝启动（附明确修复指引），环境变量显式允许时降级
-且 `/health` 上报 `degraded`。插件的 `healthScore` 逻辑（`lib/index.js:105`）
-已支持 `degraded` → 70 分，可直接受益。
+#### 关键：旧判据为什么必然失效
 
-> 注意：`ONNXEmbedder.get_stats()` 的 `model_loaded` 是**实时读取**
+`health.py` 原本是：
+
+```python
+test_vec = es.embed("health check")
+return {"status": "ok" if test_vec and len(test_vec) > 0 else "empty", **stats}
+```
+
+而 hash 向量**合法、非零、维度正确**，所以 `test_vec` 恒为真、`len(...) > 0` 恒成立——
+**这条判据在 ONNX 完全失效时依然报 `ok`**。这就是静默降级能长期潜伏的直接原因。
+
+新判据按后端分流：
+
+| 实际后端 | `/health` | 含义 |
+| --- | --- | --- |
+| `api` / `onnx` | `ok` | 语义检索可用 |
+| `hash` | **`degraded`** | 能返回结果，但**无语义能力** |
+| `unknown` | `ok`（但不谎报正常） | 状态未确定，日志会 warn |
+
+#### 实测验证（真服务、真 HTTP）
+
+```
+# 降级服务（PANGU_ONNX_ENABLED=false）
+GET /health      → {"status":"degraded","embedding_backend":"hash","embedding_degraded":true}
+GET /health/deep → checks.embedding.status = "degraded"
+
+# 正常服务
+GET /health      → {"status":"ok"}   （不误报）
+启动日志          → "启动体检：嵌入后端 = onnx"
+```
+
+#### ⚠ 实施中自己踩的两个坑（已修，值得记录）
+
+1. **`stats` 必须先 `embed()` 再读**：`stats` 是 `@property`（每次重建 dict），
+   在 `embed()` 之前读会拿到 `active_backend="unknown"` 的初始快照，
+   导致降级**永远检测不出来**。已写回归测试锁死顺序。
+2. **不要指望 `warmup` 确定后端**：`warmup_onnx()`（`warmup.py:31`）构造的是
+   **另一个** `ONNXEmbedder()` 实例，与 `EmbeddingService` 单例无关，
+   其 `_cache` 与 `_active_backend` 都不会被预热填充。启动体检因此自己触发嵌入。
+   首次实现时错信了 warmup，日志打出 `unknown（正常）` —— 把"未确定"当成了健康。
+
+> 关于 `model_loaded`：`ONNXEmbedder.get_stats()` 的 `model_loaded` 是**实时读取**
 > （`onnx_embedder.py:365-377`：`self._session is not None and self._tokenizer is not None`），
-> 可以放心作为判据；而 `EmbeddingService` 层面的降级信息需要另行透出。
+> 可以放心作为判据。但注意 ONNX 是**惰性加载**的，构造后立即读会是 `False`，
+> 必须至少调用一次 `embed()`。
 
 ## 2.2 【P1】向量检索全量重算，无增量索引
 
@@ -341,12 +394,12 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 
 # 第三部分：迭代路线建议
 
-| 版本 | 主题 | 内容 |
-| --- | --- | --- |
-| **v0.1.3** | 可用性兜底 | 2.1 静默降级（P0）、远程 API 分支修复（P0）、1.3 一键安装脚本 ✅、1.4 `pangu serve --api` |
-| **v0.2.0** | 检索架构 | 2.2 增量向量索引接入检索路径（**性能与正确性的真正提升**） |
-| **v0.2.x** | 测试与清理 | 2.3 死测试清理 + 基础设施补全、2.4 文档修正（含三处错误引用）与文件拆分 |
-| **v0.3.0** | 插件自治 | 2.5 插件可配置化 + 服务自动拉起 + 多实例支持 |
+| 版本 | 主题 | 内容 | 状态 |
+| --- | --- | --- | --- |
+| **v0.1.3** | 可用性兜底 | 2.1 静默降级（P0）、远程 API 分支修复（P0）、1.3 一键安装脚本、`pangu serve --api` | ✅ **已完成** |
+| **v0.2.0** | 检索架构 | 2.2 增量向量索引接入检索路径（**性能与正确性的真正提升**） | ⏳ 下一步 |
+| **v0.2.x** | 测试与清理 | 2.3 死测试清理 + 基础设施补全、2.4 文档修正（含三处错误引用）与文件拆分 | ⏳ |
+| **v0.3.0** | 插件自治 | 2.5 插件可配置化 + 服务自动拉起 + 多实例支持 | ⏳ |
 
 ## 判断依据
 
@@ -362,17 +415,37 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 
 ## 已在本轮完成
 
+### 第一轮（分析 + 安装流程）
+
 | 项 | 状态 | 交付物 |
 | --- | --- | --- |
 | 一键安装脚本 | ✅ 已提交 `0b4b916` | `install.sh`（7 条路径实测通过） |
 | README 数字修正 + 两服务对照表 | ✅ 已提交 | `README.md` |
 | 本方案文档 | ✅ 已提交 | `docs/OPTIMIZATION.md` |
 
-## 尚未做（用户已明确"先不动，写进方案排优先级"）
+### 第二轮（v0.1.3 的四个 P0，按本方案执行）
 
-- 2.1 静默降级修复 —— **文档已详述，代码未改**
-- 远程 API 分支（`aiohttp`）修复 —— 同上
-- 其余全部条目 —— 均只做分析与排序，未改动代码
+| 项 | 状态 | 交付物 / 验证 |
+| --- | --- | --- |
+| **2.1 静默降级** | ✅ 完成 | `embedding.py` + `health.py` + `api/server.py` + `config.py`；`tests/test_embedding_degradation.py`（17 条） |
+| **远程 API 不可达** | ✅ 完成 | `embedding.py` 改用 `httpx`；`tests/test_embedding_remote_api.py`（9 条，真 HTTP 服务） |
+| **19529 无 CLI 入口** | ✅ 完成 | `pangu serve --api`（`cli.py`）；实测 `/mcp` 返回 28 工具 |
+| 安装收尾断言真实后端 | ✅ 完成 | `install.sh` 验证 `active_backend`，降级则 `warn` 并给修复指引 |
+
+**四个 P0 的验证方式**（都是"先证伪再证实"）：
+
+1. **降级修复**：先确认缺陷成立——hash 向量 384 维且 truthy，旧判据
+   `bool(vec) and len(vec)>0` 必然报 `ok`；再验证新判据在
+   `PANGU_ONNX_ENABLED=false` 下报 `degraded`、正常时报 `ok`（不误报）。
+2. **两个测试文件都做了缺陷注入验证**：把修复代码**回退成缺陷版本**，
+   确认测试**真的失败**（降级测试 3 条失败、API 测试 5 条失败），恢复后全绿。
+   ——只测"通过"不够，必须证明它能失败。
+3. **`serve --api`**：起真实服务，`curl /health` + `POST /mcp` 拿到 28 个工具。
+4. **真服务端到端**：分别用正常/降级配置各起一个真实 uvicorn，
+   验证 `/health` 与 `/health/deep` 的 HTTP 响应体（见 2.1 实测验证表）。
+
+> **未改动的部分**：2.2（P1 增量索引）、2.3（P2 死测试）、2.4（P2 死代码）、
+> 2.5（P3 插件）均仍为分析状态，按路线图排在 v0.2.0 / v0.2.x / v0.3.0。
 
 ---
 

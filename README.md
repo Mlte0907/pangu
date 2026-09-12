@@ -91,21 +91,24 @@ pip install -e .
 >
 > | 端口 | 应用 | 启动方式 | 用途 |
 > | --- | --- | --- | --- |
-> | **19529** | `pangu/api/server.py` | `./install.sh` / `./start.sh` | **MCP + REST**，DSH 插件连这个 |
+> | **19529** | `pangu/api/server.py` | `pangu serve --api` / `./install.sh` / `./start.sh` | **MCP + REST**，DSH 插件连这个 |
 > | 8866 | `pangu/server/web_server.py` | `pangu serve` | 浏览器仪表盘，**不含 MCP 接口** |
 >
-> `pangu serve` 启动的是 8866 的界面服务，**不能**替代 19529。
+> `pangu serve`（不带 `--api`）启动的是 8866 的界面服务，**不能**替代 19529。
 
 ```sh
 # 方式一：MCP over HTTP（API + MCP 同端口，生产推荐）
-python -m uvicorn pangu.api.server:create_app --host 127.0.0.1 --port 19529
+pangu serve --api --host 127.0.0.1 --port 19529
 
 # 方式二：MCP stdio（Claude Code / 其它 MCP 客户端）
 pangu mcp
 
-# 方式三：独立 Web 服务
+# 方式三：独立 Web 服务（不含 MCP）
 pangu serve          # http://127.0.0.1:8866
 ```
+
+> `pangu serve --api` 若未指定 `--port`，会自动用 **19529**（而不是 8866），
+> 避免与 Web UI 端口冲突。
 
 ### Docker
 
@@ -230,15 +233,49 @@ dsh plugin --profile web add "$(pwd)/plugins/dsh-pangu"
 
 | 配置 | 默认 | 说明 |
 | --- | --- | --- |
-| `port` | `19528` | API 端口 |
+| `port` | `19528` | API 端口（`install.sh` 部署的服务用 `19529`） |
 | `onnx_enabled` | `true` | 本地 ONNX 嵌入（离线可用，模型自动下载） |
 | `embed_api_url` | 空 | 外部 embedding API（设置后优先于 ONNX） |
+| `allow_hash_fallback` | `false` | 是否允许降级为 hash 向量（详见下方"检索结果不对劲"） |
 | `similarity_threshold` | `0.65` | 向量检索相似度阈值 |
 | `decay_base` / `decay_floor` | `0.95` / `0.15` | 遗忘曲线基数 / 归档底限 |
 | `neural_enabled` | `true` | 海马体神经激活扩散 |
 | `api_key` / `jwt_secret` | 空 | 为空则不启用鉴权（生产建议开启） |
 
 > 敏感字段（api_key / jwt_secret 等）在对应 `PANGU_*` 环境变量存在时会从 JSON 中忽略并告警。
+
+### 检索结果不对劲？（嵌入降级自查）
+
+盘古的嵌入是三级降级：**远程 API → ONNX → hash 向量**。
+
+⚠ 最后一级的 hash 向量是**字符 trigram 哈希**，它合法、非零、维度正确，
+**但没有任何语义能力**——相同含义的文本彼此不相近。此时服务照常启动、
+检索照常返回结果，只是结果没有意义（实测 `cos(猫,dog)=0.0000`）。
+
+**自查一行命令：**
+
+```sh
+curl -s http://127.0.0.1:19529/health
+```
+
+| 返回 | 含义 |
+| --- | --- |
+| `"status":"ok"` | 正常，语义检索可用 |
+| `"status":"degraded"` + `"embedding_backend":"hash"` | **已降级**，检索质量不可信 |
+
+降级时服务启动日志会打 ERROR 级说明与修复指引。修复方式：
+
+```sh
+./install.sh --model-only     # 预下载 ONNX 模型（最常见原因：模型没下下来）
+# 或配置 embed_api_url 使用远程嵌入服务
+```
+
+若确实要在无语义能力下运行（如纯离线测试），显式接受：
+
+```sh
+export PANGU_ALLOW_HASH_FALLBACK=1
+```
+
 
 ## 测试
 

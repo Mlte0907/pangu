@@ -30,13 +30,35 @@ REQUIRED_FILES: dict[str, list[str]] = {
 
 
 def quick_health_check() -> dict:
-    """快速健康检查（<10ms）"""
-    return {
-        "status": "ok",
+    """快速健康检查（<10ms）
+
+    不触发嵌入（保持低成本），只读取**已确定**的后端状态：
+    若嵌入服务已降级到 hash，则本接口也必须反映出来——否则监控系统
+    轮询这个便宜的端点时会看到恒定的 "ok"，完全错过降级。
+    （状态由首次 embed()/启动体检确定；未确定时记 "unknown"，不谎报 ok。）
+    """
+    status = "ok"
+    result: dict[str, Any] = {
+        "status": status,
         "version": __version__,
         "uptime_seconds": round(time.time() - _start_time),
         "timestamp": time.time(),
     }
+
+    try:
+        es = get_embedding_service()
+        backend = getattr(es, "active_backend", None)
+        if backend:
+            result["embedding_backend"] = backend
+        # 仅在状态**已确定且为降级**时才改判，避免把 unknown 当异常
+        if backend == "hash":
+            result["status"] = "degraded"
+            result["embedding_degraded"] = True
+    except Exception:
+        # 健康检查自身不得抛错
+        pass
+
+    return result
 
 
 def _check_palace_structure() -> dict[str, Any]:
@@ -99,12 +121,39 @@ def _check_memory_health() -> dict[str, Any]:
 
 
 def _check_embedding_health() -> dict[str, Any]:
-    """检查嵌入服务健康状态"""
+    """检查嵌入服务健康状态
+
+    ⚠ 关键：**不能只看"有没有拿到向量"**。
+    `_local_embed` 的 hash 向量是合法的 384 维、truthy，`len(vec) > 0` 恒成立，
+    所以旧写法 `"ok" if test_vec and len(test_vec) > 0` 在 ONNX 完全失效时
+    依然报 `ok`——这正是"静默降级"能长期不被发现的原因。
+    现在改为按**实际生效的后端**判定。
+    """
     try:
         es = get_embedding_service()
-        stats = es.stats if hasattr(es, "stats") else {}
+        # 必须先触发一次真实嵌入，再读 stats——ONNX 是惰性加载的，
+        # 且 `stats` 是**属性**（每次调用重建 dict），提前读会拿到
+        # active_backend="unknown" 的初始快照。顺序反了就永远测不出降级。
         test_vec = es.embed("health check")
-        return {"status": "ok" if test_vec and len(test_vec) > 0 else "empty", **stats}
+        stats = es.stats if hasattr(es, "stats") else {}
+
+        backend = stats.get("active_backend", "unknown")
+        degraded = bool(stats.get("degraded"))
+
+        if not test_vec:
+            status = "empty"
+        elif degraded:
+            # 能拿到向量，但它是无语义的 hash 向量——这是**降级**，不是健康
+            status = "degraded"
+        else:
+            status = "ok"
+
+        result: dict[str, Any] = {"status": status, "backend": backend, **stats}
+        if degraded:
+            result["error"] = (
+                f"嵌入后端已降级为 hash 向量，检索结果没有语义能力。原因: {stats.get('degraded_reason', '未知')}"
+            )
+        return result
     except Exception as e:
         return {"status": "fail", "error": str(e)}
 

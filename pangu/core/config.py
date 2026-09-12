@@ -183,6 +183,18 @@ class PanguConfig(BaseSettings):
     onnx_cache_dir: str = ""
     onnx_mirror_base: str = "https://hf-mirror.com"
 
+    # ── 降级策略 ──
+    # ONNX 不可用时，`_local_embed` 会返回**基于字符 trigram 的 hash 向量**。
+    # 它是合法的 384 维向量、不抛异常，服务照常启动、检索照常返回结果——
+    # 但结果**没有任何语义能力**（实测 cos(猫,dog)=0.0000、cos(猫,猫咪)=0.7071
+    # 纯属字符巧合）。也就是说：不报错的降级 = 用户拿到"能跑但结果是错的"系统。
+    #
+    # 故默认 **`False`（拒绝降级）**：启动/首次嵌入时若发现只能走 hash，
+    # 记 ERROR 日志并通过 /health 上报 degraded，让问题**可见**。
+    # 弱网/离线环境确实需要接受 hash 向量时，显式设
+    # `PANGU_ALLOW_HASH_FALLBACK=1` 打开。
+    allow_hash_fallback: bool = False
+
     # ── 后端配置 ──
     backend: str = "chromadb"
 

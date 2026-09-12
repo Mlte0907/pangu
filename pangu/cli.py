@@ -1974,17 +1974,62 @@ def onnx_similarity(
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="绑定地址"),
-    port: int = typer.Option(8866, help="绑定端口"),
+    # 用 Optional 让默认值成为**可区分的哨兵**：有了它才能判断用户是否
+    # 显式传了 --port。若默认写成 8866，就无法区分"没传"与"显式传 8866"，
+    # 会出现"用户明确要求 8866 却被静默改成 19529"这种意外行为。
+    port: int | None = typer.Option(None, help="绑定端口（默认：Web UI 8866 / --api 19529）"),
     reload: bool = typer.Option(False, help="自动重载"),
+    api: bool = typer.Option(
+        False,
+        "--api",
+        help="启动 API + MCP 服务器（pangu/api/server.py，含 /mcp 端点），而非 Web UI",
+    ),
 ):
-    """启动 Web 服务器"""
+    """启动服务器
+
+    默认启动 **Web UI**（`pangu/server/web_server.py`，端口 8866），
+    它**不含 `/mcp` 端点**，DSH 等 MCP 客户端连不上。
+
+    要接入 MCP 客户端（DSH 插件、Claude Desktop 等），请用 `pangu serve --api`：
+    它启动 `pangu/api/server.py`，在**同一端口**上同时提供 REST 与 `/mcp`
+    （默认端口 19529）。systemd 部署用的就是这个（见 `install.sh`）。
+    """
     import uvicorn
+
+    # 未显式传 --port 时按模式取默认；显式传了则一律尊重用户。
+    _port = port if port is not None else (19529 if api else 8866)
+
+    if api:
+        # API + MCP 服务器：REST 与 /mcp 同端口。
+        # 此前**没有任何 CLI 命令**能启动它，用户只能手写
+        # `uvicorn pangu.api.server:create_app --factory` 或依赖 systemd 单元，
+        # 这是安装流程里最容易卡住的一环。
+        console.print(
+            Panel.fit(
+                f"[bold green]盘古 API + MCP 服务器启动[/bold green]\n\n"
+                f"地址: [bold cyan]http://{host}:{_port}[/bold cyan]\n"
+                f"MCP 端点: [bold cyan]http://{host}:{_port}/mcp[/bold cyan]\n"
+                f"健康检查: [bold cyan]http://{host}:{_port}/health[/bold cyan]\n"
+                f"API 文档: [bold cyan]http://{host}:{_port}/docs[/bold cyan]",
+                title="盘古 API",
+            )
+        )
+        uvicorn.run(
+            "pangu.api.server:create_app",
+            host=host,
+            port=_port,
+            reload=reload,
+            factory=True,
+        )
+        return
 
     console.print(
         Panel.fit(
             f"[bold green]盘古 Web 服务器启动[/bold green]\n\n"
-            f"地址: [bold cyan]http://{host}:{port}[/bold cyan]\n"
-            f"API 文档: [bold cyan]http://{host}:{port}/docs[/bold cyan]",
+            f"地址: [bold cyan]http://{host}:{_port}[/bold cyan]\n"
+            f"API 文档: [bold cyan]http://{host}:{_port}/docs[/bold cyan]\n\n"
+            f"[yellow]注意：Web UI 不含 /mcp 端点。[/yellow]\n"
+            f"接入 MCP 客户端请用: [bold]pangu serve --api[/bold]",
             title="盘古",
         )
     )
@@ -1992,7 +2037,7 @@ def serve(
     uvicorn.run(
         "pangu.server.web_server:create_app",
         host=host,
-        port=port,
+        port=_port,
         reload=reload,
         factory=True,
     )

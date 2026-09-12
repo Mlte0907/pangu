@@ -12,8 +12,9 @@
 #      → 本脚本在安装阶段预下载并**明确报错**，绝不静默继续。
 #
 #   3. 端口 19529（MCP/REST，DSH 插件需要）与 8866（Web 界面）是两个不同
-#      的服务，且 19529 没有 CLI 入口，用户无从得知。
+#      的服务。此前 19529 没有 CLI 入口，用户无从得知怎么起它。
 #      → 本脚本安装 systemd 用户服务托管 19529，并在结尾说明区别。
+#        （v0.1.3 起 also 支持 `pangu serve --api` 手动起 19529。）
 #
 # 用法：
 #   ./install.sh                    # 默认：装依赖 + 预下载模型 + systemd 服务
@@ -397,10 +398,43 @@ else
   die "本次安装的代码无法构造应用——依赖可能不完整，请检查上面的安装日志"
 fi
 
+# 验证嵌入后端**真的可用**，而不只是"文件存在"。
+# 为什么必须实测：ONNX 模型文件在、但加载失败时，embed() 会静默降级为
+# hash 向量——合法、非零、384 维，一切检查都通过，但检索结果**没有语义能力**。
+# 这是本项目最隐蔽的缺陷（v0.1.3 修），所以安装收尾必须断言真实后端。
+BACKEND=$("$VPY" -c "
+import sys; sys.path.insert(0, '$REPO_DIR')
+from pangu.core.config import PanguConfig
+from pangu.memory.embedding import EmbeddingService
+svc = EmbeddingService(PanguConfig.load())
+svc.embed('安装后验证')
+print(svc.active_backend)
+" 2>/dev/null || echo "ERROR")
+
+if [ "$BACKEND" = "onnx" ]; then
+  ok "嵌入后端: onnx（语义检索可用）"
+elif [ "$BACKEND" = "api" ]; then
+  ok "嵌入后端: api（远程嵌入服务）"
+elif [ "$BACKEND" = "hash" ]; then
+  warn "嵌入后端降级为 hash —— 检索结果将**没有语义能力**（相同含义的文本不会相近）"
+  warn "  原因通常是 ONNX 模型未能加载。请重跑步骤 3/5 预下载模型："
+  warn "    $REPO_DIR/install.sh --model-only"
+  warn "  或配置 embed_api_url 使用远程嵌入服务。"
+else
+  warn "无法确定嵌入后端（$BACKEND）—— 请运行 ./install.sh 检查，或手动执行："
+  warn "    cd $REPO_DIR && .venv/bin/python -c 'from pangu.memory.embedding import get_embedding_service as g; s=g(); s.embed(\"x\"); print(s.active_backend)'"
+fi
+
 if [ "$INSTALL_SERVICE" = 1 ]; then
   RESP=$(curl -s --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "")
   if [ -n "$RESP" ]; then
     ok "服务健康: $RESP"
+    # /health 现在会报 degraded —— 不要让用户在一堆绿字里错过它
+    case "$RESP" in
+      *'"status":"degraded"'*|*'"status": "degraded"'*)
+        warn "  ↑ 但 /health 报 degraded：嵌入后端降级，检索质量不可信"
+        ;;
+    esac
   else
     warn "无法访问 $HEALTH_URL —— 服务可能未启动"
     warn "  手动启动：./start.sh"
