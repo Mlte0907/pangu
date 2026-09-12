@@ -43,7 +43,12 @@ try:
     app = create_app()
     check("app.create_app", app is not None)
     check("app.title", "盘古" in app.title, app.title)
-    check("app.version", app.version == "0.1.0", app.version)
+    # 与唯一事实源比对，不要写死版本字面量——写死会随发版漂移，
+    # 且掩盖 app 与 __version__ 不一致的真实缺陷（tests/test_integration.py
+    # 已按同样方式断言）。
+    from pangu import __version__
+
+    check("app.version", app.version == __version__, app.version)
 except Exception as e:
     check("app.create_app", False, str(e))
     print(f"  cannot proceed: {e}")

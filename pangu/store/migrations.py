@@ -233,6 +233,10 @@ def _load_meta() -> dict:
     # 初始结构
     return {
         "name": "盘古记忆宫殿",
+        # 注意：迁移逻辑实际读取的是下面的 schema_version（见本文件
+        # _get_schema_version / _record_version），此 "version" 字段只写不读，
+        # 且**不是软件版本**（软件版本见 pangu.__version__）。
+        # 保留仅为兼容既有 meta 文件结构，发版时不要改它。
         "version": "0.1.0",
         "created_at": "",
         "wings": ["default"],

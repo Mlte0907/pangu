@@ -11,6 +11,8 @@
 import logging
 import os
 
+from pangu import __version__
+
 logger = logging.getLogger("pangu.observability.tracing")
 
 _tracer = None
@@ -34,7 +36,7 @@ def _init_tracer():
             resource=trace.Resource.create(
                 {
                     "service.name": "pangu",
-                    "service.version": "0.1.0",
+                    "service.version": __version__,
                 }
             )
         )
@@ -56,7 +58,7 @@ def _init_tracer():
             provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
         trace.set_tracer_provider(provider)
-        _tracer = trace.get_tracer("pangu", "0.1.0")
+        _tracer = trace.get_tracer("pangu", __version__)
         _available = True
         return _tracer
     except ImportError:

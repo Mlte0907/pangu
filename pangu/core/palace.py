@@ -162,6 +162,9 @@ class Palace:
         else:
             self.meta = {
                 "name": "盘古记忆宫殿",
+                # 宫殿元数据的【结构】版本，非软件版本。软件版本见
+                # pangu.__version__。此字段当前只写不读（全仓库无读取点），
+                # 保留是为了兼容既有 meta 文件的结构；发版时不要改它。
                 "version": "0.1.0",
                 "created_at": datetime.now().isoformat(),
                 "wings": ["default"],

@@ -20,6 +20,12 @@ from ..core.palace import Drawer
 
 logger = logging.getLogger("pangu.memory.drawer_storage")
 
+# SQLite 存储的【数据格式】版本，写入 storage_info 表。
+# 与软件版本无关：软件版本是 pangu.__version__（唯一事实源为
+# pangu/__init__.py + pyproject.toml）。发版时不要改这个值，
+# 只有 storage_info / drawers 表结构发生不兼容变更时才调整。
+_STORAGE_FORMAT_VERSION = "0.1.0"
+
 
 class DrawerStorage:
     """抽屉存储抽象基类"""
@@ -186,10 +192,13 @@ class SqliteDrawerStorage(DrawerStorage):
                 );
             """)
 
-            # 记录存储版本
+            # 记录存储【格式】版本 —— 不是软件版本。
+            # 软件版本见 pangu.__version__（唯一事实源：pangu/__init__.py
+            # 与 pyproject.toml）。此处的值描述 storage_info 表所承载的
+            # 数据布局，仅在表结构变更时才应调整，发版时不要跟着改。
             conn.execute(
                 "INSERT OR REPLACE INTO storage_info (key, value, updated_at) VALUES (?, ?, ?)",
-                ("version", "0.1.0", time.time()),
+                ("version", _STORAGE_FORMAT_VERSION, time.time()),
             )
 
     def load(self) -> list[Drawer]:

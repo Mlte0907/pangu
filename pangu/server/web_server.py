@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from .. import __version__
 from ..core.config import PanguConfig
 from ..core.llm import LLMEngine
 from ..core.palace import Drawer, Palace, WikiPage
@@ -73,7 +74,7 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     config = config or PanguConfig.load()
     config.ensure_dirs()
 
-    app = FastAPI(title="盘古 — 专业记忆系统", version="0.1.0")
+    app = FastAPI(title="盘古 — 专业记忆系统", version=__version__)
 
     # 静态文件路径
     static_dir = Path(__file__).parent.parent / "ui" / "static"

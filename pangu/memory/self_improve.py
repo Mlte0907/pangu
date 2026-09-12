@@ -76,13 +76,23 @@ class SelfImproveWorker:
         batch_size: int = 5,
     ):
         if base_url is None:
-            try:
-                cfg = json.load(open(os.path.expanduser("~/.pangu/config.json")))
-                base_url = cfg.get("server_url", "http://127.0.0.1:19529")
-                api_key = api_key or cfg.get("api_key", "")
-            except Exception:
-                base_url = "http://127.0.0.1:19529"
-                api_key = api_key or ""
+            # 统一走 PanguConfig，不要自己 json.load config.json：
+            #  1) 配置模型里没有 server_url 字段，config.json 也从不写它，
+            #     原先的 cfg.get("server_url", "http://127.0.0.1:19529")
+            #     永远取默认值——那段读取是装饰性的死代码；
+            #  2) api_key 被 PanguConfig.save() 的 exclude 排除，从不落在
+            #     config.json（改存环境变量），直接读 json 永远拿到空串，
+            #     导致 X-API-Key 认证失效。
+            # PanguConfig 用 env_prefix="PANGU_"，故 PANGU_HOST/PANGU_PORT
+            # 会正确映射到 host/port。
+            from pangu.core.config import PanguConfig
+
+            cfg = PanguConfig.load()
+            # host 是【监听】地址，0.0.0.0 表示监听所有网卡，
+            # 不能直接当连接目标用，需换成环回地址。
+            host = "127.0.0.1" if cfg.host in ("0.0.0.0", "::", "") else cfg.host
+            base_url = f"http://{host}:{cfg.port}"
+            api_key = api_key or cfg.api_key
 
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
