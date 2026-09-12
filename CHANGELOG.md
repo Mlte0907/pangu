@@ -8,6 +8,85 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 > 本文件此前的 `v1.0.0` 标题是「分层共存重构」时期的旧称，代码侧已在
 > commit `ac563b4`（unify all version strings to 0.1.0）统一为 `0.1.0`，此处同步更正。
 
+## [0.1.2] — 2026-09-12
+
+修复 v0.1.1 之后发现的**首个检索性能缺陷**与**日志静默**问题，并消除全仓库
+硬编码版本号。**无破坏性变更，无 API 改动**，升级即可显著改善首次检索延迟。
+
+### Fixed — 向量预热未生效，首次搜索冷启动约 50 秒
+
+`warmup_vector_index()` 此前只调用 `vector_index.get_vector_index()`，拿到的是
+一个**空索引**（`size=0`）——什么都没预热。预热耗时照常上报、日志照常打印
+「完成」，看起来一切正常，因此该缺陷长期未被发现。
+
+真实的检索路径读的是 `FTS5SearchEngine.embedder` 的嵌入缓存，而预热从未往
+那里写过任何东西。于是服务启动后的第一次语义检索要**现场推理全部文档向量**：
+
+| 场景 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 预热后首次搜索（1000 条文档） | **50.28s** | **1.8ms** |
+
+修法是让预热真正写入运行期会读的那个缓存：加载 `PanguConfig` → 构建
+`MemoryStack` → 取出 `drawers` → 用 `FTS5SearchEngine`（而非新实例，否则写的
+是另一个单例缓存）建索引 → 对文档全集调 `embed_batch()` 填充嵌入缓存。
+
+现在 `Warmup complete` 日志会如实列出各阶段耗时，包括此前缺失的 `vector_index`：
+
+```
+Warmup complete: 306ms (jieba=0ms, onnx=179ms, fts_index=7ms, vector_index=120ms)
+```
+
+### Fixed — 日志从未初始化，所有 `logger.info` 被静默丢弃
+
+`.deploy-logs/pangu-api.log` 里只有 uvicorn 的 access log，盘古自身的启动信息
+一条都没有——排查故障最需要的信息（预热耗时、MCPServer 预加载、自主维护周期、
+工作记忆恢复）全部不可见。
+
+根因是 `create_app()` 全程没有日志初始化，而 Python 的 root logger **默认
+level=WARNING 且 handler 为空**，所有 `logger.info` 调用被直接丢弃。
+`pangu/memory/production.py` 里其实早已实现 `setup_structured_logging`
+（结构化 JSON 输出），但**从未被任何调用点引用**——属于同一问题的另一半。
+
+现在在 `lifespan` 启动处调用它（放在 lifespan 而非 `create_app`，符合 FastAPI
+语义：只有服务真正启动才配置日志，光构造 app 不会误改调用方的 logging 配置）。
+可用 `PANGU_LOG_LEVEL` / `PANGU_LOG_FILE` 覆盖，默认只写 stdout 交由 systemd
+落盘。该调用幂等，且失败时回退 `basicConfig` 并告警，不影响服务启动。
+
+这也解释了上面的向量冷启动缺陷为何能潜伏：日志里根本看不到预热输出，
+连「预热到底跑没跑」都无法从部署日志判断。
+
+### Changed — 消除全仓库硬编码版本号
+
+版本号此前散落在 6 个位置，升级时漏改会导致 `tests/test_integration.py` 之类的
+断言失败。现在统一以 `pangu/__init__.py` 的 `__version__` 为唯一事实源：
+`health.py`、`tracing.py`、`web_server.py` 改为从包导入。
+
+同时区分了两类此前被混为一谈的版本号——**软件版本**与**数据格式版本**，
+后者**不应**随发版变动，故加注释说明并保留原值：`drawer_storage.py` 的
+存储格式版本（已提为具名常量 `_STORAGE_FORMAT_VERSION`）、`palace.py` 的
+结构版本、`store/migrations.py` 的迁移版本（迁移逻辑实际读 `schema_version`）。
+
+顺带修掉 `self_improve.py` 的一处死代码：它从 `~/.pangu/config.json` 读
+`server_url` / `api_key`，但该文件因 `PanguConfig.save()` 的密钥排除机制
+**永远不含这两个键**，配置读取从未生效；现改为走 `PanguConfig.load()`。
+
+### Fixed — CI: ONNX 测试在模型不可用时误报失败
+
+`tests/test_onnx_embedder.py::test_service_embed_uses_onnx` 曾在某个 CI 的
+Python 3.10 job 上失败（同一次运行的 3.11/3.12 通过），报错为毫无线索的
+`assert False is True`。
+
+根因：跳过条件 `_onnx_available()` 只检查 `onnxruntime`/`tokenizers` 能否
+import，**不检查模型文件是否可用**。ONNX 模型不在仓库里，CI 上缓存目录每次
+是空的，需现从镜像下载；下载失败时 `EmbeddingService.embed()` 会**静默降级**
+到 hash 向量，于是 `vec is not None`、`len(vec) == 384` 等断言照样通过，
+只有读 `stats["onnx"]["model_loaded"]` 的那句会炸。
+
+新增 `pytestmark_onnx_model`：真正构造 `ONNXEmbedder` 并调 `_ensure_loaded()`
+来判定模型可用性，不可用时**跳过而非失败**；探针复用 `PanguConfig.load()`
+的配置（否则当测试用环境变量覆盖 cache_dir 时会误判）。同时给该断言补上
+诊断信息，失败时打印 onnx stats 与 `_load_error`。
+
 ## [0.1.1] — 2026-09-12
 
 一次以「让流水线说真话」为主的维护发布：修复了 v0.1.0 之后暴露的测试、
