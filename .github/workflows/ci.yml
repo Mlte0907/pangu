@@ -95,23 +95,24 @@ jobs:
           retention-days: 30
 
   # ──────────────────────────────────────────────────────────────
-  # 3. 单元 + 集成测试（多 Python 版本）
+  # 3. 单元 + 集成测试
+  #
+  # 这里是「快速反馈」通道：只跑核心子集、单一 Python 版本，为下游
+  # benchmark / quality-gate 提供前置信号，并产出 junit 报告。
+  # 全量测试与跨 Python 版本（3.10/3.11/3.12）的矩阵由 test.yml 承担，
+  # 故此处不再重复多版本，避免同一 commit 把同样的测试跑两遍。
   # ──────────────────────────────────────────────────────────────
   test:
-    name: 测试 (Py ${{ matrix.python }})
+    name: 测试 (快速反馈)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ env.PYTHON_DEFAULT }}
           cache: pip
 
       - name: 安装项目
@@ -132,19 +133,16 @@ jobs:
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
                           tests/test_integration.py \
-                          -k "not test_remove_drawer and not test_batch_remove" \
-                          --junitxml=reports/junit-${{ matrix.python }}.xml \
+                          --junitxml=reports/junit.xml \
                           -q --tb=short --maxfail=20
 
       - name: 覆盖率
-        if: matrix.python == '3.11'
         continue-on-error: true
         run: |
           pip install pytest-cov
           python -m pytest tests/test_core.py tests/test_v2_features.py \
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
-                          -k "not test_remove_drawer and not test_batch_remove" \
                           --cov=pangu --cov-report=xml:reports/coverage.xml \
                           --cov-report=term-missing:skip-covered \
                           -q --no-header
@@ -153,9 +151,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.python }}
+          name: test-results
           path: |
-            reports/junit-*.xml
+            reports/junit.xml
             reports/coverage.xml
           retention-days: 30
 
