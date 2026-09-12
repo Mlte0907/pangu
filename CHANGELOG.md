@@ -8,6 +8,87 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 > 本文件此前的 `v1.0.0` 标题是「分层共存重构」时期的旧称，代码侧已在
 > commit `ac563b4`（unify all version strings to 0.1.0）统一为 `0.1.0`，此处同步更正。
 
+## [0.1.1] — 2026-09-12
+
+一次以「让流水线说真话」为主的维护发布：修复了 v0.1.0 之后暴露的测试、
+CI 与镜像构建缺陷，并清零全部静态检查债务。**无破坏性变更，无 API 改动。**
+
+### Fixed — Docker 镜像构建
+
+v0.1.0 的多架构镜像构建自创建起从未成功过。根因是 `Dockerfile` 的
+`docs` 阶段三层缺失，逐层修完才构建通过：
+
+- **mkdocs 插件依赖缺失**：`mkdocs.yml` 启用了 `git-revision-date-localized`
+  与 `minify`，但 Dockerfile 只装了 `mkdocs mkdocs-material`，`--strict`
+  下直接 `Aborted with a configuration error!`。仓库其实一直有权威清单
+  `requirements-docs.txt`（`docs.yml` 正是用它构建且始终正常），唯独
+  Dockerfile 手写包名未与之同步。现改为 `pip install -r requirements-docs.txt`，
+  以该文件为单一事实来源
+- **缺少 git 可执行文件**：`git-revision-date-localized` 依赖 gitpython，
+  初始化即要求系统存在 `git`，而基础阶段只装了
+  `ca-certificates` / `curl` / `tini`
+- **strict 模式把插件告警当失败**：构建上下文不含 `.git`，插件对每一页
+  各出一条 WARNING，而 `mkdocs build --strict` 视任何 WARNING 为失败。
+  `fallback_to_build_date: true` 只保证不抛异常，并不消除告警。现于
+  `docs` 阶段就地 `git init` 并提交文档树，使插件能取到 revision 日期
+
+本地已复现并验证：无 git 仓库时精确复现 `Aborted with 1 warnings in
+strict mode!`；补齐后 `Documentation built in 2.42 seconds`，
+产出 79 个文件 / 4.5 MB 站点。
+
+### Fixed — CI 流水线
+
+- **`arm64` 测试任务永远排队，拖死下游**：`ci.yml` 的测试矩阵引用了
+  `ubuntu-24.04-arm64`——该标签**不存在**（公开仓库可用的正确标签是
+  `ubuntu-24.04-arm`，无 `64`）。矩阵中任一组合未完成即视为整个 job
+  未完成，使依赖它的 `benchmark` 与 `quality-gate` **自创建以来从未
+  执行过**，且症状是静默的 `queued` 而非报错。已移除该条目；经临时
+  探针实测确认 `ubuntu-24.04-arm` 可正常调度（16 秒完成，
+  `uname -m` = `aarch64`，`onnxruntime` 1.30.0 可用）
+- **同一 commit 把测试跑两遍**：`ci.yml` 的测试子集（3.11 + 3.12）与
+  `test.yml` 的全量测试（3.10 + 3.11 + 3.12）范围重叠，后者完全覆盖
+  前者。现 `ci.yml` 收敛为单一 Python 版本，定位明确为「快速反馈 +
+  产出 junit」，跨版本与全量测试交给 `test.yml`
+- **删除永不触发的 `lint.yml`**：它监听 `branches: [main, develop]`，
+  而本仓库默认分支是 `master` 且只存在 `master`，从未运行过。其职责
+  与 `ci.yml` 的 lint 任务重复，后者还额外含 bandit 扫描
+
+### Fixed — DSH 插件
+
+- **「测试连接」报 HTTP 404**：插件的宿主清单（`lib/typert.host.mjs`）
+  缺少 `panguConfig/testLlm` 成员声明，而客户端清单已声明该成员。
+  宿主清单决定路由注册，故端点实际不存在。补齐声明后恢复
+
+### Fixed — 测试可靠性
+
+- **`pytest tests/` 收集中断**：全量收集会导入
+  `tests/manual_e2e/test_comprehensive.py`，而它依赖一个从未提交的
+  `mcp_helper.py`，`ModuleNotFoundError` 使整个会话失败。现于
+  `tests/conftest.py` 加入 `collect_ignore_glob = ["manual_e2e/*"]`
+- **基准测试不可靠断言**：修正随环境波动而随机失败的断言，并顺带修复
+  由此暴露的两处真实缺陷
+- **61 处断言错误**：修复 CI 全量运行暴露的断言与工具注册问题
+
+### Changed — 静态检查债务清零
+
+- `ruff check pangu/ tests/` 从 **278 个错误清零**，`ruff format` 的
+  40 个未格式化文件亦整理完毕。改动**纯属风格**，已用 AST 指纹逐一
+  比对确认结构未变（245 个文件，0 处 AST 结构差异）
+- 其中一处并非风格问题：`pangu/memory/knowledge_extractor.py` 有个字典项
+  的注释吞掉了行尾逗号，构成真实 `SyntaxError`——该文件此前完全无法
+  导入，只因没有任何模块引用它而未被发现
+
+### Changed — 覆盖率口径
+
+- 明确覆盖率分母：排除 CLI 入口与零覆盖的实验模块，并在注释中约定
+  不得把新增核心模块加入排除列表
+
+### Docs
+
+- 补全工具暴露面配置说明（`core` / `optional` / `experimental` 三级）
+  与 `1001` / `1002` 错误码语义，此前二者共用同一文案，容易误导排查方向
+- Release 正文去除三处不实宣称，并修正变更日志范围
+
 ## [0.1.0] — 2026-09-11
 
 首个正式发布。分层工具暴露 + 多模态记忆 + DSH 插件接入。
