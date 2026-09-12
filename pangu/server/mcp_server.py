@@ -13,6 +13,7 @@ import logging
 import sys
 import time
 
+from .. import __version__
 from ..core.config import PanguConfig
 from ..core.llm import LLMEngine
 from ..core.palace import Palace
@@ -265,7 +266,7 @@ class MCPServer:
                 "id": req_id,
                 "result": {
                     "protocolVersion": "2024-11-05",
-                    "serverInfo": {"name": "pangu", "version": "0.1.0"},
+                    "serverInfo": {"name": "pangu", "version": __version__},
                     "capabilities": {"tools": {}},
                 },
             }

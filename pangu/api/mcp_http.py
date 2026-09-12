@@ -9,6 +9,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from pangu import __version__
+
 logger = logging.getLogger("pangu.mcp.http")
 
 
@@ -28,7 +30,7 @@ async def _mcp_handle(request: Request) -> Response:
                         "jsonrpc": "2.0",
                         "result": {
                             "protocolVersion": "2024-11-05",
-                            "serverInfo": {"name": "pangu", "version": "0.1.0"},
+                            "serverInfo": {"name": "pangu", "version": __version__},
                             "capabilities": {"tools": {}},
                             "endpoints": {"mcp": message_url},
                         },
@@ -59,7 +61,7 @@ async def _mcp_handle(request: Request) -> Response:
                 "jsonrpc": "2.0",
                 "result": {
                     "protocolVersion": "2024-11-05",
-                    "serverInfo": {"name": "pangu", "version": "0.1.0"},
+                    "serverInfo": {"name": "pangu", "version": __version__},
                     "capabilities": {"tools": {}},
                 },
             }

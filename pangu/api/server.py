@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from pangu import __version__
 from pangu.api.abac import (
     authorize as abac_authorize,
 )
@@ -170,7 +171,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="盘古 v0.1 — AI Agent 多模态记忆系统",
         description="421个MCP工具 + 4种模态输入（文本/图片/视频/音频）+ 跨模态搜索 + 自主管理",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 
@@ -626,7 +627,7 @@ def create_app() -> FastAPI:
             "message": "ok",
             "data": {
                 "name": "盘古",
-                "version": "0.1.0",
+                "version": __version__,
                 "health": quick_health_check(),
                 "config": {
                     "host": config.host,
