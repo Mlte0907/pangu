@@ -26,9 +26,60 @@ def _onnx_available():
         return False
 
 
+def _onnx_model_loadable() -> bool:
+    """ONNX 依赖装好了，且模型**真的能加载**（本地缓存命中或可下载）。
+
+    为什么不能只判断 `_onnx_available()`：那只证明 onnxruntime/tokenizers
+    能 import，不代表模型文件可用。CI 上 `~/.cache/pangu/onnx/` 每次都是
+    空的，模型需现从 hf-mirror.com 下载；一旦下载失败，`_do_load()` 返回
+    False、`_session` 保持 None，而 `EmbeddingService.embed()` 会**静默降级**
+    到 hash 向量——于是 `vec is not None` 之类的断言依然通过，只有
+    `stats["onnx"]["model_loaded"] is True` 会炸，表现为
+    `assert False is True` 这种毫无线索的失败。
+
+    实测复现（清空模型缓存 + 指向不可达镜像）：
+        Download failed: ... → [Errno 111] Connection refused
+        Download failed: https://huggingface.co/... → timed out
+        assert svc.stats["onnx"]["model_loaded"] is True
+        E   assert False is True
+
+    这正是某次 CI 上 Python 3.10 job 失败、而同一次运行的 3.11/3.12 job
+    通过的原因（模型只在 3.10 那条 runner 上没下下来）。属于环境性抖动，
+    不应被当作代码缺陷，故改为跳过并说明原因。
+    """
+    if not _onnx_available():
+        return False
+    try:
+        from pangu.core.config import PanguConfig
+        from pangu.memory.onnx_embedder import ONNXEmbedder
+
+        # 必须传入与运行期一致的配置：否则探针会用 ONNXEmbedder 的默认
+        # 参数（默认 cache_dir / 默认镜像），当测试通过环境变量覆盖了
+        # PANGU_ONNX_CACHE_DIR 或 PANGU_ONNX_MIRROR_BASE 时，探针查的
+        # 是另一个目录，会误判为"模型可用"，跳过保护随之失效。
+        cfg = PanguConfig.load()
+        emb = ONNXEmbedder(
+            model_id=cfg.onnx_model_id,
+            quantized=cfg.onnx_quantized,
+            max_length=cfg.onnx_max_length,
+            cache_dir=cfg.onnx_cache_dir or None,
+            mirror_base=cfg.onnx_mirror_base,
+            embedding_dim=cfg.embedding_dim,
+        )
+        return bool(emb._ensure_loaded())
+    except Exception:
+        return False
+
+
 pytestmark_onnx = pytest.mark.skipif(
     not _onnx_available(),
     reason="onnxruntime/tokenizers 未安装",
+)
+
+# 需要模型真正加载的测试用这个；模型不可得时跳过而非失败。
+pytestmark_onnx_model = pytest.mark.skipif(
+    not _onnx_model_loadable(),
+    reason="ONNX 模型不可用（本地无缓存且下载失败）",
 )
 
 
@@ -211,17 +262,31 @@ class TestEmbeddingServiceONNXIntegration:
         assert svc._onnx is not None
         assert "onnx" in svc.stats
 
-    @pytestmark_onnx
+    @pytestmark_onnx_model
     def test_service_embed_uses_onnx(self):
-        """服务 embed 在无 API 时走 ONNX"""
+        """服务 embed 在无 API 时走 ONNX
+
+        用 pytestmark_onnx_model（而非 pytestmark_onnx）跳过：本测试要求
+        ONNX 模型**真的加载成功**。模型不可得时 EmbeddingService.embed()
+        会静默降级到 hash 向量，于是 vec/len 断言照样通过，只有下面那句
+        model_loaded 断言会炸，报出 `assert False is True` 这种无线索的
+        失败（CI 的 Python 3.10 job 就这样挂过一次）。
+        """
         from pangu.memory.embedding import EmbeddingService
 
         svc = EmbeddingService()
         vec = svc.embed("盘古测试")
         assert vec is not None
         assert len(vec) == 384
-        # ONNX 加载已发生
-        assert svc.stats["onnx"]["model_loaded"] is True
+        # ONNX 加载已发生。
+        # 注意：前两句断言无法区分"真走了 ONNX"和"降级到了 hash 向量"
+        # （两者都返回 384 维非 None 向量），只有这一句能。故失败时把
+        # 实际状态打出来，避免又出现 `assert False is True` 这种无线索报错。
+        onnx_stats = svc.stats["onnx"]
+        assert onnx_stats["model_loaded"] is True, (
+            f"ONNX 模型未加载，嵌入已静默降级到 hash 向量；"
+            f"onnx stats={onnx_stats}，load_error={getattr(svc._onnx, '_load_error', None)!r}"
+        )
 
     @pytestmark_onnx
     def test_service_batch_embed(self):
