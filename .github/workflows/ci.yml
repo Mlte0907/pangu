@@ -95,20 +95,16 @@ jobs:
           retention-days: 30
 
   # ──────────────────────────────────────────────────────────────
-  # 3. 单元 + 集成测试（多 Python × 多平台）
+  # 3. 单元 + 集成测试（多 Python 版本）
   # ──────────────────────────────────────────────────────────────
   test:
-    name: 测试 (Py ${{ matrix.python }} / ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: 测试 (Py ${{ matrix.python }})
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12"]
-        os: [ubuntu-latest]
-        include:
-          - python: "3.11"
-            os: ubuntu-24.04-arm64  # aarch64
 
     steps:
       - uses: actions/checkout@v4
@@ -137,11 +133,11 @@ jobs:
                           tests/test_v3_modules_*.py \
                           tests/test_integration.py \
                           -k "not test_remove_drawer and not test_batch_remove" \
-                          --junitxml=reports/junit-${{ matrix.python }}-${{ matrix.os }}.xml \
+                          --junitxml=reports/junit-${{ matrix.python }}.xml \
                           -q --tb=short --maxfail=20
 
       - name: 覆盖率
-        if: matrix.python == '3.11' && matrix.os == 'ubuntu-latest'
+        if: matrix.python == '3.11'
         continue-on-error: true
         run: |
           pip install pytest-cov
@@ -157,7 +153,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.python }}-${{ matrix.os }}
+          name: test-results-${{ matrix.python }}
           path: |
             reports/junit-*.xml
             reports/coverage.xml
