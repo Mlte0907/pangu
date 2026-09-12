@@ -35,12 +35,27 @@ jobs:
         run: |
           # 取当前标签之前最近的一个标签，用于界定「本次发布包含哪些提交」。
           # 首次发布时没有任何先前标签，此时退回列出最近 50 条提交。
+          #
+          # ⚠ 必须从 $GITHUB_REF 现场取版本号，不能用上一个 step 的
+          # steps.version.outputs.VERSION——GitHub Actions 的 step output
+          # 不会自动注入到 run 脚本的环境变量里，那个变量在本 step 中为空。
+          # 曾因此踩坑：`grep -v "^v$VERSION$"` 退化成 `grep -v "^v$"`（不匹配
+          # 任何行），排除自身失败，PREV_TAG 取到了当前标签自己，于是
+          # `git log <自身>..HEAD` 为空 —— Release 正文的「变更内容」整段空白，
+          # 对比链接也变成无意义的 vX...vX（v0.1.1 与 v0.1.2 两次都中招）。
+          VERSION=${GITHUB_REF#refs/tags/v}
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^v$VERSION$" | head -1)
           echo "PREV_TAG=$PREV_TAG" >> $GITHUB_OUTPUT
           if [ -n "$PREV_TAG" ]; then
             CHANGELOG=$(git log "$PREV_TAG..HEAD" --pretty=format:"- %s" --no-merges)
           else
             CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -n 50)
+          fi
+          # 兜底：即便上面的界定逻辑失效，也不要让 Release 正文出现空段落。
+          if [ -z "$CHANGELOG" ]; then
+            echo "::warning::未能界定上一个标签，变更内容回退为最近提交"
+            PREV_TAG=""
+            CHANGELOG=$(git log --pretty=format:"- %s" --no-merges -n 20)
           fi
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
