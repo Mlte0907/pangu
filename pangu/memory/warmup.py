@@ -73,14 +73,52 @@ def warmup_fts_index():
 
 
 def warmup_vector_index():
-    """预热向量索引"""
+    """预热向量索引
+
+    ⚠ 这里预热的**不是** `vector_index.get_vector_index()` 那个索引——那只
+    是个空索引（`size=0`），对搜索冷启动毫无帮助，此前本函数只调它，等于
+    什么都没预热。
+
+    真正的冷启动成本在**文档向量**：首次搜索时 `FTS5SearchEngine._vector_search`
+    会把整个候选集的文本交给 `EmbeddingService.embed_batch` 做 ONNX 推理，
+    1000 条约 45-50 秒。这批向量的缓存落在 `ONNXEmbedder._cache`（进程内，
+    重启即失效），所以启动时必须主动把文档过一次嵌入，把缓存填上。
+
+    本函数现在做两件事：
+      1. 建立 `FTS5SearchEngine` 的 FTS 索引（`build_index`，快，走磁盘缓存）；
+      2. **对真实 drawers 调一次 `embed_batch`**，把文档向量灌进 ONNX 缓存——
+         这一步才是消除首次搜索延迟的关键。
+
+    注意与 `warmup_fts_index()` 的分工：那个函数只预热分词器与建索引代码
+    路径（用的是另一个 FTS5SearchEngine 实例，且不碰向量），本函数才负责
+    文档向量。二者都会 build_index，但该操作有"索引已构建且数量相同则跳过"
+    的短路 + 磁盘缓存，重复调用代价可忽略。
+    """
     t0 = time.perf_counter()
     try:
-        from pangu.memory.vector_index import get_vector_index
+        from pangu.core.config import PanguConfig
+        from pangu.memory.embedding import get_embedding_service
+        from pangu.memory.fts_search import FTS5SearchEngine
+        from pangu.memory.layers import MemoryStack
 
-        idx = get_vector_index()
-        logger.info(f"向量索引预热完成: {(time.perf_counter() - t0) * 1000:.0f}ms (size={idx.size})")
-        return (time.perf_counter() - t0) * 1000
+        config = PanguConfig.load()
+        stack = MemoryStack(config)
+        drawers = stack.get_drawers()
+
+        fts = FTS5SearchEngine(config)
+        fts.build_index(drawers)
+
+        # 关键步骤：把文档文本过一次嵌入，填充 ONNX 进程内缓存。
+        # 这里直接复用 FTS5SearchEngine 的 embedder 单例，确保预热写入的
+        # 缓存与运行时搜索读到的是同一份（EmbeddingService 为单例）。
+        if drawers:
+            embedder = fts.embedder
+            if embedder is not None:
+                embedder.embed_batch([d.content for d in drawers])
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        logger.info(f"向量索引预热完成: {elapsed:.0f}ms ({len(drawers)} 条文档向量已入缓存)")
+        return elapsed
     except Exception as e:
         logger.warning(f"向量索引预热失败: {e}")
         return 0
