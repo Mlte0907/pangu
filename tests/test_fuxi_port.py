@@ -111,6 +111,19 @@ class TestHealthCheck:
         assert "uptime_seconds" in result
         assert result["uptime_seconds"] >= 0
 
+    def test_health_version_follows_source_of_truth(self):
+        """health 上报的版本必须等于 pangu.__version__，而非安装元数据。
+
+        回归防护：该模块曾优先 `importlib.metadata.version("pangu")`。
+        editable 安装的 dist-info 版本号只在 `pip install` 时写入，
+        发版改了源码 `__version__` 后它仍停留在旧值——表现为服务已经
+        是 0.1.2，`/health` 却报 0.1.1（v0.1.2 发版时实际踩到）。
+        """
+        from pangu import __version__
+        from pangu.observability.health import quick_health_check
+
+        assert quick_health_check()["version"] == __version__
+
     def test_deep_health_check(self):
         """测试深度健康检查"""
         from pangu.observability.health import deep_health_check

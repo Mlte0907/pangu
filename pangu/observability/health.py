@@ -7,14 +7,13 @@ from pathlib import Path
 from typing import Any
 
 try:
+    # 以 pangu.__init__ 的 __version__ 为唯一事实源。
+    from pangu import __version__
+except Exception:
+    # 仅在包本身不可导入时（极罕见：src 布局异常）才退到安装元数据。
     from importlib.metadata import version as _get_version
 
     __version__ = _get_version("pangu")
-except Exception:
-    # 读不到包元数据时（如源码直接运行、未安装 dist-info）回退到
-    # pangu.__init__ 里的唯一事实源，而不是再写一份版本字面量——
-    # 后者会随发版漂移，此前这里就曾停留在 "0.1.0"。
-    from pangu import __version__
 
 from pangu.memory.embedding import get_embedding_service
 
