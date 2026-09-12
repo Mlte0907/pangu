@@ -21,6 +21,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # 注意：${{ github.repository }} 保留仓库名原始大小写（本仓库为
+  # Mlte0907/pangu），仅可用于 metadata-action 的 images 参数——它会
+  # 自行转小写。需要显式镜像引用的步骤（如 Trivy）不要拼这个变量，
+  # 否则 OCI 会拒绝 "ghcr.io/Mlte0907/pangu:latest"（引用必须全小写），
+  # 而应改用 steps.meta.outputs.tags。
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -80,11 +85,26 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: 解析供扫描用的镜像引用
+        id: scanref
+        # metadata-action 对仓库名做了小写化，而显式拼接 env.IMAGE_NAME
+        # 会保留原始大小写（Mlte0907/pangu）。OCI 引用必须全小写，否则
+        # Trivy 报 "could not parse reference"，故从 metadata 的真实输出中
+        # 取第一条 tag 作为扫描目标。该步骤只是字符串处理，不引入副作用。
+        run: |
+          REF=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          if [ -z "$REF" ]; then
+            echo "::error::metadata 未产出任何 tag，无法确定扫描目标"
+            exit 1
+          fi
+          echo "扫描目标: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - name: 镜像扫描（Trivy）
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          image-ref: ${{ steps.scanref.outputs.ref }}
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
@@ -94,3 +114,5 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: "trivy-results.sarif"
+          # 扫描失败时无文件可传，跳过而非让本步骤也报错、掩盖真正原因
+          continue-on-error: true
