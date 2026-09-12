@@ -44,6 +44,39 @@ from pangu.store.migrations import init_db
 logger = logging.getLogger("pangu.api.server")
 
 
+def _setup_logging() -> None:
+    """初始化日志输出（幂等）。
+
+    为什么必须显式做这件事：Python 的 root logger 默认 level=WARNING 且
+    handler 为空，而本模块（以及 warmup / 各组件）大量使用 logger.info()。
+    不配置的话这些日志会被静默丢弃，运维侧表现为"启动日志里只有 uvicorn
+    的 access log，盘古自己的启动信息一条都没有"。
+
+    这里不重复造轮子：复用 pangu/memory/production.py 里已有的
+    setup_structured_logging（结构化 JSON 输出）。该类此前定义了却从未被
+    调用，属于同一问题的另一半。
+
+    配置两项均可由环境变量覆盖，默认值面向 systemd 部署：
+      PANGU_LOG_LEVEL：日志级别，默认 INFO
+      PANGU_LOG_FILE ：额外写入的日志文件；默认不设——由 systemd 的
+        StandardOutput=append: 负责落盘，避免与 uvicorn 自己的日志写入
+        同一文件时互相覆盖。
+
+    幂等：重复调用只重设一次，避免测试里反复 create_app() 堆积 handler
+    （setup_structured_logging 内部会先清空 root 的既有 handler）。
+    """
+    try:
+        from pangu.memory.production import setup_structured_logging
+
+        setup_structured_logging(
+            level=os.environ.get("PANGU_LOG_LEVEL", "INFO"),
+            log_file=os.environ.get("PANGU_LOG_FILE") or None,
+        )
+    except Exception as e:  # 日志配置失败不应阻断服务启动
+        logging.basicConfig(level=logging.INFO)
+        logger.warning(f"结构化日志配置失败，回退到 basicConfig: {e}")
+
+
 def create_app() -> FastAPI:
     """创建 FastAPI 应用（伏羲移植版）"""
     from pangu.core.config import PanguConfig as _Cfg
@@ -86,6 +119,15 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # 启动
+        # 必须在此处初始化日志：此前 create_app 全程没有任何 logging 配置，
+        # 而 Python 的 root logger 默认级别是 WARNING 且无 handler，导致
+        # 下面所有 logger.info(...) 被静默丢弃——包括预热耗时、MCPServer
+        # 预加载、自主维护周期等启动关键信息，在 .deploy-logs 里完全看不到
+        # （例如"向量索引预热完成: Nms"这条，本来是排查向量冷启动的唯一线索）。
+        # PANGU_LOG_LEVEL / PANGU_LOG_FILE 可覆盖默认值；默认只写 stdout，
+        # 由 systemd 的 StandardOutput=append: 落盘，避免与 uvicorn 的
+        # 日志文件写入互相干扰。
+        _setup_logging()
         logger.info(f"盘古 v3.0 starting on {config.host}:{config.port}")
         init_db()
         config.ensure_dirs()
@@ -105,9 +147,11 @@ def create_app() -> FastAPI:
             from pangu.memory.warmup import warmup_all
 
             warmup = warmup_all()
-            logger.info(
-                f"Warmup complete: {warmup['total']:.0f}ms (jieba={warmup['jieba']:.0f}ms, onnx={warmup['onnx']:.0f}ms, fts={warmup['fts_index']:.0f}ms)"
-            )
+            # 不要逐个硬编码字段名——此前只列了 jieba/onnx/fts_index，
+            # 漏掉了 vector_index，恰好是排查向量冷启动时最该看的那个数。
+            # 改为遍历 warmup_all() 的返回值，新增阶段会自动出现在日志里。
+            _detail = ", ".join(f"{k}={v:.0f}ms" for k, v in warmup.items() if k != "total")
+            logger.info(f"Warmup complete: {warmup.get('total', 0):.0f}ms ({_detail})")
         except Exception as e:
             logger.warning(f"Warmup failed: {e}")
 
