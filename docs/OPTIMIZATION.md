@@ -7,13 +7,18 @@
 
 ---
 
-## 摘要：三个最该做的事
+## 摘要：五个最该做的事
 
 | 优先级 | 事项 | 为什么现在做 | 工作量 |
 | --- | --- | --- | --- |
 | **P0** | 模型下载失败静默降级 → 检索质量静默错误 | 用户拿到"能跑但结果是错的"系统，零提示 | 0.5 天 |
-| **P0** | 安装流程（12 分钟 + 三个认知陷阱） | 首次体验决定留存，且当前 README 数字失真 | 1 天 |
+| **P0** | 远程 Embed API 分支因缺 `aiohttp` 从未生效 | 配置了却静默无效，熔断语义被 ImportError 污染 | 0.5 天 |
+| **P0** | 安装流程（12 分钟 + 三个认知陷阱） | 首次体验决定留存，且当前 README 数字失真 | 1 天 ✅已做 |
 | **P1** | 向量检索全量重算，无增量索引 | 30 条记忆时无感，1000 条时每次检索 45 秒 | 3-5 天 |
+| **P2** | 24 个死测试伪装成环境跳过 + 555 行死代码 | 掩盖真实失效，长期漏修 | 1 天 |
+
+> 前两条**同属"静默失效"家族**：系统不报错、照常服务，但用户以为在用的能力
+> 实际从未生效。这类缺陷比崩溃危险得多——崩溃会被发现，静默错误不会。
 
 ---
 
@@ -183,6 +188,32 @@ onnx 状态: {'model_loaded': False, ...}    ← 只有这里能看出问题
 - **v0.1.2 修的 CI ONNX 测试假失败**（`f0f03ec`）是同一根因的另一处表现：
   当时 CI 上 `model_loaded=False` 却是 `1329 passed`，只因断言恰好碰对了。
 
+### 附带发现：降级链第一级（远程 API）结构性不可达
+
+审计中发现一个**独立的、同样严重**的问题：
+
+- `pangu/memory/embedding.py:224` 与 `:270` 在函数内部 `import aiohttp`，
+  但 **`aiohttp` 未安装、且未在 `pyproject.toml` / `requirements.txt` /
+  `requirements-dev.txt` 任何清单中声明**（三份清单 grep 均为 0）。
+- **实测**：配置 `embed_api_url='https://example.invalid/v1/embeddings'` 后调用
+  `_call_api('hello')` → `Embed API failed (1): No module named 'aiohttp'` → 返回 `None`；
+  `_call_api_batch(['a','b'])` → `[None, None]`。
+- **含义**：三级降级链（`_call_api` → `_onnx_embed` → `_local_embed`）的 **API 分支
+  在此环境永远走 `ImportError` 兜底**，而不是 HTTP 错误路径。circuit breaker 的
+  `_fail_count >= 5` 由 `ImportError` 触发，而非网络故障——**熔断器的语义已被污染**。
+- 若用户指望用远程 embed API（有些部署会这么配），**它从未生效过，且没有任何提示**。
+- `tests/` 对 `_call_api|circuit|half_open` grep **零命中** —— 整条错误链无测试。
+
+> 修法二选一：
+> 1. 把 `aiohttp` 加为正式依赖；或
+> 2. **改用 `httpx`（推荐）**——`httpx>=0.27.0` 已是正式依赖
+>    （`pyproject.toml:25`），venv 中实际为 0.28.1，且**同仓库已有范例**：
+>    `pangu/memory/onnx_embedder.py:140` 就是用它下载模型的。
+>    同项目内统一到一个 HTTP 客户端也减少依赖。
+>
+> 无论哪种，**都要补测试**：断言 `_fail_count` 增长与熔断状态转换
+> （当前 `tests/` 对 `_call_api|circuit|half_open` grep 零命中）。
+
 ### 建议修法
 
 | 方案 | 说明 | 取舍 |
@@ -241,13 +272,50 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 > 本节的覆盖率数据由独立审计子代理实测产出，详见其报告。
 > 已知的**测试基础设施**问题：
 
-- **wall-clock 阈值断言**：`tests/test_performance_optimizations.py:177` 有
-  1 ms 级硬阈值断言，实测在本机出现过 flake（`1.59ms` 触发失败，单独跑 3/3 通过）。
-  这类断言在 CI 负载波动下必然 flake，建议改**相对比较**（如 A/B 比值）
-  或大幅放宽阈值。
+- **wall-clock 阈值断言**（**8 处**，比预想的多）：最危险的是
+  `tests/test_performance_optimizations.py:51` 的 `avg_time < 0.1`
+  —— **亚毫秒级阈值**，任何 CI 抖动即失败。同类还有 `:65 <2`、`:119 <50`、
+  `:147 <20`、`:176 <100`、`:177 <1`（实测出现过 `1.59ms` flake，单独跑 3/3 通过），
+  以及 `test_bench.py:332`、`test_boundary_cases.py:780`、`test_llm_optimizations.py:570`。
+  建议改**相对比较**（A/B 比值）或大幅放宽阈值。
+- **测试基础设施四项全缺**（`pyproject.toml:103-110` 的 `[tool.pytest.ini_options]`
+  只有 `testpaths` / `asyncio_mode` / 3 个 marker）：
+  无超时、无随机顺序、无 xdist、无 flaky 重试。
+  后果：**顺序固定 → 状态泄漏不会被暴露；无超时 → 单个挂起用例拖满 9 分钟**。
+  当前靠 `tests/conftest.py` 两个 autouse fixture（`_isolate_pangu_cache`、
+  `_reset_vector_index_singleton`）手工兜底，属"靠约定而非机制"。
 - **`collect_ignore_glob`** 必须放在 `tests/conftest.py`（不是 `pyproject.toml`）。
-- 覆盖率 omit 列表排除了 `pangu/cli.py` 与 39 个 experimental 模块，
-  全量 63.3% vs 60% 门禁 —— **门禁有意义，但 omit 掉的正是复杂度最高处**。
+
+### 24 个"永久死测试"伪装成环境问题
+
+`tests/test_v3_modules_f.py` 的 4 个测试类共 **24 个方法永久 skip**：
+
+- **证据**：`:394-398` 用 `try: from pangu.memory.auto_collector import ... / except ImportError`
+  设 `AUTO_COLLECTOR_AVAILABLE = False`，4 个 `setup_method`（`:403,451,486,518`）据此 skip。
+  实测 `.venv/bin/python -m pytest tests/test_v3_modules_f.py -q -rs`
+  → `119 passed, 24 skipped`，skip 原因全是 `auto_collector module not available`。
+- **真相**：`pangu/memory/auto_collector.py` **根本不存在**（`ls` 报 No such file），
+  全库仅 1 处引用（就是这个测试）。即这 24 个测试**从未可能通过**。
+- **危害**：写法让 pytest 报告显示为"环境缺失"而非"测试已失效"，
+  容易被误读成 CI 环境问题而**长期漏修**。建议：要么补模块，要么删测试，
+  但**不要用运行时 try/except 掩盖**——应改成模块顶层的直接 import，
+  让它立刻失败暴露。
+
+### 覆盖率口径诚实性问题
+
+- 全库实测 **62.8%**（24158 stmts / 8982 miss），门槛 60%。
+- **但 omit 列表（`pyproject.toml:131-173`，40 项）排除了 `pangu/cli.py` 与
+  39 个实验模块 —— 排掉的恰是复杂度最高处**。omit 本身**确实生效**
+  （端到端验证：import omit 内模块后跑 `coverage run`，其不出现在报告中）。
+- **26 个模块「既无测试又计入分母」**，其中 `handlers/advanced.py`
+  （2129 行，36.9%）是最大单点缺口。
+- **`pangu/memory/knowledge_extractor.py`（555 行）是彻底的死代码**：
+  零测试引用、**零源码引用**、不在 omit、未在 `__init__` 导出，
+  且文件末尾 `:544` 有 `main()`（像是独立脚本误入包内）。
+  这不是"未覆盖"，而是"没接线"——应先确认是否该删或该接。
+
+> 方法论提醒：覆盖率报告要用 `coverage report --sort=cover` 单独出表；
+> 原命令尾部 `tail -80` 恰好会**截掉覆盖率最低的那批模块**，导致误判。
 
 ## 2.4 【P2】代码质量
 
@@ -275,19 +343,36 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 
 | 版本 | 主题 | 内容 |
 | --- | --- | --- |
-| **v0.1.3** | 可用性兜底 | 2.1 静默降级（P0）、1.3 一键安装脚本、1.4 `pangu serve --api` |
+| **v0.1.3** | 可用性兜底 | 2.1 静默降级（P0）、远程 API 分支修复（P0）、1.3 一键安装脚本 ✅、1.4 `pangu serve --api` |
 | **v0.2.0** | 检索架构 | 2.2 增量向量索引接入检索路径（**性能与正确性的真正提升**） |
-| **v0.2.x** | 文档与测试 | 1.4 离线分发、2.3 测试盲区补全、2.4 文档修正与文件拆分 |
+| **v0.2.x** | 测试与清理 | 2.3 死测试清理 + 基础设施补全、2.4 文档修正（含三处错误引用）与文件拆分 |
 | **v0.3.0** | 插件自治 | 2.5 插件可配置化 + 服务自动拉起 + 多实例支持 |
 
 ## 判断依据
 
 - **v0.1.3 优先做 P0**：静默降级会让用户对系统产生**错误信任**，
   这比功能缺失危险——用户会以为检索是对的，直到发现召回全是噪声。
+  同版本内一并修 `aiohttp` 缺失（同为"配了却不生效"）。
 - **v0.2.0 做检索架构**：当前 30 条记忆无感，但这是**规模化的硬门槛**。
   1000 条时每次冷缓存检索 45 秒，完全不可用。
+- **v0.2.x 清理优先于新功能**：24 个死测试 + 555 行死代码是**认知负担**，
+  每新增一个贡献者都要重新踩一遍。清理成本低（1 天），收益是账目诚实。
 - **不建议现在做**：`vector_index` 已有实现，先测量再决定是否需要 FAISS
   （引入 FAISS 会增加安装体积，与 1.1 的安装优化目标冲突）。
+
+## 已在本轮完成
+
+| 项 | 状态 | 交付物 |
+| --- | --- | --- |
+| 一键安装脚本 | ✅ 已提交 `0b4b916` | `install.sh`（7 条路径实测通过） |
+| README 数字修正 + 两服务对照表 | ✅ 已提交 | `README.md` |
+| 本方案文档 | ✅ 已提交 | `docs/OPTIMIZATION.md` |
+
+## 尚未做（用户已明确"先不动，写进方案排优先级"）
+
+- 2.1 静默降级修复 —— **文档已详述，代码未改**
+- 远程 API 分支（`aiohttp`）修复 —— 同上
+- 其余全部条目 —— 均只做分析与排序，未改动代码
 
 ---
 
