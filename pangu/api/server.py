@@ -247,6 +247,24 @@ def create_app() -> FastAPI:
         except Exception:
             pass
 
+        # 关停时把嵌入缓存落盘。
+        #
+        # ⚠ 必须 flush **搜索链实际在用的那个** VectorEmbedder。
+        # 这里若新构造一个 `VectorEmbedder(config)`，它自带一个空缓存，
+        # flush 等于什么都没写（还静默返回 False）——看起来做了事，实则丢数据。
+        # 活实例挂在 MCPServer.search.semantic._embedder 上（engine.py:21）。
+        # 平时每 100 条新增才自动写一次，最后不足 100 条的那批只能靠这里。
+        try:
+            from pangu.api.routes_tools import _get_server
+
+            _srv = _get_server()
+            _sem = getattr(getattr(_srv, "search", None), "semantic", None)
+            _emb = getattr(_sem, "_embedder", None)
+            if _emb is not None and _emb.flush_cache():
+                logger.info("嵌入缓存已落盘")
+        except Exception as e:
+            logger.warning(f"Embedding cache flush failed: {e}")
+
         # 关闭
         logger.info("盘古 server stopped")
 

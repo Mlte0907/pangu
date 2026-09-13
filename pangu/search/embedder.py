@@ -27,14 +27,118 @@ from ..core.config import PanguConfig
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingCache:
-    """嵌入向量 LRU 缓存"""
+def _cache_key(text: str) -> str:
+    """生成**跨进程稳定**的缓存键。
 
-    def __init__(self, max_size: int = 5000):
+    ⚠ 不要改用内置 `hash()`。CPython 对 str 的 `hash()` 每进程加盐
+    （PYTHONHASHSEED），实测同一字符串在三个进程里得到三个不同值：
+
+        PYTHONHASHSEED=0 → -1037664797623304823
+        PYTHONHASHSEED=1 → -6474410125932865851
+        PYTHONHASHSEED=2 → 202728309569431982
+
+    进程内自洽所以缓存"看起来能用"，但键一旦落盘就毫无意义：重启后
+    全部 miss，等于没有持久化。blake2b 是内容寻址的，重启后必然命中。
+    """
+    import hashlib
+
+    return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
+
+
+class EmbeddingCache:
+    """嵌入向量 LRU 缓存（可选磁盘持久化）
+
+    为什么需要持久化：嵌入是整个搜索链里最贵的一步。实测（ONNX
+    all-MiniLM-L6-v2，唯一文本）：约 12–14 ms/条，39 条冷启 0.5 s、
+    1000 条 13.8 s；而缓存命中后同一批只要 0.1–1.8 ms。
+
+    纯进程内缓存意味着**每次服务重启都要重付这笔钱**。盘古的抽屉内容
+    基本不变（只在写入时新增），正是持久缓存最划算的场景。
+
+    失效条件（任一不符即整体作废，不做逐条校验）：
+    - `fingerprint` 变化（模型/维度/量化方式换了，向量不可混用）
+    - 缓存文件格式版本变化
+    """
+
+    # 文件格式版本：改动序列化方式时必须递增，否则读旧文件会静默出错
+    FORMAT_VERSION = 1
+
+    def __init__(self, max_size: int = 5000, cache_file=None, fingerprint: str = ""):
         self._cache: OrderedDict = OrderedDict()
         self.max_size = max_size
         self._hits = 0
         self._misses = 0
+        self._cache_file = cache_file
+        self._fingerprint = fingerprint
+        self._dirty = 0
+        if cache_file is not None:
+            self._load()
+
+    # ── 磁盘 ────────────────────────────────────────────────
+
+    def _load(self) -> None:
+        """从磁盘加载。任何异常都只意味着"缓存没命中"，不能阻断启动。"""
+        import json
+        import os
+
+        try:
+            if not os.path.exists(self._cache_file):
+                return
+            with open(self._cache_file, encoding="utf-8") as f:
+                blob = json.load(f)
+            # 指纹或格式不符 → 直接丢弃，不尝试修复
+            if blob.get("version") != self.FORMAT_VERSION:
+                logger.debug("嵌入缓存格式版本不符，丢弃")
+                return
+            if blob.get("fingerprint") != self._fingerprint:
+                logger.debug("嵌入缓存指纹不符（模型或维度已变），丢弃")
+                return
+            for k, v in blob.get("entries", {}).items():
+                self._cache[k] = np.asarray(v, dtype=np.float32)
+            logger.info(f"嵌入缓存已加载: {len(self._cache)} 条")
+        except Exception as e:  # noqa: BLE001 — 缓存损坏绝不能让服务起不来
+            logger.warning(f"嵌入缓存加载失败（忽略）: {e}")
+            self._cache.clear()
+
+    def save(self, force: bool = False) -> bool:
+        """把缓存写盘。仅在新增条目数达到阈值或 force 时真正写。"""
+        import json
+        import os
+        import tempfile
+
+        if self._cache_file is None:
+            return False
+        # 写盘是 O(n) 且要序列化全部向量，不能每条都写。
+        # 100 条新增才落一次盘，把写放大压到可忽略。
+        if not force and self._dirty < 100:
+            return False
+
+        try:
+            os.makedirs(os.path.dirname(self._cache_file), exist_ok=True)
+            blob = {
+                "version": self.FORMAT_VERSION,
+                "fingerprint": self._fingerprint,
+                # 只留最近 max_size 条（OrderedDict 已是 LRU 序）
+                "entries": {k: np.asarray(v, dtype=np.float32).tolist() for k, v in self._cache.items()},
+            }
+            # 原子替换：进程在写盘中途被杀不会留下半截 JSON
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(self._cache_file), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(blob, f)
+                os.replace(tmp, self._cache_file)
+            except Exception:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
+            self._dirty = 0
+            logger.debug(f"嵌入缓存已保存: {len(self._cache)} 条 → {self._cache_file}")
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"嵌入缓存保存失败（忽略）: {e}")
+            return False
+
+    # ── 读写 ────────────────────────────────────────────────
 
     def get(self, key: str) -> np.ndarray | None:
         if key in self._cache:
@@ -50,12 +154,14 @@ class EmbeddingCache:
         else:
             if len(self._cache) >= self.max_size:
                 self._cache.popitem(last=False)
+            self._dirty += 1
         self._cache[key] = value
 
     def clear(self):
         self._cache.clear()
         self._hits = 0
         self._misses = 0
+        self._dirty = 0
 
     @property
     def hit_rate(self) -> float:
@@ -79,9 +185,43 @@ class VectorEmbedder:
         self._model = None
         self._onnx = None
         self._backend: str | None = None  # 'onnx' | 'st' | 'unavailable'
-        self._cache = EmbeddingCache()
+        self._cache = EmbeddingCache(
+            max_size=getattr(self.config, "embedding_cache_size", 5000),
+            cache_file=self._default_cache_file(),
+            fingerprint=self._cache_fingerprint(),
+        )
         self._embed_time_total: float = 0.0
         self._embed_count: int = 0
+
+    # ── 缓存位置与指纹 ────────────────────────────────────────
+
+    def _default_cache_file(self):
+        """嵌入缓存文件路径。设 PANGU_EMBEDDING_CACHE=0 可禁用持久化。"""
+        import os
+        from pathlib import Path
+
+        if os.environ.get("PANGU_EMBEDDING_CACHE", "1") in ("0", "false", "False"):
+            return None
+        cache_dir = Path(os.environ.get("PANGU_CACHE_DIR", str(Path.home() / ".cache" / "pangu")))
+        return cache_dir / "embedding_cache.json"
+
+    def _cache_fingerprint(self) -> str:
+        """缓存指纹：向量只有在这些参数完全一致时才可复用。
+
+        换模型、改维度、切量化方式都会产出**不同且不可混用**的向量。
+        若不校验，旧缓存会被当成有效结果直接返回——静默给出错误相似度，
+        且没有任何报错。这与 v0.1.3 修的"静默降级"是同一类错误。
+        """
+        import hashlib
+
+        parts = [
+            str(getattr(self.config, "embedding_model", "")),
+            str(getattr(self.config, "onnx_model_id", "")),
+            str(getattr(self.config, "embedding_dim", "")),
+            str(getattr(self.config, "onnx_quantized", "")),
+            str(getattr(self.config, "onnx_max_length", "")),
+        ]
+        return hashlib.blake2b("|".join(parts).encode("utf-8"), digest_size=8).hexdigest()
 
     # ── 后端选择 ──────────────────────────────────────────────
 
@@ -206,7 +346,7 @@ class VectorEmbedder:
 
     def embed(self, text: str) -> np.ndarray:
         """为单段文本生成嵌入向量"""
-        cache_key = f"emb_{hash(text)}"
+        cache_key = _cache_key(text)
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -217,6 +357,7 @@ class VectorEmbedder:
         self._embed_count += 1
 
         self._cache.set(cache_key, embedding)
+        self._cache.save()
         return embedding
 
     def embed_batch(self, texts: list[str]) -> np.ndarray:
@@ -229,7 +370,7 @@ class VectorEmbedder:
         uncached_indices = []
 
         for i, text in enumerate(texts):
-            cache_key = f"emb_{hash(text)}"
+            cache_key = _cache_key(text)
             cached = self._cache.get(cache_key)
             if cached is not None:
                 results.append((i, cached))
@@ -245,12 +386,18 @@ class VectorEmbedder:
 
             for j, idx in enumerate(uncached_indices):
                 emb = embeddings[j]
-                cache_key = f"emb_{hash(uncached_texts[j])}"
+                cache_key = _cache_key(uncached_texts[j])
                 self._cache.set(cache_key, emb)
                 results.append((idx, emb))
+            # 一次批量结束后落盘，而不是每条都写
+            self._cache.save()
 
         results.sort(key=lambda x: x[0])
         return np.stack([r[1] for r in results])
+
+    def flush_cache(self) -> bool:
+        """强制把嵌入缓存写盘（供关停钩子调用）。"""
+        return self._cache.save(force=True)
 
     def similarity(self, a: np.ndarray, b: np.ndarray) -> float:
         """计算余弦相似度"""

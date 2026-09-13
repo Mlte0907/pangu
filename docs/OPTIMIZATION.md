@@ -15,7 +15,8 @@
 | **P0** | 远程 Embed API 分支因缺 `aiohttp` 从未生效 | 配置了却静默无效，熔断语义被 ImportError 污染 | 0.5 天 | ✅ **v0.1.3 已修** |
 | **P0** | 安装流程（12 分钟 + 三个认知陷阱） | 首次体验决定留存，且当前 README 数字失真 | 1 天 | ✅ **已做** |
 | **P0** | 19529 无 CLI 入口，用户不知如何启动 | 影响面最广的可用性缺口 | 0.5 天 | ✅ **v0.1.3 已修** |
-| **P1** | 向量检索全量重算，无增量索引 | 30 条记忆时无感，1000 条时每次检索 45 秒 | 3-5 天 | ⏳ v0.2.0 |
+| **P1** | 嵌入缓存键用 `hash()` + 纯进程内 → **每次重启全失效** | 本机 41 条实测：重启后首选 697ms → **修复后 7.4ms** | 0.5 天 | ✅ **v0.2.0 已修** |
+| **P1** | 检索无增量索引（保留项，当前规模收益不足） | 冷成本 ~12–14ms/条；1000 条 13.8s。需接 VectorIndex | 3-5 天 | ⏳ 待规模压力 |
 | **P2** | 24 个死测试伪装成环境跳过 + 555 行死代码 | 掩盖真实失效，长期漏修 | 1 天 | ⏳ v0.2.x |
 
 > 前两条**同属"静默失效"家族**：系统不报错、照常服务，但用户以为在用的能力
@@ -283,42 +284,116 @@ GET /health      → {"status":"ok"}   （不误报）
 > 可以放心作为判据。但注意 ONNX 是**惰性加载**的，构造后立即读会是 `False`，
 > 必须至少调用一次 `embed()`。
 
-## 2.2 【P1】向量检索全量重算，无增量索引
+## 2.2 【P1】嵌入缓存跨进程失效 —— ✅ v0.2.0 已修
 
-### 现状与证据
+> **本节已按实测重写。** 原文的判断（"`fts_search.py:270` 全量重算、
+> `vector_index.py` 不在检索路径上、45 ms/条")经代码与实测核对后**不准确**，
+> 已在下方标注。保留原文错误有助于理解为什么"读代码"必须先于"写方案"。
 
-`pangu/memory/fts_search.py:270` 的 `_vector_search()`：
+### 真正的调用链（逐一读代码确认）
 
-```python
-items = [{"id": d.id, "content": d.content} for d in drawers]   # ← 全部候选
-scores = self._try_batch_embed(query_vec, items)                 # ← 每次全量推理
+```
+pangu_search_memories
+ → pangu/server/handlers/memory_ops.py:70   server.search.search(query, drawers, ...)
+ → pangu/server/mcp_server.py:98-102        HybridSearch
+ → pangu/search/engine.py:168               SemanticSearch.search
+ → pangu/search/engine.py:68                VectorEmbedder.search
+ → pangu/search/embedder.py:277             embed_batch(全部 items)   ← 热点
 ```
 
-**每次检索都把全部候选重新向量化**，性能完全依赖 `ONNXEmbedder._cache` 兜住。
-实测开销约 **45 ms/条**（1000 条 → 45 秒，见 `mem_tech_aac5d7d38acb4098`）。
+**关键更正一**：主搜索链走的是 `search/embedder.py`，**不是**
+`fts_search.py:270` 的 `_vector_search()。后者属于 `pangu_fts_search`
+（`handlers/search.py:178`）与 `pangu_holographic_search` 的路径，
+**这两条在默认 28 工具暴露面里都不可达**。改错地方等于白改。
 
-### 问题
+**关键更正二**：原文称 `vector_index.py` "不在检索路径上"也**不准确**。
+`get_vector_index()` 实际被 8 个模块引用：
 
-- 缓存是**进程内内存**，重启即失效 → 这正是 v0.1.2 修的"首次搜索 50 秒"的根因
-  （已在 `a5f8654` 用预热缓解，但**没解决架构问题**）；
-- 新增记忆时**没有增量索引**，cache miss 会触发新文本推理；
-- **`pangu/memory/vector_index.py` 实现了完整的 `VectorIndex`（FAISS/HNSW/numpy）
-  却不在检索路径上**——只被 `pangu/server/handlers/embed.py` 的两个 MCP 工具引用
-  （`pangu_vector_index_stats` / `pangu_vector_index_build`）。
+```
+handlers/embed.py:30,42          memory/ingestion.py:244,648
+observability/performance_monitor.py:43   memory/retrieval.py:166
+memory/lifecycle.py:163          memory/autonomous.py:338
+memory/layers.py:508,673         cli.py:1647
+```
 
-这是典型的**已有轮子没装上**：索引能力写好了，但 `search()` 没用它。
+准确说法是：**`fts_search.py` 与 `search/engine.py` 这两条搜索链没有接它**。
 
-### 建议
+### 真正的缺陷：缓存键用 `hash()`，跨进程必然失效
 
-把 `_vector_search` 从"全量重算"改为"查索引"：
+`pangu/search/embedder.py` 原有三处（现为 `_cache_key()`）：
 
-1. 记忆写入时增量 upsert 向量到 `VectorIndex`；
-2. 检索时 `index.search(query_vec, k)` 取代全量 `embed_batch`；
-3. 保留全量重算作为**索引未就绪时的回退**；
-4. 索引持久化到磁盘，避免重启后重建。
+```python
+cache_key = f"emb_{hash(text)}"
+```
 
-风险：`VectorIndex` 需要先验证其正确性与当前后端选择逻辑（FAISS 是否已装？
-numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试再改**。
+CPython 对 `str` 的 `hash()` **每进程加盐**（PYTHONHASHSEED）。实测同一字符串：
+
+| PYTHONHASHSEED | `hash('记忆')` |
+| --- | --- |
+| 0 | -1037664797623304823 |
+| 1 | -6474410125932865851 |
+| 2 | 202728309569431982 |
+
+进程内自洽，所以缓存**看起来能用**；但键不可跨进程复现。
+叠加 `EmbeddingCache` 是**纯进程内** `OrderedDict`（`max_size=5000`，不落盘），
+结论是：**服务每次重启，缓存 100% 失效**，下一次搜索付全额冷成本。
+
+> 这与 v0.1.3 修的"静默降级"是同一家族：**不报错、照常服务，
+> 但你以为在生效的优化其实从未生效**。
+
+### 实测成本（ONNX all-MiniLM-L6-v2，aarch64，全唯一文本）
+
+| 条数 | 冷（真算） | 热（命中） |
+| --- | --- | --- |
+| 39 | 500.7 ms | 0.1 ms |
+| 200 | 2395.4 ms | 0.4 ms |
+| 1000 | 13777.7 ms | 1.8 ms |
+
+约 **12–14 ms/条**（原文"45 ms/条"偏高约 3 倍）。
+
+> ⚠ **基准测试陷阱（我第一版就踩了）**：最初用 39 条真实语料*复制*成
+> 200/1000/3000 条，测出 "n=3000 只要 37.9 ms（0.01 ms/条）"——
+> 完全错误，因为重复文本被缓存去重了，根本没重新嵌入。
+> **测缓存相关性能时，输入必须保证缓存不可命中**，否则量的是缓存不是计算。
+
+### 修法（v0.2.0 已实施）
+
+改动集中在 `pangu/search/embedder.py` + `pangu/api/server.py`：
+
+1. **`_cache_key()` 改用 `blake2b` 内容寻址**——重启后必然命中；
+2. **`EmbeddingCache` 支持磁盘持久化**，路径 `~/.cache/pangu/embedding_cache.json`
+   （`PANGU_CACHE_DIR` 可改，`PANGU_EMBEDDING_CACHE=0` 可禁用）；
+3. **指纹校验**：指纹 = 模型 + 维度 + 量化 + max_length。任一变化 → 整体作废。
+   否则旧向量会被当成有效结果返回，**静默给出错误相似度且不报错**；
+4. **格式版本号** `FORMAT_VERSION`，改动序列化方式时必须递增；
+5. **原子写盘**（`tempfile` + `os.replace`）——进程写盘中途被杀不会留半截 JSON；
+6. **写放大节流**：每 100 条新增才落一次盘，另有关停 `flush_cache()` 兜底；
+7. **容错**：文件损坏/版本不符/指纹不符一律降级为"缓存未命中"，
+   **绝不阻止服务启动**。
+
+### 效果（真实 41 条抽屉，走 `MCPServer` 同源装配）
+
+| 场景 | 重启后首次搜索 |
+| --- | --- |
+| **修复后** | **7.4 ms**（42/42 全部命中） |
+| 修复前（`PANGU_EMBEDDING_CACHE=0` 复现） | **696.9 ms** |
+
+**约 94× 提升**，且随记忆量增长而放大。
+
+### 关于"接入 VectorIndex"——评估后本轮不做
+
+原文建议把 `VectorIndex` 接进检索链。评估结论：**收益不足，风险不值**。
+
+- `faiss` ✗ / `hnswlib` ✗ 均未安装（仅 `numpy` 2.5.3 可用），
+  所以 `VectorIndex` 实际只能走 `_search_numpy` 暴力点积；
+- 41 条时该暴力搜索本身 <1 ms，**相对 697 ms 的嵌入成本可忽略**；
+- 真正的开销在嵌入，而持久化缓存已把它消掉。
+
+因此顺序应该是：**先解决嵌入（已做），等记忆量上千再评估索引**。
+届时 `VectorIndex` 的正确性已另行核对一致：`_build_faiss` 用
+`METRIC_INNER_PRODUCT`（`vector_index.py:213`）、`_build_hnsw` 用
+`space="cosine"`（`:230` 配合 `:403` 的 `1.0 - dist`）、`_search_numpy`
+用归一化向量点积（`:419`），三者语义一致。
 
 ## 2.3 【P2】测试盲区
 
@@ -397,9 +472,11 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 | 版本 | 主题 | 内容 | 状态 |
 | --- | --- | --- | --- |
 | **v0.1.3** | 可用性兜底 | 2.1 静默降级（P0）、远程 API 分支修复（P0）、1.3 一键安装脚本、`pangu serve --api` | ✅ **已完成** |
-| **v0.2.0** | 检索架构 | 2.2 增量向量索引接入检索路径（**性能与正确性的真正提升**） | ⏳ 下一步 |
-| **v0.2.x** | 测试与清理 | 2.3 死测试清理 + 基础设施补全、2.4 文档修正（含三处错误引用）与文件拆分 | ⏳ |
+| **v0.2.0** | 检索性能 | 2.2 嵌入缓存跨进程持久化（**重启后首选 697ms → 7.4ms**） | ✅ 已完成 |
+| **v0.2.x** | 测试与清理 | 2.3 死测试清理 + 基础设施补全、2.4 文档修正（含三处错误引用）与文件拆分；`test_performance_optimizations.py` 墙钟断言去 flake | ⏳ 下一步 |
+| **v0.2.x+** | 检索架构 | 2.2 剩余项：接入 `VectorIndex` 增量索引（**等记忆量上千再评估**） | ⏳ 按需 |
 | **v0.3.0** | 插件自治 | 2.5 插件可配置化 + 服务自动拉起 + 多实例支持 | ⏳ |
+
 
 ## 判断依据
 
@@ -427,10 +504,49 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 
 | 项 | 状态 | 交付物 / 验证 |
 | --- | --- | --- |
-| **2.1 静默降级** | ✅ 完成 | `embedding.py` + `health.py` + `api/server.py` + `config.py`；`tests/test_embedding_degradation.py`（17 条） |
+| **2.1 静默降级** | ✅ 完成 | `embedding.py` + `health.py` + `api/server.py` + `config.py`；`tests/test_embedding_degradation.py`（18 条） |
 | **远程 API 不可达** | ✅ 完成 | `embedding.py` 改用 `httpx`；`tests/test_embedding_remote_api.py`（9 条，真 HTTP 服务） |
 | **19529 无 CLI 入口** | ✅ 完成 | `pangu serve --api`（`cli.py`）；实测 `/mcp` 返回 28 工具 |
 | 安装收尾断言真实后端 | ✅ 完成 | `install.sh` 验证 `active_backend`，降级则 `warn` 并给修复指引 |
+
+### 第三轮（v0.2.0：嵌入缓存跨进程持久化）
+
+| 项 | 状态 | 交付物 / 验证 |
+| --- | --- | --- |
+| **2.2 缓存键改 blake2b** | ✅ 完成 | `embedder.py` `_cache_key()`；子进程对比证明跨进程一致 |
+| **2.2 磁盘持久化** | ✅ 完成 | `EmbeddingCache` 支持落盘 + 原子替换 + 写放大节流 |
+| **2.2 指纹/版本失效** | ✅ 完成 | 模型/维度变化即整体作废，杜绝静默复用错向量 |
+| **关停 flush** | ✅ 完成 | `api/server.py` lifespan 取**活实例**（非新建空实例）落盘 |
+| 测试 | ✅ 完成 | `tests/test_embedding_cache_persistence.py`（16 条） |
+| 未做：接入 VectorIndex | ⏸ 有意推迟 | 理由见 2.2 末节：41 条时暴力搜索 <1 ms，收益不足 |
+
+**v0.2.0 的验证方式**（同样"先证伪再证实"）：
+
+1. **先确认缺陷成立**：两个子进程分别 `print(hash('...'))` 得到**不同**值，
+   证明 `hash()` 每进程加盐；再用新进程读上一进程写下的缓存文件，
+   缺陷版实测 `hits=0 misses=3`——重启后确实全军覆没。
+2. **四类缺陷注入全部验证能失败**（这是测试有效性的唯一证据）：
+
+   | 注入的缺陷 | 失败测试数 |
+   | --- | --- |
+   | 缓存键换回 `hash()` | 2 |
+   | 缓存不落盘（`_load` 直接返回） | 2 |
+   | 去掉指纹校验 | 1 |
+   | 节流失效（每次都写盘） | 1 |
+
+3. **真实服务端到端**：用生产同源装配 `MCPServer` + 真实 41 条抽屉实测
+   重启前后首选耗时，并设 `PANGU_EMBEDDING_CACHE=0` 作对照复现旧行为。
+
+> **一处测试自身缺陷（已修）**：`test_fingerprint_mismatch_discards` 第一版
+> 写错了——条目设在一个临时对象上，存盘的是**另一个空对象**，
+> 于是"指纹不符 → 0 条"恒真，把指纹校验删掉也照样通过。
+> 加了一条前置断言"同指纹必须读回 1 条"才暴露出来。
+> **教训：断言"某条件下为空"时，必须先证明"不满足该条件时不为空"。**
+
+> **未改动的部分**：2.3（P2 死测试）、2.4（P2 死代码）、2.5（P3 插件）
+> 均仍为分析状态，按路线图排在 v0.2.x / v0.3.0。
+> 2.2 的"接入 VectorIndex"经评估后**有意推迟**（见 2.2 末节）。
+
 
 **四个 P0 的验证方式**（都是"先证伪再证实"）：
 
@@ -444,8 +560,9 @@ numpy 后端在 1000+ 规模下是否够快？）。**建议先写基准测试�
 4. **真服务端到端**：分别用正常/降级配置各起一个真实 uvicorn，
    验证 `/health` 与 `/health/deep` 的 HTTP 响应体（见 2.1 实测验证表）。
 
-> **未改动的部分**：2.2（P1 增量索引）、2.3（P2 死测试）、2.4（P2 死代码）、
-> 2.5（P3 插件）均仍为分析状态，按路线图排在 v0.2.0 / v0.2.x / v0.3.0。
+> **第一、二轮的收尾状态**：2.1（P0 静默降级家族）、2.2（P1 嵌入缓存）
+> 均已完成并实测验证；2.3（P2 死测试）、2.4（P2 死代码）、2.5（P3 插件）
+> 仍为分析状态，按路线图排在 v0.2.x / v0.3.0。
 
 ---
 
