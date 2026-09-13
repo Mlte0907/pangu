@@ -73,3 +73,6 @@ logs/
 CLAUDE.md.local
 reports/
 benchmarks/
+
+# mkdocs 构建产物
+site/

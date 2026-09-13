@@ -12,6 +12,71 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 
 清理测试债务与生产死代码。**无破坏性变更，无 API 改动。**
 
+### Security / Data-integrity — 测试套件写入生产数据库（重要）
+
+**这是一个长期存在的严重缺陷：跑 `pytest tests/` 会直接写入用户真实的
+`~/.pangu` 数据库。**
+
+根因链条：
+
+1. 测试用 `monkeypatch.setenv("PANGU_DB_PATH", tmp_path)` 隔离
+   （`tests/test_e2e_rbac_abac.py`）；
+2. 但 `create_app()` 会调 `PanguConfig.load()` 读真实 `~/.pangu/config.json`，
+   再把**文件里显式写明的每个字段** `setattr` 回全局单例 `config`
+   —— 而该文件显式写着 `"db_path": "~/.pangu/pangu.db"`；
+3. `pangu/api/server.py` 的 `_build_memory_store()` 用
+   `Path(config.db_path) / "v2_memories"` 定位 MemoryStack 的存储。
+
+⇒ 环境变量的隔离被覆盖回生产路径，测试读写真库。实测：跑一条
+`test_cross_tenant_list_isolated` 就让生产库 drawers **108 → 111（+3）**；
+本轮全量测试期间从 **69 涨到 118**。
+
+**二次症状（易被误判为业务 bug）**：该用例断言 bob（globex）看不到 acme 记录
+而失败。但过滤逻辑本身是**正确的**——`routes_memory.py:201` 为
+`if vis == "public" or d_tid == subject.tenant_id`，**按设计允许 public
+跨租户可见**。失败的真实原因是隔离库被累积污染，破坏了"库中只有本次写入"
+这一前置条件。
+
+修复：
+
+- `pangu/api/server.py`：新增 `_ENV_OVERRIDABLE_PATHS = ("db_path", "base_dir")`。
+  只要调用方显式设置了 `PANGU_DB_PATH` / `PANGU_BASE_DIR`，就**跳过**
+  config.json 对该字段的覆盖（与 pydantic-settings 的 `env > 文件` 优先级一致）。
+- `tests/conftest.py`：新增 autouse fixture `_isolate_pangu_data_dir`，
+  同时隔离 `PANGU_BASE_DIR` 与 `PANGU_DB_PATH` 并逐用例复位 config 单例。
+  ⚠ **只设 `PANGU_DB_PATH` 不够**（`base_dir` 才是派生路径的根）。
+
+验证：`pytest tests/ -q` → **1416 passed / 16 skipped / 0 failed**；
+跑全量前后生产库 drawers **118 → 118（零写入）**；生产 systemd unit 未设
+这两个变量，`config.json` 语义完整保留（实测 `db_path` 仍解析为
+`~/.pangu/pangu.db`）。
+
+### Fixed — CI 工作流分支不匹配（`main` vs `master`）
+
+`docker-build.yml` / `docs.yml` / `release-drafter.yml` 的触发器与 `if`
+条件写的是 `main`，而本仓库默认分支是 **`master`**，导致：
+
+- `docs.yml` 与 `release-drafter.yml` 的 `gh run list` 历史为**空**——
+  **从未运行过一次**（文档站从未自动部署）；
+- `docker-build.yml` 在分支 push 时从不触发，仅靠 tag / 手动 dispatch；
+- `docs.yml` 的 deploy 门禁 `github.ref == 'refs/heads/main'` **永假**。
+
+已全部改为 `master`，并在 `.gitignore` 加入 `site/`（mkdocs 构建产物）。
+验证：`mkdocs build --strict` 本地实测通过（exit 0），三份 workflow YAML
+均 `yaml.safe_load` 合法。
+
+### Changed — v0.2.x 剩余项裁决（记录为"不做"，含依据）
+
+- **2.3 `handlers/advanced.py` 覆盖率 → 不补测**：该模块在
+  `module_registry.py:174` 登记为 `experimental` 层，默认 `tools/list`
+  的 28 个工具**不含其中任何一个**（默认部署下用户不可达），为 121 个
+  不可达 handler 补测只是覆盖率数字工程。
+- **2.4 文件拆分 → 不拆分**：四个大文件（`cli.py` 2319 行等）是
+  "大而内聚"而非"大而混乱"；而 `pangu.cli:app` 与 `api.server:create_app`
+  是**契约入口**，且 `core/llm.py` 有 **32 处**外部引用（含以模块对象方式
+  monkeypatch 的 `test_warmup_audit.py:19`），拆分易引入静默失效。
+  将来若某文件因**具体缺陷**难以维护，届时针对该文件拆分。
+
 ### Fixed — 性能测试墙钟断言间歇失败（flake）
 
 `tests/test_performance_optimizations.py` 中 6 处墙钟断言在负载或降频时

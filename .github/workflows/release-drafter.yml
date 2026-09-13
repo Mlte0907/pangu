@@ -2,10 +2,10 @@ name: release-drafter
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
     types: [opened, reopened, synchronize, closed]
-    branches: [main]
+    branches: [master]
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   update_release_draft:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - uses: release-drafter/release-drafter@v6

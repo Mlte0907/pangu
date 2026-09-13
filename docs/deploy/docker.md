@@ -139,7 +139,7 @@ spec:
     spec:
       containers:
       - name: pangu
-        image: ghcr.io/mlte0907/pangu:v0.2.0
+        image: ghcr.io/mlte0907/pangu:0.2.0
         ports:
         - containerPort: 19528
         env:

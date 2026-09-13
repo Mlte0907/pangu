@@ -98,6 +98,29 @@ def create_app() -> FastAPI:
     #      —— 见 tests/test_e2e_rbac_abac.py。
     # 保留语义：config.json 里写了的字段以文件为准（运维期望）；
     # 没写的字段不干预进程内现值（环境变量与程序化设置的期望）。
+    #
+    # ⚠ 但路径类字段必须让位给显式环境变量（否则测试会写进生产库）：
+    #   上面的规则有一条被忽视的推论——`~/.pangu/config.json` 里通常**显式
+    #   写着** `db_path` / `base_dir`（它们是盘的落点，运维会写死）。于是
+    #   任何"用 PANGU_DB_PATH 指向 tmp 来隔离测试"的尝试都会被这里覆盖回
+    #   生产路径，而 `pangu/api/server.py:557` 正是用
+    #   `Path(config.db_path) / "v2_memories"` 定位 MemoryStack 的存储。
+    #   实测后果：跑一条 `test_cross_tenant_list_isolated` 就让用户真实库
+    #   drawers 从 108 → 111（+3），整个套件一轮从 69 → 108；而且真实库里
+    #   累积的历史记录（含 visibility='public' 的其它租户记录，
+    #   routes_memory.py:201 按设计允许其跨租户可见）会破坏"隔离库中只有
+    #   本次写入"这一前置条件，表现为跨租户断言随机失败。
+    #
+    # 因此：只要调用方**显式**通过环境变量指定了路径字段，就以环境变量为准。
+    # 这与 pydantic-settings 的常规优先级一致（env > 配置文件默认），
+    # 也不影响运维语义——运维在 config.json 里写的值，在没有环境变量覆盖时
+    # 依然完全生效（本机生产部署即如此，未设 PANGU_DB_PATH）。
+    _ENV_OVERRIDABLE_PATHS = ("db_path", "base_dir")
+    _env_pinned: set[str] = set()
+    for _name in _ENV_OVERRIDABLE_PATHS:
+        if os.environ.get(f"PANGU_{_name.upper()}"):
+            _env_pinned.add(_name)
+
     _json_keys: set[str] = set()
     _cfg_path = getattr(_loaded, "config_path", "") or os.path.expanduser("~/.pangu/config.json")
     try:
@@ -109,6 +132,9 @@ def create_app() -> FastAPI:
 
     for _field in _loaded.model_fields:
         if _field not in _json_keys:
+            continue
+        if _field in _env_pinned:
+            # 环境变量显式指定了该路径字段，跳过文件覆盖
             continue
         try:
             setattr(_orig_cfg, _field, getattr(_loaded, _field))

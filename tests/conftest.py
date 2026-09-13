@@ -58,6 +58,60 @@ def _isolate_pangu_cache(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_pangu_data_dir(tmp_path, monkeypatch):
+    """把每个用例的盘古**数据目录**指向独立临时目录。
+
+    为什么必须做（这是本项目最严重的测试缺陷）：`pangu/api/server.py:80-120`
+    的 `create_app()` 会调用 `PanguConfig.load()` 读**真实 `~/.pangu/config.json`**，
+    再把**文件里显式写明的每个字段** `setattr` 回全局单例 `config`。而真实
+    config.json 里显式写着 `"db_path": "~/.pangu/pangu.db"`，于是：
+
+        测试设的 PANGU_DB_PATH（tmp_path） → 被 create_app() 覆盖成生产路径
+
+    而 `pangu/api/server.py:557` 用 `Path(config.db_path) / "v2_memories"` 定位
+    MemoryStack 的存储。结果是**测试写入用户真实数据库**：实测跑一条
+    `test_cross_tenant_list_isolated` 就让生产库 drawers 从 108 → 111（+3），
+    整个套件一轮下来从 69 → 108。
+
+    后果不止"污染数据"——它还会让测试**随机失败**：真实库里累积的历史记录
+    （含 `visibility='public'` 的其它租户记录，而 `routes_memory.py:201` 按设计
+    允许 public 跨租户可见）会破坏"隔离库中只有本次写入"这一前置条件，
+    表现为跨租户隔离断言失败。
+
+    隔离方式：monkeypatch 两个环境变量，它们对 `create_app()` 的
+    `config.json` 覆盖**具有优先权**（见 `pangu/api/server.py` 中
+    `_ENV_OVERRIDABLE_PATHS` 的说明）：
+      1. `PANGU_BASE_DIR` → tmp_path（`base_dir` 是所有派生路径的根）
+      2. `PANGU_DB_PATH`  → tmp_path/pangu.db（直接决定 v2_memories 位置）
+    只设 `PANGU_DB_PATH` **不够**，必须同时隔离 base_dir 的派生。
+    """
+    data_dir = tmp_path / "pangu_data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("PANGU_BASE_DIR", str(data_dir))
+    monkeypatch.setenv("PANGU_DB_PATH", str(data_dir / "pangu.db"))
+
+    # 全局 config 单例是模块级对象，且可能已被前一个用例改成指向真实目录；
+    # 每用例前按当前环境变量重建，避免上一个用例的路径残留。
+    try:
+        from pangu.core.config import config
+
+        config.__init__()
+        config.db_path = data_dir / "pangu.db"
+        config.base_dir = data_dir
+    except Exception:  # noqa: BLE001
+        pass
+
+    yield
+
+    try:
+        from pangu.core.config import config
+
+        config.__init__()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@pytest.fixture(autouse=True)
 def _reset_vector_index_singleton():
     """每个用例前后都丢弃向量索引单例，避免跨用例状态泄漏。
 
