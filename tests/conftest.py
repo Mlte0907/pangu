@@ -87,6 +87,15 @@ def _isolate_pangu_data_dir(tmp_path, monkeypatch):
     """
     data_dir = tmp_path / "pangu_data"
     data_dir.mkdir(parents=True, exist_ok=True)
+    # 必须预建派生目录：`PanguConfig.model_post_init`（core/config.py:318-326）
+    # 只在字段**为空**时才把 palace_path / wiki_path 等派生到 base_dir 下，
+    # 且**不会 mkdir**。本地 `~/.pangu/palace` 早已存在所以看不出问题，
+    # 但在 CI 的全新环境里该目录不存在，`knowledge_graph.py:30` 的
+    # `Path(palace_path) / "knowledge_graph.db"` 会让 sqlite 报
+    # `OperationalError: unable to open database file`
+    # （实测：test_top_level_intelligence.py 两个用例在 3.10/3.11/3.12 全挂）。
+    for _sub in ("palace",):
+        (data_dir / _sub).mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("PANGU_BASE_DIR", str(data_dir))
     monkeypatch.setenv("PANGU_DB_PATH", str(data_dir / "pangu.db"))
 
