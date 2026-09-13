@@ -6,7 +6,7 @@
 
 ```bash
 # 1. 克隆
-git clone https://github.com/xiaoxin/pangu.git
+git clone https://github.com/Mlte0907/pangu.git
 cd pangu
 
 # 2. 配置
@@ -28,13 +28,13 @@ docker run -d \
   -p 19528:19528 \
   -e PANGU_LLM_API_KEY=sk-xxxxx \
   -v pangu-data:/data \
-  ghcr.io/xiaoxin/pangu:latest
+  ghcr.io/mlte0907/pangu:latest
 ```
 
 ### 方式 3: 源码部署
 
 ```bash
-git clone https://github.com/xiaoxin/pangu.git
+git clone https://github.com/Mlte0907/pangu.git
 cd pangu
 pip install -e .
 pangu serve --host 0.0.0.0 --port 19528
@@ -87,10 +87,10 @@ docker run --rm \
 
 ```bash
 # 自动选择（Apple Silicon / ARM 服务器）
-docker pull ghcr.io/xiaoxin/pangu:latest
+docker pull ghcr.io/mlte0907/pangu:latest
 
 # 显式拉取
-docker pull --platform linux/arm64 ghcr.io/xiaoxin/pangu:latest
+docker pull --platform linux/arm64 ghcr.io/mlte0907/pangu:latest
 ```
 
 ## 反向代理（Nginx）
@@ -139,7 +139,7 @@ spec:
     spec:
       containers:
       - name: pangu
-        image: ghcr.io/xiaoxin/pangu:v0.1.0
+        image: ghcr.io/mlte0907/pangu:v0.2.0
         ports:
         - containerPort: 19528
         env:
@@ -186,9 +186,9 @@ docker compose pull
 docker compose up -d
 
 # 单容器
-docker pull ghcr.io/xiaoxin/pangu:latest
+docker pull ghcr.io/mlte0907/pangu:latest
 docker stop pangu && docker rm pangu
-docker run -d ... ghcr.io/xiaoxin/pangu:latest
+docker run -d ... ghcr.io/mlte0907/pangu:latest
 ```
 
 ## 故障排查

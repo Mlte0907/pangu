@@ -8,6 +8,154 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 > 本文件此前的 `v1.0.0` 标题是「分层共存重构」时期的旧称，代码侧已在
 > commit `ac563b4`（unify all version strings to 0.1.0）统一为 `0.1.0`，此处同步更正。
 
+## [0.2.x] — 2026-09-13
+
+清理测试债务与生产死代码。**无破坏性变更，无 API 改动。**
+
+### Fixed — 性能测试墙钟断言间歇失败（flake）
+
+`tests/test_performance_optimizations.py` 中 6 处墙钟断言在负载或降频时
+间歇失败。根因经实测确认是**四层问题叠加**，而非单纯的"机器慢"：
+
+1. **缓存命中被当成真实搜索**：`hybrid_search` 有 `search_cache`
+   （`pangu/memory/search_cache.py:28`，key 仅含 query/modalities/limit，
+   **不含 drawers**），同一 query 重复测量只会量到约 0.003ms 的缓存命中；
+2. **均值采样**：被抢占或降频的轮次会被算进均值；
+3. **冷启动混入**：query 嵌入走惰性单例（`hybrid_search.py:110`），
+   未预热 52~54ms vs 预热后 8~10ms，相差 5 倍；
+4. **阈值低于真实成本**：L255 实测 min≈49.6ms 而阈值为 50ms，
+   余量仅 1.005 倍——min-of-N 只能剔除噪声，剔不掉真实成本。
+
+修法：统一改为 **min-of-N** 采样（配合显式预热 embedder 单例与
+每轮使用互不相同的 query），并新增护栏
+`assert min(samples) > 0.5`，防止日后有人写成同一 query 循环
+导致 min 塌缩到缓存命中值、断言静默失效。
+
+阈值调整仅限于成本测量本身有误的两处：
+
+| 断言 | 调整 | 真实成本 |
+| --- | --- | --- |
+| L255 混合搜索 | 50ms → **125ms** | min≈49.6ms |
+| L324 混合搜索 | 20ms → **100ms** | min≈46.7ms |
+
+二者测量的是同一成本项（一次 ONNX query 嵌入）。其余红线
+（`0.1` / `2` / `100` / `1`）保持原值不动。
+
+> 曾有放宽到 150ms 的提议，实测否决：注入 60ms 延迟后实录 106ms，
+> 在 150ms 阈值下**仍然通过**，即该放宽会让回归漏网。
+
+### Fixed — 24 个"永久死测试"
+
+`tests/test_v3_modules_f.py` 用 `try/except ImportError` + 4 处
+`pytest.skip` 包裹 `experimental.auto_collector` 的导入，把硬失败
+变成了静默跳过。实际导入路径写错了：模块自始就在 `experimental/`，
+`pangu.memory.auto_collector` **从不存在**。改为模块顶层直接导入后：
+
+| 指标 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 通过 | 119 | **143** |
+| 跳过 | 24 | **0** |
+
+已用缺陷注入验证这 24 条确会失败（是"救活"而非删除）。
+
+### Fixed — `pangu_auto_collect` 双重损坏
+
+该工具在默认核心工具集中可达（`io_tools` 属核心模块，
+`pangu/server/module_registry.py:159`），但调用必然失败：
+
+- 导入写的是相对路径 `from ...memory.auto_collector import ...`，
+  解析到 `pangu.memory.auto_collector`——该模块**从未存在**；
+- 即便导入成功，所调用的 `collect_from_file` 也不存在，
+  `AutoCollector` 只有 `collect_from_session`。
+
+修复为延迟绝对导入 + 修正方法名，并让导入失败时返回显式 error，
+而非静默返回空结果（避免"没有采集到"与"功能完全不可用"无法区分）。
+新增 `tests/test_auto_collect_handler.py`（5 条回归测试）。
+
+### Added — systemd unit 模板
+
+新增 `systemd/pangu-api.service`，使用占位符
+（`__REPO_DIR__` / `__VENV_PYTHON__` / `__HOST__` / `__PORT__` / `__LOG_DIR__`），
+不含任何机器特定路径，供手工部署参考。
+
+> 注意：`install.sh` 自带 heredoc 生成 unit（`install.sh:327-347`），
+> **不读取本目录**，故新增该模板不影响安装流程。
+
+### Changed — 移除死代码 `pangu/memory/knowledge_extractor.py`
+
+555 行、**零引用**（不在 `__init__` 导出、非 entry point、
+全库除自身 logger 名外无 import）、文件末尾带独立 `main()`——
+独立脚本误入包内。删除后覆盖率分母同步收窄。
+
+## [0.2.0] — 2026-09-13
+
+修复嵌入缓存的**跨进程失效**问题——这是本系统首个真正影响
+规模化可用性的检索缺陷。**无破坏性变更**。
+
+### Fixed — 嵌入缓存键不可复现，且不落盘 → 每次重启全失效
+
+两处缺陷叠加，导致嵌入缓存**在任何一次服务重启后完全归零**：
+
+1. **缓存键用 `hash(text)`**：CPython 对 `str` 的哈希受
+   `PYTHONHASHSEED` 随机化影响，同一文本在不同进程中得到不同键。
+   实测 `PYTHONHASHSEED=0/1/2` 下 `hash('记忆')` 三次结果各不相同。
+   改用 `blake2b(text, digest_size=16)`，跨进程稳定。
+2. **`EmbeddingCache` 仅在进程内存在**：进程退出即丢弃。
+   改为持久化到磁盘（`~/.cache/pangu/`，可用 `PANGU_CACHE_DIR` 覆盖，
+   `PANGU_EMBEDDING_CACHE=0` 关闭）。
+
+持久化实现要点：带 `FORMAT_VERSION` 与模型指纹（覆盖
+model/dim/quantized/max_length），指纹不匹配即整体丢弃；
+写入采用 `tempfile.mkstemp` + `os.replace` 原子替换，避免半写坏文件；
+每累积 100 条脏数据落盘一次，服务关闭时（lifespan shutdown）强制 flush。
+
+| 场景 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 重启后首次检索 | **696.9ms** | **7.4ms**（≈94×） |
+
+新增 `tests/test_embedding_cache_persistence.py`（16 条测试）。
+
+## [0.1.3] — 2026-09-13
+
+可用性兜底：消除"配置了却不生效"的静默降级，并补上 API 服务的 CLI 入口。
+**无破坏性变更。**
+
+### Fixed — 模型下载失败静默降级为 hash 嵌入
+
+ONNX 模型不可用时检索照常返回结果，但嵌入质量降级为哈希向量——
+用户拿到的是"能跑但结果是错的"系统，且**没有任何提示**。
+现改为显式上报：`pangu/observability/health.py:52-56` 在
+`active_backend == "hash"` 时把 `/health` 改判为
+`{"status":"degraded","embedding_backend":"hash","embedding_degraded":true}`，
+`pangu/core/config.py:193` 同步记 ERROR 日志。
+（仅在状态**已确定且为降级**时改判，避免把 `unknown` 误当异常。）
+
+### Fixed — 远程 Embed API 分支因缺 `aiohttp` 从未生效
+
+该分支依赖 `aiohttp`，而它不是正式依赖，导致配置了远程 Embed API 后
+**静默走回本地路径**，且熔断器语义被 `ImportError` 污染。
+改用 `httpx`（`httpx>=0.27.0` 本就是正式依赖）。
+
+### Added — `pangu serve --api`：19529 的 CLI 入口
+
+此前 `pangu/api/server.py:create_app()` 没有任何 CLI 命令可启动，
+用户无从得知如何拉起同时提供 MCP 与 REST 的服务（DSH 插件所依赖的正是它）。
+
+> 两个服务容易混淆，务必区分：
+> - **19529** = `pangu/api/server.py:create_app()`，MCP + REST 同端口
+>   （`/mcp` 挂载于 `api/server.py:612`）——**DSH 插件用这个**
+> - **8866** = `pangu/server/web_server.py:create_app()`，由普通
+>   `pangu serve` 启动，**不含 MCP 端点**
+
+### Added — 一键安装脚本 `install.sh`
+
+7 条路径实测通过（含依赖冷装、ONNX 模型下载失败降级、
+`--no-service` 与 systemd 单元生成）。
+
+### Changed — `PluginInfo.version` 默认值与软件版本解耦
+
+插件版本不再随主程序版本漂移。
+
 ## [0.1.2] — 2026-09-12
 
 修复 v0.1.1 之后发现的**首个检索性能缺陷**与**日志静默**问题，并消除全仓库

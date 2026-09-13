@@ -11,7 +11,7 @@
 #
 # 构建示例：
 #   # 默认（runtime，最常见）
-#   docker buildx build --platform linux/amd64,linux/arm64 -t pangu:0.1.0 .
+#   docker buildx build --platform linux/amd64,linux/arm64 -t pangu:0.2.0 .
 #
 #   # Alpine 小镜像
 #   docker buildx build --target runtime-slim -t pangu:slim .
@@ -81,7 +81,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ==============================================================
 FROM base AS runtime
 
-ARG VERSION=0.1.0
+ARG VERSION=0.2.0
 ARG BUILD_DATE
 ARG VCS_REF
 ARG TARGETARCH
@@ -93,10 +93,10 @@ LABEL org.opencontainers.image.title="盘古" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.architecture="${TARGETARCH}" \
-      org.opencontainers.image.source="https://github.com/xiaoxin/pangu" \
+      org.opencontainers.image.source="https://github.com/Mlte0907/pangu" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Pangu Team" \
-      maintainer="xiaoxin"
+      maintainer="Pangu Team"
 
 # 创建非 root 用户
 RUN groupadd --system --gid ${GID:-1000} pangu \

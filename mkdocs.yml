@@ -1,10 +1,10 @@
 site_name: 盘古 — LMM+Wiki 超智能记忆系统
 site_description: 专业的智能体记忆系统，专注存储、检索、组织、分类、知识结晶
 site_author: Pangu Team
-site_url: https://xiaoxin.github.io/pangu/
-repo_url: https://github.com/xiaoxin/pangu
-repo_name: xiaoxin/pangu
-edit_uri: edit/main/docs/
+site_url: https://mlte0907.github.io/pangu/
+repo_url: https://github.com/Mlte0907/pangu
+repo_name: Mlte0907/pangu
+edit_uri: edit/master/docs/
 
 docs_dir: docs
 site_dir: site
@@ -164,10 +164,10 @@ extra:
   generator: false
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/xiaoxin/pangu
+      link: https://github.com/Mlte0907/pangu
       name: GitHub
     - icon: fontawesome/brands/docker
-      link: https://github.com/xiaoxin/pangu/pkgs/container/pangu
+      link: https://github.com/Mlte0907/pangu/pkgs/container/pangu
       name: Docker
   alternate:
     - name: 简体中文

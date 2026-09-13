@@ -17,8 +17,12 @@
 
 ### 安装
 
+> ⚠ **本包未发布到 PyPI**。`pip install pangu` 会装到**同名的其它项目**，请勿使用。
+
 ```bash
-pip install pangu
+git clone https://github.com/Mlte0907/pangu.git
+cd pangu
+./install.sh
 ```
 
 ### 启动服务

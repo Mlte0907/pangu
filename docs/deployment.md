@@ -48,7 +48,7 @@ sudo journalctl -u pangu -f
 version: '3.9'
 services:
   pangu:
-    image: pangu/pangu:0.1.0
+    image: ghcr.io/mlte0907/pangu:v0.2.0
     ports:
       - "127.0.0.1:19529:19529"  # 仅本机
     volumes:

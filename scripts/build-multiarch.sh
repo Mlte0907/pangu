@@ -11,7 +11,7 @@ set -euo pipefail
 # ── 参数 ──
 VERSION=${1:-"dev"}
 PUSH=${2:-""}
-REGISTRY=${REGISTRY:-"ghcr.io/xiaoxin"}
+REGISTRY=${REGISTRY:-"ghcr.io/mlte0907"}
 IMAGE_NAME=${IMAGE_NAME:-"pangu"}
 PLATFORMS=${PLATFORMS:-"linux/amd64,linux/arm64"}
 BUILDER_NAME=${BUILDER_NAME:-"pangu-builder"}
