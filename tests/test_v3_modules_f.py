@@ -388,20 +388,27 @@ class TestAttentionSystem:
 # ── 5. AutoCollector sub-systems ──
 
 
-import pytest
-
-try:
-    from pangu.memory.auto_collector import AutoCollector, CategoryClassifier, ConversationParser, ImportanceFilter
-
-    AUTO_COLLECTOR_AVAILABLE = True
-except ImportError:
-    AUTO_COLLECTOR_AVAILABLE = False
+# 模块位于 experimental/ 而非 pangu/memory/。
+#
+# 历史：v1.0.0 分层重构（commit 1122031）把 auto_collector 放在 experimental/，
+# 但本文件写的是 pangu.memory.auto_collector，从未成功导入过；
+# commit af7dae3 没有修正路径，而是用 try/except ImportError + pytest.skip
+# 把硬失败改成了**静默跳过**——4 个 setup_method 因此静默掩盖了 24 个用例。
+# 这里改回真实路径并**去掉 try/except**：模块是被 git 跟踪的正式文件，
+# 导入失败就应该让测试红，而不是伪装成"环境不可用"。
+#
+# 用 `experimental.auto_collector` 绝对导入而非相对导入，因为本测试文件
+# 位于 tests/ 下，与被测包不同层级。
+from experimental.auto_collector import (  # noqa: E402
+    AutoCollector,
+    CategoryClassifier,
+    ConversationParser,
+    ImportanceFilter,
+)
 
 
 class TestConversationParser:
     def setup_method(self):
-        if not AUTO_COLLECTOR_AVAILABLE:
-            pytest.skip("auto_collector module not available")
         self.parser = ConversationParser()
 
     def test_parse_session_nonexistent(self):
@@ -448,8 +455,6 @@ class TestConversationParser:
 
 class TestImportanceFilter:
     def setup_method(self):
-        if not AUTO_COLLECTOR_AVAILABLE:
-            pytest.skip("auto_collector module not available")
         self.f = ImportanceFilter()
 
     def test_empty_content(self):
@@ -483,8 +488,6 @@ class TestImportanceFilter:
 
 class TestCategoryClassifier:
     def setup_method(self):
-        if not AUTO_COLLECTOR_AVAILABLE:
-            pytest.skip("auto_collector module not available")
         self.c = CategoryClassifier()
 
     def test_classify_empty(self):
@@ -515,8 +518,6 @@ class TestCategoryClassifier:
 
 class TestAutoCollector:
     def setup_method(self):
-        if not AUTO_COLLECTOR_AVAILABLE:
-            pytest.skip("auto_collector module not available")
         self.collector = AutoCollector()
 
     def test_init(self):

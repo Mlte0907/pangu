@@ -10,7 +10,7 @@ sys.path.insert(0, "/home/xiaoxin/pangu")
 
 from pangu.core.config import PanguConfig
 from pangu.core.palace import Drawer
-from pangu.memory.auto_collector import AutoCollector, ImportanceFilter, CategoryClassifier
+from experimental.auto_collector import AutoCollector, ImportanceFilter, CategoryClassifier
 
 
 def collect_without_embedding():

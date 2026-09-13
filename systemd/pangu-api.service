@@ -1,0 +1,45 @@
+# 盘古 API systemd **用户**服务单元模板（参考模板，非安装脚本读取的源）
+#
+# 本文件是**参考模板**：为了把这台机器上实际运行的 unit 纳入版本管理，
+# 便于 review 与差异比对。它不是 install.sh 读取的输入——
+# install.sh:327-347 用 heredoc **自行生成** unit 内容（不读本目录），
+# 变量名与本模板的占位符一一对应（见下表），改这里不会影响安装流程。
+#
+# 占位符（安装时由 install.sh 解析为真实值，本文件不含任何机器专有路径）：
+#   __REPO_DIR__     仓库绝对路径            install.sh 变量 $REPO_DIR
+#   __VENV_PYTHON__  venv 内的 python 解释器  install.sh 变量 $VPY
+#   __HOST__         监听地址                install.sh 变量 $HOST（如 127.0.0.1）
+#   __PORT__         监听端口                install.sh 变量 $PORT（本机为 19529）
+#   __LOG_DIR__      日志目录                install.sh 变量 $LOG_DIR
+#
+# 渲染并校验（不触碰真实 unit、不重启服务）：
+#   sed -e 's|__REPO_DIR__|/path/to/pangu|g' \
+#       -e 's|__VENV_PYTHON__|/path/to/pangu/.venv/bin/python|g' \
+#       -e 's|__HOST__|127.0.0.1|g' -e 's|__PORT__|19529|g' \
+#       -e 's|__LOG_DIR__|/path/to/pangu/.deploy-logs|g' \
+#       systemd/pangu-api.service > /tmp/pangu-api.service
+#   systemd-analyze verify /tmp/pangu-api.service
+#
+# 安装到用户级 systemd（需自行确认，勿直接覆盖生产 unit）：
+#   cp systemd/pangu-api.service ~/.config/systemd/user/   # 替换占位符后再复制
+#   systemctl --user daemon-reload && systemctl --user enable --now pangu-api
+
+[Unit]
+Description=Pangu Memory System API (盘古记忆系统)
+Documentation=https://github.com/Mlte0907/pangu
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+Environment=PANGU_HOST=__HOST__
+Environment=PANGU_PORT=__PORT__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__VENV_PYTHON__ -c "import sys; sys.path.insert(0, '__REPO_DIR__'); import uvicorn; from pangu.api.server import create_app; uvicorn.run(create_app(), host='__HOST__', port=__PORT__, log_level='info')"
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:__LOG_DIR__/pangu-api.log
+StandardError=append:__LOG_DIR__/pangu-api.log
+
+[Install]
+WantedBy=default.target

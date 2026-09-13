@@ -323,12 +323,31 @@ HANDLERS["pangu_importance_score"] = handle_importance_score
 
 async def handle_auto_collect(server, drawers, arguments):
     """从会话文件自动提取记忆"""
-    from ...memory.auto_collector import AutoCollector
+    # 延迟**绝对**导入：AutoCollector 属于实验目录（experimental/），
+    # 按架构决策「核心不 import experimental」，这里不在模块顶层导入，
+    # 只在工具被实际调用时按需加载。
+    #
+    # 历史 bug：原先写的是相对导入 `from ...memory.auto_collector import ...`，
+    # 它解析到 pangu.memory.auto_collector —— 该模块**从不存在**
+    # （auto_collector 自 v1.0.0 起就位于 experimental/），因此
+    # pangu_auto_collect 调用时必然抛 ImportError。
+    #
+    # 同时修正方法名：AutoCollector 没有 collect_from_file，
+    # 只有 collect_from_session。
+    try:
+        from experimental.auto_collector import AutoCollector
+    except ImportError as e:
+        # 明确报错，不静默返回空结果——否则调用方无法区分
+        # "没有采集到" 与 "功能整个不可用"。
+        return json.dumps(
+            {"error": f"auto_collector 不可用（experimental 模块加载失败）: {e}"},
+            ensure_ascii=False,
+        )
 
     collector = AutoCollector(server.config)
     session_file = arguments.get("session_file", "")
     min_importance = arguments.get("min_importance", 0.3)
-    result = collector.collect_from_file(session_file, min_importance=min_importance)
+    result = collector.collect_from_session(session_file, min_importance=min_importance)
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
