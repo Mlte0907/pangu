@@ -2541,3 +2541,63 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ── 阶段 1：钥匙管理 CLI ──
+
+
+@app.command()
+def keys(
+    action: str = typer.Argument(..., help="操作: create/list/revoke"),
+    room: str = typer.Option("default", help="房间名（create 时必填）"),
+    scope: str = typer.Option("readwrite", help="权限: readwrite/readonly/admin"),
+    key_id: str = typer.Option("", help="钥匙 ID（revoke 时必填）"),
+    include_revoked: bool = typer.Option(False, "--revoked", help="包含已吊销钥匙"),
+):
+    """管理盘古钥匙
+
+    示例：
+        pangu keys create --room dsh --scope readwrite
+        pangu keys list
+        pangu keys revoke --key_id key_xxx
+    """
+    from pangu.keys import KeyManager
+
+    km = KeyManager()
+
+    if action == "create":
+        record = km.create(room=room, scope=scope)
+        console.print("[green]✓ 钥匙已创建[/green]")
+        console.print(f"  key_id:   {record['key_id']}")
+        console.print(f"  room:     {record['room']}")
+        console.print(f"  scope:    {record['scope']}")
+        console.print()
+        console.print("[bold red]明文密钥（仅显示一次，务必保存）：[/bold red]")
+        console.print(f"  [bold]{record['key']}[/bold]")
+
+    elif action == "list":
+        keys = km.list_keys(include_revoked=include_revoked)
+        if not keys:
+            console.print("[yellow]无钥匙[/yellow]")
+            return
+        table = Table(title="钥匙列表")
+        table.add_column("key_id", style="cyan")
+        table.add_column("room")
+        table.add_column("scope")
+        table.add_column("created_at")
+        table.add_column("last_used_at")
+        for k in keys:
+            table.add_row(k["key_id"], k["room"], k["scope"], k["created_at"], str(k.get("last_used_at", "-")))
+        console.print(table)
+
+    elif action == "revoke":
+        if not key_id:
+            console.print("[red]revoke 需要 --key_id[/red]")
+            return
+        if km.revoke(key_id):
+            console.print(f"[green]✓ 钥匙 {key_id} 已吊销[/green]")
+        else:
+            console.print(f"[red]未找到钥匙 {key_id}[/red]")
+
+    else:
+        console.print(f"[red]未知操作: {action}（支持 create/list/revoke）[/red]")

@@ -670,6 +670,11 @@ def create_app() -> FastAPI:
 
     app.include_router(tools_router, prefix="/api/v2")
 
+    # 钥匙管理（admin 端点，不进豁免清单）
+    from pangu.api.routes_keys import router as keys_router
+
+    app.include_router(keys_router, prefix="/api/v2")
+
     # 批量工具调用（直接注册到 app 避免被 {tool_name} 截获）
     from pangu.api.routes_tools import BatchToolCallRequest
 

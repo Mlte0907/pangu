@@ -14,6 +14,30 @@ from pangu import __version__
 logger = logging.getLogger("pangu.mcp.http")
 
 
+def _inject_identity(msg: dict, request: Request):
+    """P1-3 阶段 1.4：从 X-API-Key 解析身份，注入 MCP 请求上下文
+
+    - 有凭据 → 查钥匙表 → {key_id, room, scope} 注入 msg["_identity"]
+    - 无凭据 → 放行（默认行为，mcp_require_auth=false 时）
+    """
+    api_key = request.headers.get("X-API-Key", "")
+    if not api_key:
+        return
+
+    try:
+        from pangu.keys import KeyManager
+
+        km = KeyManager()
+        identity = km.verify(api_key)
+        if identity:
+            msg["_identity"] = identity
+            logger.debug(f"MCP identity: {identity['key_id']} room={identity['room']}")
+        else:
+            logger.debug("MCP: invalid API key")
+    except Exception as e:
+        logger.debug(f"MCP identity parse failed: {e}")
+
+
 async def _mcp_handle(request: Request) -> Response:
     """处理 MCP JSON-RPC 请求（StreamableHTTP + SSE 传输）"""
     if request.method == "GET":
@@ -79,6 +103,10 @@ async def _mcp_handle(request: Request) -> Response:
         )
 
     session_id = request.headers.get("mcp-session-id") or request.query_params.get("session_id", str(uuid.uuid4()))
+
+    # P1-3 阶段 1.4：MCP 身份解析（X-API-Key → 钥匙表 → context）
+    # 有凭据时识别房间并按 scope 限制；无凭据时放行（默认行为）
+    _inject_identity(msg, request)
 
     try:
         from pangu.api.routes_tools import _get_server

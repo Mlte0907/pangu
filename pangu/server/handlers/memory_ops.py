@@ -57,7 +57,9 @@ async def handle_add_memory(server, drawers, arguments):
     if drawer is not None:
         drawer.metadata = dict(drawer.metadata or {})
         drawer.metadata["owner_id"] = arguments.get("owner_id", "mcp_user")
-        drawer.metadata["tenant_id"] = arguments.get("tenant_id", "default")
+        # P1-3 阶段 1.4：身份优先于参数
+        identity = arguments.get("_identity", {})
+        drawer.metadata["tenant_id"] = identity.get("room", arguments.get("tenant_id", "default"))
         drawer.metadata["classification"] = arguments.get("classification", "normal")
         # P1-3 收尾：用 setdefault 语义，门禁已决定 visibility 时以门禁为准
         drawer.metadata.setdefault("visibility", arguments.get("visibility", "tenant"))

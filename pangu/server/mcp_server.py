@@ -266,6 +266,10 @@ class MCPServer:
         if not allowed:
             return error_json
 
+        # P1-3 阶段 1.4：从 request 提取身份并注入 arguments
+        if request and "_identity" in request:
+            arguments["_identity"] = request["_identity"]
+
         return await handler(self, drawers, arguments)
 
     # ── MCP 协议 ──
