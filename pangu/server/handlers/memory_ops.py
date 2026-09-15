@@ -94,10 +94,16 @@ HANDLERS["pangu_add_memory"] = handle_add_memory
 
 
 async def handle_search_memories(server, drawers, arguments):
-    """搜索记忆"""
+    """搜索记忆（P1-3 阶段 2.2：按 identity.room + visibility=public 过滤）"""
     query = arguments.get("query", "")
     wing = arguments.get("wing")
     room = arguments.get("room")
+
+    # P1-3：有身份时按 room 过滤 + public 毕业区
+    identity = arguments.get("_identity", {})
+    if identity:
+        room = identity.get("room", room)
+
     results = server.search.search(query, drawers, wing=wing, room=room)
     try:
         from ...memory.encryption import decrypt
@@ -128,6 +134,10 @@ async def handle_recall(server, drawers, arguments):
     """按 Wing/Room 回忆记忆"""
     wing = arguments.get("wing")
     room = arguments.get("room")
+    identity = arguments.get("_identity", {})
+    if identity:
+        # P1-3 阶段 2.2：按 identity.room 过滤 + public 毕业区
+        room = identity.get("room", room)
     return server.memory.recall(wing=wing, room=room)
 
 
