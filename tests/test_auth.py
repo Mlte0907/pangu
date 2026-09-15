@@ -273,7 +273,8 @@ def test_client(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(cfg_mod.config, "base_dir", tmp_path, raising=False)
     monkeypatch.setattr(cfg_mod.config, "jwt_secret_file", str(tmp_path / ".jwt"), raising=False)
-    monkeypatch.setattr(cfg_mod.config, "jwt_default_user", "testadmin", raising=False)
+    # jwt_default_user 必须与 config.json 一致（create_app 会从文件覆盖回真值）
+    monkeypatch.setattr(cfg_mod.config, "jwt_default_user", "admin", raising=False)
     monkeypatch.setattr(cfg_mod.config, "jwt_default_password", "test-pass-123", raising=False)
     monkeypatch.setattr(cfg_mod.config, "jwt_users", {}, raising=False)
     monkeypatch.setattr(cfg_mod.config, "api_key", "TEST_API_KEY_42", raising=False)
@@ -311,13 +312,13 @@ class TestHTTPAuth:
 
     def test_login_wrong_password(self, test_client):
         client, _ = test_client
-        r = client.post("/api/v2/auth/login", json={"username": "testadmin", "password": "wrong"})
+        r = client.post("/api/v2/auth/login", json={"username": "admin", "password": "wrong"})
         assert r.status_code == 401
         assert "Invalid" in r.json()["message"]
 
     def test_login_success(self, test_client):
         client, _ = test_client
-        r = client.post("/api/v2/auth/login", json={"username": "testadmin", "password": "test-pass-123"})
+        r = client.post("/api/v2/auth/login", json={"username": "admin", "password": "test-pass-123"})
         assert r.status_code == 200
         body = r.json()
         assert body["code"] == 0
@@ -327,13 +328,13 @@ class TestHTTPAuth:
 
     def test_me_with_jwt(self, test_client):
         client, _ = test_client
-        login = client.post("/api/v2/auth/login", json={"username": "testadmin", "password": "test-pass-123"})
+        login = client.post("/api/v2/auth/login", json={"username": "admin", "password": "test-pass-123"})
         token = login.json()["data"]["access_token"]
 
         r = client.get("/api/v2/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
         body = r.json()
-        assert body["data"]["username"] == "testadmin"
+        assert body["data"]["username"] == "admin"
 
     def test_me_with_api_key_rejected(self, test_client):
         client, _ = test_client
@@ -342,7 +343,7 @@ class TestHTTPAuth:
 
     def test_refresh_token_rotation(self, test_client):
         client, _ = test_client
-        login = client.post("/api/v2/auth/login", json={"username": "testadmin", "password": "test-pass-123"})
+        login = client.post("/api/v2/auth/login", json={"username": "admin", "password": "test-pass-123"})
         refresh = login.json()["data"]["refresh_token"]
 
         r = client.post("/api/v2/auth/refresh", json={"refresh_token": refresh})
@@ -361,14 +362,14 @@ class TestHTTPAuth:
         assert r.status_code == 401
 
         # 正确 token
-        login = client.post("/api/v2/auth/login", json={"username": "testadmin", "password": "test-pass-123"})
+        login = client.post("/api/v2/auth/login", json={"username": "admin", "password": "test-pass-123"})
         token = login.json()["data"]["access_token"]
         r = client.get("/api/v2/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
 
     def test_logout_revokes_token(self, test_client):
         client, _ = test_client
-        login = client.post("/api/v2/auth/login", json={"username": "testadmin", "password": "test-pass-123"})
+        login = client.post("/api/v2/auth/login", json={"username": "admin", "password": "test-pass-123"})
         access = login.json()["data"]["access_token"]
         refresh = login.json()["data"]["refresh_token"]
 
