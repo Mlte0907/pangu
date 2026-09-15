@@ -30,20 +30,38 @@ HANDLERS = {}
 
 
 async def handle_add_memory(server, drawers, arguments):
-    """添加记忆片段"""
+    """添加记忆片段（P0-1 缺口 2：接入 remember() 管道）
+
+    修复前：直接创建 Drawer + add_drawer()，绕过脱敏/去重/冲突检测。
+    修复后：走 remember() 全管道，与 REST 通道行为一致。
+    """
+    from ...memory.ingestion import remember
+
     importance = arguments.get("importance", 3.0)
     if not isinstance(importance, (int, float)):
         importance = Drawer._coerce_float(importance, 3.0)
-    drawer = Drawer(
-        id=f"mem_{arguments.get('wing', 'default')}_{uuid.uuid4().hex[:16]}",
-        content=arguments.get("content", ""),
+
+    # 走 remember() 全管道（脱敏 → 去重 → 冲突检测 → supersede → 版本链）
+    item_id, drawer = remember(
+        raw_text=arguments.get("content", ""),
         wing=arguments.get("wing", "default"),
         room=arguments.get("room", "general"),
-        hall=arguments.get("hall", "hall_events"),
         importance=importance,
         tags=arguments.get("tags", []),
+        source="mcp",
+        created_by="mcp",
     )
-    server.memory.add_drawer(drawer)
+
+    # 设置 MCP 特有的 metadata（owner_id / tenant_id 等）
+    if drawer is not None:
+        drawer.metadata = dict(drawer.metadata or {})
+        drawer.metadata["owner_id"] = arguments.get("owner_id", "mcp_user")
+        drawer.metadata["tenant_id"] = arguments.get("tenant_id", "default")
+        drawer.metadata["classification"] = arguments.get("classification", "normal")
+        drawer.metadata["visibility"] = arguments.get("visibility", "tenant")
+        # 回写 metadata（remember() 已 add_drawer，这里更新缓存）
+        server.memory.add_drawer(drawer)
+
     try:
         from ...memory.autonomous import on_memory_written
 
@@ -53,10 +71,19 @@ async def handle_add_memory(server, drawers, arguments):
     try:
         from ...memory.memory_events import get_event_stream
 
-        get_event_stream(server.config).emit_memory_write(drawer.id, drawer.content, drawer.wing)
+        get_event_stream(server.config).emit_memory_write(item_id, drawer.content, drawer.wing)
     except Exception:
         pass
-    return json.dumps({"drawer_id": drawer.id, "wing": drawer.wing, "room": drawer.room}, ensure_ascii=False)
+
+    return json.dumps(
+        {
+            "drawer_id": item_id,
+            "wing": drawer.wing,
+            "room": drawer.room,
+            "supersedes": drawer.metadata.get("supersedes", []),
+        },
+        ensure_ascii=False,
+    )
 
 
 HANDLERS["pangu_add_memory"] = handle_add_memory

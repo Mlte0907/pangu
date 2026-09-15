@@ -511,7 +511,8 @@ async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Reque
     if req.facts is not None:
         drawer.metadata["facts"] = req.facts
     drawer.metadata["updated_at"] = datetime.now().isoformat()
-    stack.add_drawer(drawer)
+    # P0-1 缺口 2：用 update_drawer 替代 add_drawer（后者会创建重复条目）
+    stack.update_drawer(drawer)
     return ApiResponse.ok(
         {
             "id": drawer.id,
