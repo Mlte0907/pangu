@@ -1066,6 +1066,93 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* ── 阶段 5A：钥匙与房间管理 ── */
+    function KeysRoomSection() {
+      const [keys, setKeys] = React.useState([])
+      const [rooms, setRooms] = React.useState([])
+      const [loading, setLoading] = React.useState(true)
+      const [createState, setCreateState] = React.useState({ room: '', scope: 'readwrite', result: null })
+
+      const load = React.useCallback(async () => {
+        setLoading(true)
+        try {
+          const [kl, rl] = await Promise.allSettled([
+            callRemote('panguAdminKeys', 'listKeys').then(unwrap),
+            callRemote('panguAdminKeys', 'listRooms').then(unwrap),
+          ])
+          if (kl.status === 'fulfilled' && kl.value) setKeys(kl.value.keys || [])
+          if (rl.status === 'fulfilled' && rl.value) setRooms(rl.value.rooms || [])
+        } catch (_) {}
+        setLoading(false)
+      }, [])
+
+      React.useEffect(() => { load() }, [])
+
+      const doCreate = async () => {
+        if (!createState.room) return
+        setCreateState((p) => ({ ...p, result: null }))
+        try {
+          const r = await callRemote('panguAdminKeys', 'createKey', { room: createState.room, scope: createState.scope })
+          if (r.error) { setCreateState((p) => ({ ...p, result: { ok: false, msg: r.error } })); return }
+          setCreateState((p) => ({ ...p, result: { ok: true, key: r.key, key_id: r.key_id }, room: '' }))
+          load()
+        } catch (e) { setCreateState((p) => ({ ...p, result: { ok: false, msg: String(e) } })) }
+      }
+
+      const doRevoke = async (key_id) => {
+        if (!confirm('确认吊销 ' + key_id + '？')) return
+        try {
+          await callRemote('panguAdminKeys', 'revokeKey', { key_id })
+          load()
+        } catch (_) {}
+      }
+
+      if (loading) return h('div', { style: { padding: '8px 0' } }, h(Skeleton, { w: '100%', h: 60, r: 8 }))
+
+      return h('div', { key: 'keys-room', style: { borderTop: `1px solid ${css.borderSoft}`, paddingTop: 12, marginTop: 16 } },
+        h(SectionTitle, null, '钥匙与房间管理'),
+        // 创建钥匙
+        h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10 } },
+          h('input', { placeholder: '房间名', value: createState.room, onChange: (e) => setCreateState((p) => ({ ...p, room: e.target.value })), style: { padding: '5px 8px', borderRadius: 6, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, flex: 1 } }),
+          h('select', { value: createState.scope, onChange: (e) => setCreateState((p) => ({ ...p, scope: e.target.value })), style: { padding: '5px 8px', borderRadius: 6, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12 } },
+            h('option', { value: 'readwrite' }, '读写删'),
+            h('option', { value: 'readonly' }, '只读'),
+          ),
+          h('button', { onClick: doCreate, style: { padding: '5px 12px', borderRadius: 6, border: 'none', background: ACCENT, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' } }, '创建'),
+        ),
+        createState.result && h('div', { style: { fontSize: 11, color: createState.result.ok ? css.ok : css.err, marginBottom: 8 } },
+          createState.result.ok
+            ? h('span', null, '✓ 明文密钥：', h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 11 } }, createState.result.key), ' （仅显示一次，请保存到环境变量）')
+            : createState.result.msg,
+        ),
+        // 钥匙列表
+        keys.length > 0 && h('table', { style: { width: '100%', fontSize: 11.5, borderCollapse: 'collapse', marginBottom: 10 } },
+          h('thead', null, h('tr', null,
+            h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '房间'),
+            h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '权限'),
+            h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '状态'),
+            h('th', { style: { textAlign: 'right', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, ''),
+          )),
+          h('tbody', null, keys.map((k) => h('tr', { key: k.key_id },
+            h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.room),
+            h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.scope),
+            h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.last_used_at ? '已使用' : '未使用'),
+            h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}`, textAlign: 'right' } },
+              h('button', { onClick: () => doRevoke(k.key_id), style: { fontSize: 11, color: css.err, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, '吊销'),
+            ),
+          ))),
+        ),
+        // 房间列表
+        rooms.length > 0 && h('div', { style: { fontSize: 11.5 } },
+          h('div', { style: { fontWeight: 600, marginBottom: 4, color: css.t2 } }, '房间概览'),
+          rooms.map((r) => h('div', { key: r.room, style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('span', null, r.room),
+            h('span', { style: { color: css.t3 } }, `${r.memory_count} 条 · ${r.key_count} 钥匙`),
+          )),
+        ),
+      )
+    }
+
     function PanguSettings() {
       const [config, setConfig] = React.useState(null)
       const [draft, setDraft] = React.useState(null)
@@ -1245,6 +1332,7 @@ window.__ModuleLoader__.load({
         h(InfoRow, { label: '嵌入模型', value: config?.embedding_model }),
         h(InfoRow, { label: '记忆库', value: config?.palace_path }),
         h(InfoRow, { label: 'MCP 服务', value: '127.0.0.1:19529' }),
+        h(KeysRoomSection, null),
       )
     }
 

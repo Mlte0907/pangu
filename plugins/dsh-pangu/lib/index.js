@@ -507,6 +507,33 @@ async function apply(ctx) {
   })
   ctx.provide('panguConfig', configService)
 
+  // ── 阶段 5：Admin Key Service（钥匙/房间管理）──
+  // admin secret 由插件后端读 ~/.pangu/.admin_secret（0600），前端 JS 永不接触
+  const ADMIN_SECRET_PATH = path.join(os.homedir(), '.pangu', '.admin_secret')
+  async function readAdminSecret() {
+    try { return (await fsp.readFile(ADMIN_SECRET_PATH, 'utf8')).trim() } catch (_) { return '' }
+  }
+  async function adminFetch(url, options = {}) {
+    const secret = await readAdminSecret()
+    if (!secret) return { ok: false, error: '未配置管理凭据（请先在 CLI 执行 pangu keys create）' }
+    const res = await fetch(url, {
+      ...options,
+      headers: { 'X-Admin-Key': secret, 'content-type': 'application/json', ...(options.headers || {}) },
+    })
+    return res.json()
+  }
+  const adminKeyService = {
+    async listKeys() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys') },
+    async createKey(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys', { method: 'POST', body: JSON.stringify(args) }) },
+    async revokeKey(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys/revoke', { method: 'POST', body: JSON.stringify(args) }) },
+    async listRooms() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms') },
+  }
+  Object.defineProperty(adminKeyService, 'typertRemote', {
+    configurable: false, enumerable: false, writable: false,
+    value: { service: adminKeyService, serviceKey: 'panguAdminKeys', namespace: 'panguAdminKeys' },
+  })
+  ctx.provide('panguAdminKeys', adminKeyService)
+
   // 实时事件通道(随插件卸载关闭,断线自动重连)
   startEvents()
 
