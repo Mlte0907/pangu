@@ -55,6 +55,18 @@ async function apply(ctx) {
     }
   }
 
+  // P0-1 热修：统一 LLM Key 读取路径
+  // configService.get() 有 SECRET_FILE 回退，但 fetchUsage/testConnection 没有
+  // → 它们永远读到空，导致"未配置"误报。抽公共 helper 解决。
+  function resolveLlmApiKey(cfg) {
+    if (cfg.llm_api_key) return cfg.llm_api_key
+    try {
+      const secret = require('fs').readFileSync(SECRET_FILE, 'utf8').trim()
+      if (secret) return secret
+    } catch (_) { /* 文件不存在 = 未配置 */ }
+    return ''
+  }
+
   async function fetchPanguStats() {
     let total = 0
     let wings = 0
@@ -164,7 +176,7 @@ async function apply(ctx) {
 
   async function fetchUsage() {
     const cfg = await readConfig()
-    const key = cfg.llm_api_key
+    const key = resolveLlmApiKey(cfg)
     const base = cfg.llm_base_url
     let usage = null
     if (key && base) {
@@ -440,7 +452,7 @@ async function apply(ctx) {
       }
       const provider = String(cfg.llm_provider || 'openai').toLowerCase()
       const base = String(cfg.llm_base_url || PROVIDER_URLS[provider] || '').replace(/\/+$/, '')
-      const key = String(cfg.llm_api_key || '')
+      const key = resolveLlmApiKey(cfg)
       const model = String(cfg.llm_model || '')
 
       if (!base) return { ok: false, ms: 0, error: `未知 provider「${provider}」，请填写 Base URL` }

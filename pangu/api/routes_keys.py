@@ -102,3 +102,44 @@ async def revoke_key(req: KeyRevokeRequest, request: Request):
         return {"ok": True, "key_id": req.key_id}
     else:
         return {"error": f"未找到钥匙: {req.key_id}", "code": 404}
+
+
+@router.get("/admin/rooms")
+async def list_rooms(request: Request):
+    """房间总览：按 tenant_id 聚合记忆条数、字符体积、钥匙数"""
+    if not _verify_admin(request):
+        return {"error": "需要 admin 凭据", "code": 401}
+
+    from collections import Counter
+
+    from pangu.core.config import PanguConfig
+    from pangu.keys import KeyManager
+    from pangu.memory.drawer_storage import JsonDrawerStorage
+
+    cfg = PanguConfig.load().authoritative_memory_config()
+    drawers = JsonDrawerStorage(str(cfg.authoritative_drawers_path)).load()
+    km = KeyManager()
+    all_keys = km.list_keys(include_revoked=True)
+
+    # 按 tenant_id 聚合
+    room_data: dict[str, dict] = {}
+    for d in drawers:
+        tid = (d.metadata or {}).get("tenant_id", "default") if isinstance(d.metadata, dict) else "default"
+        if tid not in room_data:
+            room_data[tid] = {"room": tid, "memory_count": 0, "chars": 0, "last_write_at": None}
+        room_data[tid]["memory_count"] += 1
+        room_data[tid]["chars"] += len(d.content or "")
+        cat = d.created_at or ""
+        if cat > (room_data[tid]["last_write_at"] or ""):
+            room_data[tid]["last_write_at"] = cat
+
+    # 补钥匙数
+    key_counts = Counter(k["room"] for k in all_keys if not k.get("revoked_at"))
+    for room, data in room_data.items():
+        data["key_count"] = key_counts.get(room, 0)
+
+    # 未分房的记忆单独列出
+    if "none" in room_data:
+        room_data["none"]["room"] = "(unmigrated)"
+
+    return {"rooms": list(room_data.values())}
