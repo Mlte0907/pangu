@@ -552,10 +552,16 @@ async function apply(ctx) {
 
   async function extractAssistantText(payload) {
     const agent = payload?.agent
-    const snapshot = agent?.session?.snapshotEvents
-    if (typeof snapshot !== 'function') return ''
+    // DSH 0.1.5+ 弃用 snapshotEvents，改用 ownEvents；更早版本只有 snapshotEvents
+    const sess = agent?.session
+    const snapshot = typeof sess?.snapshotEvents === 'function'
+      ? sess.snapshotEvents
+      : typeof sess?.ownEvents === 'function'
+        ? sess.ownEvents
+        : null
+    if (!snapshot) return ''
     try {
-      const events = await snapshot()
+      const events = await snapshot.call(sess)
       const msgs = (events || []).filter(e => e.type === 'assistant/message')
       const last = msgs[msgs.length - 1]
       const content = last?.data?.content
@@ -585,13 +591,17 @@ async function apply(ctx) {
     try { await consolidationWriter.run(payload) } catch (_) {}
   })
 
-  ctx.on('agent/session-start', async (payload) => {
+  // 双事件注册：旧基线(≤0.1.4)只有 session-start，新基线(≥0.1.5)只有 agent/created
+  // 处理器本身按会话重置状态、天然幂等，保留两者确保前后兼容
+  const onSessionCreated = async (payload) => {
     try {
       currentConfig = await loadInjectionConfig(ctx.logger)
       const sid = payload?.agent?.session?.id
       if (sid) { circuitBreaker.onSessionStart(sid); dedupTracker.onSessionStart(sid) }
     } catch (_) {}
-  })
+  }
+  ctx.on('agent/session-start', onSessionCreated)
+  ctx.on('agent/created', onSessionCreated)
 
   ctx.on('agent/disposed', (payload) => {
     try {
