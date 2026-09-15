@@ -130,6 +130,9 @@ class PanguConfig(BaseSettings):
     jwt_default_password: str = ""  # 部署后建议通过 jwt_users 或环境变量设置
     jwt_users: dict = Field(default_factory=dict)  # {username: bcrypt_hash}，留空则用 default
 
+    # ── MCP 认证开关 ──
+    mcp_require_auth: bool = False  # true 时 /mcp 无凭据或无效钥匙 → 401
+
     # ── RBAC 角色权限配置 ──
     jwt_default_role: str = "admin"  # 未指定用户的默认角色
     jwt_roles: dict = Field(default_factory=dict)  # 角色 → scope 列表；空则用 ROLE_PRESETS

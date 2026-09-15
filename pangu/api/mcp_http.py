@@ -18,10 +18,17 @@ def _inject_identity(msg: dict, request: Request):
     """P1-3 阶段 1.4：从 X-API-Key 解析身份，注入 MCP 请求上下文
 
     - 有凭据 → 查钥匙表 → {key_id, room, scope} 注入 msg["_identity"]
-    - 无凭据 → 放行（默认行为，mcp_require_auth=false 时）
+    - 无凭据 → 放行（mcp_require_auth=false 时）或 401（true 时）
     """
     api_key = request.headers.get("X-API-Key", "")
     if not api_key:
+        # 无凭据：检查 mcp_require_auth
+        from pangu.core.config import PanguConfig
+
+        config = PanguConfig.load()
+        if config.mcp_require_auth:
+            msg["_auth_error"] = "无凭据，mcp_require_auth=true 时需要 X-API-Key"
+            msg["_auth_code"] = 401
         return
 
     try:
@@ -33,7 +40,15 @@ def _inject_identity(msg: dict, request: Request):
             msg["_identity"] = identity
             logger.debug(f"MCP identity: {identity['key_id']} room={identity['room']}")
         else:
-            logger.debug("MCP: invalid API key")
+            # 无效钥匙：mcp_require_auth=true 时 401，否则 warning 后放行
+            from pangu.core.config import PanguConfig
+
+            config = PanguConfig.load()
+            if config.mcp_require_auth:
+                msg["_auth_error"] = "无效的 API Key"
+                msg["_auth_code"] = 401
+            else:
+                logger.warning("MCP: invalid API key, proceeding as anonymous")
     except Exception as e:
         logger.debug(f"MCP identity parse failed: {e}")
 
@@ -107,6 +122,15 @@ async def _mcp_handle(request: Request) -> Response:
     # P1-3 阶段 1.4：MCP 身份解析（X-API-Key → 钥匙表 → context）
     # 有凭据时识别房间并按 scope 限制；无凭据时放行（默认行为）
     _inject_identity(msg, request)
+
+    # P1-3 阶段 1.4：mcp_require_auth 检查
+    if "_auth_error" in msg:
+        code = msg.pop("_auth_code", 401)
+        error_msg = msg.pop("_auth_error")
+        return JSONResponse(
+            {"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": code, "message": error_msg}},
+            status_code=code,
+        )
 
     try:
         from pangu.api.routes_tools import _get_server
