@@ -125,6 +125,34 @@ def test_admission_gate_does_not_block_write():
     assert "admission_score" in drawer.metadata
 
 
+def test_graduation_via_importance_feedback():
+    """毕业通路闭合：写入→pending_review→feedback→graduated→public。"""
+    from pangu.memory.ingestion import _admission_gate
+
+    # 1) 写入无来源指针 → pending_review（visibility 不变）
+    drawer = Drawer(id="grad1", content="毕业测试", wing="test", room="t")
+    drawer.metadata["tenant_id"] = "default"
+    drawer.metadata["visibility"] = "tenant"
+    _admission_gate(drawer, None, "grad1")
+    assert drawer.metadata.get("admission") == "pending_review"
+    assert drawer.metadata.get("visibility") == "tenant"
+
+    # 2) 注入 recall_success 反馈（模拟召回成功）
+    drawer.metadata["last_feedback"] = "recall_success"
+    drawer.metadata["feedback_at"] = "2026-09-15T12:00:00"
+
+    # 3) 重新评估门禁 → 无 source_session → 仍 pending
+    _admission_gate(drawer, None, "grad1")
+    assert drawer.metadata.get("admission") == "pending_review"  # 无 source_session → 不毕业
+
+    # 4) 补上 source_session → 再次评估 → 毕业
+    drawer.metadata["source_session"] = "dsh_session_xyz"
+    _admission_gate(drawer, None, "grad1")
+    assert drawer.metadata.get("admission") == "graduated"
+    assert drawer.metadata.get("visibility") == "public"
+    assert "graduated_at" in drawer.metadata
+
+
 def test_admission_gate_score_structure():
     """admission_score 必须包含标准字段。"""
     from pangu.memory.ingestion import _admission_gate
@@ -137,3 +165,28 @@ def test_admission_gate_score_structure():
     assert "has_positive_feedback" in score
     assert "flags" in score
     assert "passed" in score
+
+
+def test_importance_feedback_graduates_pending_memory():
+    """importance_feedback 触发毕业：pending_review + source_session + recall_success → graduated。"""
+    from pangu.memory.retrieval import importance_feedback
+
+    # 构造一条 pending_review 且有 source_session 的记忆
+    drawer = Drawer(id="fb_grad1", content="反馈毕业测试", wing="test", room="t", source_file="/test.py")
+    drawer.metadata["tenant_id"] = "default"
+    drawer.metadata["source_session"] = "dsh_test"
+    drawer.metadata["admission"] = "pending_review"
+    drawer.metadata["visibility"] = "tenant"
+
+    # 传入 drawers 列表，用 recall_success 信号触发
+    result = importance_feedback("fb_grad1", "recall_success", drawers=[drawer])
+    assert "error" not in result
+
+    # 反馈后：admission 应该变成 graduated，visibility 应该变成 public
+    assert drawer.metadata.get("admission") == "graduated", (
+        f"feedback 后应毕业，实际: {drawer.metadata.get('admission')}"
+    )
+    assert drawer.metadata.get("visibility") == "public", (
+        f"feedback 后应 public，实际: {drawer.metadata.get('visibility')}"
+    )
+    assert "graduated_at" in drawer.metadata

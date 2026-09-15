@@ -641,6 +641,17 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
     target.metadata["last_feedback"] = signal
     target.metadata["feedback_at"] = datetime.now().isoformat()
 
+    # P1-3 毕业通路闭合：反馈更新后重新评估四问门禁
+    # 如果之前是 pending_review，现在有了正向反馈，可能可以毕业
+    if target.metadata.get("admission") == "pending_review":
+        has_source = bool(target.source_file) or bool(target.metadata.get("source_session"))
+        has_positive = target.metadata.get("last_feedback") in ("recall_success", "verified")
+        if has_source and has_positive:
+            target.metadata["admission"] = "graduated"
+            if target.metadata.get("visibility", "private") != "public":
+                target.metadata["visibility"] = "public"
+                target.metadata["graduated_at"] = datetime.now().isoformat()
+
     # 保存回**权威路径**（与上面读取同源）。
     #
     # P0-0（B4）：这里此前是 `Path(cfg.palace_path) / "drawers.json"`（v1）

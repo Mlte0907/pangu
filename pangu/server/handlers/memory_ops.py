@@ -50,6 +50,7 @@ async def handle_add_memory(server, drawers, arguments):
         tags=arguments.get("tags", []),
         source="mcp",
         created_by="mcp",
+        source_session=arguments.get("source_session", ""),
     )
 
     # 设置 MCP 特有的 metadata（owner_id / tenant_id 等）
