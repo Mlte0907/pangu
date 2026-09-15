@@ -97,8 +97,10 @@ CORE_WHITELIST: frozenset[str] = frozenset(
         # 批量导入 (2)
         "pangu_batch_import",
         "pangu_batch_stats",
+        # P0-1 supersede 变更链追踪（缺口 1：必须在默认暴露面）
+        "pangu_get_supersede_chain",
     }
-)  # 共 28 个
+)  # 共 29 个
 
 
 # ── 模块注册表 ──
@@ -168,6 +170,7 @@ def _build_module_registry() -> list[ModuleEntry]:
         "embed": "optional",
         "knowledge_graph": "optional",
         "knowledge": "optional",  # P2-1 Step 1：领域知识库（独立 SQLite DB）
+        "supersede": "core",  # P0-1：supersede 变更链追踪（缺口 1：必须在默认暴露面）
         "wiki": "optional",
         "llm_tools": "optional",
         "session": "optional",
