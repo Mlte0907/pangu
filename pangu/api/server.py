@@ -115,7 +115,15 @@ def create_app() -> FastAPI:
     # 这与 pydantic-settings 的常规优先级一致（env > 配置文件默认），
     # 也不影响运维语义——运维在 config.json 里写的值，在没有环境变量覆盖时
     # 依然完全生效（本机生产部署即如此，未设 PANGU_DB_PATH）。
-    _ENV_OVERRIDABLE_PATHS = ("db_path", "base_dir")
+    _ENV_OVERRIDABLE_PATHS = (
+        "db_path",
+        "base_dir",
+        "palace_path",
+        "identity_path",
+        "wiki_path",
+        "backup_dir",
+        "domain_knowledge_db_path",
+    )
     _env_pinned: set[str] = set()
     for _name in _ENV_OVERRIDABLE_PATHS:
         if os.environ.get(f"PANGU_{_name.upper()}"):

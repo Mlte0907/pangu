@@ -42,7 +42,7 @@ class FileWatcher:
     """文件监控引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._state_file = Path(self.config.palace_path) / "file_watcher_state.json"
         self._state = self._load_state()
 

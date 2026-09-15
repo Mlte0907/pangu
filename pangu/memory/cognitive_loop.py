@@ -30,7 +30,7 @@ class CognitiveLoop:
     """认知循环 — 编排观察→思考→评估→行动的记忆周期"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._cycle_count = 0
         self._phase_timestamps: dict[str, float] = {}
         self._last_result: dict = {}

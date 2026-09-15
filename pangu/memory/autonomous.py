@@ -80,6 +80,17 @@ SCHEDULE_RULES = {
     "collect": {
         "interval_hours": 2,
     },
+    # ── P2-1 Step 2：高级推理接入 ──
+    # anomaly_detection 24h：detect_anomalies 跑 4 遍时间分桶，实测 92 条
+    #   记忆约 0.5s；它是"发现异常"而非高频维护，每天一次足够。
+    # knowledge_gaps 12h：identify_knowledge_gaps 实测 <0.01s（很轻），
+    #   但结果噪声多（实测 264 条），半天一次避免频繁刷日志。
+    "anomaly_detection": {
+        "interval_hours": 24,
+    },
+    "knowledge_gaps": {
+        "interval_hours": 12,
+    },
 }
 
 
@@ -87,10 +98,22 @@ class AutonomousMemoryEngine:
     """自主记忆管理引擎 — 自动调度所有记忆维护任务"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
-        self._palace_path = Path(self.config.palace_path)
-        self._drawers_file = self._palace_path / "drawers.json"
-        self._state_file = self._palace_path / "autonomous_state.json"
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
+        # P0-0 修复：记忆主存必须用**权威路径**（v2），不能用 v1 palace。
+        #
+        # 此前 `self._palace_path = Path(self.config.palace_path)` 硬编码 v1，
+        # 配合 `get_autonomous_engine()` 默认 `PanguConfig.load()`（也是 v1），
+        # 导致自主维护读到空的 v1（实测 0 条），且 `run_cycle()` 末尾会
+        # **无条件 `self._save_drawers(drawers)` 回写 v1**。
+        #
+        # 这是默认 28 工具里的第三条受影响路径：`pangu_add_memory` 第 10 次
+        # 调用 → `on_memory_written()` → run_cycle → 以 0 条为基线回写。
+        #
+        # 状态文件仍留在原 palace 目录（它是运维状态，不是记忆主存），
+        # 避免迁移既有 autonomous_state.json 造成状态丢失。
+        self._palace_path = Path(self.config.memory_data_dir)
+        self._drawers_file = self.config.authoritative_drawers_path
+        self._state_file = Path(self.config.palace_path) / "autonomous_state.json"
         self._state = self._load_state()
 
     def _load_state(self) -> dict:
@@ -112,6 +135,21 @@ class AutonomousMemoryEngine:
                 json.dump(self._state, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"保存自主状态失败: {e}")
+
+    def _disk_has_records(self) -> bool:
+        """权威存储当前是否已有记录（用于空写保护）。
+
+        注意 `_load_drawers()` 的 `except: return []` 是**静默**的——读取失败
+        与"真的没有记忆"返回同一个值，所以守卫不能依赖 `_load_drawers()`。
+        这里直接看磁盘实际内容。
+        """
+        try:
+            if self._drawers_file.exists():
+                with open(self._drawers_file, encoding="utf-8") as f:
+                    return bool(json.load(f))
+        except Exception:  # noqa: BLE001
+            return False
+        return False
 
     def _load_drawers(self) -> list[Drawer]:
         if not self._drawers_file.exists():
@@ -329,34 +367,63 @@ class AutonomousMemoryEngine:
             return TaskResult(name="neural_sleep", status="failed", details={"error": str(e)})
 
     def _task_vector_index(self, drawers: list[Drawer]) -> TaskResult:
-        """增量更新向量索引"""
+        """增量更新向量索引（P2-1 Step 3：改为批量嵌入 + 批量入库）
+
+        改动前：对每条记忆单独 `embed_svc.embed()` + 单独 `vi.add()`。
+          `.add()` 每次都会落盘（`_save()`），92 条记忆 = 92 次 ONNX 推理
+          + 92 次磁盘写入。
+        改动后：用 `BatchProcessor.batch_encode` 一次性批量编码（优先走后端
+          `embed_batch`），再用 `vi.add_batch()` 一次性入库（只落盘一次）。
+
+        另注：原有跳过条件
+            `if d.id in vi._id_map if hasattr(vi, "_id_map") else False`
+        恒为 False —— `VectorIndex` 从未定义过 `_id_map`（全文件 0 处），
+        所以该"增量"判断实际上是死的，每次都会全量重嵌。批量化后这一步
+        的成本大幅下降，故本次不动该语义（避免改变行为）。
+        """
         start = time.time()
         try:
             from .embedding import get_embedding_service
+            from .performance import BatchProcessor
             from .vector_index import get_vector_index
 
             vi = get_vector_index()
             embed_svc = get_embedding_service()
 
-            indexed = 0
+            # 1) 分流：已有预置 embedding 的直接用；其余收集文本待批量编码
+            ready: list[tuple[str, list[float]]] = []
+            texts: list[str] = []
+            text_ids: list[str] = []
             for d in drawers:
-                if d.id in vi._id_map if hasattr(vi, "_id_map") else False:
-                    continue
                 embedding = d.metadata.get("embedding")
-                if not embedding:
-                    try:
-                        embedding = embed_svc.embed(d.content)
-                    except Exception:
-                        continue
                 if embedding:
-                    vi.add(embedding, d.id)
-                    indexed += 1
+                    ready.append((d.id, embedding))
+                else:
+                    texts.append(d.content or "")
+                    text_ids.append(d.id)
+
+            # 2) 批量编码（batch_encode 内部优先调用后端 embed_batch）
+            if texts:
+                vecs = BatchProcessor.batch_encode(texts, embed_svc.embed, batch_size=32)
+                for did, vec in zip(text_ids, vecs):
+                    # 降级路径对失败项会返回全 0 向量，需跳过（否则污染索引）
+                    if vec and any(vec):
+                        ready.append((did, vec))
+
+            # 3) 批量入库（只落盘一次）
+            indexed = 0
+            if ready:
+                indexed = vi.add_batch([v for _, v in ready], [i for i, _ in ready])
 
             return TaskResult(
                 name="vector_index",
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
-                details={"indexed": indexed},
+                details={
+                    "indexed": indexed,
+                    "candidates": len(drawers),
+                    "batched": len(ready),
+                },
             )
         except Exception as e:
             return TaskResult(name="vector_index", status="failed", details={"error": str(e)})
@@ -377,6 +444,56 @@ class AutonomousMemoryEngine:
             )
         except Exception as e:
             return TaskResult(name="collect", status="failed", details={"error": str(e)})
+
+    def _task_anomaly_detection(self, drawers: list[Drawer]) -> TaskResult:
+        """异常检测：频率/内容/标签集中度/创建间隔四通道。
+
+        P2-1 Step 2：此前 advanced_reasoning.detect_anomalies 因 `d.title`
+        （Drawer 无该字段）在有内容的记忆上必抛 AttributeError，故从未被调度。
+        bug 修复后接入。
+        """
+        start = time.time()
+        try:
+            from .advanced_reasoning import AdvancedReasoning
+
+            engine = AdvancedReasoning(self.config)
+            alerts = engine.detect_anomalies(drawers)
+            by_severity: dict[str, int] = {}
+            for a in alerts:
+                by_severity[a.severity.value] = by_severity.get(a.severity.value, 0) + 1
+            return TaskResult(
+                name="anomaly_detection",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
+                details={
+                    "total_alerts": len(alerts),
+                    "by_severity": by_severity,
+                },
+            )
+        except Exception as e:
+            return TaskResult(name="anomaly_detection", status="failed", details={"error": str(e)})
+
+    def _task_knowledge_gaps(self, drawers: list[Drawer]) -> TaskResult:
+        """知识缺口识别：孤立主题 / 薄弱主题。"""
+        start = time.time()
+        try:
+            from .advanced_reasoning import AdvancedReasoning
+
+            engine = AdvancedReasoning(self.config)
+            gaps = engine.identify_knowledge_gaps(drawers)
+            high_priority = [g for g in gaps if g.priority >= 0.6]
+            return TaskResult(
+                name="knowledge_gaps",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
+                details={
+                    "total_gaps": len(gaps),
+                    "high_priority_gaps": len(high_priority),
+                    "top_topics": [g.topic for g in sorted(gaps, key=lambda x: -x.priority)[:5]],
+                },
+            )
+        except Exception as e:
+            return TaskResult(name="knowledge_gaps", status="failed", details={"error": str(e)})
 
     # ── 主循环 ──
 
@@ -463,6 +580,14 @@ class AutonomousMemoryEngine:
         if force or self._should_run("collect"):
             tasks.append(("collect", self._task_collect, True))
 
+        # 异常检测（P2-1 Step 2）
+        if force or self._should_run("anomaly_detection"):
+            tasks.append(("anomaly_detection", self._task_anomaly_detection, True))
+
+        # 知识缺口识别（P2-1 Step 2）
+        if force or self._should_run("knowledge_gaps"):
+            tasks.append(("knowledge_gaps", self._task_knowledge_gaps, True))
+
         trigger = f"new={new_count},old={old_count},force={force}"
         success = 0
         skipped = 0
@@ -485,7 +610,15 @@ class AutonomousMemoryEngine:
                 results.append(TaskResult(name=name, status="failed", details={"error": str(e)}))
                 failed += 1
 
-        self._save_drawers(drawers)
+        # P0-0 修复：**不得以空记忆为基线回写**。
+        # 此前无条件 `self._save_drawers(drawers)`；当 `_load_drawers()` 因
+        # 路径错位（v1 空库）或读取异常返回 [] 时，这次回写会把**非空**的
+        # 权威存储直接清成 0 条——这正是 v1 变成 `[]` 的 runtime 可达路径之一。
+        # 现在：内存为空**且**磁盘有记录 ⇒ 跳过回写并告警。
+        if not drawers and self._disk_has_records():
+            logger.warning("跳过自主维护回写: 内存记忆为空但磁盘有记录（疑似路径错位/空库误写）")
+        else:
+            self._save_drawers(drawers)
         self._state["total_tasks"] = self._state.get("total_tasks", 0) + len(tasks)
         self._save_state()
 

@@ -127,7 +127,7 @@ class LLMEngine:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._client: httpx.AsyncClient | None = None
         self._call_count: int = 0
         self._cache_hits: int = 0

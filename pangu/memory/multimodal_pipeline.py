@@ -22,7 +22,7 @@ class MultimodalPipeline:
     """多模态输入管道"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._memory = None  # 懒加载 MemoryStack（F1 修复：真正落库用）
         self._text_extensions = {
             ".txt",

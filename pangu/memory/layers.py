@@ -282,7 +282,23 @@ class MemoryStack:
     """4 层记忆栈统一接口 — 带缓存和访问追踪"""
 
     def __init__(self, config: PanguConfig = None, extra_drawers_files: list = None, use_sqlite: bool = False):
-        self.config = config or PanguConfig.load()
+        # P0-0 修复：未显式指定 config 时，走**权威记忆路径**（v2
+        # `db_path/v2_memories`），而不是默认 config 的 v1 `palace_path`。
+        #
+        # 此前 `config or PanguConfig.load()` 让全仓 49 处调用点中的 40 处
+        # （CLI 34 处、routes_memory、web_server(8866)、warmup、自主维护…）
+        # 全部读到空的 v1 `palace/drawers.json`，与 API 侧（显式传 v2 config）
+        # 给出两个答案。把默认指向权威路径后，调用点无需逐个修改即自动对齐。
+        #
+        # 显式传入的 config 一律尊重（API/MCP 那 2 处已传 v2 config，行为不变）；
+        # 显式传入的 v1 config 也保持原语义——只在"完全没传"时改默认。
+        if config is None:
+            original = PanguConfig.load()
+            # 先取 v1 路径（权威化后 palace_path 会指向 v2，v1 路径就丢了）
+            if extra_drawers_files is None:
+                extra_drawers_files = original.authoritative_extra_drawers_files()
+            config = original.authoritative_memory_config()
+        self.config = config
         self.l0 = Layer0(self.config.identity_path)
         self.l1 = Layer1(self.config.palace_path)
         self.l2 = Layer2(self.config.palace_path)
@@ -294,6 +310,11 @@ class MemoryStack:
         # 合并只读源（如 v1 palace/drawers.json），仅用于读取，不写回
         self._extra_drawers_files: list[Path] = [Path(p) for p in (extra_drawers_files or [])]
         self._primary_ids: set[str] = set()  # 来自主文件的 drawer id（保存时仅写这些）
+        # 是否**成功加载过**主存。用于空写保护区分"假空"与"真空"：
+        #   False = 加载异常/从未加载 ⇒ 内存为空是**假空**，落盘会清库 → 拦
+        #   True  = 加载成功（含"文件不存在"）⇒ 内存为空是**真空** → 放行
+        # 详见 `_save_drawers()` 的空写保护判据。
+        self._loaded_ok: bool = False
 
         # 存储后端
         self._use_sqlite = use_sqlite
@@ -356,7 +377,14 @@ class MemoryStack:
                     seen.add(dr.id)
                     self._primary_ids.add(dr.id)
                     result.append(dr)
+                # ⚠ 必须看后端自己报的 last_load_ok，不能因为"调用没抛异常"就置 True。
+                # `JsonDrawerStorage.load()` 内部 `except Exception` 会吞掉解析异常
+                # 并返回空列表——若在这里无条件置 True，就把"解析失败"错判成
+                # "成功加载到 0 条"，随后落盘会把磁盘上尚可挽救的内容清空
+                # （实测：57 字节损坏文件 → 被清成 `[]`）。
+                self._loaded_ok = bool(getattr(self._storage, "last_load_ok", True))
             except Exception as e:
+                self._loaded_ok = False
                 logger.warning(f"存储后端读取失败: {e}")
         else:
             # 回退到 JSON 文件
@@ -371,8 +399,14 @@ class MemoryStack:
                         seen.add(dr.id)
                         self._primary_ids.add(dr.id)
                         result.append(dr)
+                    self._loaded_ok = True
                 except Exception as e:
-                    logger.warning(f"主 drawers.json 读取失败: {e}")
+                    # 解析失败 ⇒ 内存里是"假空"，禁止后续落盘覆盖磁盘
+                    self._loaded_ok = False
+                    logger.warning(f"主 drawers.json 读取失败（已标记假空，禁止空写）: {e}")
+            else:
+                # 文件不存在 == 空库，这是**成功**判定（不是读取失败）
+                self._loaded_ok = True
 
         # 合并只读源（v1 等），不加入 _primary_ids（保存时不写回）
         for extra in self._extra_drawers_files:
@@ -394,20 +428,72 @@ class MemoryStack:
         self._last_cache_time = now
         return result
 
-    def _save_drawers(self) -> None:
+    def _disk_has_records(self) -> bool:
+        """权威存储当前是否已有记录（用于空写保护）。
+
+        基于**磁盘实际条数**判断，而不是内存里的 `_primary_ids`——
+        后者在"内存以为是空库"时恰好也是空集，会形成恒不触发的死守卫。
+
+        ⚠ 解析失败（文件损坏）时必须返回 **True**（谨慎侧）：
+        此时"读不出记录"不等于"没有记录"，磁盘上可能还有可挽救的内容。
+        早期实现 `except: return False` 会让守卫失效——实测一个 133 字节的
+        损坏文件被直接清成 `[]`（2 字节）。宁可拒绝一次合法写入
+        （有 `_loaded_ok` 兜底，正常路径不会走到这里），也不能静默清库。
+        """
+        try:
+            if self._storage is not None:
+                drawers = self._storage.load()
+                if getattr(self._storage, "last_load_ok", True):
+                    return bool(drawers)
+                # 解析失败：磁盘"有内容但读不出来" ⇒ 保守判为有记录
+                return True
+            if self._drawers_file.exists():
+                with open(self._drawers_file, encoding="utf-8") as f:
+                    return bool(json.load(f))
+        except Exception:  # noqa: BLE001
+            # 文件存在却解析失败 ⇒ 保守判为"有记录"，阻止空写覆盖
+            return self._drawers_file.exists()
+        return False
+
+    def _save_drawers(self) -> bool:
         """保存抽屉到磁盘并刷新缓存（带脏检查 + 原子写，防止并发写入损坏文件）
 
         仅写回属于主文件的 drawer（_primary_ids），只读合并源不被修改。
+
+        Returns:
+            bool: **是否真的落盘**。`False` 表示被空写保护拦截（跳过保存）。
+        返回值存在的意义：早期实现静默 `return`，调用方无从得知"我没保存"，
+            于是 `remove_drawer()` 返回 `True` 而磁盘未更新——**静默的数据不一致**。
+            这与本项目反复出现的 `except: return []` 是同一类失败模式，
+            所以这里让"跳过"变成调用方可感知的事实。
         """
         # 仅取主文件来源的 drawer 做脏检查与落盘
         primary_drawers = [d for d in self._drawers if d.id in self._primary_ids]
+
+        # P0-0 修复：存储后端路径也必须受空写保护约束。
+        # 下面 JSON 分支的守卫管不到这里——`JsonDrawerStorage.save()` /
+        # `SqliteDrawerStorage.save()` 都是**无条件**写入，对 `[]` 零防护，
+        # 于是"内存以为自己是空库"时会直接把非空存储清成 0 条
+        # （实测：预置 3 条 → 0 条）。故在分派前统一做一次保护。
+        #
+        # ⚠ 判据必须区分**意图**，不能只看"结果形状"（空 vs 非空）：
+        #   危险：内存从未成功加载（读异常）→ 内存空是**假空** → 落盘会清库 → 拦
+        #   合法：加载成功后用户删光 → 内存空是**真空** → 必须落盘
+        # 早期版本只判 `not primary_drawers and _disk_has_records()`，
+        # 导致 `remove_drawer()` 删除**最后一条**时被误拦：
+        # 返回 True 但磁盘没变 ⇒ 内存与磁盘静默不一致
+        # （回归证据：tests/test_core.py::test_remove_drawer）。
+        # 引入 `_loaded_ok` 后，两种场景被正确区分。
+        if not primary_drawers and not self._loaded_ok and self._disk_has_records():
+            logger.warning("跳过保存: 内存主集为空且主存从未成功加载，疑似读失败后的空库误写（数据保护）")
+            return False
 
         if self._storage:
             try:
                 # 使用存储后端保存
                 self._storage.save(primary_drawers)
                 self._cache.invalidate()
-                return
+                return True
             except Exception as e:
                 logger.error(f"存储后端保存失败: {e}")
                 # 回退到 JSON 文件
@@ -422,7 +508,20 @@ class MemoryStack:
                 missing = self._primary_ids - disk_ids
                 if missing and len(disk_data) >= len(primary_drawers):
                     logger.warning(f"跳过保存: 内存主文件集缺少 {len(missing)} 条磁盘记录")
-                    return
+                    return False
+                # P0-0 修复：空写保护（上面那条守卫在内存为空时**失效**——
+                # 内存为空 ⇒ _primary_ids 也是空集 ⇒ missing 为空 ⇒ 守卫不触发）。
+                # 实测（假 HOME，v1 预置 3 条）：_drawers=[] + _primary_ids=set()
+                # → 文件从 3 条被清成 0 条，这正是 v1 变成 `[]` 的可达路径。
+                # 判断必须基于**磁盘条数 > 0**（而不是 _primary_ids），否则又是
+                # 一个恒不触发的死守卫。
+                # 同时用 `_loaded_ok` 区分意图：加载成功后删空必须放行。
+                if disk_data and not primary_drawers and not self._loaded_ok:
+                    logger.warning(
+                        f"跳过保存: 内存主集为空且主存从未成功加载，磁盘有 "
+                        f"{len(disk_data)} 条记录，疑似空库误写（数据保护）"
+                    )
+                    return False
         except Exception as e:
             # 磁盘文件损坏/不可读时记录警告，用内存数据原子覆写以修复损坏
             logger.warning(f"磁盘 drawers.json 读取失败，将用内存数据覆写: {e}")
@@ -434,6 +533,7 @@ class MemoryStack:
             os.fsync(f.fileno())
         os.replace(tmp_file, self._drawers_file)
         self._cache.invalidate()
+        return True
 
     def invalidate_cache(self) -> None:
         """手动刷新缓存"""
@@ -521,9 +621,15 @@ class MemoryStack:
         self._drawers = [d for d in self._drawers if d.id != drawer_id]
         if len(self._drawers) < original_len:
             self._backup_drawers()
-            self._save_drawers()
-            self._remove_from_vector_index([drawer_id])
-            self._cache.invalidate()
+            saved = self._save_drawers()
+            if saved:
+                self._remove_from_vector_index([drawer_id])
+                self._cache.invalidate()
+            else:
+                # 不再静默：落盘被拦时内存与磁盘已不一致，必须让调用方知道
+                logger.warning(
+                    f"remove_drawer({drawer_id}): 删除已应用到内存但**未落盘**（被空写保护拦截），磁盘仍含该记录"
+                )
             return True
         return False
 
@@ -536,9 +642,11 @@ class MemoryStack:
         removed = original_len - len(self._drawers)
         if removed > 0:
             self._backup_drawers()
-            self._save_drawers()
+            saved = self._save_drawers()
             self._remove_from_vector_index(drawer_ids)
             self._cache.invalidate()
+            if not saved:
+                logger.warning(f"remove_drawers: 已从内存删除 {removed} 条但**未落盘**（被空写保护拦截），磁盘未同步")
         return removed
 
     # ── 记忆栈接口 ──

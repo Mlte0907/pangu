@@ -100,7 +100,16 @@ class FTS5SearchEngine:
         self._fts_index: dict[str, set[str]] = {}  # token -> drawer_ids
         self._fts_content_map: dict[str, str] = {}  # drawer_id -> content
         self._indexed: bool = False
-        self._indexed_count: int = 0  # 索引的文档数量
+        # ⚠ B7-b：这里**必须**用 `None` 表示"尚未得知目标文档数"，不能用 0。
+        # 此前初始值是 0，而磁盘索引 `doc_count` 也可能是 0，于是
+        # `_load_index_from_disk` 里的 `data.get("doc_count", 0) != self._indexed_count`
+        # 退化成 `0 != 0` → False → 空索引被判为"最新"加载，`_indexed=True`
+        # 且 `_fts_index` 只有 0 个 token，搜索恒返回空；而 `build_index`
+        # 开头又因 `self._indexed` 为真而短路，**索引永远不会重建**。
+        # 磁盘上只要曾出现 `doc_count=0` 的索引（warmup 曾用 v1 空库生成），
+        # 就形成**永久性自我锁死**，重启也不自愈。
+        # 用 None 表达"未知"，任何具体的 doc_count 都不等于 None ⇒ 必判 stale。
+        self._indexed_count: int | None = None  # 索引的文档数量；None=未知
 
     @property
     def embedder(self):
@@ -165,8 +174,35 @@ class FTS5SearchEngine:
         return Path.home() / ".pangu" / "fts_index.json"
 
     def _save_index_to_disk(self):
-        """保存索引到磁盘"""
+        """保存索引到磁盘
+
+        ⚠ B7-b：**空索引不落盘**。写入 `doc_count=0` 的索引只会有害——
+        它既是"空索引锁死"的触发条件（历史 warmup 用 v1 空库生成过），
+        又没有任何检索价值。宁可保留旧的（有效）索引文件。
+
+        ⚠ B7-c：**条数收缩守卫**。如果本次 build 的文档数 < 磁盘已有索引
+        的 50%，拒绝写入。这防止 wing 过滤等子集操作把 70+ 条的全量索引
+        覆盖成几条的子集索引（routes_memory.py / retrieval.py 的历史问题）。
+        """
         try:
+            if not self._indexed_count:
+                logger.info("FTS index empty, skip saving to disk")
+                return
+            # B7-c 条数收缩守卫：防止子集调用方覆盖全量索引
+            path = self._get_index_path()
+            if path.exists():
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        old_data = json.load(f)
+                    old_count = old_data.get("doc_count", 0)
+                    if old_count > 0 and self._indexed_count < old_count * 0.5:
+                        logger.warning(
+                            f"FTS index shrinkage blocked: new={self._indexed_count} "
+                            f"< 50% of disk={old_count}, keeping disk version"
+                        )
+                        return
+                except Exception:
+                    pass  # 读旧索引失败，继续写入
             index_data = {}
             for token, ids in self._fts_index.items():
                 index_data[token] = list(ids)
@@ -193,8 +229,20 @@ class FTS5SearchEngine:
                 return False
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            # 检查文档数量是否匹配
-            if data.get("doc_count", 0) != self._indexed_count:
+            # 检查文档数量是否匹配。
+            # B7-b 双重防御：
+            #   ① `self._indexed_count is None`（未知目标）⇒ 不能证明磁盘索引可用，
+            #      必须重建（旧代码用 0 做初始值，此处会误判为"匹配"）；
+            #   ② 磁盘索引 doc_count=0 ⇒ **空索引不算有效索引**，直接拒绝加载。
+            #      空索引是 warmup 用空库生成的历史残留，加载它等于让搜索永久归零。
+            if self._indexed_count is None:
+                logger.info("FTS index target count unknown, rebuilding")
+                return False
+            disk_count = data.get("doc_count", 0)
+            if not disk_count:
+                logger.info("FTS index on disk is empty (doc_count=0), rebuilding")
+                return False
+            if disk_count != self._indexed_count:
                 logger.info("FTS index stale, rebuilding")
                 return False
             self._fts_index = {token: set(ids) for token, ids in data["tokens"].items()}

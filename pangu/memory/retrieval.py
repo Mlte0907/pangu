@@ -10,6 +10,7 @@
 
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime
@@ -177,13 +178,18 @@ def _vector_search_with_index(query_vec: list[float], drawers: list[Drawer]) -> 
     return vec_results
 
 
-def _fts_search_task(query: str, drawers: list[Drawer]) -> dict[str, float]:
-    """FTS 搜索任务"""
+def _fts_search_task(query: str, drawers: list[Drawer], full_drawers: list[Drawer] | None = None) -> dict[str, float]:
+    """FTS 搜索任务
+
+    full_drawers: 用于建索引的全量列表（防止子集覆盖全量索引）。
+                  若为 None 则用 drawers（向后兼容）。
+    """
     try:
         from pangu.memory.fts_search import FTS5SearchEngine
 
         fts = FTS5SearchEngine()
-        fts.build_index(drawers)
+        # B7-c：用全量建索引，搜索用子集
+        fts.build_index(full_drawers if full_drawers is not None else drawers)
         return fts._fts_search(query, drawers)
     except Exception:
         return {}
@@ -299,7 +305,7 @@ def recall(
         # 顺序执行（优化后）
         query_vec = _embed_query_vec(query)
         vec_results = _vector_search_with_index(query_vec, filtered) if query_vec else {}
-        fts_results = _fts_search_task(expanded_query, filtered)
+        fts_results = _fts_search_task(expanded_query, filtered, full_drawers=drawers)
 
         # 向量搜索 RRF
         sorted_vec = sorted(vec_results.items(), key=lambda x: -x[1])
@@ -614,16 +620,12 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
         return {"error": f"unknown signal: {signal}"}
 
     if drawers is None:
-        from pathlib import Path
-
         from pangu.core.config import PanguConfig
 
-        cfg = PanguConfig.load()
-        drawers_file = Path(cfg.palace_path) / "drawers.json"
-        if not drawers_file.exists():
-            return {"error": "no memories"}
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        # P0-0（B4）：读**权威记忆路径**（v2），此前硬编码 v1 palace/drawers.json，
+        # 导致反馈永远作用在空库上（读不到真实记忆）。
+        cfg = PanguConfig.load().authoritative_memory_config()
+        drawers = [Drawer.from_dict(d) for d in PanguConfig.load_drawers_nonempty(cfg.authoritative_drawers_path)]
 
     target = None
     for d in drawers:
@@ -639,18 +641,58 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
     target.metadata["last_feedback"] = signal
     target.metadata["feedback_at"] = datetime.now().isoformat()
 
-    # 保存回 drawers.json
+    # 保存回**权威路径**（与上面读取同源）。
+    #
+    # P0-0（B4）：这里此前是 `Path(cfg.palace_path) / "drawers.json"`（v1）
+    # 且外面包着 `except Exception: pass`。两个缺陷叠加造成**生产污染**：
+    # 调用方传入 `drawers=[...]` 时，函数会无条件把**整个列表**写进 v1 生产库
+    # —— 实测测试数据 `fb_min` 就是这样落进 `~/.pangu/palace/drawers.json` 的。
+    #
+    # F1/F3（子集覆盖全集）：即使路径修对了，**"把调用方传入的列表当全量写回"
+    # 本身就是错的**。本函数的语义是"调整某条记忆的重要性"，不是"用给定列表
+    # 替换整个库"。测试里 `drawers=[drawer]`（仅 1 条）因此会把权威库清成 1 条
+    # —— 这正是 P0-0 事故中 v2 被清空的**直接机制**（402 字节的 fb_min）。
+    # 修法：以**磁盘全量**为基底，只把本次内存中改过的 id 合并回去。
     try:
-        from pathlib import Path
-
         from pangu.core.config import PanguConfig
 
-        cfg = PanguConfig.load()
-        drawers_file = Path(cfg.palace_path) / "drawers.json"
-        with open(drawers_file, "w", encoding="utf-8") as f:
-            json.dump([d.to_dict() for d in drawers], f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+        cfg = PanguConfig.load().authoritative_memory_config()
+        drawers_file = cfg.authoritative_drawers_path
+
+        # 空写保护：内存里是空列表时绝不覆盖磁盘（同 MemoryStack 的守卫语义）
+        if not drawers and PanguConfig.load_drawers_nonempty(drawers_file):
+            logger.warning(f"importance_feedback({drawer_id}): 内存列表为空但磁盘有记录，已跳过落盘（防止空库误写）")
+            return {"error": "refused to overwrite non-empty store with empty list"}
+
+        # 以磁盘全量为基底做「按 id 合并」，绝不用传入列表直接覆盖。
+        disk_items = PanguConfig.load_drawers_nonempty(drawers_file)
+        incoming = {d.id: d.to_dict() for d in drawers}
+        merged: list = []
+        seen: set = set()
+        for item in disk_items:
+            _id = item.get("id")
+            seen.add(_id)
+            merged.append(incoming.get(_id, item))
+        # 传入列表里磁盘上没有的（新增记录）追加，避免丢数据
+        for _id, item in incoming.items():
+            if _id not in seen:
+                merged.append(item)
+
+        if not merged:
+            logger.warning(f"importance_feedback({drawer_id}): 合并结果为空，已跳过落盘（防止清库）")
+            return {"error": "refused to write empty store"}
+
+        drawers_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp_file = drawers_file.with_suffix(".json.tmp")
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, drawers_file)
+    except Exception as e:
+        # 不再静默吞掉：落盘失败必须让调用方看见（此前 `pass` 掩盖了污染与失败）
+        logger.error(f"importance_feedback({drawer_id}): 保存失败: {e}")
+        return {"error": f"save failed: {e}", "id": drawer_id, "signal": signal}
 
     return {
         "id": drawer_id,

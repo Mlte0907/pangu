@@ -281,7 +281,7 @@ def hybrid_search(
     if cached is not None:
         return cached
 
-    config = config or PanguConfig.load()
+    config = (config or PanguConfig.load()).authoritative_memory_config()
     all_ids = {d.id: d for d in drawers}
 
     # 三路召回

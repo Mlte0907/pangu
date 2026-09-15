@@ -267,11 +267,16 @@ class TestAdvancedReasoning:
         drawers.append(
             _d(id="outlier", content="x" * 500, tags=["alpha"] * 5, created_at=(base + timedelta(hours=25)).isoformat())
         )
-        try:
-            alerts = self.engine.detect_anomalies(drawers)
-            assert isinstance(alerts, list)
-        except AttributeError:
-            pass
+        # ⚠ 此处此前是 `try/except AttributeError: pass` —— 它掩盖了
+        # `_detect_content_anomalies` 里 `d.title`（Drawer 无此字段）的真实
+        # AttributeError，使测试在**生产路径 100% 崩溃**的情况下依然全绿。
+        # 已改为真实断言：内容长度异常必须被检出。
+        alerts = self.engine.detect_anomalies(drawers)
+        assert isinstance(alerts, list)
+        # 注入验证：把上面的 outlier（500 字符 vs 其余 5 字符）摘掉，
+        # 长度异常应当消失 —— 证明确实是内容长度通道在起作用。
+        content_alerts = [a for a in alerts if a.anomaly_type == "content_length"]
+        assert len(content_alerts) >= 1, f"应检出 outlier 的内容长度异常，实际 alerts={alerts}"
 
     def test_identify_knowledge_gaps_empty(self):
         result = self.engine.identify_knowledge_gaps([])
@@ -814,12 +819,9 @@ class TestDomainKnowledge:
         self.dk.delete_entry("rel_b")
 
     def test_get_stats(self):
-        try:
-            stats = self.dk.get_stats()
-            assert stats.total_entries > 0
-            assert stats.avg_confidence > 0
-        except NameError:
-            pass
+        stats = self.dk.get_stats()
+        assert stats.total_entries > 0
+        assert stats.avg_confidence > 0
 
     def test_deprecate_entry(self):
         from pangu.memory.domain_knowledge import (

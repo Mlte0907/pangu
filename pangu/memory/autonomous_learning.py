@@ -33,7 +33,7 @@ class AutonomousLearning:
     """自主学习 — 自动发现新知识"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._knowledge_base: list[dict] = []
         self._hypotheses: list[Hypothesis] = []
         self._learning_history: list[dict] = []

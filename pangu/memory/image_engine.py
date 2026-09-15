@@ -44,7 +44,7 @@ class ImageMemoryEngine:
     """图片记忆引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._clip_model = None
         self._clip_processor = None
 

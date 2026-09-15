@@ -23,7 +23,7 @@ def setup_bridge():
         mgr = get_connection_manager()
         _original_emit = stream.emit
 
-        config = PanguConfig.load()
+        config = PanguConfig.load().authoritative_memory_config()
 
         feishu = None
         try:

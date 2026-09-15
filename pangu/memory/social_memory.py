@@ -100,7 +100,7 @@ class SocialMemory:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._comments: dict[str, Comment] = {}
         self._votes: dict[str, list[Vote]] = {}
         self._experts: dict[str, ExpertProfile] = {}

@@ -52,7 +52,7 @@ class GraphReasoning:
     ]
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.kg = KnowledgeGraph(config)
 
     def _find_entity_paths(self, entities: list[dict]) -> tuple[list[list[dict]], list[str]]:

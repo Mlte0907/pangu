@@ -87,7 +87,7 @@ class SelfImproveWorker:
             # 会正确映射到 host/port。
             from pangu.core.config import PanguConfig
 
-            cfg = PanguConfig.load()
+            cfg = PanguConfig.load().authoritative_memory_config()
             # host 是【监听】地址，0.0.0.0 表示监听所有网卡，
             # 不能直接当连接目标用，需换成环回地址。
             host = "127.0.0.1" if cfg.host in ("0.0.0.0", "::", "") else cfg.host

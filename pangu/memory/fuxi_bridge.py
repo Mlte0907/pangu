@@ -38,7 +38,7 @@ class FuxiBridge:
     """Fuxi 桥接引擎 — 复用 Fuxi 核心算法"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._drawers_file = Path(self.config.palace_path) / "drawers.json"
 
     def _load_drawers(self) -> list[dict]:

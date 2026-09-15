@@ -18,7 +18,7 @@ class DreamConsolidation:
     """梦境记忆巩固 — 5步睡眠整理流程"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._last_state: dict = {}
         self._cycle_count = 0
 

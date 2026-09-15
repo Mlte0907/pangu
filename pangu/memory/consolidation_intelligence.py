@@ -48,7 +48,7 @@ class ConsolidationIntelligence:
     """记忆巩固智能引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._consolidation_history: list[dict] = []
 
     def find_merge_candidates(self, drawers: list[Drawer]) -> list[list[Drawer]]:

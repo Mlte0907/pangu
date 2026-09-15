@@ -25,7 +25,7 @@ class VideoMemoryEngine:
     """视频记忆引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._ffmpeg = "ffmpeg"
         self._ffprobe = "ffprobe"
 

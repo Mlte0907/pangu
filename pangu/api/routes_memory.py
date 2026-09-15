@@ -26,7 +26,7 @@ from pangu.api.abac import (
     evaluate as abac_evaluate,
 )
 from pangu.api.rbac import get_principal
-from pangu.core.config import config
+from pangu.core.config import PanguConfig, config
 from pangu.core.palace import Drawer, Palace
 from pangu.memory.decay import purge_below_floor
 from pangu.memory.fts_search import FTS5SearchEngine
@@ -96,12 +96,36 @@ def _memory_stack(request: Request) -> MemoryStack:
     """从 app.state 拿 MemoryStack 实例。"""
     stack = getattr(request.app.state, "memory", None)
     if stack is None:
-        # 兜底新建（兜底可能没有 v2_db_path 配置）
+        # P0-0 修复：兜底必须也走**权威记忆路径**（v2），与
+        # server.py 的 app.state.memory 保持一致。
+        #
+        # 此前兜底是 `MemoryStack(config=PanguConfig())` —— 默认 config 的
+        # palace_path 指向 v1，读的是空的 `palace/drawers.json`。于是同一个
+        # 进程内，正常路径（app.state.memory，v2）和兜底路径（v1）会给出
+        # **两个不同的答案**：接口时好时坏、列表为空，且完全不报错。
         from pangu.core.config import PanguConfig
 
-        cfg = PanguConfig()
-        stack = MemoryStack(config=cfg)
+        base = PanguConfig()
+        stack = MemoryStack(
+            config=base.authoritative_memory_config(),
+            extra_drawers_files=base.authoritative_extra_drawers_files(),
+        )
     return stack
+
+
+def _authoritative_cfg() -> "PanguConfig":
+    """按**当前环境**解析一份指向权威（v2）存储的 config。
+
+    为什么不用模块级 `config` 单例：它在 `pangu.core.config` 被 import 时
+    就构造好了（`config = PanguConfig()`），此后环境变化（HOME 变更、
+    测试隔离、运维换库）都不会反映到它上面。线上服务因为启动时 HOME 固定，
+    看不出差别；但在**测试隔离**与**同进程多库切换**场景下，
+    单例会指向一个与 `_memory_stack()` 兜底路径**不同**的库，
+    于是同一进程内两个接口给出两个答案——正是 P0-0 的缺陷形态。
+    这里每次重新解析，与 `_memory_stack()` 保持一致。
+    """
+    base = PanguConfig()
+    return base.authoritative_memory_config()
 
 
 def _resolve_tenant_id(request: Request) -> str:
@@ -296,26 +320,35 @@ async def search_memories(
     search_type: str = Query(default="fts", description="搜索类型: fts/hybrid/vector"),
 ):
     """搜索记忆"""
-    import json as _json
-    from pathlib import Path as _Path
 
     def _do_search():
-        drawers_file = _Path(config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0 修复：读**权威路径** v2（此前读 v1 → 恒返回空）。
+        # 本路由无鉴权依赖、匿名可打，是"搜索恒为空"的用户可见症状来源。
+        #
+        # 注意这里**不用**模块级 `config` 单例：它是 import 时构造的
+        # （`pangu/core/config.py` 末尾 `config = PanguConfig()`），
+        # 一旦进程启动后 HOME/环境变化（或测试隔离），它就永远冻结在旧值。
+        # 用 `_authoritative_cfg()` 每次按当前环境解析，行为与
+        # `_memory_stack()` 的兜底路径一致。
+        _cfg = _authoritative_cfg()
+        _raw = PanguConfig.load_drawers_nonempty(_cfg.authoritative_drawers_path)
+        if not _raw:
             return []
-        with open(drawers_file, encoding="utf-8") as f:
-            raw = _json.load(f)
         from pangu.core.palace import Drawer as _Drawer
 
-        all_drawers = [_Drawer.from_dict(d) for d in raw]
+        all_drawers = [_Drawer.from_dict(d) for d in _raw]
 
-        if wing:
-            all_drawers = [d for d in all_drawers if d.wing == wing]
-
-        fts_engine = FTS5SearchEngine(config)
+        # B7-c：用全量建索引（不要用 wing 过滤后的子集，否则会覆盖磁盘上的全量索引）
+        fts_engine = FTS5SearchEngine(_cfg)
         fts_engine.build_index(all_drawers)
-        fts_results = fts_engine._fts_search(q, all_drawers, limit=limit)
-        drawer_map = {d.id: d for d in all_drawers}
+
+        # 搜索时再按 wing 过滤
+        search_drawers = all_drawers
+        if wing:
+            search_drawers = [d for d in all_drawers if d.wing == wing]
+
+        fts_results = fts_engine._fts_search(q, search_drawers, limit=limit)
+        drawer_map = {d.id: d for d in search_drawers}
         results = []
         for did, score in sorted(fts_results.items(), key=lambda x: x[1], reverse=True)[:limit]:
             d = drawer_map.get(did)
@@ -351,6 +384,19 @@ async def search_memories(
 async def get_stats():
     """获取记忆统计（含搜索、健康、token）"""
     try:
+        # ⚠ 此处**刻意**保留 v1 `config.palace_path`，不要改成权威路径。
+        #
+        # 取证（本机独立实测，两份 palace_meta.json 都存在但内容不同）：
+        #   v1 ~/.pangu/palace/palace_meta.json              1081 B  mtime 04:03
+        #      20 个键，含 room_descriptions / experience_bank / memory_tiers 等
+        #      真实业务状态；rooms = {'default': ['general']} ⇒ stats() rooms=1
+        #   v2 ~/.pangu/pangu.db/v2_memories/palace_meta.json  166 B  mtime 05:54
+        #      仅 6 个骨架键；rooms = {} ⇒ stats() rooms=0
+        #
+        # 判据：v1 那份是**真实存量**（1081 B、结构完整、含房间描述），
+        # v2 那份是**空壳**（166 B、rooms 为空）。改读 v2 只会让
+        # `rooms_count` 从 1 掉到 0，退化成假统计。
+        # 与 `pangu stats` 一致：只重定向记忆栈，不动 Palace/Wiki/KG。
         palace = Palace(config.palace_path)
         stats = palace.stats()
 
@@ -363,28 +409,35 @@ async def get_stats():
         except Exception:
             pass
 
-        # 健康检查
+        # 健康检查（P0-0 修复：必须走权威路径 v2）
+        # 此前 `MemoryStack(config)` 传全局 config（v1）→ `health_check()` 读
+        # 空的 v1 drawers.json → 线上实测返回
+        #   {"drawers_file": {"exists": true, "size_kb": 0.0, "count": 0}, "status": "degraded"}
+        # 即**健康检查因为读空库而自报降级**，是用户可见的错误状态；
+        # 而同一时刻 v2 实际有 68 条。
         try:
             from pangu.memory.layers import MemoryStack
 
-            stack = MemoryStack(config)
+            stack = MemoryStack(config=_authoritative_cfg())
             stats["health"] = stack.health_check()
         except Exception:
             pass
 
-        # Token 统计
+        # Token 统计（P0-0 修复：token 数直接取**权威路径** v2 的内容）
+        # 注：此处**不构造 MemoryStack**。早期代码在区块开头有 `stack = MemoryStack(config)`
+        # 但整个区块从未使用它（token 数来自下面的 load_drawers_nonempty）——
+        # 那是个读 v1 却不产生任何作用的死赋值，只会让下一个人误判这里的路径语义。
+        # 已删除。
         try:
-            from pangu.memory.layers import MemoryStack, _estimate_tokens
+            from pangu.memory.layers import _estimate_tokens
 
-            stack = MemoryStack(config)
-            drawers_file = Path(config.palace_path) / "drawers.json"
-            if drawers_file.exists():
-                import json
-
-                with open(drawers_file) as f:
-                    drawers = json.load(f)
-                total_tokens = sum(_estimate_tokens(d.get("content", "")) for d in drawers)
-                stats["tokens"] = {"total": total_tokens, "avg_per_memory": round(total_tokens / max(len(drawers), 1))}
+            raw_drawers = PanguConfig.load_drawers_nonempty(_authoritative_cfg().authoritative_drawers_path)
+            if raw_drawers:
+                total_tokens = sum(_estimate_tokens(d.get("content", "")) for d in raw_drawers)
+                stats["tokens"] = {
+                    "total": total_tokens,
+                    "avg_per_memory": round(total_tokens / max(len(raw_drawers), 1)),
+                }
         except Exception:
             pass
 

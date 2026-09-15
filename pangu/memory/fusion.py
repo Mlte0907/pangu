@@ -44,7 +44,7 @@ class FusionEngine:
         return cosine_similarity(a, b)
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._embedder = None
 
     @property

@@ -66,7 +66,7 @@ class SelfRepairEngine:
     """自评估+自修复引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._drawers_file = Path(self.config.palace_path) / "drawers.json"
         self._report_file = Path(self.config.palace_path) / "last_evaluation.json"
 

@@ -599,6 +599,7 @@ class TestErrorRecovery:
         config.compression_threshold = 1000
         config.consolidation_enabled = True
         config.consolidation_interval_hours = 24
+        config.authoritative_memory_config.return_value = config
 
         consolidator = MemoryConsolidator(config)
         drawer = _make_drawer(
@@ -827,6 +828,7 @@ class TestPerformanceBoundary:
         config.compression_threshold = 1000
         config.consolidation_enabled = True
         config.consolidation_interval_hours = 24
+        config.authoritative_memory_config.return_value = config
 
         consolidator = MemoryConsolidator(config)
         drawers = _make_drawers(10)

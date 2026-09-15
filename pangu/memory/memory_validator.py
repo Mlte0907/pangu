@@ -25,7 +25,16 @@ class MemoryValidator:
     MIN_CONTENT_LENGTH = 20  # 太短的记忆跳过验证
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        # B5：必须权威化。本模块的 `_load_drawers`/`_save_drawers` 用的是
+        # `self.config.palace_path`，而 v1 语义下它指向**空的** v1 库。
+        # 实测（假 HOME，v2 有 3 条）：`validate_all()` 返回 `{'total': 0}` ——
+        # 真实记忆一条都看不到。活链路：handlers/consolidation.py →
+        # LifecycleManager(server.config) → MemoryValidator。
+        #
+        # 注意必须覆盖**调用方传入**的 config：活链路上传入的是 `server.config`
+        # （未权威化），只处理 `config is None` 分支挡不住这条路径。
+        base = config or PanguConfig.load()
+        self.config = base.authoritative_memory_config()
 
     def validate_all(self, drawers: list[Drawer] | None = None) -> dict:
         """验证所有记忆，返回统计"""

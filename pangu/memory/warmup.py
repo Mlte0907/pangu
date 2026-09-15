@@ -72,10 +72,20 @@ def warmup_fts_index():
         from pangu.memory.fts_search import FTS5SearchEngine
         from pangu.memory.layers import MemoryStack
 
-        config = PanguConfig.load()
+        # ⚠ 必须走权威路径（B7-a）。此前这里是裸 `PanguConfig.load()`，
+        # 拿到的 config.palace_path 仍指向 v1（空库），于是**服务每次启动
+        # 都用 0 条记忆建索引**，把 `~/.pangu/fts_index.json` 写成
+        # `{doc_count: 0, tokens: {}}`；配合 fts_search 的哨兵值缺陷
+        # （见 B7-b）该空索引会被当成"最新"永久加载 ⇒ **搜索恒为 0 条且不自愈**。
+        config = PanguConfig.load().authoritative_memory_config()
         stack = MemoryStack(config)
         drawers = stack.get_drawers()
 
+        # 空集合不落盘：没有记忆时写一份 doc_count=0 的索引毫无意义，
+        # 只会制造上述"空索引锁死"的触发条件。
+        if not drawers:
+            logger.info("FTS 索引预热跳过: 权威库为空（不写入空索引）")
+            return (time.perf_counter() - t0) * 1000
         fts = FTS5SearchEngine(config)
         fts.build_index(drawers)
         elapsed = (time.perf_counter() - t0) * 1000
@@ -115,10 +125,14 @@ def warmup_vector_index():
         from pangu.memory.fts_search import FTS5SearchEngine
         from pangu.memory.layers import MemoryStack
 
-        config = PanguConfig.load()
+        # 同 B7-a：必须权威化，否则拿到 v1 空库
+        config = PanguConfig.load().authoritative_memory_config()
         stack = MemoryStack(config)
         drawers = stack.get_drawers()
 
+        if not drawers:
+            logger.info("向量索引预热跳过: 权威库为空")
+            return (time.perf_counter() - t0) * 1000
         fts = FTS5SearchEngine(config)
         fts.build_index(drawers)
 

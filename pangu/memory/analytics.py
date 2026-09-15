@@ -66,7 +66,7 @@ class MemoryAnalyzer:
     """记忆分析引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def _analyze_time_ranges(self, drawers: list, now: datetime) -> tuple[int, int, int, int, float]:
         counts_24h = 0

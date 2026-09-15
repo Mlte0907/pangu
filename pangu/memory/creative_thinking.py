@@ -31,7 +31,7 @@ class CreativeThinking:
     """创造性思维 — 基于知识图谱生成新想法"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._idea_history: list[Idea] = []
 
     def _collect_wing_topics(self, wing_drawers: list[Drawer]) -> set[str]:

@@ -66,7 +66,7 @@ class FileMiner:
     }
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def scan_directory(self, directory: str, wing: str = None) -> list[Drawer]:
         """扫描目录，提取文件内容为记忆片段"""
@@ -146,7 +146,7 @@ class ConvoMiner:
     """对话挖掘器 — 从对话记录中提取记忆"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def parse_jsonl_session(self, file_path: str, wing: str = None) -> list[Drawer]:
         """解析 JSONL 格式的会话数据"""
@@ -275,7 +275,7 @@ class WikiMiner:
     """Wiki 挖掘器 — 从 Wiki 页面提取结构化记忆"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def extract_from_page(self, page_title: str, page_content: str, wing: str = "default") -> list[Drawer]:
         """从 Wiki 页面内容提取记忆片段"""

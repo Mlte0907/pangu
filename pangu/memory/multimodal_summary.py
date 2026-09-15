@@ -21,7 +21,7 @@ class MultimodalSummaryEngine:
     """多模态摘要引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def summarize_memories(self, drawers: list[Drawer], limit: int = 50) -> dict:
         """对记忆列表生成综合摘要"""

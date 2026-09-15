@@ -48,7 +48,33 @@ console = Console()
 
 
 def get_config() -> PanguConfig:
+    """CLI 配置入口（原始语义：palace_path 指向 v1 宫殿）。
+
+    注意：**不要**在此处把 palace_path 重定向到 v2。CLI 里除记忆栈外，
+    还有 `Palace` / `WikiEngine` / `KnowledgeGraph` 也在用这个 config，
+    它们的数据（`palace/knowledge_graph.db` 等）确实在 v1 目录下。
+    实测：整份 config 重定向后，`pangu stats` 的 Rooms 从 1 掉到 0、
+    Entities 从 4 掉到 0——记忆修好了却把另外三项打坏。
+
+    ⇒ 权威路径只对**记忆栈**生效，见 `get_memory_stack()`。
+    """
     return PanguConfig.load()
+
+
+def get_memory_stack(config: PanguConfig | None = None) -> MemoryStack:
+    """构造指向**权威记忆路径**（v2）的 MemoryStack —— CLI 唯一入口。
+
+    P0-0 修复：CLI 的 34 处 `MemoryStack(config)` 全部改为经由此函数。
+    此前它们传 v1 config，读的是空的 `palace/drawers.json`，于是
+    `pangu stats` 显示 0 条而 API 侧看得到真实存量——同一系统两个答案，
+    自主维护据此连续空转 81 次。
+
+    只重定向记忆栈（palace_path/identity/wiki 指向 v2），不影响
+    Palace/WikiEngine/KnowledgeGraph 的 v1 语义。
+    """
+    base = config or PanguConfig.load()
+    extra = base.authoritative_extra_drawers_files()
+    return MemoryStack(config=base.authoritative_memory_config(), extra_drawers_files=extra)
 
 
 # ── 初始化 ──
@@ -134,7 +160,7 @@ def mine(
         console.print("[yellow]未发现可挖掘的内容[/yellow]")
         return
 
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     memory.add_drawers(drawers)
 
     # 统计
@@ -163,7 +189,7 @@ def search(
 ):
     """搜索记忆"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     searcher = HybridSearch(config)
 
     drawers = memory.get_drawers()
@@ -196,7 +222,7 @@ def wake_up(
 ):
     """获取唤醒上下文 (L0 + L1)"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     context = memory.wake_up(wing=wing)
     console.print(Markdown(context))
 
@@ -212,7 +238,7 @@ def recall(
 ):
     """按 Wing/Room 回忆记忆"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     result = memory.recall(wing=wing, room=room, n_results=n_results)
     console.print(Markdown(result))
 
@@ -258,7 +284,7 @@ def wiki_generate(
 ):
     """使用 LMM 自动生成 Wiki 页面"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     wiki = WikiEngine(config)
     llm = LLMEngine(config)
 
@@ -303,7 +329,7 @@ def stats(json_output: bool = typer.Option(False, "--json", help="JSON 格式输
     """系统统计信息"""
     config = get_config()
     palace = Palace(config.palace_path)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     wiki = WikiEngine(config)
     kg = KnowledgeGraph(config)
 
@@ -326,7 +352,7 @@ def stats(json_output: bool = typer.Option(False, "--json", help="JSON 格式输
             f"  Tunnels: {all_stats['palace']['tunnels_count']}\n\n"
             f"[bold]记忆[/bold]\n"
             f"  Drawers: {all_stats['memory']['total_drawers']}\n"
-            f"  L0 Tokens: {all_stats['memory']['L0_identity']['tokens']}\n\n"
+            f"  L0 Tokens: {all_stats['memory']['layers']['L0_identity']['tokens']}\n\n"
             f"[bold]Wiki[/bold]\n"
             f"  Pages: {all_stats['wiki']['total_pages']}\n"
             f"  Links: {all_stats['wiki']['total_links']}\n\n"
@@ -345,7 +371,7 @@ def stats(json_output: bool = typer.Option(False, "--json", help="JSON 格式输
 def consolidate():
     """查看记忆巩固状态（遗忘/复习/压缩）"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     stats = memory.get_consolidation_stats()
 
     console.print(
@@ -368,7 +394,7 @@ def forget(
 ):
     """遗忘低重要性记忆"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     forgotten = memory.find_forgotten()
 
     if not forgotten:
@@ -398,7 +424,7 @@ def compress(
 ):
     """压缩旧记忆为精简摘要"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     llm = LLMEngine(config)
 
     compressible = memory.find_compressible()
@@ -421,7 +447,7 @@ def associations(
 ):
     """检测记忆之间的关联"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     llm = LLMEngine(config)
 
     drawers = memory.get_drawers()
@@ -573,7 +599,7 @@ def cluster(
     from .memory.clustering import MemoryClusterer
 
     clusterer = MemoryClusterer(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
     if wing:
         drawers = [d for d in drawers if d.wing == wing]
@@ -626,7 +652,7 @@ def conflicts(
     from .memory.conflict import ConflictDetector
 
     detector = ConflictDetector(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
     if wing:
         drawers = [d for d in drawers if d.wing == wing]
@@ -683,7 +709,7 @@ def dedup(
     from .memory.dedup import MemoryDeduplicator
 
     deduper = MemoryDeduplicator(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     groups = deduper.find_duplicates(drawers, threshold=threshold, method=method)
@@ -743,7 +769,7 @@ def analyze(
     from .memory.analytics import MemoryAnalyzer
 
     analyzer = MemoryAnalyzer(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     wiki = WikiEngine(config)
     drawers = memory.get_drawers()
     wiki_count = wiki.stats().get("total_pages", 0)
@@ -765,7 +791,7 @@ def health():
     from .memory.analytics import MemoryAnalyzer
 
     analyzer = MemoryAnalyzer(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     wiki = WikiEngine(config)
     drawers = memory.get_drawers()
     wiki_count = wiki.stats().get("total_pages", 0)
@@ -809,7 +835,7 @@ def timeline(
     from .memory.timeline import TimelineEngine
 
     engine = TimelineEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     events = engine.build_timeline(drawers, wing=wing)
@@ -863,7 +889,7 @@ def causal(
     from .memory.timeline import TimelineEngine
 
     engine = TimelineEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     events = engine.build_timeline(drawers)
@@ -906,7 +932,7 @@ def event_chains(
     from .memory.timeline import TimelineEngine
 
     engine = TimelineEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     events = engine.build_timeline(drawers)
@@ -945,7 +971,7 @@ def fuse(
     from .memory.fusion import FusionEngine
 
     engine = FusionEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     fused = engine.fuse_topic(topic, drawers)
@@ -987,7 +1013,7 @@ def crystallize(
     from .memory.fusion import FusionEngine
 
     engine = FusionEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     knowledge = engine.crystallize_knowledge(drawers, topic=topic)
@@ -1020,7 +1046,7 @@ def patterns(
     from .memory.patterns import PatternEngine
 
     engine = PatternEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     patterns = engine.discover_all(drawers)
@@ -1075,7 +1101,7 @@ def replay(
     from .memory.replay import ReplayEngine
 
     engine = ReplayEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     if topic:
@@ -1127,7 +1153,7 @@ def highlights(
     from .memory.replay import ReplayEngine
 
     engine = ReplayEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     session = engine.highlight_reel(drawers, top_n=top_n)
@@ -1211,7 +1237,7 @@ def fts_search(
     """FTS5全文+向量混合搜索(RRF融合)"""
     config = get_config()
     engine = FTS5SearchEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
     engine.build_index(drawers)
 
@@ -1299,7 +1325,7 @@ def holo_search(
 ):
     """全息跨维度融合检索"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     results = holographic_search(query, drawers, top_k=top_k)
@@ -1418,7 +1444,7 @@ def adaptive_evaluate(
     """根据系统统计评估并调整参数"""
     config = get_config()
     engine = get_adaptive_engine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     stats = {
@@ -1550,7 +1576,7 @@ def reconsolidate(
     """再巩固记忆（刷新衰减分数）"""
     config = get_config()
     engine = ReconsolidationEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
     result = engine.run(drawers, min_importance=min_importance, max_importance=max_importance, limit=limit)
     if json_output:
@@ -1568,7 +1594,7 @@ def resonance(
     """发现情感/语义共鸣的记忆对"""
     config = get_config()
     engine = ResonanceEngine(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     if cross_wing:
@@ -1599,7 +1625,7 @@ def distill(
     """从记忆中蒸馏结构化知识卡片"""
     config = get_config()
     tower = DistillationTower(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
     if texts is None:
         texts = [d.content for d in drawers[:10]]
@@ -1650,7 +1676,7 @@ def vector_index(
         from .search.embedder import VectorEmbedder
 
         embedder = VectorEmbedder(config)
-        memory = MemoryStack(config)
+        memory = get_memory_stack(config)
         drawers = memory.get_drawers()
         success = idx.build_from_drawers(drawers, embedder=embedder)
         console.print(f"[{'green' if success else 'yellow'}]{'已构建' if success else '跳过'}[/]")
@@ -1723,7 +1749,7 @@ def enhanced_contradictions(
     """LLM驱动矛盾检测（6种裁决）"""
     config = get_config()
     detector = EnhancedContradictionDetector(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     result = detector.detect_contradictions(drawers, top_k=top_k)
@@ -1748,7 +1774,7 @@ def trajectory(
     """追踪记忆时间轨迹"""
     config = get_config()
     tracker = TrajectoryTracker(config)
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
 
     if period_a and period_b:
@@ -1772,7 +1798,7 @@ def streaming_index(
 ):
     """增量索引管理"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
     drawers = memory.get_drawers()
     indexer = StreamingIndexer(config)
 
@@ -2067,7 +2093,7 @@ def identity(
 ):
     """查看或设置 AI 身份"""
     config = get_config()
-    memory = MemoryStack(config)
+    memory = get_memory_stack(config)
 
     if text:
         memory.l0.set_identity(text)

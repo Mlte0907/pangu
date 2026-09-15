@@ -11,6 +11,7 @@
 
 import json
 import sqlite3
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -104,8 +105,11 @@ class DomainKnowledge:
     """领域知识库"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
-        db_path = Path.home() / ".pangu" / "domain_knowledge.db"
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
+        # P2-1 Step 1：DB 路径从 config 读取，不再硬编码 Path.home()。
+        # 这是 P0-0 路径分叉教训的延伸——任何"独立 DB"必须走 config
+        # 而不是硬编码 HOME，否则测试隔离失效并污染生产。
+        db_path = Path(self.config.domain_knowledge_db_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(db_path)
         self._init_db()

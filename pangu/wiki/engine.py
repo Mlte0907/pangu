@@ -13,7 +13,7 @@ class WikiEngine:
     """Wiki 知识引擎 — 管理知识页面的生命周期"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.wiki_path = Path(self.config.wiki_path)
         self.wiki_path.mkdir(parents=True, exist_ok=True)
 

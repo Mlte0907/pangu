@@ -24,7 +24,7 @@ class LifecycleManager:
     """生命周期管理器 — 自动触发记忆维护任务"""
 
     def __init__(self, config: PanguConfig | None = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._last_consolidation: float = 0.0
         self._last_index_rebuild: float = 0.0
 
@@ -51,6 +51,7 @@ class LifecycleManager:
             "updated_at": datetime.now().isoformat(),
         }
         try:
+            self._state_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self._state_file, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
         except Exception as e:
@@ -84,12 +85,12 @@ class LifecycleManager:
         logger.info("Starting memory consolidation...")
 
         # 加载记忆
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        drawers_file = self.config.authoritative_drawers_path
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         # 执行巩固
         consolidator = MemoryConsolidator(self.config)
@@ -150,13 +151,23 @@ class LifecycleManager:
 
         logger.info("Rebuilding vector index...")
 
-        # 加载记忆
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # 加载记忆（P0-0 修复：读**权威路径** v2，而不是 v1 palace）
+        # 此前读 `self.config.palace_path/drawers.json`（v1）。实测 v1=[] 时
+        # 返回 {'total_memories': 0, 'indexed': 0} —— 而自主维护每次"重建索引"
+        # 走的都是这条路，等于**反复把向量索引清零**。
+        #
+        # ⚠ 这里只读权威路径，**不再回退 v1**。
+        # 早期版本写过 "v2 不存在则回退读 v1"，那是个有缺陷的写法：
+        # 回退只检查"文件存在"而不检查"内容非空"，于是 fresh install
+        # （v2 未初始化 + v1 是空 `[]`）时会读进空数组、继续执行到
+        # `vector_idx.clear()` 后一条都不加 —— 仍然清零索引。
+        # "空 `[]` 不算数据源"这条规则统一由
+        # `PanguConfig.load_drawers_nonempty()` 定义，这里直接用它。
+        drawers_file = self.config.authoritative_drawers_path
+        raw = PanguConfig.load_drawers_nonempty(drawers_file)
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         # 获取嵌入服务和向量索引
         embed_svc = get_embedding_service()
@@ -204,12 +215,12 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "decay module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        drawers_file = self.config.authoritative_drawers_path
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         # 执行衰减
         stats = decay_batch(drawers, dry_run=False)
@@ -228,12 +239,11 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "consolidation module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         consolidator = MemoryConsolidator(self.config)
         forgotten = consolidator.find_forgotten(drawers)
@@ -258,12 +268,10 @@ class LifecycleManager:
 
     def _count_new_memories(self) -> int:
         """自上次巩固以来新增的记忆数"""
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        drawers = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        if not drawers:
             return 0
         try:
-            with open(drawers_file, encoding="utf-8") as f:
-                drawers = json.load(f)
             if not self._last_consolidation:
                 return len(drawers)
             return self._count_memories_after(drawers, self._last_consolidation)
@@ -356,12 +364,13 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "decay module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
+        # 写回路径必须与读取路径**同源**（P0-0：读 v2 就必须写 v2）
+        drawers_file = self.config.authoritative_drawers_path
 
         stats = decay_batch(drawers, dry_run=False)
 
@@ -477,12 +486,12 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "fusion module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        drawers_file = self.config.authoritative_drawers_path
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         if len(drawers) < 3:
             return {"status": "skip", "reason": "too_few_memories"}
@@ -521,12 +530,11 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "cross_session module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         if len(drawers) < 5:
             return {"status": "skip", "reason": "too_few_memories"}
@@ -549,12 +557,11 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "KG module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         if len(drawers) < 3:
             return {"status": "skip", "reason": "too_few"}
@@ -573,12 +580,12 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "compression module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        drawers_file = self.config.authoritative_drawers_path
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         results = compressor.batch_compress(drawers)
         if not results:
@@ -606,12 +613,12 @@ class LifecycleManager:
         except ImportError:
             return {"status": "skip", "reason": "consolidation module not available"}
 
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if not drawers_file.exists():
+        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        drawers_file = self.config.authoritative_drawers_path
+        if not raw:
             return {"status": "no_memories"}
-
-        with open(drawers_file, encoding="utf-8") as f:
-            drawers = [Drawer.from_dict(d) for d in json.load(f)]
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         consolidator = MemoryConsolidator(self.config)
         compressible = consolidator.find_compressible(drawers)
@@ -644,15 +651,9 @@ class LifecycleManager:
 
         consolidator = MemoryConsolidator(self.config)
 
-        # 加载记忆
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        drawers = []
-        if drawers_file.exists():
-            try:
-                with open(drawers_file, encoding="utf-8") as f:
-                    drawers = [Drawer.from_dict(d) for d in json.load(f)]
-            except Exception:
-                pass
+        # 加载记忆（P0-0：读权威路径 v2，此前读 v1 → 统计恒为空）
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        drawers = [Drawer.from_dict(d) for d in raw]
 
         stats = consolidator.stats(drawers) if drawers else {}
 

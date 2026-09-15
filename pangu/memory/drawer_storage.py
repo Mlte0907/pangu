@@ -30,6 +30,15 @@ _STORAGE_FORMAT_VERSION = "0.1.0"
 class DrawerStorage:
     """抽屉存储抽象基类"""
 
+    #: 上一次 `load()` 是否**成功**完成。
+    #: 需要它是因为"读到 0 条"有两种语义完全不同的来源：
+    #:   - 文件不存在 / 文件就是 `[]`  ⇒ **成功**读到 0 条（合法空库）
+    #:   - 文件存在但解析失败          ⇒ **失败**，此时返回的 [] 是"假空"
+    #: 上层（MemoryStack._load_drawers）必须能区分二者，否则会把"解析失败"
+    #: 当成"成功加载到 0 条"，进而允许后续落盘把磁盘上**尚可挽救**的内容清空。
+    #: 实测：57 字节"损坏但前 2 条可救"的文件 → 曾被清成 `[]`（2 字节）。
+    last_load_ok: bool = True
+
     def load(self) -> list[Drawer]:
         """加载所有抽屉"""
         raise NotImplementedError
@@ -66,13 +75,26 @@ class JsonDrawerStorage(DrawerStorage):
             try:
                 with open(self.file_path, encoding="utf-8") as f:
                     data = json.load(f)
+                # 兼容两种形态：纯列表，或 {"drawers": [...]}
+                if isinstance(data, dict):
+                    data = data.get("drawers", [])
                 for d in data:
                     drawers.append(Drawer.from_dict(d))
+                self.last_load_ok = True
             except Exception as e:
-                logger.warning(f"JSON 文件读取失败: {e}")
+                # ⚠ 解析失败 ⇒ 返回的 [] 是"假空"，必须置 False。
+                # 否则上层会把"读失败"当成"成功加载到 0 条"，
+                # 后续落盘就会把磁盘上尚可挽救的内容清空（实测 57B 文件→`[]`）。
+                self.last_load_ok = False
+                logger.warning(f"JSON 文件读取失败（已标记 last_load_ok=False，禁止空写）: {e}")
+        else:
+            # 文件不存在 == 合法空库，这是**成功**读取
+            self.last_load_ok = True
 
-        self._cache[cache_key] = drawers
-        self._last_cache_time = now
+        # 读取失败时不要缓存这个"假空"结果，否则 30s 内都拿不到重试机会
+        if self.last_load_ok:
+            self._cache[cache_key] = drawers
+            self._last_cache_time = now
         return drawers
 
     def save(self, drawers: list[Drawer]) -> None:

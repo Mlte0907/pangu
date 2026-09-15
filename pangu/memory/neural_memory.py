@@ -90,7 +90,7 @@ class PersonalizedDecay:
     }
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         # 可覆盖每种类型的衰减率
         self.decay_rates: dict[MemoryType, float] = dict(self.DEFAULT_DECAY_RATES)
 
@@ -150,7 +150,7 @@ class Hippocampus:
     CAPACITY: int = 40  # 海马体容量上限
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._buffer: list[NeuralMemory] = []
         self._encoding_queue: list[NeuralMemory] = []
 
@@ -309,7 +309,7 @@ class Neocortex:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._memories: dict[str, NeuralMemory] = {}
         # 语义关联矩阵：记忆 ID 对 → 关联强度
         self._association_graph: dict[str, dict[str, float]] = {}
@@ -525,7 +525,7 @@ class SleepConsolidation:
     """
 
     def __init__(self, config: PanguConfig = None, hippocampus: Hippocampus = None, neocortex: Neocortex = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.hippocampus = hippocampus or Hippocampus(config)
         self.neocortex = neocortex or Neocortex(config)
         self._last_sleep: float = 0.0
@@ -641,7 +641,7 @@ class EmotionalModulator:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def modulate_encoding(self, memory: NeuralMemory) -> NeuralMemory:
         """调制记忆编码：根据情感状态增强/减弱编码强度
@@ -686,7 +686,7 @@ class NeuralMemoryEngine:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.hippocampus = Hippocampus(config)
         self.neocortex = Neocortex(config)
         self.sleep_engine = SleepConsolidation(config, self.hippocampus, self.neocortex)
@@ -795,7 +795,7 @@ def get_neural_engine(config: PanguConfig = None) -> NeuralMemoryEngine:
     if _neural_engine is None:
         with _neural_engine_lock:
             if _neural_engine is None:
-                cfg = config or PanguConfig.load()
+                cfg = (config or PanguConfig.load()).authoritative_memory_config()
                 if not cfg.neural_enabled:
                     raise RuntimeError("Neural memory is disabled (neural_enabled=false)")
                 _neural_engine = NeuralMemoryEngine(cfg)

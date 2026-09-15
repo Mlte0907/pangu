@@ -46,7 +46,7 @@ class ReplayEngine:
     """记忆回放引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def _check_time_range(self, ts: datetime, start: str, end: str) -> bool:
         """检查时间戳是否在指定范围内，返回 True 表示通过"""

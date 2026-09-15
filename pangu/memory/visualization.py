@@ -21,7 +21,7 @@ class MemoryVisualizer:
     """记忆可视化 — 文本化展示"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def visualize_graph(self, entities: list[dict], relations: list[dict]) -> str:
         """可视化知识图谱"""

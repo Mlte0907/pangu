@@ -87,7 +87,14 @@ def create_app(config: PanguConfig = None) -> FastAPI:
 
     # 初始化核心组件
     palace = Palace(config.palace_path)
-    memory = MemoryStack(config)
+    # P0-0 修复：记忆栈走权威路径（v2），与 API(19529)/MCP 侧一致。
+    # 此前传默认 config → 读空的 v1 palace/drawers.json，整个 8866 服务
+    # 看到的是空库（列表/搜索/统计全为空），与 API 侧答案相反。
+    # 注意只重定向记忆栈：Palace/WikiEngine/KnowledgeGraph 的数据确实在 v1。
+    memory = MemoryStack(
+        config=config.authoritative_memory_config(),
+        extra_drawers_files=config.authoritative_extra_drawers_files(),
+    )
     wiki = WikiEngine(config)
     kg = KnowledgeGraph(config)
     search = HybridSearch(config)

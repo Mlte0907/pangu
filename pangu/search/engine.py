@@ -8,7 +8,7 @@ class SemanticSearch:
     """语义搜索 — 支持关键词匹配和向量搜索双模式"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._embedder = None
 
     @property
@@ -113,7 +113,7 @@ class LexicalSearch:
     """词汇搜索 — 精确文本匹配"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def search(self, query: str, drawers: list[Drawer], wing: str = None, n_results: int = 10) -> list[dict]:
         """精确文本搜索"""

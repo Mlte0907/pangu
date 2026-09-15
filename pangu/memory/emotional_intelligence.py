@@ -62,7 +62,7 @@ class EmotionalIntelligence:
     }
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._emotion_history: list[dict] = []
 
     def analyze_emotion(self, text: str) -> EmotionResult:

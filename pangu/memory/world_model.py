@@ -57,7 +57,7 @@ class PredictiveWorldModel:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._scenario_cache: dict[str, list[Scenario]] = {}
         self._prediction_history: list[dict] = []
         self._bayesian_weights: dict[str, float] = {}

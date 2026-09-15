@@ -101,6 +101,14 @@ class PanguConfig(BaseSettings):
     config_path: str = ""
     db_path: Path = Path(".")
     backup_dir: Path = Path(".")
+    # 权威记忆存储目录（v2）。留空时由 db_path 派生（见 memory_data_dir）。
+    # 显式设置可覆盖，供迁移/测试指向别处。
+    memory_data_dir_override: str = ""
+    # 领域知识库独立 SQLite DB 路径（P2-1 Step 1）。
+    # 留空时在 model_post_init 派生为 base_dir / "domain_knowledge.db"。
+    # **必须**走 config 而不是硬编码 Path.home()，否则测试隔离失效
+    # （参考 P0-0 路径分叉教训）。
+    domain_knowledge_db_path: Path = Path("")
 
     # ── 服务配置 ──
     host: str = "0.0.0.0"
@@ -334,6 +342,104 @@ class PanguConfig(BaseSettings):
             self.jwt_secret_file = str(self.base_dir / ".jwt_secret")
         if not self.llm_api_key_file:
             self.llm_api_key_file = str(self.base_dir / ".llm_api_key")
+        if not self.domain_knowledge_db_path or str(self.domain_knowledge_db_path) == ".":
+            self.domain_knowledge_db_path = self.base_dir / "domain_knowledge.db"
+
+    # ── 权威记忆路径（P0-0 修复）────────────────────────────
+    # 背景：全仓 49 处 `MemoryStack(...)` 调用点中，只有 pangu/api/server.py 与
+    # pangu/server/mcp_server.py 显式构造了指向 v2 的 config，其余（CLI 34 处、
+    # routes_memory、web_server(8866)、warmup、autonomous 维护等）都传默认
+    # config → 读 v1 `palace_path/drawers.json`。而 v1 文件实际是空的 `[]`
+    # （实测 2 字节），真实存量在 v2 `db_path/v2_memories/drawers.json`
+    # （实测 66 条）。后果是同一进程内「两条路径给出两个答案」：API 看得到记忆，
+    # CLI/维护/8866 看空库，自主维护连续空转 81 次。
+    #
+    # 修法：不在 40 处调用点逐处硬改（必然改漏），而是在 config 上集中定义
+    # **唯一权威路径**，让 MemoryStack 默认就取对。
+    @property
+    def memory_data_dir(self) -> Path:
+        """权威记忆数据目录。
+
+        语义：`db_path/v2_memories` 优先，它是 API/MCP 两侧共同的真实存储。
+        `memory_data_dir_override` 显式设置时优先于派生（迁移/测试用）。
+        """
+        if self.memory_data_dir_override:
+            return Path(os.path.expanduser(self.memory_data_dir_override))
+        return Path(self.db_path) / "v2_memories"
+
+    @property
+    def authoritative_drawers_path(self) -> Path:
+        """权威 drawers.json 路径（v2 主存储）。"""
+        return self.memory_data_dir / "drawers.json"
+
+    def legacy_drawers_path(self) -> Path:
+        """v1 遗留 drawers.json（只读合并源，可能为空或不存在）。"""
+        return Path(self.palace_path) / "drawers.json"
+
+    def authoritative_memory_config(self) -> "PanguConfig":
+        """返回一份指向权威（v2）存储的 config 副本。
+
+        与 v1 的 `palace_path` 区分：identity/wiki 也一并指到 v2 目录，
+        避免 L0/L1 层从遗留路径读到错位内容。
+
+        ⚠ 语义边界（重要）：`memory_data_dir` 是 **property**，不是 pydantic
+        字段，`model_copy()` 不会把它带过去——副本的 `memory_data_dir` 仍然
+        依据**副本自己的 `db_path`** 重新派生。
+        因此：该副本的权威路径语义**取决于它的 db_path**。
+        本方法是**幂等**的（对副本再调用一次，得到相同的 memory_data_dir，
+        因为 db_path 未被改动），实测已验证。但若将来需要把副本指向另一个
+        库，必须显式改 `db_path`（或 `memory_data_dir_override`），
+        只改 `palace_path` 不足以改变 `authoritative_drawers_path`。
+        """
+        cfg = self.model_copy(deep=True)
+        v2_dir = self.memory_data_dir
+        cfg.palace_path = str(v2_dir)
+        # ⚠ identity_path / wiki_path **不跟着记忆库迁移**，必须保持原值。
+        #
+        # 这里曾经写成 `v2_dir / "identity.json"` 和 `v2_dir / "wiki.json"`，
+        # 是两处真实 bug（都是"改默认时改错了语义"）：
+        #
+        # 1) identity_path：L0 身份层的契约是 **`.txt`**
+        #    （layers.py:55 "读取 ~/.pangu/identity.txt"；:65 提示语同样写 .txt；
+        #     config.py:329 的默认值也是 `base_dir / "identity.txt"`）。
+        #    权威化后变成 v2 目录下的 `identity.json` ⇒ **文件明明存在却读不到**，
+        #    已配置身份的用户会静默丢失 L0 身份（不报错，只报 degraded）。
+        # 2) wiki_path：`wiki/engine.py:17-21` 把它当**目录**用
+        #    （`mkdir(parents=True)`，再往里面写 `wiki_index.json` 和 `<id>.md`），
+        #    而原来赋的是文件路径 `wiki.json` ⇒ 语义错误。
+        #
+        # 语义判断依据：身份文件是**用户手工创建的配置文件**，Wiki 是独立的
+        # 知识库目录，二者都不是"记忆抽屉数据"，不该跟着 drawers 的迁移走。
+        # 记忆栈只迁移 `palace_path`（drawers/状态）——与 lifecycle_state.json
+        # 保留在 v1 是同一个判断。
+        return cfg
+
+    def authoritative_extra_drawers_files(self) -> list[Path]:
+        """权威读取时应合并的只读 v1 源：仅在文件存在且非空时返回。"""
+        v1 = self.legacy_drawers_path()
+        # 空 `[]` 是"无内容"，不是有效合并源——合并它只会让人误以为读了 v1
+        return [v1] if self.load_drawers_nonempty(v1) else []
+
+    @staticmethod
+    def load_drawers_nonempty(path: "Path | str") -> list:
+        """读取 drawers.json，返回记录列表；不存在/损坏/**空 `[]`** 一律返回 `[]`。
+
+        这是「空 `[]` 不算数据源」这条规则的**唯一定义处**。此前该规则散落在
+        多个调用点，标准不一致——例如 `rebuild_vector_index()` 的回退分支只
+        检查了"文件存在"，于是读到空 `[]` 后继续往下走、`vector_idx.clear()`
+        之后一条都不加，**仍然把向量索引清零**（队长复核发现的逻辑倒置）。
+
+        统一到此处后，所有"拿现有记忆"的地方都得到同一语义：
+        空文件 == 没有记忆，而不是"有一份空的记忆"。
+        """
+        try:
+            p = Path(path)
+            if not p.exists():
+                return []
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return data if data else []
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError):
+            return []
 
     @classmethod
     def load(cls, config_path: str | None = None) -> "PanguConfig":
@@ -367,6 +473,38 @@ class PanguConfig(BaseSettings):
             logger.warning(f"从 config.json 中移除了敏感字段 {removed_keys}，请通过环境变量（PANGU_ 前缀）设置这些值。")
 
         # 用 pydantic-settings 创建实例（自动从环境变量覆盖）
+        #
+        # ⚠ F2 修复：`cls(**json_data)` 会把 config.json 里的**显式**值作为
+        # **构造参数**传入，而 pydantic-settings 中「显式构造参数 > 环境变量」。
+        # 于是本机 config.json 里写死的绝对路径
+        # `"db_path": "/home/xiaoxin/.pangu/pangu.db"` 会**静默压过** `PANGU_DB_PATH`，
+        # 导致任何调用 `load()` 的测试/进程都拿到**生产路径**并写入生产库
+        # —— 实测造成 v2 权威库被反复清空（P0-0 事故的主要污染渠道）。
+        #
+        # F2-b 修复（P0-0 遗留）：让**已显式设置的环境变量获胜**，
+        # 把这些键从 json_data 里摘掉，交给 pydantic-settings 从环境变量取值。
+        # 这不是新语义，而是把 `pangu/api/server.py` 早已声明的设计补全：
+        #     _ENV_OVERRIDABLE_PATHS = ("db_path", "base_dir")
+        # 该逻辑此前只写在 `create_app()` 里，`load()` 从未实现，两处行为不一致。
+        # 未设置对应环境变量时行为完全不变（仍读 config.json，向后兼容）。
+        #
+        # F2-b 新增：palace_path/identity_path/wiki_path/backup_dir 也需要覆盖，
+        # 否则 config.json 里的绝对路径会静默压过测试隔离设置的 env。
+        # 这些字段的 env 名遵循 PANGU_ 前缀（pydantic-settings env_prefix="PANGU_"）。
+        #
+        # P2-1 Step 1 新增：domain_knowledge_db_path（PanguConfig 字段）也必须覆盖，
+        # 否则 domain_knowledge 的 DB 路径会和生产路径冲突（参考 P0-0 教训）。
+        for _key in (
+            "db_path",
+            "base_dir",
+            "palace_path",
+            "identity_path",
+            "wiki_path",
+            "backup_dir",
+            "domain_knowledge_db_path",
+        ):
+            if os.environ.get(f"PANGU_{_key.upper()}") and _key in json_data:
+                json_data.pop(_key)
         config = cls(**json_data)
         config.config_path = config_path
         # 密钥类字段不入 config.json（见 save() 的 exclude），从独立文件回填。

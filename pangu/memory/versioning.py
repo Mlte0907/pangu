@@ -33,7 +33,7 @@ class MemoryVersionControl:
     """记忆版本控制 — 跟踪记忆演变"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._versions: dict[str, list[MemoryVersion]] = {}  # memory_id -> [versions]
         self._max_versions: int = 10
 

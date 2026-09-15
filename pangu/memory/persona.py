@@ -30,7 +30,7 @@ class PersonaEngine:
     """人格引擎 — 维护系统身份、人格特质与健康度"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._personality_traits: dict = dict(PERSONALITY_DEFAULTS)
         self._report_history: list[dict] = []
         self._last_report_ts: float = 0

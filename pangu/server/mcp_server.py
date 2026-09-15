@@ -29,7 +29,7 @@ class MCPServer:
     """MCP 协议服务器 — 35 个记忆工具"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._palace = None
         self._memory = None
         self._knowledge_graph = None
@@ -37,6 +37,7 @@ class MCPServer:
         self._search = None
         self._llm = None
         self._persistent_cache = None
+        self._domain_knowledge = None
         self._warmup_task: asyncio.Task | None = None
         self._vacuum_task: asyncio.Task | None = None
         self._periodic_vacuum_task: asyncio.Task | None = None
@@ -110,6 +111,20 @@ class MCPServer:
             self._maybe_schedule_vacuum()
         return self._llm
 
+    @property
+    def domain_knowledge(self):
+        """领域知识库（P2-1 Step 1）。
+
+        注意：DomainKnowledge 自身会在 __init__ 跑 _seed_defaults；
+        这是惰性访问——仅在第一次调用 knowledge 工具时才执行，
+        不影响 services/CLI 默认启动路径。
+        """
+        if self._domain_knowledge is None:
+            from pangu.memory.domain_knowledge import DomainKnowledge
+
+            self._domain_knowledge = DomainKnowledge(self.config)
+        return self._domain_knowledge
+
     def _ensure_initialized(self):
         """确保核心组件已初始化（首次调用时触发）"""
         _ = self.palace
@@ -135,7 +150,7 @@ class MCPServer:
             实际被丢弃的缓存组件名（用于回执与排障）。
         """
         dropped: list[str] = []
-        for attr in ("_llm", "_search", "_wiki"):
+        for attr in ("_llm", "_search", "_wiki", "_domain_knowledge"):
             if getattr(self, attr, None) is not None:
                 setattr(self, attr, None)
                 dropped.append(attr.lstrip("_"))

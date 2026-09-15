@@ -181,7 +181,7 @@ class VectorEmbedder:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._model = None
         self._onnx = None
         self._backend: str | None = None  # 'onnx' | 'st' | 'unavailable'

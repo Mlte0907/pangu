@@ -45,7 +45,7 @@ class FileCollector:
     """文件采集器 — 从任意文件提取记忆"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._state_file = Path(self.config.palace_path) / "collector_state.json"
         self._state = self._load_state()
 
@@ -91,7 +91,6 @@ class FileCollector:
 
         from ..memory.ingestion import remember
 
-        Path(self.config.palace_path) / "drawers.json"
         existing = self._load_existing()
 
         for _i, chunk in enumerate(chunks):
@@ -228,18 +227,27 @@ class FileCollector:
         return wing, room
 
     def _load_existing(self, _=None) -> list:
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
-        if drawers_file.exists():
-            try:
-                with open(drawers_file, encoding="utf-8") as f:
-                    return [Drawer.from_dict(d) for d in json.load(f)]
-            except Exception:
-                pass
-        return []
+        """读取现有记忆用于采集去重（P0-0 修复：走**权威路径** v2）。
+
+        此前读 v1 `palace_path/drawers.json`。实测 v1=[] 时返回 0 条 ⇒
+        采集的**去重基线恒为 0**，于是重复采集同一批文件内容。
+        `pangu_collect_file` / `pangu_collect_dir` 都在默认 28 工具内，
+        这是被污染的默认工具之一（U2）。
+        """
+        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
+        return [Drawer.from_dict(d) for d in raw]
 
     def _save_drawers(self, drawers: list):
-        drawers_file = Path(self.config.palace_path) / "drawers.json"
+        """写回记忆（P0-0 修复：写**权威路径** v2，并做空写保护）。
+
+        空写保护：磁盘非空 + 待写为空 ⇒ 跳过，避免把非空库清成 0 条。
+        """
+        drawers_file = self.config.authoritative_drawers_path
+        if not drawers and PanguConfig.load_drawers_nonempty(drawers_file):
+            logger.warning("跳过采集回写: 待写为空但磁盘有记录，疑似空库误写（数据保护）")
+            return
         try:
+            drawers_file.parent.mkdir(parents=True, exist_ok=True)
             with open(drawers_file, "w", encoding="utf-8") as f:
                 json.dump([d.to_dict() for d in drawers], f, ensure_ascii=False, indent=2)
         except Exception as e:

@@ -33,7 +33,7 @@ class SemanticReranker:
     """语义重排序引擎"""
 
     def __init__(self, config: PanguConfig = None, weights: dict = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.weights = {**DEFAULT_WEIGHTS, **(weights or {})}
 
     def rerank(

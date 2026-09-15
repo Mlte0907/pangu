@@ -62,7 +62,7 @@ class NarrativeEngine:
     """叙事引擎 — 将碎片化记忆串成连贯叙事 + 主题提取 + 身份连续性"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def generate_narrative(self, drawers: list[Drawer]) -> dict:
         """生成叙事 — 按 Wing 聚合记忆为连贯叙事线"""

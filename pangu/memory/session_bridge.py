@@ -21,7 +21,7 @@ class SessionBridge:
     """跨会话桥接引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._sessions_file = Path(self.config.palace_path) / "sessions.json"
         self._sessions = self._load_sessions()
 

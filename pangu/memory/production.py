@@ -255,7 +255,7 @@ def check_environment() -> dict:
     try:
         from ..core.config import PanguConfig
 
-        cfg = PanguConfig.load()
+        cfg = PanguConfig.load().authoritative_memory_config()
         base_url = (getattr(cfg, "llm_base_url", "") or "").strip()
         api_key = (getattr(cfg, "llm_api_key", "") or "").strip()
         checks["llm"]["provider"] = getattr(cfg, "llm_provider", "") or ""

@@ -54,7 +54,7 @@ class ProactiveReminderEngine:
     """主动提醒引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._history_file = Path(self.config.palace_path) / "question_history.json"
         self._history: list[dict] = self._load_history()
         self._topic_stats: dict[str, int] = self._compute_topic_stats()

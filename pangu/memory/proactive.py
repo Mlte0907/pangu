@@ -34,7 +34,7 @@ class ProactiveEngine:
     """预测性记忆引擎 — 基于上下文预加载相关记忆"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._context_history: list[str] = []  # 上下文历史
         self._prediction_stats: dict = {"hits": 0, "misses": 0}
         self._context_window: int = 10  # 上下文窗口大小

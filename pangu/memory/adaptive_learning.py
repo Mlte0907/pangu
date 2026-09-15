@@ -41,7 +41,7 @@ class AdaptiveLearningSystem:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._events: list[LearningEvent] = []
         self._search_patterns: dict[str, dict] = {}  # query -> {count, avg_score, last_used}
         self._memory_access: dict[str, dict] = {}  # memory_id -> {count, last_access, avg_score}

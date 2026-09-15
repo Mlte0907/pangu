@@ -35,7 +35,7 @@ class PatternEngine:
     """模式识别引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def discover_all(self, drawers: list[Drawer]) -> list[DiscoveredPattern]:
         """发现所有模式"""

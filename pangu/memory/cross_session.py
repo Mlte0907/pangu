@@ -23,7 +23,13 @@ class CrossSessionIntegrator:
     """跨会话记忆整合器"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        # B5：必须权威化。本模块 :175/:234/:296 读写 `self.config.palace_path`
+        # 下的 drawers.json，v1 语义下那是**空库** ⇒ 跨会话关联永远算不出东西。
+        # 活链路：handlers/session.py → CrossSessionIntegrator(server.config)。
+        # 同 memory_validator：调用方传入的 config 也要覆盖（活链路上传的是
+        # 未权威化的 server.config）。
+        base = config or PanguConfig.load()
+        self.config = base.authoritative_memory_config()
 
     def find_cross_session_links(
         self,

@@ -32,7 +32,7 @@ class MemoryCompressor:
     """LLM 记忆压缩引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._llm_engine = None
 
     @property

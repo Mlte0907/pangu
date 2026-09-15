@@ -51,7 +51,7 @@ from . import batch
 TOOLS.extend(batch.TOOLS)
 HANDLERS.update(batch.HANDLERS)
 
-# 可选模块（10 个，默认加载，由暴露面过滤器控制可见性）
+# 可选模块（11 个，默认加载，由暴露面过滤器控制可见性）
 from . import analytics
 
 TOOLS.extend(analytics.TOOLS)
@@ -66,6 +66,11 @@ from . import embed
 
 TOOLS.extend(embed.TOOLS)
 HANDLERS.update(embed.HANDLERS)
+
+from . import knowledge
+
+TOOLS.extend(knowledge.TOOLS)
+HANDLERS.update(knowledge.HANDLERS)
 
 from . import knowledge_graph
 

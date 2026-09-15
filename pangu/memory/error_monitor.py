@@ -23,7 +23,7 @@ class ErrorMonitor:
     """错误监控引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._errors: list[dict] = []
         self._max_errors = 1000
         self._stats = defaultdict(int)

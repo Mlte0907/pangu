@@ -137,7 +137,7 @@ class DebateEngine:
     """多策略辩论引擎 — 并行推理 + 裁判评分选最优"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._quota: dict = {}
         self._cache: dict = {}
 

@@ -12,7 +12,7 @@ class SearchAnalytics:
     """搜索分析引擎"""
 
     def __init__(self, config=None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._log_file = Path.home() / ".pangu" / "search_analytics.json"
         self._queries: list[dict] = []
         self._load()

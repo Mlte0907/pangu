@@ -44,7 +44,7 @@ class DeepEmotionEngine:
     """深度情绪智能 — 情绪轨迹追踪、混合情绪解耦、个性化情绪学习"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def analyze_trajectory(self, drawers: list[Drawer]) -> dict:
         """情绪轨迹追踪 — 追踪情绪随时间的变化趋势"""

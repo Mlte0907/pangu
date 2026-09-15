@@ -22,7 +22,7 @@ class ContextInjector:
     """上下文自动注入引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._injection_history: list[dict] = []
         self._max_history = 500
 

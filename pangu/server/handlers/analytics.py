@@ -52,6 +52,25 @@ TOOLS = [
         "name": "pangu_health_report",
         "description": "\u751f\u6210\u7efc\u5408\u5065\u5eb7\u62a5\u544a\uff08\u8bc4\u5206+\u5efa\u8bae\uff09",
     },
+    # ── P2-1 Step 2：高级推理（advanced_reasoning）接入 ──
+    # 命名一律带 advanced_ 前缀，避开既有的 pangu_growth_trend /
+    # pangu_anomaly_detect / pangu_anomaly_scan（同层已有，不可重名）。
+    {
+        "name": "pangu_advanced_causal_chains",
+        "description": "\u53d1\u73b0\u8bb0\u5fc6\u95f4\u7684\u65f6\u5e8f\u56e0\u679c\u94fe\uff08\u652f\u6301 min_support/limit\uff09",
+    },
+    {
+        "name": "pangu_advanced_trends",
+        "description": "\u9884\u6d4b\u6807\u7b7e\u70ed\u5ea6\u8d8b\u52bf\uff08\u652f\u6301\u7a97\u53e3/\u9884\u6d4b\u6b65\u957f\uff09",
+    },
+    {
+        "name": "pangu_advanced_anomalies",
+        "description": "\u68c0\u6d4b\u8bb0\u5fc6\u5f02\u5e38\uff08\u9891\u7387/\u5185\u5bb9/\u6807\u7b7e/\u95f4\u9694\uff09",
+    },
+    {
+        "name": "pangu_advanced_knowledge_gaps",
+        "description": "\u8bc6\u522b\u77e5\u8bc6\u7f3a\u53e3\uff08\u5b64\u7acb\u4e3b\u9898/\u8584\u5f31\u4e3b\u9898\uff0c\u6309\u4f18\u5148\u7ea7\u8fc7\u6ee4\uff09",
+    },
 ]
 
 HANDLERS = {}
@@ -582,3 +601,197 @@ async def handle_health_report(server, drawers, arguments):
 
 
 HANDLERS["pangu_health_report"] = handle_health_report
+
+
+# ══════════════════════════════════════════════════════════════════════
+# P2-1 Step 2：高级推理（memory/advanced_reasoning.py）接入
+#
+# 为什么每个工具都有 limit：
+#   勘察实测（84 条生产记忆 / 301 个唯一标签）——
+#     discover_causal_chains(min_support=3) → **8674 条链接**（O(T²) 标签对爆炸）
+#     identify_knowledge_gaps             → **2881 个缺口**（单点主题刷屏）
+#   不加限制会把 5MB+ JSON 直接返回给调用方。故一律带 limit 且给保守默认值。
+# ══════════════════════════════════════════════════════════════════════
+
+
+def _causal_link_to_dict(link) -> dict:
+    return {
+        "id": link.id,
+        "cause": link.cause,
+        "effect": link.effect,
+        "confidence": link.confidence,
+        "mechanism": link.mechanism,
+        "temporal_lag_hours": link.temporal_lag,
+        "evidence": list(link.evidence),
+    }
+
+
+def _trend_to_dict(t) -> dict:
+    return {
+        "id": t.id,
+        "subject": t.subject,
+        "direction": t.direction.value,
+        "confidence": t.confidence,
+        "historical_values": list(t.historical_values),
+        "predicted_values": list(t.predicted_values),
+        "time_horizon_hours": t.time_horizon_hours,
+        "factors": list(t.factors),
+    }
+
+
+def _anomaly_to_dict(a) -> dict:
+    return {
+        "id": a.id,
+        "anomaly_type": a.anomaly_type,
+        "description": a.description,
+        "severity": a.severity.value,
+        "evidence": list(a.evidence),
+        "expected_value": a.expected_value,
+        "actual_value": a.actual_value,
+        "deviation": a.deviation,
+    }
+
+
+def _gap_to_dict(g) -> dict:
+    return {
+        "id": g.id,
+        "topic": g.topic,
+        "description": g.description,
+        "related_knowledge": list(g.related_knowledge),
+        "missing_links": list(g.missing_links),
+        "priority": g.priority,
+        "suggested_actions": list(g.suggested_actions),
+    }
+
+
+async def handle_advanced_causal_chains(server, drawers, arguments):
+    """发现记忆间的时序因果链。
+
+    min_support 默认 **5**（不是模块默认的 3）：勘察实测 min_support=3 时
+    84 条记忆会产出 8674 条链接，几乎全是置信度 <0.1 的噪声；提到 5 后
+    降到约 3475 条，再经 limit 截断才可读。
+    """
+    from ...memory.advanced_reasoning import AdvancedReasoning
+
+    engine = AdvancedReasoning(server.config)
+    links = engine.discover_causal_chains(
+        drawers,
+        min_support=int(arguments.get("min_support", 5)),
+        max_lag_hours=float(arguments.get("max_lag_hours", 48.0)),
+    )
+    limit = int(arguments.get("limit", 20))
+    # 按置信度降序取 top-K（raw 输出未排序时也保证可读）
+    # ⚠ total 必须在**切片前**记录，否则它等于 min(len, limit)，看不出被截断
+    total = len(links)
+    links = sorted(links, key=lambda x: -x.confidence)[:limit]
+    return json.dumps(
+        {
+            "total_before_limit": total,
+            "limit": limit,
+            "links": [_causal_link_to_dict(x) for x in links],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+HANDLERS["pangu_advanced_causal_chains"] = handle_advanced_causal_chains
+
+
+async def handle_advanced_trends(server, drawers, arguments):
+    """预测标签热度趋势。"""
+    from ...memory.advanced_reasoning import AdvancedReasoning
+
+    engine = AdvancedReasoning(server.config)
+    trends = engine.predict_trends(
+        drawers,
+        window_hours=float(arguments.get("window_hours", 168.0)),
+        prediction_hours=float(arguments.get("prediction_hours", 72.0)),
+    )
+    limit = int(arguments.get("limit", 20))
+    total = len(trends)  # 切片前记录，否则看不出被截断
+    trends = sorted(trends, key=lambda x: -x.confidence)[:limit]
+    return json.dumps(
+        {
+            "total_before_limit": total,
+            "limit": limit,
+            "trends": [_trend_to_dict(x) for x in trends],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+HANDLERS["pangu_advanced_trends"] = handle_advanced_trends
+
+
+async def handle_advanced_anomalies(server, drawers, arguments):
+    """检测记忆异常（频率/内容/标签集中度/创建间隔四通道）。"""
+    from ...memory.advanced_reasoning import AdvancedReasoning
+
+    engine = AdvancedReasoning(server.config)
+    alerts = engine.detect_anomalies(
+        drawers,
+        z_threshold=float(arguments.get("z_threshold", 2.0)),
+    )
+    limit = int(arguments.get("limit", 30))
+    total = len(alerts)  # 切片前记录，否则看不出被截断
+    # 严重度排序：critical > high > medium > low，同 severity 按偏差降序
+    _order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    alerts = sorted(alerts, key=lambda a: (_order.get(a.severity.value, 9), -abs(a.deviation)))[:limit]
+    return json.dumps(
+        {
+            "total_before_limit": total,
+            "limit": limit,
+            "alerts": [_anomaly_to_dict(a) for a in alerts],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+HANDLERS["pangu_advanced_anomalies"] = handle_advanced_anomalies
+
+
+async def handle_advanced_knowledge_gaps(server, drawers, arguments):
+    """识别知识缺口。
+
+    ⚠ min_priority 默认 **0.0（不过滤）**，而不是某个"看起来合理"的高阈值。
+    原因（实测，92 条生产记忆）：priority 只有 3 个固定档位 ——
+        0.4 = 薄弱主题（标签仅出现 1 次）
+        0.6 = 孤立主题（出现 ≥3 次但只与 1 个其他主题关联）
+        0.7 = 因果缺口
+    生产数据 264 个缺口**全部是 0.4**，若默认 0.6 则工具永远返回空数组，
+    调用方会误以为"没有缺口"而不是"阈值把结果滤光了"。
+    故默认不过滤、按优先级降序 + limit 截断，并在返回里给出 by_priority
+    分布，让调用方自己决定要不要抬高阈值。
+    """
+    from ...memory.advanced_reasoning import AdvancedReasoning
+
+    engine = AdvancedReasoning(server.config)
+    all_gaps = engine.identify_knowledge_gaps(drawers)
+    min_priority = float(arguments.get("min_priority", 0.0))
+    gaps = [g for g in all_gaps if g.priority >= min_priority]
+
+    by_priority: dict[str, int] = {}
+    for g in all_gaps:
+        key = f"{g.priority:.1f}"
+        by_priority[key] = by_priority.get(key, 0) + 1
+
+    limit = int(arguments.get("limit", 20))
+    top = sorted(gaps, key=lambda g: -g.priority)[:limit]
+    return json.dumps(
+        {
+            "total_gaps": len(all_gaps),
+            "after_min_priority": len(gaps),
+            "by_priority": by_priority,
+            "min_priority": min_priority,
+            "limit": limit,
+            "gaps": [_gap_to_dict(g) for g in top],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+HANDLERS["pangu_advanced_knowledge_gaps"] = handle_advanced_knowledge_gaps

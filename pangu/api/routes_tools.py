@@ -34,7 +34,7 @@ def _get_server():
     from pangu.core.config import PanguConfig
     from pangu.server.mcp_server import MCPServer
 
-    config = PanguConfig.load()
+    config = PanguConfig.load().authoritative_memory_config()
     config.ensure_dirs()
     _cached_server = MCPServer(config)
     return _cached_server

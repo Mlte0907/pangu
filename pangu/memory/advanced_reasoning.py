@@ -109,7 +109,7 @@ class AdvancedReasoning:
     """高级推理引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     # ── 因果链发现 ──────────────────────────────────────────────
 
@@ -510,11 +510,18 @@ class AdvancedReasoning:
             z = self._z_score(lengths, content_len)
             if abs(z) > z_threshold:
                 direction = "异常长" if z > 0 else "异常短"
+                # ⚠ 这里此前用 `d.title`，但 `Drawer`（core/palace.py:11-25）**没有**
+                # title 字段（title 属于 WikiPage）——真实数据上必抛
+                # `AttributeError`。tests/test_v3_modules_f.py 的
+                # `try/except AttributeError: pass` 把它吞掉了，
+                # 于是 12/12 测试全绿而生产路径 100% 崩溃。
+                # 改用内容前缀（与 handlers 展示记忆摘要的写法一致）。
+                snippet = (d.content or "")[:30]
                 alerts.append(
                     AnomalyAlert(
                         id=f"anomaly_content_{d.id}",
                         anomaly_type="content_length",
-                        description=f"记忆 '{d.title}' 内容{direction}（{content_len}字符，Z={z:.2f}）",
+                        description=f"记忆 '{snippet}' 内容{direction}（{content_len}字符，Z={z:.2f}）",
                         severity=AnomalySeverity.LOW if abs(z) < 3 else AnomalySeverity.MEDIUM,
                         evidence=[d.id],
                         expected_value=round(sum(lengths) / len(lengths), 1),

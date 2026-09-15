@@ -159,7 +159,7 @@ def _build_module_registry() -> list[ModuleEntry]:
         "io_tools": "core",
         "palace": "core",
         "batch": "core",
-        # optional（10 个）：长尾模块，默认关闭
+        # optional（11 个）：长尾模块，默认关闭
         "multimodal": "optional",
         "timeline": "optional",
         "analytics": "optional",
@@ -167,6 +167,7 @@ def _build_module_registry() -> list[ModuleEntry]:
         "consolidation": "optional",
         "embed": "optional",
         "knowledge_graph": "optional",
+        "knowledge": "optional",  # P2-1 Step 1：领域知识库（独立 SQLite DB）
         "wiki": "optional",
         "llm_tools": "optional",
         "session": "optional",

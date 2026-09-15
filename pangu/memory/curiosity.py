@@ -20,7 +20,7 @@ class CuriosityEngine:
     """好奇心探索 — 主动发现知识空白 + 身份驱动探索"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._last_state: dict = {}
 
     def explore(self, drawers: list, emotion_valence: float = 0.0, frustration: float = 0.0) -> dict:

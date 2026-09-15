@@ -22,7 +22,7 @@ class MultimodalSearchEngine:
     """跨模态统一搜索引擎"""
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
 
     def search(self, query: str, drawers: list[Drawer] = None, modalities: list[str] = None, limit: int = 10) -> dict:
         """跨模态搜索

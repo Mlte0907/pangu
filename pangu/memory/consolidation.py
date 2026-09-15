@@ -79,7 +79,7 @@ class MemoryConsolidator:
     """
 
     def __init__(self, config: PanguConfig = None):
-        self.config = config or PanguConfig.load()
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.curve = ForgettingCurve(decay_rate=self.config.forgetting_curve_decay)
         self._access_tracker: dict[str, int] = {}  # 记忆 ID -> 访问次数
         self._last_consolidation: float = 0.0
