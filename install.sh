@@ -24,6 +24,8 @@
 #   ./install.sh --model-only       # 仅预下载模型（已装好依赖时用）
 #   ./install.sh --offline-model /path/to/model_quantized.onnx,/path/to/tokenizer.json
 #                                   # 从本地文件装模型（内网/弱网）
+#   ./install.sh --server           # 仅启动 API 服务（不安装，需先装好）
+#   ./install.sh --uninstall        # 卸载 systemd 服务
 #
 # 幂等：可重复执行，已完成的步骤会跳过。
 
@@ -40,6 +42,8 @@ INSTALL_DSH_PLUGIN=0
 MODEL_ONLY=0
 OFFLINE_MODEL=""
 SERVICE_NAME="pangu-api"
+DO_UNINSTALL=0
+SERVER_ONLY=0
 
 # ── 输出helpers ──
 c_red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -60,6 +64,8 @@ while [ $# -gt 0 ]; do
     --dsh-plugin)   INSTALL_DSH_PLUGIN=1; shift ;;
     --model-only)   MODEL_ONLY=1; shift ;;
     --offline-model) OFFLINE_MODEL="${2:?--offline-model 需要参数}"; shift 2 ;;
+    --uninstall)    DO_UNINSTALL=1; shift ;;
+    --server)       SERVER_ONLY=1; INSTALL_SERVICE=0; shift ;;
     -h|--help)
       # 打印文件头部注释块（从第 2 行到第一处非注释行前）
       awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"
@@ -70,6 +76,51 @@ done
 
 PANGU_DIR="$REPO_DIR"
 cd "$PANGU_DIR"
+
+# ════════════════════════════════════════════════════════════
+# P1-1: 卸载模式
+# ════════════════════════════════════════════════════════════
+if [ "$DO_UNINSTALL" = 1 ]; then
+  printf '\033[1;31m盘古卸载\033[0m\n'
+
+  # 停止并禁用服务
+  if systemctl --user is-active "$SERVICE_NAME" >/dev/null 2>&1; then
+    step "停止服务"
+    systemctl --user stop "$SERVICE_NAME"
+    systemctl --user disable "$SERVICE_NAME"
+    ok "服务已停止并禁用"
+  fi
+
+  # 删除 unit 文件
+  UNIT_DIR="$HOME/.config/systemd/user"
+  UNIT_FILE="$UNIT_DIR/$SERVICE_NAME.service"
+  if [ -f "$UNIT_FILE" ]; then
+    rm -f "$UNIT_FILE"
+    systemctl --user daemon-reload 2>/dev/null || true
+    ok "systemd unit 已删除"
+  fi
+
+  # 删除数据目录
+  if [ -d "$PANGU_HOME" ]; then
+    warn "数据目录 $PANGU_HOME 保留（用 --remove-data 删除）"
+  fi
+
+  ok "卸载完成"
+  exit 0
+fi
+
+# ════════════════════════════════════════════════════════════
+# P1-1: --server 模式（仅启动服务，不安装）
+# ════════════════════════════════════════════════════════════
+if [ "$SERVER_ONLY" = 1 ]; then
+  printf '\033[1m盘古 — 启动 API 服务\033[0m\n'
+  VPY="$VENV_DIR/bin/python"
+  if [ ! -f "$VPY" ]; then
+    die "虚拟环境不存在: $VENV_DIR（先运行 ./install.sh）"
+  fi
+  step "启动 pangu-api (端口 $HOST:$PORT)"
+  exec "$VPY" -c "import sys; sys.path.insert(0, '$PANGU_DIR'); import uvicorn; from pangu.api.server import create_app; uvicorn.run(create_app(), host='$HOST', port=$PORT, log_level='info')"
+fi
 
 printf '\033[1m盘古记忆系统 — 安装\033[0m\n'
 echo "    仓库:     $PANGU_DIR"

@@ -2334,6 +2334,204 @@ def llm_cache_vacuum():
     console.print("[dim]审计日志: ~/.pangu/logs/llm_cache_warmup.log[/dim]")
 
 
+# ── P1-1: upgrade / uninstall ──────────────────────────────────────
+
+
+@app.command()
+def upgrade(
+    check_only: bool = typer.Option(False, "--check", help="仅检查是否有新版本，不执行升级"),
+    force: bool = typer.Option(False, "--force", help="强制升级（即使版本相同）"),
+):
+    """检查并升级盘古到最新版本
+
+    升级流程：
+    1. 从 GitHub releases 获取最新版本号
+    2. 与本地版本比较
+    3. git pull + pip install -e .（如果有新版本）
+    4. 重启 systemd 服务（如果正在运行）
+
+    示例：
+        pangu upgrade --check    # 仅检查
+        pangu upgrade            # 执行升级
+        pangu upgrade --force    # 强制重装
+    """
+    import subprocess
+
+    from packaging.version import Version
+
+    # 1. 当前版本
+    from pangu import __version__
+
+    current = __version__
+    console.print(f"[cyan]当前版本:[/cyan] v{current}")
+
+    # 2. 检查 GitHub releases
+    console.print("[cyan]检查远程版本...[/cyan]")
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", "--refs", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        tags = []
+        for line in result.stdout.strip().split("\n"):
+            if line and "refs/tags/v" in line:
+                tag = line.split("refs/tags/v")[-1].split("^{}")[0]
+                try:
+                    tags.append(Version(tag))
+                except Exception:
+                    pass
+        if not tags:
+            console.print("[yellow]未找到远程版本标签，跳过检查[/yellow]")
+            return
+        latest = max(tags)
+        console.print(f"[cyan]最新版本:[/cyan] v{latest}")
+    except Exception as e:
+        console.print(f"[red]检查远程版本失败: {e}[/red]")
+        return
+
+    # 3. 比较
+    if Version(current) >= latest and not force:
+        console.print("[green]✓ 已是最新版本，无需升级[/green]")
+        return
+
+    if check_only:
+        console.print(f"[yellow]有新版本可用: v{current} → v{latest}[/yellow]")
+        console.print("[dim]运行 pangu upgrade 执行升级[/dim]")
+        return
+
+    # 4. 执行升级
+    console.print(f"[cyan]升级 v{current} → v{latest}...[/cyan]")
+
+    repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    steps = [
+        ("git pull", ["git", "pull", "--ff-only", "origin", "master"]),
+        ("pip install", [sys.executable, "-m", "pip", "install", "-e", "."]),
+    ]
+    for label, cmd in steps:
+        console.print(f"  [cyan]{label}...[/cyan]", end=" ")
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_dir, timeout=120)
+        if r.returncode != 0:
+            console.print("[red]失败[/red]")
+            console.print(f"  stderr: {r.stderr[:200]}")
+            return
+        console.print("[green]✓[/green]")
+
+    # 5. 验证
+    new_ver = subprocess.run(
+        [sys.executable, "-c", "import pangu; print(pangu.__version__)"],
+        capture_output=True,
+        text=True,
+        cwd=repo_dir,
+    ).stdout.strip()
+    console.print(f"[green]✓ 升级完成: v{new_ver}[/green]")
+
+    # 6. 重启服务（如果正在运行）
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", "pangu-api"],
+            capture_output=True,
+            text=True,
+        )
+        if r.stdout.strip() == "active":
+            console.print("[cyan]重启 pangu-api 服务...[/cyan]", end=" ")
+            subprocess.run(["systemctl", "--user", "restart", "pangu-api"], timeout=30)
+            console.print("[green]✓[/green]")
+    except Exception:
+        pass
+
+    console.print("[dim]升级完成。运行 pangu stats 查看系统状态。[/dim]")
+
+
+@app.command()
+def uninstall(
+    remove_data: bool = typer.Option(False, "--remove-data", help="同时删除 ~/.pangu 数据目录"),
+    remove_venv: bool = typer.Option(False, "--remove-venv", help="同时删除 .venv 虚拟环境"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="跳过确认提示"),
+):
+    """卸载盘古
+
+    卸载流程：
+    1. 停止并禁用 systemd 服务
+    2. 删除 systemd unit 文件
+    3. （可选）删除 ~/.pangu 数据目录
+    4. （可选）删除 .venv 虚拟环境
+
+    示例：
+        pangu uninstall              # 仅卸载服务
+        pangu uninstall --remove-data  # 同时删数据
+        pangu uninstall -y           # 跳过确认
+    """
+    import subprocess
+
+    console.print("[bold red]盘古卸载[/bold red]")
+    console.print()
+
+    # 确认
+    if not yes:
+        items = ["systemd 服务 (pangu-api)"]
+        if remove_data:
+            items.append("数据目录 (~/.pangu)")
+        if remove_venv:
+            items.append("虚拟环境 (.venv)")
+        console.print("将删除以下组件:")
+        for item in items:
+            console.print(f"  • {item}")
+        console.print()
+        confirm = typer.confirm("确认卸载？")
+        if not confirm:
+            console.print("[yellow]已取消[/yellow]")
+            return
+
+    # 1. 停止并禁用服务
+    console.print("[cyan]1/4 停止服务...[/cyan]", end=" ")
+    try:
+        subprocess.run(["systemctl", "--user", "stop", "pangu-api"], timeout=10)
+        subprocess.run(["systemctl", "--user", "disable", "pangu-api"], timeout=10)
+        console.print("[green]✓[/green]")
+    except Exception:
+        console.print("[yellow]跳过（服务未安装）[/yellow]")
+
+    # 2. 删除 unit 文件
+    console.print("[cyan]2/4 删除 systemd unit...[/cyan]", end=" ")
+    unit_dir = os.path.expanduser("~/.config/systemd/user")
+    unit_file = os.path.join(unit_dir, "pangu-api.service")
+    if os.path.exists(unit_file):
+        os.remove(unit_file)
+        subprocess.run(["systemctl", "--user", "daemon-reload"], timeout=10)
+        console.print("[green]✓[/green]")
+    else:
+        console.print("[yellow]跳过（不存在）[/yellow]")
+
+    # 3. 删除数据目录
+    console.print("[cyan]3/4 数据目录...[/cyan]", end=" ")
+    data_dir = os.path.expanduser("~/.pangu")
+    if remove_data and os.path.exists(data_dir):
+        import shutil
+
+        shutil.rmtree(data_dir)
+        console.print(f"[green]✓ 已删除 {data_dir}[/green]")
+    else:
+        console.print(f"[yellow]保留 {data_dir}[/yellow]")
+
+    # 4. 删除虚拟环境
+    console.print("[cyan]4/4 虚拟环境...[/cyan]", end=" ")
+    venv_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".venv")
+    if remove_venv and os.path.exists(venv_dir):
+        import shutil
+
+        shutil.rmtree(venv_dir)
+        console.print("[green]✓ 已删除 .venv[/green]")
+    else:
+        console.print("[yellow]保留 .venv[/yellow]")
+
+    console.print()
+    console.print("[green]✓ 卸载完成[/green]")
+    if not remove_data:
+        console.print(f"[dim]数据保留在 {data_dir}，可用 --remove-data 删除[/dim]")
+
+
 # ── 主入口 ──
 
 
