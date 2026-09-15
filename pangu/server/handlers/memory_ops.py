@@ -94,15 +94,21 @@ HANDLERS["pangu_add_memory"] = handle_add_memory
 
 
 async def handle_search_memories(server, drawers, arguments):
-    """搜索记忆（P1-3 阶段 2.2：按 identity.room + visibility=public 过滤）"""
+    """搜索记忆（P1-3 阶段 2.2：按 metadata.tenant_id 过滤 + public 毕业区）"""
     query = arguments.get("query", "")
     wing = arguments.get("wing")
     room = arguments.get("room")
 
-    # P1-3：有身份时按 room 过滤 + public 毕业区
+    # P1-3 阶段 2.2：有身份时预过滤 drawers（隔离轴是 metadata.tenant_id，不是 Drawer.room）
     identity = arguments.get("_identity", {})
     if identity:
-        room = identity.get("room", room)
+        identity_room = identity.get("room", "")
+        filtered = [
+            d for d in drawers
+            if ((d.metadata or {}).get("tenant_id", "") == identity_room
+                or (d.metadata or {}).get("visibility", "") == "public")
+        ]
+        drawers = filtered
 
     results = server.search.search(query, drawers, wing=wing, room=room)
     try:
@@ -131,13 +137,21 @@ HANDLERS["pangu_search_memories"] = handle_search_memories
 
 
 async def handle_recall(server, drawers, arguments):
-    """按 Wing/Room 回忆记忆"""
+    """按 Wing/Room 回忆记忆（P1-3 阶段 2.2：按 metadata.tenant_id 过滤）"""
     wing = arguments.get("wing")
     room = arguments.get("room")
+
+    # P1-3 阶段 2.2：有身份时预过滤 drawers
     identity = arguments.get("_identity", {})
     if identity:
-        # P1-3 阶段 2.2：按 identity.room 过滤 + public 毕业区
-        room = identity.get("room", room)
+        identity_room = identity.get("room", "")
+        filtered = [
+            d for d in drawers
+            if ((d.metadata or {}).get("tenant_id", "") == identity_room
+                or (d.metadata or {}).get("visibility", "") == "public")
+        ]
+        drawers = filtered
+
     return server.memory.recall(wing=wing, room=room)
 
 
