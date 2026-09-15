@@ -201,3 +201,33 @@ def test_admin_endpoint_room_key_returns_403(tmp_keys):
         headers = {"X-API-Key": record["key"]}
 
     assert _verify_admin(FakeRequest()) is False  # 房间钥匙不是 admin
+
+
+# ── 重发钥匙（rekey）──────────────────────────────────────────────
+
+
+def test_rekey_revokes_old_creates_new(tmp_keys):
+    """rekey 吊销旧钥匙并创建新钥匙"""
+    km, _ = tmp_keys
+    # 创建两把钥匙
+    r1 = km.create(room="rekey_room", scope="readwrite")
+    r2 = km.create(room="rekey_room", scope="readwrite")
+    old_ids = {r1["key_id"], r2["key_id"]}
+
+    # 手动模拟 rekey 逻辑
+    all_keys = km.list_keys(include_revoked=False)
+    room_keys = [k for k in all_keys if k.get("room") == "rekey_room"]
+    for k in room_keys:
+        km.revoke(k["key_id"])
+
+    new_record = km.create(room="rekey_room", scope="readwrite")
+
+    # 旧钥匙 verify 失败（已吊销）
+    for old_key in [r1["key"], r2["key"]]:
+        assert km.verify(old_key) is None
+
+    # 新钥匙有效
+    identity = km.verify(new_record["key"])
+    assert identity is not None
+    assert identity["room"] == "rekey_room"
+    assert new_record["key_id"] not in old_ids

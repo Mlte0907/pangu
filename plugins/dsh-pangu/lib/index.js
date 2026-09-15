@@ -527,6 +527,8 @@ async function apply(ctx) {
     async createKey(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys', { method: 'POST', body: JSON.stringify(args) }) },
     async revokeKey(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys/revoke', { method: 'POST', body: JSON.stringify(args) }) },
     async listRooms() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms') },
+    async rekeyRoom(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms/' + encodeURIComponent(args.room) + '/rekey', { method: 'POST' }) },
+    async listPublicMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/public-memories') },
   }
   Object.defineProperty(adminKeyService, 'typertRemote', {
     configurable: false, enumerable: false, writable: false,

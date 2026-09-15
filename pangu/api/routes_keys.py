@@ -51,6 +51,10 @@ class KeyRevokeRequest(BaseModel):
     key_id: str = Field(..., description="钥匙 ID")
 
 
+class KeyRekeyRequest(BaseModel):
+    room: str = Field(..., description="房间名")
+
+
 @router.post("/admin/keys")
 async def create_key(req: KeyCreateRequest, request: Request):
     """创建钥匙（需 admin 凭据）"""
@@ -104,6 +108,37 @@ async def revoke_key(req: KeyRevokeRequest, request: Request):
         return {"error": f"未找到钥匙: {req.key_id}", "code": 404}
 
 
+@router.post("/admin/rooms/{room}/rekey")
+async def rekey_room(room: str, request: Request):
+    """重发钥匙：吊销该房间所有活跃钥匙，创建新钥匙并返回明文（仅此一次）"""
+    if not _verify_admin(request):
+        return {"error": "需要 admin 凭据", "code": 401}
+
+    from pangu.keys import KeyManager
+
+    km = KeyManager()
+    all_keys = km.list_keys(include_revoked=False)
+    room_keys = [k for k in all_keys if k.get("room") == room]
+
+    # 吊销所有活跃钥匙
+    revoked = []
+    for k in room_keys:
+        if km.revoke(k["key_id"]):
+            revoked.append(k["key_id"])
+
+    # 用原 scope 创建新钥匙（默认 readwrite）
+    scope = room_keys[0]["scope"] if room_keys else "readwrite"
+    new_record = km.create(room=room, scope=scope)
+
+    return {
+        "ok": True,
+        "room": room,
+        "revoked": revoked,
+        "key_id": new_record["key_id"],
+        "key": new_record["key"],
+    }
+
+
 @router.get("/admin/rooms")
 async def list_rooms(request: Request):
     """房间总览：按 tenant_id 聚合记忆条数、字符体积、钥匙数"""
@@ -143,3 +178,36 @@ async def list_rooms(request: Request):
         room_data["none"]["room"] = "(unmigrated)"
 
     return {"rooms": list(room_data.values())}
+
+
+@router.get("/admin/public-memories")
+async def list_public_memories(request: Request):
+    """公共区知识卡片：visibility=public 的记忆，只读"""
+    if not _verify_admin(request):
+        return {"error": "需要 admin 凭据", "code": 401}
+
+    from pangu.core.config import PanguConfig
+    from pangu.memory.drawer_storage import JsonDrawerStorage
+
+    cfg = PanguConfig.load().authoritative_memory_config()
+    drawers = JsonDrawerStorage(str(cfg.authoritative_drawers_path)).load()
+
+    public = []
+    for d in drawers:
+        vis = (d.metadata or {}).get("visibility") if isinstance(d.metadata, dict) else None
+        if vis != "public":
+            continue
+        tid = (d.metadata or {}).get("tenant_id", "default") if isinstance(d.metadata, dict) else "default"
+        public.append({
+            "id": d.id,
+            "content": d.content or "",
+            "tags": d.tags or [],
+            "source_room": tid,
+            "graduated_at": d.metadata.get("graduated_at") if isinstance(d.metadata, dict) else None,
+            "created_at": d.created_at,
+            "chars": len(d.content or ""),
+        })
+
+    # 按 graduated_at 降序
+    public.sort(key=lambda x: x.get("graduated_at") or x.get("created_at") or "", reverse=True)
+    return {"memories": public, "count": len(public)}

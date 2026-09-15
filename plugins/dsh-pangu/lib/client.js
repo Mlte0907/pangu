@@ -120,9 +120,9 @@ window.__ModuleLoader__.load({
     /* ════════════════ 工具 ════════════════ */
     const TYPE_COLORS = {
       person: '#58a6ff', org: '#3fb950', tech: '#d29922', concept: '#bc8cff',
-      event: '#f85149', location: '#79c0ff', memory: '#56d364',
+      event: '#f85149', location: '#79c0ff', memory: '#56d364', room: '#f0883e',
     }
-    const TYPE_LABELS = { person: '人物', org: '组织', tech: '技术', concept: '概念', event: '事件', location: '地点', memory: '记忆' }
+    const TYPE_LABELS = { person: '人物', org: '组织', tech: '技术', concept: '概念', event: '事件', location: '地点', memory: '记忆', room: '房间' }
     const WING_LABELS = {
       default: '通用', tech: '技术', daily: '日常', preferences: '偏好',
       self_improvement: '自我提升', system: '系统', project: '项目', work: '工作',
@@ -428,6 +428,8 @@ window.__ModuleLoader__.load({
     function OverviewPane({ dash, config, dashErr, loading, onRetry }) {
       const [deep, setDeep] = React.useState(null)
       const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
+      const [rooms, setRooms] = React.useState([])
+      const [pubMems, setPubMems] = React.useState([])
 
       React.useEffect(() => {
         let alive = true
@@ -435,6 +437,14 @@ window.__ModuleLoader__.load({
           .then(unwrap)
           .then((v) => { if (alive) setDeep(v) })
           .catch(() => { if (alive) setDeep({ ok: false }) })
+        callRemote('panguAdminKeys', 'listRooms')
+          .then(unwrap)
+          .then((v) => { if (alive) setRooms(v?.rooms || []) })
+          .catch(() => {})
+        callRemote('panguAdminKeys', 'listPublicMemories')
+          .then(unwrap)
+          .then((v) => { if (alive) setPubMems(v?.memories || []) })
+          .catch(() => {})
         return () => { alive = false }
       }, [])
 
@@ -513,6 +523,55 @@ window.__ModuleLoader__.load({
             ) : h('div', { style: { fontSize: 12, color: css.t3, padding: '10px 0' } }, '未配置 LLM API Key'),
           ),
           h(WingDistCard, { byWing: s?.byWing }),
+        ),
+        // 房间总览卡片
+        rooms.length > 0 && (() => {
+          const totalChars = rooms.reduce((s, r) => s + (r.chars || 0), 0)
+          const totalMem = rooms.reduce((s, r) => s + (r.memory_count || 0), 0)
+          return h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10, marginTop: 12 } },
+            h('div', { className: 'pangu-card', style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 12, padding: '13px 14px' } },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 } },
+                h(Icon, { name: 'layers', size: 13, color: css.info }),
+                h('span', { style: { fontSize: 12.5, fontWeight: 600, color: css.t1 } }, '房间总览'),
+                h('span', { style: { fontSize: 10.5, color: css.t3, marginLeft: 'auto' } }, rooms.length + ' 个房间 · ' + fmtNum(totalMem) + ' 条 · ' + fmtSize(totalChars)),
+              ),
+              rooms.slice(0, 6).map((r) => {
+                const pct = totalChars > 0 ? Math.round((r.chars || 0) / totalChars * 100) : 0
+                return h('div', { key: r.room, style: { padding: '5px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3 } },
+                    h('span', { style: { fontSize: 12, fontWeight: 500, color: css.t1 } }, r.room),
+                    h('span', { style: { fontSize: 10.5, color: css.t3 } }, pct + '%'),
+                  ),
+                  h('div', { style: { height: 3, background: css.bg3, borderRadius: 2, overflow: 'hidden' } },
+                    h('div', { style: { height: '100%', width: Math.max(2, pct) + '%', background: pct >= 50 ? css.warn : css.info, borderRadius: 2, transition: 'width .4s' } }),
+                  ),
+                  h('div', { style: { fontSize: 10, color: css.t3, marginTop: 2 } }, r.memory_count + ' 条 · ' + fmtSize(r.chars) + ' · ' + r.key_count + ' 钥匙'),
+                )
+              }),
+              rooms.length > 6 && h('div', { style: { fontSize: 10.5, color: css.t3, paddingTop: 4 } }, '…还有 ' + (rooms.length - 6) + ' 个房间'),
+            ),
+          )
+        })(),
+        // 公共区知识卡片
+        pubMems.length > 0 && h('div', { style: { marginTop: 12 } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 } },
+            h(Icon, { name: 'book', size: 13, color: css.ok }),
+            h('span', { style: { fontSize: 12.5, fontWeight: 600, color: css.t1 } }, '公共区知识'),
+            h('span', { style: { fontSize: 10.5, color: css.t3, marginLeft: 'auto' } }, pubMems.length + ' 条'),
+          ),
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 } },
+            pubMems.slice(0, 9).map((m) => h('div', { key: m.id, className: 'pangu-card', style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: 12, position: 'relative', overflow: 'hidden' } },
+              h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${css.ok}, ${css.ok}44)` } }),
+              h('div', { style: { fontSize: 11.5, color: css.t1, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: 6 } }, m.content),
+              h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 } },
+                (m.tags || []).slice(0, 3).map((t) => h('span', { key: t, style: { fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: css.bg3, color: css.t3 } }, t)),
+              ),
+              h('div', { style: { fontSize: 9.5, color: css.t3 } },
+                '来源: ' + m.source_room + (m.graduated_at ? ' · ' + m.graduated_at.slice(0, 10) : ''),
+              ),
+            )),
+          ),
+          pubMems.length > 9 && h('div', { style: { fontSize: 10.5, color: css.t3, paddingTop: 4 } }, '…还有 ' + (pubMems.length - 9) + ' 条'),
         ),
       )
     }
@@ -921,6 +980,7 @@ window.__ModuleLoader__.load({
       const [dash, setDash] = React.useState(null)
       const [kg, setKg] = React.useState(null)
       const [config, setConfig] = React.useState(null)
+      const [roomNodes, setRoomNodes] = React.useState([])
       const [dashErr, setDashErr] = React.useState(null)
       const [kgErr, setKgErr] = React.useState(null)
       const [loading, setLoading] = React.useState(true)
@@ -931,16 +991,27 @@ window.__ModuleLoader__.load({
       const load = React.useCallback(async (silent) => {
         if (!silent) setLoading(true)
         setRefreshing(true)
-        const [d, g, c] = await Promise.allSettled([
+        const [d, g, c, r] = await Promise.allSettled([
           callRemote('panguDashboard', 'data').then(unwrap),
           callRemote('panguKG', 'graph').then(unwrap),
           callRemote('panguConfig', 'get').then(unwrap),
+          callRemote('panguAdminKeys', 'listRooms').then(unwrap),
         ])
         if (d.status === 'fulfilled') { setDash(d.value); setDashErr(null) } else setDashErr(String(d.reason?.message || d.reason))
         if (g.status === 'fulfilled') {
           if (g.value?.ok) { setKg(g.value); setKgErr(null) } else setKgErr(String(g.value?.error || '图谱数据为空'))
         } else setKgErr(String(g.reason?.message || g.reason))
         if (c.status === 'fulfilled') setConfig(c.value?.config || null)
+        // 房间作为星系天体（类型 room，大小映射条数）
+        if (r.status === 'fulfilled' && r.value?.rooms) {
+          setRoomNodes(r.value.rooms.map((rm, i) => ({
+            id: '__room__' + rm.room,
+            name: rm.room,
+            type: 'room',
+            memory_count: rm.memory_count || 0,
+            description: (rm.memory_count || 0) + ' 条记忆 · ' + (rm.key_count || 0) + ' 钥匙',
+          })))
+        }
         setLoading(false)
         setRefreshing(false)
       }, [])
@@ -952,7 +1023,7 @@ window.__ModuleLoader__.load({
         return () => { clearInterval(id); if (offReset) offReset() }
       }, [])
 
-      const allNodes = React.useMemo(() => kg?.nodes || [], [kg])
+      const allNodes = React.useMemo(() => [...(kg?.nodes || []), ...roomNodes], [kg, roomNodes])
       const graphEdges = React.useMemo(() => kg?.edges || [], [kg])
       // 搜索/类型过滤:卡片页物理移除;星系页全量保留 + dim 高亮(Obsidian 式)
       const matched = React.useMemo(() => {
@@ -987,7 +1058,7 @@ window.__ModuleLoader__.load({
           tab !== 'overview' && h('input', { className: 'pangu-input', value: search, onChange: (e) => setSearch(e.target.value), placeholder: '搜索实体…', style: { ...inputStyle, width: 150 } }),
           tab !== 'overview' && h('select', { className: 'pangu-input', value: typeFilter, onChange: (e) => setTypeFilter(e.target.value), style: { ...inputStyle, padding: '4.5px 6px' } },
             h('option', { value: '' }, '全部类型'),
-            [...new Set((kg?.nodes || []).map((n) => n.type || 'default'))].map((tp) => h('option', { key: tp, value: tp }, typeLabel(tp))),
+            [...new Set(allNodes.map((n) => n.type || 'default'))].map((tp) => h('option', { key: tp, value: tp }, typeLabel(tp))),
           ),
           tab !== 'overview' && h('span', { style: { fontSize: 11, color: css.t3, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }, graphNodes.length + ' 实体'),
           h('button', { className: 'pangu-btn', onClick: () => load(), title: '刷新', style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 7, border: 'none', background: 'transparent', color: css.t2, cursor: 'pointer', opacity: refreshing ? 0.5 : 1 } },
@@ -1072,6 +1143,7 @@ window.__ModuleLoader__.load({
       const [rooms, setRooms] = React.useState([])
       const [loading, setLoading] = React.useState(true)
       const [createState, setCreateState] = React.useState({ room: '', scope: 'readwrite', result: null })
+      const [rekeyResult, setRekeyResult] = React.useState(null)
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -1107,6 +1179,19 @@ window.__ModuleLoader__.load({
         } catch (_) {}
       }
 
+      const doRekey = async (room) => {
+        if (!confirm('重发房间「' + room + '」的钥匙？旧钥匙将被吊销。')) return
+        setRekeyResult(null)
+        try {
+          const r = await callRemote('panguAdminKeys', 'rekeyRoom', { room })
+          if (r.error) { setRekeyResult({ ok: false, msg: r.error }); return }
+          setRekeyResult({ ok: true, room, key: r.key, revoked: r.revoked || [] })
+          load()
+        } catch (e) { setRekeyResult({ ok: false, msg: String(e) }) }
+      }
+
+      const totalChars = rooms.reduce((s, r) => s + (r.chars || 0), 0)
+
       if (loading) return h('div', { style: { padding: '8px 0' } }, h(Skeleton, { w: '100%', h: 60, r: 8 }))
 
       return h('div', { key: 'keys-room', style: { borderTop: `1px solid ${css.borderSoft}`, paddingTop: 12, marginTop: 16 } },
@@ -1125,6 +1210,12 @@ window.__ModuleLoader__.load({
             ? h('span', null, '✓ 明文密钥：', h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 11 } }, createState.result.key), ' （仅显示一次，请保存到环境变量）')
             : createState.result.msg,
         ),
+        // 重发结果
+        rekeyResult && h('div', { style: { fontSize: 11, color: rekeyResult.ok ? css.ok : css.err, marginBottom: 8 } },
+          rekeyResult.ok
+            ? h('span', null, '✓ 房间「', rekeyResult.room, '」已重发，吊销 ', rekeyResult.revoked.length, ' 把旧钥匙。新密钥：', h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 11 } }, rekeyResult.key), ' （仅显示一次）')
+            : rekeyResult.msg,
+        ),
         // 钥匙列表
         keys.length > 0 && h('table', { style: { width: '100%', fontSize: 11.5, borderCollapse: 'collapse', marginBottom: 10 } },
           h('thead', null, h('tr', null,
@@ -1142,13 +1233,17 @@ window.__ModuleLoader__.load({
             ),
           ))),
         ),
-        // 房间列表
+        // 房间列表（含容量）
         rooms.length > 0 && h('div', { style: { fontSize: 11.5 } },
           h('div', { style: { fontWeight: 600, marginBottom: 4, color: css.t2 } }, '房间概览'),
-          rooms.map((r) => h('div', { key: r.room, style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${css.borderSoft}` } },
-            h('span', null, r.room),
-            h('span', { style: { color: css.t3 } }, `${r.memory_count} 条 · ${r.key_count} 钥匙`),
-          )),
+          rooms.map((r) => {
+            const pct = totalChars > 0 ? Math.round((r.chars || 0) / totalChars * 100) : 0
+            return h('div', { key: r.room, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+              h('span', null, r.room),
+              h('span', { style: { color: css.t3 } }, `${r.memory_count} 条 · ${fmtSize(r.chars)} · ${pct}%`),
+              h('button', { onClick: () => doRekey(r.room), style: { fontSize: 10, color: css.warn, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', marginLeft: 6 } }, '重发'),
+            )
+          }),
         ),
       )
     }
