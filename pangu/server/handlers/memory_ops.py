@@ -59,7 +59,7 @@ async def handle_add_memory(server, drawers, arguments):
         drawer.metadata["tenant_id"] = arguments.get("tenant_id", "default")
         drawer.metadata["classification"] = arguments.get("classification", "normal")
         drawer.metadata["visibility"] = arguments.get("visibility", "tenant")
-        # 回写 metadata（remember() 已 add_drawer，这里更新缓存）
+        # P1-3：remember() 不落盘（只创建 Drawer 对象），handler 的 add_drawer 才是唯一落盘点
         server.memory.add_drawer(drawer)
 
     try:

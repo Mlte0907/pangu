@@ -131,7 +131,7 @@ transcript**，需要宿主专属适配。盘古不做自动回写，所以**确
 > - ✅ P2-1 `f2c6467`（3 模块接入：domain_knowledge / advanced_reasoning / batch_encode）
 > - ✅ 缺口 1 `b462047`（supersede 暴露面修复）
 > - ✅ 缺口 2 `e1830eb`（handle_add_memory 接入 remember() + REST update 修复）
-> - ⏳ 缺口 3：judge 四问准入接入 remember()
+> - ✅ 缺口 3 `d9748ce`（judge 四问准入接入 remember()）
 > - ⏳ P1-3：按平台分房 + 毕业区机制
 > - 🔍 P2-2：多后端（勘察完，暂缓）
 >

@@ -1,6 +1,7 @@
-"""缺口 3 回归测试：judge 四问准入接入 remember()。
+"""P1-3 回归测试：四问准入门强化 + 毕业区。
 
 验证 _admission_gate 在 remember() 尾部执行，标记 metadata。
+P1-3 强化：Q3 用 source_session 替代 tags，Q4 用 importance_feedback 替代静态阈值。
 """
 
 import pytest
@@ -19,7 +20,7 @@ def test_admission_gate_exists_in_remember():
 
 
 def test_admission_gate_no_source_marks_pending():
-    """无 source_file 且无 tags → admission = pending_review。"""
+    """无 source_file 且无 source_session → admission = pending_review。"""
     from pangu.memory.ingestion import _admission_gate
 
     drawer = Drawer(id="test1", content="测试内容", wing="test", room="t")
@@ -29,7 +30,7 @@ def test_admission_gate_no_source_marks_pending():
     assert "no_source" in drawer.metadata["admission_score"]["flags"]
 
 
-def test_admission_gate_with_source_passes():
+def test_admission_gate_with_source_file_passes():
     """有 source_file → 通过支撑检查。"""
     from pangu.memory.ingestion import _admission_gate
 
@@ -37,27 +38,90 @@ def test_admission_gate_with_source_passes():
     _admission_gate(drawer, None, "test2")
 
     assert drawer.metadata["admission_score"]["has_source"] is True
-    assert drawer.metadata["admission_score"]["passed"] is True
 
 
-def test_admission_gate_low_importance():
-    """importance < 0.3 → 标记 low_importance。"""
+def test_admission_gate_with_source_session_passes():
+    """有 source_session → 通过支撑检查（P1-3 新增）。"""
     from pangu.memory.ingestion import _admission_gate
 
-    drawer = Drawer(id="test3", content="测试内容", wing="test", room="t", importance=0.1, tags=["tag1"])
+    drawer = Drawer(id="test3", content="测试内容", wing="test", room="t")
+    drawer.metadata["source_session"] = "dsh_session_abc123"
     _admission_gate(drawer, None, "test3")
 
-    assert "low_importance" in drawer.metadata["admission_score"]["flags"]
-    assert drawer.metadata["admission_score"]["importance"] == 0.1
+    assert drawer.metadata["admission_score"]["has_source"] is True
+    assert "no_source" not in drawer.metadata["admission_score"]["flags"]
+
+
+def test_admission_gate_tags_only_not_enough():
+    """仅有 tags 不算来源指针（P1-3 强化）。"""
+    from pangu.memory.ingestion import _admission_gate
+
+    drawer = Drawer(id="test4", content="测试内容", wing="test", room="t", tags=["tag1", "tag2"])
+    _admission_gate(drawer, None, "test4")
+
+    # tags 不算"来源指针"，应标记 no_source
+    assert "no_source" in drawer.metadata["admission_score"]["flags"]
+    assert drawer.metadata.get("admission") == "pending_review"
+
+
+def test_admission_gate_unverified_without_feedback():
+    """无正向 importance_feedback → 标记 unverified（P1-3 强化）。"""
+    from pangu.memory.ingestion import _admission_gate
+
+    drawer = Drawer(id="test5", content="测试内容", wing="test", room="t", source_file="/f.py")
+    _admission_gate(drawer, None, "test5")
+
+    assert "unverified" in drawer.metadata["admission_score"]["flags"]
+    assert drawer.metadata.get("admission") == "pending_review"
+
+
+def test_admission_gate_verified_with_feedback():
+    """有 recall_success 反馈 → 通过验证检查。"""
+    from pangu.memory.ingestion import _admission_gate
+
+    drawer = Drawer(id="test6", content="测试内容", wing="test", room="t", source_file="/f.py")
+    drawer.metadata["last_feedback"] = "recall_success"
+    drawer.metadata["feedback_at"] = "2026-09-15T12:00:00"
+    _admission_gate(drawer, None, "test6")
+
+    assert drawer.metadata["admission_score"]["has_positive_feedback"] is True
+    assert "unverified" not in drawer.metadata["admission_score"]["flags"]
+
+
+def test_admission_gate_graduated_when_all_pass():
+    """四问全过 → admission = graduated + visibility = public。"""
+    from pangu.memory.ingestion import _admission_gate
+
+    drawer = Drawer(id="test7", content="测试内容", wing="test", room="t", source_file="/f.py")
+    drawer.metadata["last_feedback"] = "verified"
+    drawer.metadata["feedback_at"] = "2026-09-15T12:00:00"
+    drawer.metadata["visibility"] = "tenant"
+
+    _admission_gate(drawer, None, "test7")
+
+    assert drawer.metadata.get("admission") == "graduated"
+    assert drawer.metadata.get("visibility") == "public"
+    assert "graduated_at" in drawer.metadata
+
+
+def test_admission_gate_does_not_downgrade():
+    """已是 public 的不降级。"""
+    from pangu.memory.ingestion import _admission_gate
+
+    drawer = Drawer(id="test8", content="测试内容", wing="test", room="t", source_file="/f.py")
+    drawer.metadata["last_feedback"] = "verified"
+    drawer.metadata["visibility"] = "public"
+
+    _admission_gate(drawer, None, "test8")
+    assert drawer.metadata.get("visibility") == "public"
 
 
 def test_admission_gate_does_not_block_write():
     """admission_gate 不应抛异常（不阻塞写入方）。"""
     from pangu.memory.ingestion import _admission_gate
 
-    # 空 drawer（无 metadata）不应崩
-    drawer = Drawer(id="test4", content="", wing="test", room="t")
-    _admission_gate(drawer, None, "test4")
+    drawer = Drawer(id="test9", content="", wing="test", room="t")
+    _admission_gate(drawer, None, "test9")
     assert "admission_score" in drawer.metadata
 
 
@@ -65,11 +129,11 @@ def test_admission_gate_score_structure():
     """admission_score 必须包含标准字段。"""
     from pangu.memory.ingestion import _admission_gate
 
-    drawer = Drawer(id="test5", content="测试", wing="test", room="t", importance=0.5)
-    _admission_gate(drawer, None, "test5")
+    drawer = Drawer(id="test10", content="测试", wing="test", room="t")
+    _admission_gate(drawer, None, "test10")
 
     score = drawer.metadata["admission_score"]
     assert "has_source" in score
-    assert "importance" in score
+    assert "has_positive_feedback" in score
     assert "flags" in score
     assert "passed" in score

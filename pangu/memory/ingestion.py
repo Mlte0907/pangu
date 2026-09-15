@@ -438,43 +438,60 @@ def _detect_conflicts(
 
 
 def _admission_gate(drawer: Drawer, existing_drawers: list[Drawer] | None, item_id: str) -> None:
-    """P0-1 缺口 3：四问准入门（不阻塞写入，只标记）
+    """四问准入门（不阻塞写入，只标记）—— P1-3 强化版
 
     四问：
     1. 重复：由 remember() 前部的 _dedup_and_fuse 处理（已在上游）
     2. 冲突：由 _detect_conflicts 处理（P0-1，已在上游）
-    3. 支撑：缺来源指针 → metadata.admission = "pending_review"
-    4. 验证：importance 作代理计数 → metadata.admission_score
+    3. 支撑：缺来源指针 → pending_review（source_file / source_session 任一有即通过）
+    4. 验证：importance_feedback 信号 → recall_success/verified = 通过；无正向信号 = pending_review
 
-    所有判定都不阻塞写入方，只在 metadata 里留标记。
+    毕业区：四问全过 → visibility="public"（全平台只读）
+    所有判定不阻塞写入方。
     """
     if drawer.metadata is None:
         drawer.metadata = {}
 
     admission_flags = []
 
-    # Q3 支撑检查：缺来源指针（无 source_file / 无 tags）→ C 类待复盘
-    has_source = bool(drawer.source_file) or bool(drawer.tags)
+    # Q3 支撑检查：缺来源指针 → C 类待复盘
+    # P1-3 强化：tags 不算"来源指针"（自动沉淀的记忆全带 tags，会全部放行）
+    # 只检查 source_file 和 source_session
+    has_source = bool(drawer.source_file) or bool(drawer.metadata.get("source_session"))
     if not has_source:
         admission_flags.append("no_source")
         drawer.metadata["admission"] = "pending_review"
-        drawer.metadata["admission_reason"] = "缺来源指针（无 source_file 和 tags）"
+        drawer.metadata["admission_reason"] = "缺来源指针（无 source_file 和 source_session）"
 
-    # Q4 验证检查：importance 作代理计数
-    # importance < 0.3 → 低价值，可能需要验证
-    imp = drawer.importance or 0.0
-    if imp < 0.3:
-        admission_flags.append("low_importance")
+    # Q4 验证检查：importance_feedback 信号作为真实验证代理
+    # P1-3 强化：静态 importance 阈值不是"验证过吗"
+    # 检查 metadata.last_feedback 是否为正向信号（recall_success / verified）
+    last_feedback = drawer.metadata.get("last_feedback", "")
+    has_positive_feedback = last_feedback in ("recall_success", "verified")
+    if not has_positive_feedback:
+        admission_flags.append("unverified")
         if "admission" not in drawer.metadata:
             drawer.metadata["admission"] = "pending_review"
-            drawer.metadata["admission_reason"] = "importance 较低（<0.3），可能需要验证"
+            drawer.metadata["admission_reason"] = "未被召回验证（无正向 importance_feedback）"
+
+    # 毕业区判定：四问全过 → visibility="public"
+    # P1-3：毕业区记忆全平台只读（ABAC public_resource 策略已保证 read/search 放行）
+    all_passed = len(admission_flags) == 0
+    if all_passed:
+        drawer.metadata["admission"] = "graduated"
+        # 只在当前不是 public 时才改（不降级）
+        current_vis = drawer.metadata.get("visibility", "private")
+        if current_vis != "public":
+            drawer.metadata["visibility"] = "public"
+            drawer.metadata["graduated_at"] = datetime.now().isoformat()
 
     # 记录准入分数（供后续仪表盘/统计使用）
     drawer.metadata["admission_score"] = {
         "has_source": has_source,
-        "importance": imp,
+        "has_positive_feedback": has_positive_feedback,
+        "last_feedback": last_feedback,
         "flags": admission_flags,
-        "passed": len(admission_flags) == 0,
+        "passed": all_passed,
     }
 
     if admission_flags:
@@ -491,6 +508,7 @@ def remember(
     confidence: float | None = None,
     created_by: str = "system",
     author: str = "",  # 新增：记录写入者 agent_id
+    source_session: str = "",  # P1-3：来源会话 ID（dsh/zcode/workbuddy）
     facts: str = "",
     emotional_valence: float = 0.0,
     existing_drawers: list[Drawer] | None = None,
@@ -566,6 +584,10 @@ def remember(
         facts=facts,
         emotional_valence=emotional_valence,
     )
+
+    # P1-3：来源会话 ID（供 admission_gate Q3 检查用）
+    if source_session:
+        drawer.metadata["source_session"] = source_session
 
     # 生成向量嵌入（ONNX 优先，保证语义向量质量）
     _embed_and_store(drawer, raw_text)
