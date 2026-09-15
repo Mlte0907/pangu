@@ -55,7 +55,7 @@ function createConsolidationWriter(deps) {
 
     let res
     try {
-      res = await client.call('pangu_add_memory', { content, wing, importance, tags, source_session: sessionId }, config.search_timeout_ms)
+      res = await client.call('pangu_add_memory', { content, wing, importance, tags, source_session: sessionId, tenant_id: 'dsh' }, config.search_timeout_ms)
     } catch (_) {
       record(statsCollector, { sessionId, turn, content, wing, tags, importance, status: 'fail' })
       return
