@@ -38,6 +38,22 @@ CONFLICT_MAX_REPORT = 3  # 冲突报告最大数量
 _fusion_stats: dict[str, Any] = {"count": 0, "by_drawer": {}}
 
 
+def _get_default_storage():
+    """根据全局权威 config 拿到默认 JsonDrawerStorage。"""
+
+    try:
+        from pathlib import Path
+
+        from pangu.core.config import PanguConfig
+        from pangu.memory.drawer_storage import JsonDrawerStorage
+
+        cfg = PanguConfig.load().authoritative_memory_config()
+        path = Path(cfg.palace_path) / "drawers.json"
+        return JsonDrawerStorage(str(path))
+    except Exception as e:
+        return None
+
+
 def _embed_text(text: str) -> list[float] | None:
     """ONNX 优先嵌入，保证语义向量质量"""
     try:
@@ -262,26 +278,163 @@ def _neural_encode(drawer: Drawer, item_id: str) -> None:
         logger.debug(f"Neural encoding skipped: {e}")
 
 
-def _detect_conflicts(drawer: Drawer, existing_drawers: list[Drawer], item_id: str) -> None:
-    """自动冲突检测"""
-    if existing_drawers and len(existing_drawers) >= CONFLICT_MIN_EXISTING:
-        try:
-            from pangu.memory.conflict import ConflictDetector
+def _persist_supersede_update(storage, old_id: str, modified_drawer: Drawer) -> bool:
+    """安全地将 modified_drawer 的更新落盘到 storage（按 id 替换）
 
-            detector = ConflictDetector()
-            conflicts = detector.detect_conflicts([drawer] + existing_drawers[-CONFLICT_LOOKBACK:])
-            if conflicts:
-                drawer.metadata["conflicts"] = [
-                    {
-                        "id": c.id,
-                        "severity": c.severity.value,
-                        "with": c.memory_a if c.memory_b == item_id else c.memory_b,
-                    }
-                    for c in conflicts[:CONFLICT_MAX_REPORT]
-                ]
-                logger.info(f"Conflict detected for {item_id[:8]}: {len(conflicts)} conflicts")
+    背景：P0-1 需把"被取代"标记写回旧 drawer 的 metadata 并落盘。
+    MemoryStack 缺少 update_drawer 接口，且 t2 inScope 不含 layers.py，
+    故采用 storage 直写路径，**必须**保留以下守卫避免破坏空写保护：
+
+    1. storage 为 None 直接放弃（调用方没要求持久化）
+    2. storage.last_load_ok=False 放弃（解析失败 ⇒ 假空 ⇒ 不能写回）
+    3. 加载结果为空列表放弃（与 layers.py 的 _save_drawers 同义守卫）
+    4. 找不到目标 id 放弃（不是错误，仅"无操作"）
+
+    Args:
+        storage: DrawerStorage 实例（JsonDrawerStorage 或 SqliteDrawerStorage）
+        old_id: 被更新的 drawer id
+        modified_drawer: 已带 superseded_by/superseded_at/memory_status 标记的新对象
+
+    Returns:
+        bool — True 表示真的写入了磁盘，False 表示被守卫拦截或异常
+    """
+    if storage is None:
+        return False
+    try:
+        all_drawers = storage.load()
+    except Exception as e:
+        logger.debug(f"storage load skipped for supersede update of {old_id[:8]}: {e}")
+        return False
+    if not getattr(storage, "last_load_ok", True):
+        logger.debug(f"storage load failed (last_load_ok=False), skip supersede update for {old_id[:8]}")
+        return False
+    if not all_drawers:
+        logger.debug(f"storage load returned empty list, skip supersede update for {old_id[:8]}")
+        return False
+    found = False
+    for i, d in enumerate(all_drawers):
+        if d.id == old_id:
+            all_drawers[i] = modified_drawer
+            found = True
+            break
+    if not found:
+        logger.debug(f"old drawer {old_id[:8]} not found in storage, skip")
+        return False
+    try:
+        storage.save(all_drawers)
+    except Exception as e:
+        logger.warning(f"storage.save failed for supersede update of {old_id[:8]}: {e}")
+        return False
+    # 同步清掉 search_cache：旧 drawer 的 metadata 变了，旧查询结果（缓存里把旧
+    # drawer 当"未取代"返回）必须失效。这是 P0-1 范围内可接受的"全表清"。
+    try:
+        from pangu.memory.search_cache import get_search_cache
+
+        get_search_cache().clear()
+    except Exception:
+        pass
+    return True
+
+
+def _detect_conflicts(
+    drawer: Drawer,
+    existing_drawers: list[Drawer],
+    item_id: str,
+    storage=None,
+) -> None:
+    """自动冲突检测 + supersede 关系建立（P0-1）
+
+    当检测到冲突时（CONFLICT_MIN_EXISTING 阈值通过）：
+
+    1. 在新 drawer 的 metadata 写 `supersedes`（指向被取代的旧 id 列表）
+    2. 在每个被取代的旧 drawer 的 metadata 写：
+       - `superseded_by`: list（允许多重取代 A→B→C 时 B/C 都进 A 的 superseded_by）
+       - `superseded_at`: ISO 时间戳
+       - `memory_status`: "superseded"（让 hybrid_search._build_results 一眼识别）
+    3. 通过 storage 直写路径把旧 drawer 的更新落盘（保留空写保护守卫）
+    4. 调用 versioning.record_version 给新旧 drawer 都记一条版本
+
+    签名变更（向后兼容）：
+        新增 storage=None。旧调用方 _detect_conflicts(d, ex, item) 不传 storage
+        时，仅更新内存中的 drawer.metadata，不落盘；落盘由调用方（如 stack.add_drawer）
+        通过 storage 完成。生产代码路径不感知本函数。
+    """
+    if not (existing_drawers and len(existing_drawers) >= CONFLICT_MIN_EXISTING):
+        return
+    try:
+        from pangu.memory.conflict import ConflictDetector
+
+        detector = ConflictDetector()
+        conflicts = detector.detect_conflicts([drawer] + existing_drawers[-CONFLICT_LOOKBACK:])
+        if not conflicts:
+            return
+        now = datetime.now().isoformat()
+        new_supersedes: list[str] = []
+        for c in conflicts[:CONFLICT_MAX_REPORT]:
+            old_id = c.memory_a if c.memory_b == item_id else c.memory_b
+            new_supersedes.append(old_id)
+            for d in existing_drawers:
+                if d.id == old_id:
+                    superseded_by = d.metadata.get("superseded_by", []) if d.metadata else []
+                    if not isinstance(superseded_by, list):
+                        superseded_by = []
+                    if item_id not in superseded_by:
+                        superseded_by.append(item_id)
+                    if d.metadata is None:
+                        d.metadata = {}
+                    d.metadata["superseded_by"] = superseded_by
+                    d.metadata["superseded_at"] = now
+                    d.metadata["memory_status"] = "superseded"
+                    # 落盘失败**不抛**（蓝图 §1.1.4 边界条件）；单独 try/except
+                    # 避免一个旧 drawer 的落盘失败中断整个冲突链路
+                    try:
+                        result = _persist_supersede_update(storage, old_id, d)
+                    except Exception as e:
+                        logger.warning(f"update old drawer failed for {old_id[:8]}: {e}")
+                    break
+        if drawer.metadata is None:
+            drawer.metadata = {}
+        drawer.metadata["supersedes"] = new_supersedes
+        # 兼容旧字段：保留原 conflicts 列表（API/handler 不感知 supersede）
+        drawer.metadata["conflicts"] = [
+            {
+                "id": c.id,
+                "severity": c.severity.value,
+                "with": c.memory_a if c.memory_b == item_id else c.memory_b,
+            }
+            for c in conflicts[:CONFLICT_MAX_REPORT]
+        ]
+
+        # versioning.record_version 接线
+        try:
+            from pangu.memory.versioning import get_version_control
+
+            vc = get_version_control()
+            for old_id in new_supersedes:
+                try:
+                    vc.record_version(
+                        memory_id=old_id,
+                        content=f"superseded by {item_id}",
+                        change_type="superseded",
+                        metadata={"by": item_id, "at": now},
+                    )
+                except Exception as e:
+                    logger.debug(f"record_version superseded skipped for {old_id[:8]}: {e}")
+            try:
+                vc.record_version(
+                    memory_id=item_id,
+                    content=drawer.content,
+                    change_type="supersede",
+                    metadata={"supersedes": new_supersedes, "at": now},
+                )
+            except Exception as e:
+                logger.debug(f"record_version supersede skipped for {item_id[:8]}: {e}")
         except Exception as e:
-            logger.debug(f"Conflict detection skipped: {e}")
+            logger.debug(f"Version recording skipped: {e}")
+
+        logger.info(f"Supersede recorded for {item_id[:8]}: replaces {len(new_supersedes)} memories")
+    except Exception as e:
+        logger.debug(f"Conflict detection skipped: {e}")
 
 
 def remember(
@@ -389,8 +542,8 @@ def remember(
     # 神经记忆编码（海马体-新皮层双系统）
     _neural_encode(drawer, item_id)
 
-    # 自动冲突检测
-    _detect_conflicts(drawer, existing_drawers, item_id)
+    # 自动冲突检测（含 P0-1 supersede 关系建立与旧 drawer 持久化）
+    _detect_conflicts(drawer, existing_drawers, item_id, storage=_get_default_storage())
 
     logger.info(f"Remembered: {item_id[:8]} in wing={wing}, room={room}, importance={importance}")
     return item_id, drawer

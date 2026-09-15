@@ -201,6 +201,18 @@ def _build_results(
     results = []
     for mid in sorted_ids[:limit]:
         d = all_ids[mid]
+        # P0-1 supersede 标注：当 drawer 的 metadata.memory_status == "superseded" 时
+        # 标记 superseded=True 并填 superseded_by（list）+ warning="⚠ 已被更新"。
+        # 客户端可据此高亮/折叠/排序。
+        superseded = False
+        superseded_by: list[str] = []
+        if d.metadata:
+            status = d.metadata.get("memory_status")
+            if status == "superseded":
+                superseded = True
+                by = d.metadata.get("superseded_by", [])
+                if isinstance(by, list):
+                    superseded_by = by
         results.append(
             {
                 "id": mid,
@@ -214,6 +226,9 @@ def _build_results(
                 "fts_rank": fts_ranks.get(mid),
                 "vector_rank": vector_ranks.get(mid),
                 "kg_rank": kg_ranks.get(mid),
+                "superseded": superseded,
+                "superseded_by": superseded_by,
+                "warning": "⚠ 已被更新" if superseded else None,
             }
         )
     return results

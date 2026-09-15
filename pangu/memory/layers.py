@@ -548,11 +548,18 @@ class MemoryStack:
 
     def add_drawer(self, drawer: Drawer) -> None:
         """添加记忆抽屉"""
+        # P0-1: 必须同时清 MemoryStack 缓存 + storage 缓存。
+        # _persist_supersede_update 用独立的 JsonDrawerStorage 实例写盘，
+        # 但 stack._storage 有自己独立的缓存——不清它，_load_drawers() 读到
+        # 旧数据（无 superseded_by），再保存回去就覆盖了 supersede 更新。
+        self._cache.invalidate()
+        self._last_cache_time = 0  # 强制 bypass TTL 检查
+        if self._storage and hasattr(self._storage, "_cache"):
+            self._storage._cache.clear()  # JsonDrawerStorage._cache 是 dict
         self._drawers = self._load_drawers()
         self._drawers.append(drawer)
         self._primary_ids.add(drawer.id)
         self._save_drawers()
-        self._cache.invalidate()
 
     def add_drawers(self, drawers: list[Drawer]) -> None:
         """批量添加记忆抽屉"""
@@ -562,6 +569,40 @@ class MemoryStack:
             self._primary_ids.add(drawer.id)
         self._save_drawers()
         self._cache.invalidate()
+
+    def update_drawer(self, drawer: Drawer) -> bool:
+        """按 id 替换抽屉内容（P0-1：supersede 等场景的落盘）
+
+        复用 save_incremental 的"按 id 集合删除 + 重新插入"思路；
+        不同：返回 bool 让调用方知道是否真的替换了某条记录。
+
+        Returns:
+            True — 找到了匹配的 id 并完成替换；
+            False — 未找到匹配 id（无操作）。
+        """
+        self._drawers = self._load_drawers()
+        found = False
+        for i, d in enumerate(self._drawers):
+            if d.id == drawer.id:
+                self._drawers[i] = drawer
+                found = True
+                break
+        if not found:
+            return False
+        saved = self._save_drawers()
+        if saved:
+            self._cache.invalidate()
+            # 顺便清掉 search_cache：supersede 写完后旧 drawer 的 metadata 变了，
+            # 之前的查询结果（缓存里可能还把旧 drawer 当"未取代"返回）必须失效。
+            try:
+                from pangu.memory.search_cache import get_search_cache
+
+                get_search_cache().clear()
+            except Exception:
+                pass
+        else:
+            logger.warning(f"update_drawer({drawer.id[:8]}): 内存已替换但落盘被拦截")
+        return found
 
     def get_drawers(self) -> list[Drawer]:
         """获取所有抽屉"""

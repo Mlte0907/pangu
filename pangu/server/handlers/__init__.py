@@ -107,6 +107,12 @@ from . import wiki
 TOOLS.extend(wiki.TOOLS)
 HANDLERS.update(wiki.HANDLERS)
 
+# P0-1 supersede 模块（追踪 supersede 变更链）
+from . import supersede
+
+TOOLS.extend(supersede.TOOLS)
+HANDLERS.update(supersede.HANDLERS)
+
 # advanced 模块（实验容器，默认不加载，由暴露面过滤器控制）
 # 注意：advanced 中的实验工具已被提取到 experimental/，此处仅作兼容
 from . import advanced
@@ -283,6 +289,19 @@ _TOOL_SCHEMAS = {
         "type": "object",
         "properties": {
             "memory_id": {"type": "string", "description": "要归档的记忆 id"},
+        },
+        "required": ["memory_id"],
+    },
+    "pangu_get_supersede_chain": {
+        "type": "object",
+        "properties": {
+            "memory_id": {"type": "string", "description": "记忆 id（必填）"},
+            "direction": {
+                "type": "string",
+                "enum": ["both", "forward", "backward"],
+                "description": "追踪方向，默认 both",
+                "default": "both",
+            },
         },
         "required": ["memory_id"],
     },
