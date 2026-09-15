@@ -132,7 +132,7 @@ transcript**，需要宿主专属适配。盘古不做自动回写，所以**确
 > - ✅ 缺口 1 `b462047`（supersede 暴露面修复）
 > - ✅ 缺口 2 `e1830eb`（handle_add_memory 接入 remember() + REST update 修复）
 > - ✅ 缺口 3 `d9748ce`（judge 四问准入接入 remember()）
-> - ⏳ P1-3：按平台分房 + 毕业区机制（进行中，毕业通路 + source_session 贯通待补）
+> - ✅ P1-3（毕业通路闭合 + source_session 贯通 + 插件 tenant 标记 + visibility setdefault）；mcp_http 平台身份钩子 + 读取按 scope 过滤移交第二阶段（多平台钥匙接入时实施）
 > - 🔍 P2-2：多后端（勘察完，暂缓）
 >
 > 执行顺序：缺口 1 ✅ → 缺口 2 → 缺口 3 → P1-3 → P2-2 暂缓

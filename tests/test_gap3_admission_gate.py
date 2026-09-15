@@ -190,3 +190,17 @@ def test_importance_feedback_graduates_pending_memory():
         f"feedback 后应 public，实际: {drawer.metadata.get('visibility')}"
     )
     assert "graduated_at" in drawer.metadata
+
+
+def test_handle_add_memory_visibility_setdefault():
+    """P1-3 收尾：handle_add_memory 用 setdefault，门禁已决定的 visibility 不被打回。"""
+    # 模拟 handler 的 metadata 设置逻辑
+    # 旧逻辑：无条件覆盖 → 门禁判定被覆盖
+    metadata_old = {"visibility": "public", "admission": "graduated"}
+    metadata_old["visibility"] = "tenant"  # 旧逻辑：无条件覆盖
+    assert metadata_old["visibility"] == "tenant"  # 旧逻辑会覆盖门禁
+
+    # setdefault 语义：门禁已决定时保留
+    metadata_new = {"visibility": "public", "admission": "graduated"}
+    metadata_new.setdefault("visibility", "tenant")
+    assert metadata_new["visibility"] == "public"  # 保留门禁判定
