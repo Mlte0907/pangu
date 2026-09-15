@@ -195,7 +195,7 @@ class SemanticReranker:
         return min(1.0, imp / 5.0) if imp else 0.5
 
     def _quality_score(self, source) -> float:
-        """内容质量分"""
+        """内容质量分（P0-2：加长度惩罚，防短文本噪声虚高）"""
         content = ""
         if hasattr(source, "content"):
             content = source.content or ""
@@ -205,14 +205,24 @@ class SemanticReranker:
         if not content:
             return 0.0
 
-        score = 0.3  # 基础分
+        clen = len(content)
 
-        # 长度
-        if len(content) > 100:
+        # P0-2：短文本惩罚（<20 字扣分，<10 字重罚）
+        # 实测：7 字 "测试 配置正确" vs 查询 "盘古部署" sim=0.9302，
+        # 32 字真实内容 sim=0.8281——短文本因语义模糊反而虚高。
+        if clen < 10:
+            score = 0.05  # 极短：几乎无信息量
+        elif clen < 20:
+            score = 0.15  # 短：信息量不足
+        else:
+            score = 0.3  # 正常：基础分
+
+        # 长度加分
+        if clen > 100:
             score += 0.1
-        if len(content) > 300:
+        if clen > 300:
             score += 0.1
-        if len(content) > 500:
+        if clen > 500:
             score += 0.05
 
         # 结构化特征

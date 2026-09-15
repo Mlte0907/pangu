@@ -86,6 +86,10 @@ def _vector_recall(
 
         scored = []
         for d in drawers:
+            # P0-2 C: 跳过加密内容（Fernet 密文以 gAAAAA 开头，无语义意义）
+            content = d.content or ""
+            if content.startswith("gAAAAA"):
+                continue
             stored_vec = d.metadata.get("embedding")
             if not stored_vec:
                 continue
@@ -273,11 +277,16 @@ def hybrid_search(
     drawers: list[Drawer],
     config: PanguConfig = None,
     limit: int = 10,
-    fts_weight: float = 1.0,
-    vector_weight: float = 1.0,
+    fts_weight: float = 1.5,
+    vector_weight: float = 0.8,
     kg_weight: float = 0.5,
 ) -> list[dict]:
     """混合检索 — FTS + 向量 + KG 三路召回，RRF 融合排序
+
+    P0-2：fts_weight 从 1.0 提升到 1.5，vector_weight 从 1.0 降到 0.8。
+    理由：FTS 天然偏长文本（需要足够 token 才能命中），提升 FTS 权重
+    间接惩罚短文本（短文本在 FTS 通道排名低）。实测 7 字噪声 vs 32 字
+    真实内容，FTS 通道能正确区分。
 
     Args:
         query: 搜索查询
