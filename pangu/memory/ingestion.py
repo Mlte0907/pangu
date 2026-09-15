@@ -437,6 +437,50 @@ def _detect_conflicts(
         logger.debug(f"Conflict detection skipped: {e}")
 
 
+def _admission_gate(drawer: Drawer, existing_drawers: list[Drawer] | None, item_id: str) -> None:
+    """P0-1 缺口 3：四问准入门（不阻塞写入，只标记）
+
+    四问：
+    1. 重复：由 remember() 前部的 _dedup_and_fuse 处理（已在上游）
+    2. 冲突：由 _detect_conflicts 处理（P0-1，已在上游）
+    3. 支撑：缺来源指针 → metadata.admission = "pending_review"
+    4. 验证：importance 作代理计数 → metadata.admission_score
+
+    所有判定都不阻塞写入方，只在 metadata 里留标记。
+    """
+    if drawer.metadata is None:
+        drawer.metadata = {}
+
+    admission_flags = []
+
+    # Q3 支撑检查：缺来源指针（无 source_file / 无 tags）→ C 类待复盘
+    has_source = bool(drawer.source_file) or bool(drawer.tags)
+    if not has_source:
+        admission_flags.append("no_source")
+        drawer.metadata["admission"] = "pending_review"
+        drawer.metadata["admission_reason"] = "缺来源指针（无 source_file 和 tags）"
+
+    # Q4 验证检查：importance 作代理计数
+    # importance < 0.3 → 低价值，可能需要验证
+    imp = drawer.importance or 0.0
+    if imp < 0.3:
+        admission_flags.append("low_importance")
+        if "admission" not in drawer.metadata:
+            drawer.metadata["admission"] = "pending_review"
+            drawer.metadata["admission_reason"] = "importance 较低（<0.3），可能需要验证"
+
+    # 记录准入分数（供后续仪表盘/统计使用）
+    drawer.metadata["admission_score"] = {
+        "has_source": has_source,
+        "importance": imp,
+        "flags": admission_flags,
+        "passed": len(admission_flags) == 0,
+    }
+
+    if admission_flags:
+        logger.debug(f"Admission gate {item_id[:8]}: flags={admission_flags}")
+
+
 def remember(
     raw_text: str,
     wing: str = "default",
@@ -544,6 +588,16 @@ def remember(
 
     # 自动冲突检测（含 P0-1 supersede 关系建立与旧 drawer 持久化）
     _detect_conflicts(drawer, existing_drawers, item_id, storage=_get_default_storage())
+
+    # P0-1 缺口 3：四问准入门（不阻塞写入，只标记）
+    # 1. 重复：dedup 已在 remember() 前部处理（_dedup_and_fuse）
+    # 2. 冲突：_detect_conflicts 已处理（P0-1）
+    # 3. 支撑：缺来源指针 → 挂起（C 类待复盘）
+    # 4. 验证：importance 作代理计数
+    try:
+        _admission_gate(drawer, existing_drawers, item_id)
+    except Exception as e:
+        logger.debug(f"Admission gate skipped: {e}")
 
     logger.info(f"Remembered: {item_id[:8]} in wing={wing}, room={room}, importance={importance}")
     return item_id, drawer
