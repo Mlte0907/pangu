@@ -133,7 +133,7 @@ transcript**，需要宿主专属适配。盘古不做自动回写，所以**确
 > - ✅ 缺口 2 `e1830eb`（handle_add_memory 接入 remember() + REST update 修复）
 > - ✅ 缺口 3 `d9748ce`（judge 四问准入接入 remember()）
 > - ✅ P1-3（毕业通路闭合 + source_session 贯通 + 插件 tenant 标记 + visibility setdefault）；mcp_http 平台身份钩子 + 读取按 scope 过滤移交第二阶段（多平台钥匙接入时实施）
-> - 🔍 P2-2：多后端（勘察完，暂缓）
+> - 🔍 P2-2：多后端（已关闭，以现有 backup/export 机制满足；重启条件记录在 §2 P2-2）
 >
 > 执行顺序：缺口 1 ✅ → 缺口 2 → 缺口 3 → P1-3 → P2-2 暂缓
 
@@ -249,6 +249,18 @@ Hindsight 的 `docs-freshness.test.ts` 让**文档过期就测试失败**。
 复用 `core/llm.py` 的 provider 抽象模式，新增存储后端（本地/S3/远端 API）。
 ❓ **执行前须先做代码勘察**：`drawer_storage.py` 与 `vector_index.py` 的
 耦合程度决定工作量。**未勘察前我不给工期承诺。**
+
+> **P2-2 已关闭**（用户 2026-09-16，经 ZCode 会话讨论决策）
+>
+> **关闭依据**：
+> 1. 需求已归宿：备份（pangu_backup 每日 5 份 + export/import）+ 多机（API 19529 本就是远程入口）+ 规模（个人数百条，JSON+ONNX 毫秒级）
+> 2. 勘察支持收缩：DrawerStorage 中等，VectorIndex 硬骨头；向量索引与本地 ONNX 模型强绑定，远端化违背"本地优先、可审计"定位（§3:248）
+> 3. YAGNI：单人单机部署，现在做存储抽象是为不存在的需求写代码
+>
+> **重启条件**（未来出现真实多机部署需求时按此边界重启）：
+> - 只做 DrawerStorage 后端抽象（Storage 协议现成）
+> - 远端后端仅限 S3 兼容 / HTTP 薄层，标准库实现，零新依赖，opt-in，fail-loud
+> - **向量索引永不做远端后端**（与本地模型绑定，跨网络检索只增延迟）
 
 ---
 
