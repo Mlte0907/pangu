@@ -10,6 +10,7 @@ L3: 深度搜索 (无限) — 全文语义搜索
 - 批量操作支持
 - 记忆访问追踪（用于巩固引擎）"""
 
+import contextvars
 import json
 import logging
 import os
@@ -276,6 +277,41 @@ def _log_token_stats(operation: str, layers: dict) -> None:
     if extra_parts:
         parts.extend(f"{k}={v}" for k, v in extra_parts.items())
     logger.info(f"[tokens] {operation}: {' | '.join(parts)} | total={total}")
+
+
+# ── 请求级租户作用域 ──────────────────────────────────────────────
+# 隔离轴：metadata.tenant_id == 当前租户，或 metadata.visibility == "public"。
+#
+# 为什么必须有它：收口最初只做在 call_tool 的 drawers 参数上，但静态扫描发现 287 个
+# handler 根本不使用该参数 —— 它们直接调 server.memory.*（by-id 查、聚合、wake_up…），
+# 而那些方法自己会 _load_drawers() 重读全库。于是收口形同虚设：实测面板仍报全库 124、
+# find_forgotten 返回全库内容、wake_up 把全库记忆拼进 L1 上下文。
+#
+# 所以真正的收口点在本模块：call_tool 在唯一入口 set_tenant_scope(room)，下面所有
+# **读**方法走 _read_drawers() 据此裁剪；**写**方法一律用全库快照（_save_drawers 落的是
+# self._drawers 全量，若被裁剪就是把别的租户的数据删掉）。
+_TENANT_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar("pangu_tenant_scope", default="")
+
+
+def set_tenant_scope(room: str = ""):
+    """设置本请求的租户作用域，返回 token 供 reset_tenant_scope 复原。"""
+    return _TENANT_SCOPE.set(room or "")
+
+
+def reset_tenant_scope(token) -> None:
+    """复原租户作用域（call_tool 在 finally 里调用，避免作用域泄漏到下一个请求）。"""
+    _TENANT_SCOPE.reset(token)
+
+
+def current_tenant() -> str:
+    """当前请求的租户；空串＝全库视角（CLI、自主维护、后台任务）。"""
+    return _TENANT_SCOPE.get()
+
+
+def tenant_visible(drawer, tenant: str) -> bool:
+    """隔离轴判据：属于该租户，或显式 public。"""
+    md = drawer.metadata or {}
+    return md.get("tenant_id", "") == tenant or md.get("visibility", "") == "public"
 
 
 class MemoryStack:
@@ -604,14 +640,34 @@ class MemoryStack:
             logger.warning(f"update_drawer({drawer.id[:8]}): 内存已替换但落盘被拦截")
         return found
 
+    def _visible(self, drawers: list[Drawer]) -> list[Drawer]:
+        """按当前请求的租户作用域裁剪（作用域为空 → 原样返回＝全库视角）。"""
+        tenant = current_tenant()
+        if not tenant:
+            return drawers
+        return [d for d in drawers if tenant_visible(d, tenant)]
+
+    def _read_drawers(self) -> list[Drawer]:
+        """读路径入口：加载后按租户作用域裁剪。
+
+        所有**读**方法都应走它，而不是 _load_drawers()。写路径（add/remove/save）必须
+        继续用 _load_drawers() —— _save_drawers 落盘的是 self._drawers 全量，一旦写回
+        裁剪后的列表就是把别的租户的数据删掉。
+        """
+        return self._visible(self._load_drawers())
+
     def get_drawers(self) -> list[Drawer]:
-        """获取所有抽屉"""
-        return self._load_drawers()
+        """获取所有抽屉（读路径：受请求级租户作用域裁剪，见 _read_drawers）"""
+        return self._read_drawers()
 
     def get_drawer_by_id(self, drawer_id: str) -> Drawer | None:
-        """按 ID 获取抽屉"""
-        drawers = self._load_drawers()
-        for d in drawers:
+        """按 ID 获取抽屉（读路径：受租户作用域裁剪）
+
+        作用域内不可见的条目**等同于不存在** —— 这是 by-id 系工具的租户闸门
+        （冲突检查、重要性、supersede 链、删除、归档都先经此查询）：拿不到别的租户的
+        drawer，就无法借 id 探测其内容，也无法在删除类工具里越权。
+        """
+        for d in self._read_drawers():
             if d.id == drawer_id:
                 # 记录访问
                 self._access_tracker[drawer_id] = self._access_tracker.get(drawer_id, 0) + 1
@@ -620,8 +676,8 @@ class MemoryStack:
         return None
 
     def count_drawers(self) -> int:
-        """获取抽屉总数"""
-        return len(self._load_drawers())
+        """获取抽屉总数（读路径：本租户可见集合的规模）"""
+        return len(self._read_drawers())
 
     def _backup_drawers(self) -> str | None:
         """备份 drawers.json，返回备份路径"""
@@ -656,7 +712,14 @@ class MemoryStack:
             pass
 
     def remove_drawer(self, drawer_id: str) -> bool:
-        """删除指定抽屉（自动备份 + 向量索引同步）"""
+        """删除指定抽屉（自动备份 + 向量索引同步）
+
+        写路径用**全库**快照；作用域非空时先做所有权检查 —— 本租户不可见的 id 视为
+        不存在，拒绝删除（否则调用方可用别的租户的 id 越权删除）。
+        """
+        if current_tenant() and not any(d.id == drawer_id for d in self._read_drawers()):
+            logger.warning(f"remove_drawer({drawer_id}): 该条目在本租户作用域内不可见，拒绝删除")
+            return False
         self._drawers = self._load_drawers()
         original_len = len(self._drawers)
         self._drawers = [d for d in self._drawers if d.id != drawer_id]
@@ -675,7 +738,18 @@ class MemoryStack:
         return False
 
     def remove_drawers(self, drawer_ids: list[str]) -> int:
-        """批量删除抽屉（自动备份 + 向量索引同步）"""
+        """批量删除抽屉（自动备份 + 向量索引同步）
+
+        同 remove_drawer：先按租户作用域过滤掉不可见的 id（越权保护），再全库快照写回。
+        """
+        if current_tenant():
+            visible = {d.id for d in self._read_drawers()}
+            skipped = [i for i in drawer_ids if i not in visible]
+            if skipped:
+                logger.warning(f"remove_drawers: 跳过 {len(skipped)} 个本租户不可见的 id（越权保护）")
+            drawer_ids = [i for i in drawer_ids if i in visible]
+            if not drawer_ids:
+                return 0
         self._drawers = self._load_drawers()
         ids_set = set(drawer_ids)
         original_len = len(self._drawers)
@@ -693,9 +767,9 @@ class MemoryStack:
     # ── 记忆栈接口 ──
 
     def wake_up(self, wing: str = None) -> str:
-        """唤醒: L0 + L1 (~600-900 tokens)"""
+        """唤醒: L0 + L1 (~600-900 tokens)（读路径：本租户可见集合）"""
         parts = [self.l0.render(), ""]
-        drawers = self._load_drawers()
+        drawers = self._read_drawers()
 
         if wing:
             drawers = [d for d in drawers if d.wing == wing]
@@ -722,7 +796,7 @@ class MemoryStack:
         - 200-500 条: 增长预算（2500t）
         - >500 条: 限制预算（3000t，防止 context 溢出）
         """
-        total = len(self._load_drawers())
+        total = len(self._read_drawers())
         if total < 50:
             base = 1000
         elif total < 200:
@@ -744,7 +818,7 @@ class MemoryStack:
         等于空转（实测：dsh 钥匙的 recall 返回了 default 租户的记忆，分母仍是全库
         125 条）。
         """
-        candidates = self._load_drawers() if drawers is None else drawers
+        candidates = self._read_drawers() if drawers is None else drawers
         budget = self._dynamic_budget("L2")
         result = self.l2.retrieve(candidates, wing=wing, room=room, n_results=n_results, token_budget=budget)
         _log_token_stats(
@@ -758,8 +832,8 @@ class MemoryStack:
         return result
 
     def search(self, query: str, wing: str = None, room: str = None, n_results: int = 5) -> str:
-        """深度搜索: L3（动态 token 预算截断）"""
-        drawers = self._load_drawers()
+        """深度搜索: L3（动态 token 预算截断）（读路径：本租户可见集合）"""
+        drawers = self._read_drawers()
         budget = self._dynamic_budget("L3")
         result = self.l3.search(query, drawers, wing=wing, room=room, n_results=n_results, token_budget=budget)
         _log_token_stats(
@@ -775,18 +849,18 @@ class MemoryStack:
     # ── 巩固集成 ──
 
     def get_consolidation_stats(self) -> dict:
-        """获取巩固统计信息"""
-        drawers = self._load_drawers()
+        """获取巩固统计信息（读路径：本租户可见集合）"""
+        drawers = self._read_drawers()
         return self.consolidator.stats(drawers)
 
     def find_forgotten(self) -> list[Drawer]:
-        """找出应被遗忘的记忆"""
-        drawers = self._load_drawers()
+        """找出应被遗忘的记忆（读路径：本租户可见集合 —— 原先返回全库内容）"""
+        drawers = self._read_drawers()
         return self.consolidator.find_forgotten(drawers)
 
     def find_compressible(self) -> list[Drawer]:
-        """找出可压缩的记忆"""
-        drawers = self._load_drawers()
+        """找出可压缩的记忆（读路径：本租户可见集合 —— 原先会把全库内容送去压缩）"""
+        drawers = self._read_drawers()
         return self.consolidator.find_compressible(drawers)
 
     def get_memory_importance(self, drawer_id: str) -> float:
@@ -869,8 +943,8 @@ class MemoryStack:
         return checks
 
     def status(self) -> dict:
-        """记忆栈状态（含各层 token 估算 + 动态预算 + 搜索统计）"""
-        drawers = self._load_drawers()
+        """记忆栈状态（含各层 token 估算 + 动态预算 + 搜索统计）（读路径：本租户可见集合）"""
+        drawers = self._read_drawers()
         l0_tokens = self.l0.token_estimate()
         l1_text = self.l1.generate(drawers)
         l1_tokens = _estimate_tokens(l1_text)

@@ -18,7 +18,7 @@ from ..core.config import PanguConfig
 from ..core.llm import LLMEngine
 from ..core.palace import Palace
 from ..memory.knowledge_graph import KnowledgeGraph
-from ..memory.layers import MemoryStack
+from ..memory.layers import MemoryStack, reset_tenant_scope, set_tenant_scope
 from ..search.engine import HybridSearch
 from ..wiki.engine import WikiEngine
 
@@ -247,7 +247,6 @@ class MCPServer:
         写入错误统计（ErrorMonitor）并返回错误 JSON（见 R1-C）。
         """
         self._ensure_initialized()
-        drawers = self.memory.get_drawers()
 
         from .exposure import get_exposure_filter
         from .handlers import HANDLERS
@@ -270,31 +269,31 @@ class MCPServer:
         if request and "_identity" in request:
             arguments["_identity"] = request["_identity"]
 
-        # P1-3 读取侧收口：有身份时**在唯一入口**把 drawers 裁到该租户可见的集合。
+        # P1-3 读取侧收口 —— 唯一的租户闸门。
         #
-        # 背景：隔离轴（metadata.tenant_id 或 visibility=public）原先散在各个 handler
-        # 里各写一遍，实测漏了三处 —— pangu_hybrid_search 完全不过滤、
-        # handle_recall 算了 filtered 却没用它、以及今后新增的读取工具；
-        # 「每个 handler 都记得写」是不可持续的约定，写漏一次就是静默跨租户泄漏。
-        # 收口在这里之后，handler 拿到的 drawers 天然就是本周转的视图（各 handler
-        # 内残留的同轴过滤变成幂等的冗余，不再承担正确性）。
+        # 隔离轴：metadata.tenant_id == 租户 或 metadata.visibility == "public"。
         #
-        # 语义（用户 2026-09-16 定）：per_tenant —— 面板等一切经 /mcp 的读取都只显示
-        # 本租户视角；全库视角走 admin 端点（admin_secret 鉴权，见 api/routes_keys.py，
-        # 钥匙/房间管理即走那条路，不受此处影响）。
+        # 为什么闸门设在 MemoryStack，而不是在这里裁 drawers 参数：静态扫描发现
+        # **287 个 handler 根本不使用 drawers 参数**，其中 18 个确实碰记忆数据 —— 它们
+        # 直接调 server.memory.*（by-id 查、聚合、wake_up…），而那些方法自己会重读全库。
+        # 实测只裁 drawers 时的后果：面板仍报全库 124、find_forgotten 返回全库内容、
+        # wake_up 把全库记忆拼进 L1 上下文、按 id 传入别租户的记忆可被删除。
+        #
+        # 所以这里设置**请求级租户作用域**（layers.py 的 _TENANT_SCOPE），MemoryStack
+        # 的读路径（_read_drawers）据此统一裁剪，写路径保持全库快照不受影响；handler
+        # 拿到的 drawers 也天然是本周转视图。作用域在 finally 复原，避免泄漏到下个请求。
+        #
+        # 语义（用户 2026-09-16 定）：per_tenant —— 一切经 /mcp 的读取都只显示本租户视角；
+        # 全库视角走 admin 端点（admin_secret 鉴权，见 api/routes_keys.py，钥匙与房间管理
+        # 即走那条路，不受此处影响）。
         identity = arguments.get("_identity")
-        if isinstance(identity, dict) and identity.get("room"):
-            tenant = identity["room"]
-            drawers = [
-                d
-                for d in drawers
-                if (
-                    (d.metadata or {}).get("tenant_id", "") == tenant
-                    or (d.metadata or {}).get("visibility", "") == "public"
-                )
-            ]
-
-        return await handler(self, drawers, arguments)
+        tenant = identity.get("room", "") if isinstance(identity, dict) else ""
+        token = set_tenant_scope(tenant)
+        try:
+            drawers = self.memory.get_drawers()  # 读路径：已按作用域裁剪
+            return await handler(self, drawers, arguments)
+        finally:
+            reset_tenant_scope(token)
 
     # ── MCP 协议 ──
 
