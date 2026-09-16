@@ -138,7 +138,9 @@ def create_app() -> FastAPI:
     except (json.JSONDecodeError, OSError):
         _json_keys = set()
 
-    for _field in _loaded.model_fields:
+    # Pydantic V2.11 起，在**实例**上访问 model_fields 已弃用（V3 移除）：
+    # 字段定义属于类，应从类上取（type(x).model_fields）。
+    for _field in type(_loaded).model_fields:
         if _field not in _json_keys:
             continue
         if _field in _env_pinned:
