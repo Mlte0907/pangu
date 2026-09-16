@@ -495,7 +495,10 @@ async function apply(ctx) {
           body: JSON.stringify({
             model,
             messages: [{ role: 'user', content: '回复两个字：可用' }],
-            max_tokens: 16,
+            // 推理模型会把整段思考也计入 completion，16 tokens 时常见的结局是
+            // 「思考没写完、答案还没开始」（实测 MiniCPM5-2B 即如此）。给到 64
+            // 让思考收尾并吐出答案，探测成本仍然可忽略。
+            max_tokens: 64,
             temperature: 0,
           }),
           signal: ctrl.signal,
@@ -509,10 +512,16 @@ async function apply(ctx) {
           const msg = data?.error?.message || data?.message || raw.slice(0, 200)
           return { ok: false, ms, status: res.status, model, provider, baseUrl: base, error: `HTTP ${res.status}: ${msg}` }
         }
-        // 部分推理模型（minimax-m3 等）把思考过程内联在 content 里；探测结果只需要
-        // 可见回复，剥掉 <think>…</think>（含被 max_tokens 截断而未闭合的情况）。
+        // 推理模型会把思考过程内联在 content 里，探测结果只需要可见回复。两种形态：
+        //   1. 成对标签（minimax-m3 等）：`<think>思考</think>\n\n答案`，被 max_tokens
+        //      截断时没有闭合标签；
+        //   2. 只带闭合标签（MiniCPM5-2B 经 AMD 网关实测）：`思考…\n</think>\n\n答案`，
+        //      开头标签被模板吃掉了。
+        // 先剥成对标签，再剥「到最后一个 </think> 为止」的前缀；仍为空说明整段都是
+        // 被截断的思考，此时不展示 sample（前端已处理空 sample）。
         const sample = String(data?.choices?.[0]?.message?.content || '')
           .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+          .replace(/^[\s\S]*<\/think>\s*/i, '')
           .trim()
         return { ok: true, ms, status: res.status, model, provider, baseUrl: base, sample: sample.slice(0, 120) }
       } catch (e) {
