@@ -270,6 +270,30 @@ class MCPServer:
         if request and "_identity" in request:
             arguments["_identity"] = request["_identity"]
 
+        # P1-3 读取侧收口：有身份时**在唯一入口**把 drawers 裁到该租户可见的集合。
+        #
+        # 背景：隔离轴（metadata.tenant_id 或 visibility=public）原先散在各个 handler
+        # 里各写一遍，实测漏了三处 —— pangu_hybrid_search 完全不过滤、
+        # handle_recall 算了 filtered 却没用它、以及今后新增的读取工具；
+        # 「每个 handler 都记得写」是不可持续的约定，写漏一次就是静默跨租户泄漏。
+        # 收口在这里之后，handler 拿到的 drawers 天然就是本周转的视图（各 handler
+        # 内残留的同轴过滤变成幂等的冗余，不再承担正确性）。
+        #
+        # 语义（用户 2026-09-16 定）：per_tenant —— 面板等一切经 /mcp 的读取都只显示
+        # 本租户视角；全库视角走 admin 端点（admin_secret 鉴权，见 api/routes_keys.py，
+        # 钥匙/房间管理即走那条路，不受此处影响）。
+        identity = arguments.get("_identity")
+        if isinstance(identity, dict) and identity.get("room"):
+            tenant = identity["room"]
+            drawers = [
+                d
+                for d in drawers
+                if (
+                    (d.metadata or {}).get("tenant_id", "") == tenant
+                    or (d.metadata or {}).get("visibility", "") == "public"
+                )
+            ]
+
         return await handler(self, drawers, arguments)
 
     # ── MCP 协议 ──
