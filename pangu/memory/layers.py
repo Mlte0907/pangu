@@ -292,6 +292,7 @@ def _log_token_stats(operation: str, layers: dict) -> None:
 # self._drawers 全量，若被裁剪就是把别的租户的数据删掉）。
 _TENANT_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar("pangu_tenant_scope", default="")
 _KEY_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar("pangu_key_scope", default="")
+_CLEARANCE: contextvars.ContextVar[int] = contextvars.ContextVar("pangu_clearance", default=0)
 
 # 可见性三档（与 api/abac.py 的 Resource.visibility 同一套词汇，**不要**合并：
 #   public —— 所有租户可读（毕业区，有意共享）
@@ -303,12 +304,14 @@ VIS_TENANT = "tenant"
 VIS_PRIVATE = "private"
 
 
-def set_tenant_scope(room: str = "", key_id: str = ""):
-    """设置本请求的租户作用域（含调用方钥匙），返回 token 供 reset_tenant_scope 复原。
+def set_tenant_scope(room: str = "", key_id: str = "", clearance: int | None = None):
+    """设置本请求的作用域（租户 + 钥匙 + 密级），返回 token 供 reset_tenant_scope 复原。
 
-    key_id 是第三档 private 的判据来源：只有写入时记下的 owner_key_id 与之相同才可见。
+    - key_id：第三档 private 的判据（写入时记下的 owner_key_id 与之相同才可见）
+    - clearance：密级（0=public…3=secret），决定能否读到带 classification 的记忆
     """
     _KEY_SCOPE.set(key_id or "")
+    _CLEARANCE.set(int(clearance) if clearance is not None else 0)
     return _TENANT_SCOPE.set(room or "")
 
 
@@ -326,6 +329,11 @@ def current_tenant() -> str:
 def current_key_id() -> str:
     """当前请求所用钥匙的 id；用于判定 private 档。"""
     return _KEY_SCOPE.get()
+
+
+def current_clearance() -> int:
+    """当前请求的密级（0=public…3=secret）。"""
+    return int(_CLEARANCE.get() or 0)
 
 
 def metadata_visible(md: dict | None, tenant: str, key_id: str = "") -> bool:
@@ -352,6 +360,44 @@ def metadata_visible(md: dict | None, tenant: str, key_id: str = "") -> bool:
 def tenant_visible(drawer, tenant: str, key_id: str = "") -> bool:
     """隔离轴判据（抽屉）：三档语义见 metadata_visible。"""
     return metadata_visible(getattr(drawer, "metadata", None), tenant, key_id or current_key_id())
+
+
+def _coerce_classification(value) -> int:
+    """把密级归一化成 int（0=public…3=secret），非法值按 0 处理。
+
+    ⚠ 历史数据里写过字符串（例如 `"normal"`，13 条），而 REST/ABAC 侧是
+    `int(md.get("classification", 0))` —— 直接对这些行求值会 ValueError。
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, min(3, value))
+    try:
+        return max(0, min(3, int(str(value).strip() or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def metadata_readable(md, tenant: str | None = None, key_id: str | None = None, clearance: int | None = None) -> bool:
+    """**是否可读** —— 两条轴的合取：
+
+      1. 租户轴：metadata_visible（我的 / public / private 属主）
+      2. 密级轴：clearance >= classification（与 ABAC 的 classification_based 同规则）
+
+    两条轴正交：租户对了但密级不够 → 仍不可读。作用域为空（CLI/后台/admin）＝全库视角，
+    密级仍按传入值判定（默认取当前请求的 clearance）。
+    """
+    md = md or {}
+    t = current_tenant() if tenant is None else tenant
+    k = current_key_id() if key_id is None else key_id
+    if not t:
+        # 全库视角（CLI / 后台维护 / admin）＝系统自身：不做租户与密级过滤。
+        # 否则后台巩固/备份会因为 clearance=0 而漏掉高密级记忆 —— 那是"系统看不见自己
+        # 的数据"，比放宽危险得多。
+        return True
+    if not metadata_visible(md, t, k):
+        return False
+    return _coerce_classification(md.get("classification")) <= (current_clearance() if clearance is None else clearance)
 
 
 class MemoryStack:
@@ -684,9 +730,9 @@ class MemoryStack:
         """按当前请求的租户作用域裁剪（作用域为空 → 原样返回＝全库视角）。"""
         tenant = current_tenant()
         if not tenant:
-            return drawers
+            return drawers  # 全库视角＝系统自身，两条轴都不拦（见 metadata_readable）
         key_id = current_key_id()
-        return [d for d in drawers if tenant_visible(d, tenant, key_id)]
+        return [d for d in drawers if metadata_readable(d.metadata or {}, tenant, key_id, current_clearance())]
 
     def _read_drawers(self) -> list[Drawer]:
         """读路径入口：加载后按租户作用域裁剪。

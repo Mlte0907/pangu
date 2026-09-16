@@ -197,6 +197,22 @@ def _resolve_tenant_id(request: Request) -> str:
     return config.abac_default_tenant
 
 
+def _coerce_classification(value) -> int:
+    """密级归一化为 int（0=public…3=secret），非法/字符串值按 0 处理。
+
+    ⚠ 记忆写入路径曾把 classification 写成字符串（如 "normal"，存量 13 条），
+    而这里原是 int(md.get("classification", 0)) —— 遇到这些行会 ValueError。
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, min(3, value))
+    try:
+        return max(0, min(3, int(str(value).strip() or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _drawer_to_resource(d) -> AbacResource:
     """从记忆抽屉抽取 ABAC Resource 字段。"""
     md = getattr(d, "metadata", None) or {}
@@ -207,7 +223,7 @@ def _drawer_to_resource(d) -> AbacResource:
         id=getattr(d, "id", ""),
         owner_id=md.get("owner_id", "") if isinstance(md.get("owner_id", ""), str) else "",
         tenant_id=md.get("tenant_id", "default") if isinstance(md.get("tenant_id", "default"), str) else "default",
-        classification=int(md.get("classification", 0) or 0),
+        classification=_coerce_classification(md.get("classification")),
         visibility=md.get("visibility", "private") if isinstance(md.get("visibility", "private"), str) else "private",
     )
 
@@ -222,7 +238,7 @@ def _dict_to_resource(d: dict) -> AbacResource:
         id=d.get("id", ""),
         owner_id=md.get("owner_id", "") if isinstance(md.get("owner_id", ""), str) else "",
         tenant_id=md.get("tenant_id", "default") if isinstance(md.get("tenant_id", "default"), str) else "default",
-        classification=int(md.get("classification", 0) or 0),
+        classification=_coerce_classification(md.get("classification")),
         visibility=md.get("visibility", "private") if isinstance(md.get("visibility", "private"), str) else "private",
     )
 

@@ -62,7 +62,7 @@ class KeyManager:
         os.replace(tmp, self.keys_path)
         os.chmod(self.keys_path, 0o600)
 
-    def create(self, room: str, scope: str = "readwrite") -> dict:
+    def create(self, room: str, scope: str = "readwrite", clearance: int = 0) -> dict:
         """创建新钥匙（返回含明文的完整记录，明文只此一次）"""
         key = _gen_key()
         record = {
@@ -73,6 +73,9 @@ class KeyManager:
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "last_used_at": None,
             "revoked_at": None,
+            # 密级（clearance）：0=public / 1=internal / 2=confidential / 3=secret
+            # 与 ABAC 的 Subject.clearance 同一套；默认 0＝失败关闭（需要时由管理员授予）
+            "clearance": int(clearance or 0),
         }
         keys = self._read()
         keys.append(record)
@@ -100,6 +103,7 @@ class KeyManager:
                     # `not k.get("revoked_at")` 恒为真 —— 吊销过的钥匙仍被计数
                     # （实测 dsh 房间显示 2 把，实际只有 1 把有效）。
                     "revoked_at": k.get("revoked_at"),
+                    "clearance": int(k.get("clearance", 0) or 0),
                 }
             )
         return result
@@ -123,5 +127,10 @@ class KeyManager:
                 # 更新 last_used_at
                 k["last_used_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                 self._write(keys)
-                return {"key_id": k["key_id"], "room": k["room"], "scope": k["scope"]}
+                return {
+                    "key_id": k["key_id"],
+                    "room": k["room"],
+                    "scope": k["scope"],
+                    "clearance": int(k.get("clearance", 0) or 0),
+                }
         return None

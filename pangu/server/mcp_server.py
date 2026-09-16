@@ -290,7 +290,8 @@ class MCPServer:
         tenant = identity.get("room", "") if isinstance(identity, dict) else ""
         # key_id 用于第三档 private（仅属主钥匙可见）；见 layers.metadata_visible
         key_id = identity.get("key_id", "") if isinstance(identity, dict) else ""
-        token = set_tenant_scope(tenant, key_id)
+        clearance = identity.get("clearance", 0) if isinstance(identity, dict) else 0
+        token = set_tenant_scope(tenant, key_id, clearance)
         try:
             drawers = self.memory.get_drawers()  # 读路径：已按作用域裁剪
             return await handler(self, drawers, arguments)

@@ -550,6 +550,7 @@ def create_app() -> FastAPI:
                             "user_id": _res.user_id,
                             "tenant": _res.tenant,
                             "key_id": _res.key_id,
+                            "clearance": _res.clearance,
                         }
                 except Exception:
                     pass
@@ -592,6 +593,7 @@ def create_app() -> FastAPI:
                     "user_id": result.user_id,
                     "tenant": result.tenant,
                     "key_id": result.key_id,
+                    "clearance": result.clearance,
                 }
 
             await self.app(scope, receive, send)

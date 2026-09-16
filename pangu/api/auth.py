@@ -407,6 +407,7 @@ class AuthResult:
     # 盘古钥匙（pgk_*）解析出的身份：租户＝钥匙的 room；与 MCP 侧同一来源
     tenant: str = ""
     key_id: str = ""
+    clearance: int = 0  # 密级（0=public…3=secret），仅盘古钥匙/JWT claim 提供
     user_id: str = ""  # 凭据对应的用户（JWT 模式下为 sub）
     claims: TokenClaims | None = None
     reason: str = ""
@@ -455,6 +456,7 @@ def verify_credentials(
                 user_id=ident.get("key_id", ""),
                 tenant=ident.get("room", ""),
                 key_id=ident.get("key_id", ""),
+                clearance=int(ident.get("clearance", 0) or 0),
             )
         # 形如盘古钥匙却校验失败：明确失败 —— 不能落进后面的 JWT 分支被当成匿名放过，
         # 否则"无效凭据"与"没带凭据"就分不出来了。

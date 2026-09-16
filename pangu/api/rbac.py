@@ -149,6 +149,7 @@ class Principal:
     claims: object = None  # TokenClaims | None
     tenant: str = ""  # 盘古钥匙的 room（method="pangu_key" 时有值）
     key_id: str = ""  # 盘古钥匙 id（审计用）
+    clearance: int = 0  # 密级（0=public…3=secret），来自钥匙或 JWT claim
 
     def has_scope(self, required: str) -> bool:
         return has_scope(self.scopes, required)
@@ -190,6 +191,7 @@ def get_principal(request: Request) -> Principal:
         claims=claims,
         tenant=auth.get("tenant", ""),
         key_id=auth.get("key_id", ""),
+        clearance=int(auth.get("clearance", 0) or 0),
     )
 
 

@@ -96,7 +96,8 @@ class Subject:
             scopes=principal.scopes,
             tenant_id=extra.get("tenant_id", tenant_id),
             department=extra.get("department", ""),
-            clearance=int(extra.get("clearance", 0)),
+            # JWT claim 优先；没有 claim（盘古钥匙）时用凭据自带的 clearance
+            clearance=int(extra.get("clearance", getattr(principal, "clearance", 0)) or 0),
             groups=set(extra.get("groups", [])),
             is_admin=principal.is_admin(),
         )

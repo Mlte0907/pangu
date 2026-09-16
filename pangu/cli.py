@@ -2551,6 +2551,7 @@ def keys(
     action: str = typer.Argument(..., help="操作: create/list/revoke"),
     room: str = typer.Option("default", help="房间名（create 时必填）"),
     scope: str = typer.Option("readwrite", help="权限: readwrite/readonly/admin"),
+    clearance: int = typer.Option(0, help="密级: 0=public / 1=internal / 2=confidential / 3=secret"),
     key_id: str = typer.Option("", help="钥匙 ID（revoke 时必填）"),
     include_revoked: bool = typer.Option(False, "--revoked", help="包含已吊销钥匙"),
 ):
@@ -2566,11 +2567,12 @@ def keys(
     km = KeyManager()
 
     if action == "create":
-        record = km.create(room=room, scope=scope)
+        record = km.create(room=room, scope=scope, clearance=clearance)
         console.print("[green]✓ 钥匙已创建[/green]")
-        console.print(f"  key_id:   {record['key_id']}")
-        console.print(f"  room:     {record['room']}")
-        console.print(f"  scope:    {record['scope']}")
+        console.print(f"  key_id:    {record['key_id']}")
+        console.print(f"  room:      {record['room']}")
+        console.print(f"  scope:     {record['scope']}")
+        console.print(f"  clearance: {record['clearance']}  (0=public/1=internal/2=confidential/3=secret)")
         console.print()
         console.print("[bold red]明文密钥（仅显示一次，务必保存）：[/bold red]")
         console.print(f"  [bold]{record['key']}[/bold]")
