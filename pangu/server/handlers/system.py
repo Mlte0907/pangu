@@ -59,13 +59,31 @@ HANDLERS = {}
 
 
 async def handle_stats(server, drawers, arguments):
-    """获取系统统计"""
+    """获取系统统计
+
+    注意：`memory` / `palace` 两个区块必须由**传入的 drawers** 计算 —— call_tool 已按
+    调用方身份裁剪过它（per_tenant 收口）。此前这里直接取 `server.memory.status()` 与
+    `server.palace.stats()`，两者都读全库，于是面板拿到的是全库视角、越过收口
+    （实测 dsh 钥匙下 total_memories=124 而同一进程内 pangu_analyze 已按租户报 1）。
+    """
     stats = {
         "palace": server.palace.stats(),
         "memory": server.memory.status(),
         "wiki": server.wiki.stats(),
         "knowledge_graph": server.knowledge_graph.stats(),
     }
+    mem = stats.get("memory")
+    if isinstance(mem, dict):
+        by_wing: dict[str, int] = {}
+        for d in drawers:
+            wing = d.wing or "default"
+            by_wing[wing] = by_wing.get(wing, 0) + 1
+        mem["total_memories"] = len(drawers)
+        mem["by_wing"] = by_wing
+    palace = stats.get("palace")
+    if isinstance(palace, dict):
+        palace["wings_count"] = len({(d.wing or "default") for d in drawers})
+        palace["rooms_count"] = len({((d.wing or "default"), (d.room or "general")) for d in drawers})
     return json.dumps(stats, ensure_ascii=False, indent=2)
 
 
