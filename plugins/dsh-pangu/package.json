@@ -21,7 +21,7 @@
     },
     "./package.json": "./package.json",
     "./typert": {
-      "default": "./lib/typert.host.mjs"
+      "default": "./lib/typert.host.js"
     }
   },
   "dsh": {
