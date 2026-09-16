@@ -105,9 +105,12 @@ async def handle_search_memories(server, drawers, arguments):
     if identity:
         identity_room = identity.get("room", "")
         filtered = [
-            d for d in drawers
-            if ((d.metadata or {}).get("tenant_id", "") == identity_room
-                or (d.metadata or {}).get("visibility", "") == "public")
+            d
+            for d in drawers
+            if (
+                (d.metadata or {}).get("tenant_id", "") == identity_room
+                or (d.metadata or {}).get("visibility", "") == "public"
+            )
         ]
         drawers = filtered
 
@@ -147,9 +150,12 @@ async def handle_recall(server, drawers, arguments):
     if identity:
         identity_room = identity.get("room", "")
         filtered = [
-            d for d in drawers
-            if ((d.metadata or {}).get("tenant_id", "") == identity_room
-                or (d.metadata or {}).get("visibility", "") == "public")
+            d
+            for d in drawers
+            if (
+                (d.metadata or {}).get("tenant_id", "") == identity_room
+                or (d.metadata or {}).get("visibility", "") == "public"
+            )
         ]
         drawers = filtered
 

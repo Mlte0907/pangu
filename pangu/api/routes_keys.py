@@ -209,15 +209,17 @@ async def list_public_memories(request: Request):
         if vis != "public":
             continue
         tid = (d.metadata or {}).get("tenant_id", "default") if isinstance(d.metadata, dict) else "default"
-        public.append({
-            "id": d.id,
-            "content": d.content or "",
-            "tags": d.tags or [],
-            "source_room": tid,
-            "graduated_at": d.metadata.get("graduated_at") if isinstance(d.metadata, dict) else None,
-            "created_at": d.created_at,
-            "chars": len(d.content or ""),
-        })
+        public.append(
+            {
+                "id": d.id,
+                "content": d.content or "",
+                "tags": d.tags or [],
+                "source_room": tid,
+                "graduated_at": d.metadata.get("graduated_at") if isinstance(d.metadata, dict) else None,
+                "created_at": d.created_at,
+                "chars": len(d.content or ""),
+            }
+        )
 
     # 按 graduated_at 降序
     public.sort(key=lambda x: x.get("graduated_at") or x.get("created_at") or "", reverse=True)

@@ -326,9 +326,12 @@ async def handle_hybrid_search(server, drawers, arguments):
     tenant = identity.get("room", "") if identity else ""
     if tenant:
         drawers = [
-            d for d in drawers
-            if ((d.metadata or {}).get("tenant_id", "") == tenant
-                or (d.metadata or {}).get("visibility", "") == "public")
+            d
+            for d in drawers
+            if (
+                (d.metadata or {}).get("tenant_id", "") == tenant
+                or (d.metadata or {}).get("visibility", "") == "public"
+            )
         ]
 
     results = hybrid_search(query, drawers, server.config, limit)

@@ -2,7 +2,9 @@
 
 场景：三条记忆——tenant_id='dsh'、tenant_id='other'、tenant_id='dsh'+visibility='public'
 """
+
 import json
+
 import pytest
 
 from pangu.core.palace import Drawer
@@ -25,9 +27,12 @@ def _make_drawers():
 def _filter_by_identity(drawers, identity_room):
     """模拟 handle_search_memories 的过滤逻辑"""
     return [
-        d for d in drawers
-        if ((d.metadata or {}).get("tenant_id", "") == identity_room
-            or (d.metadata or {}).get("visibility", "") == "public")
+        d
+        for d in drawers
+        if (
+            (d.metadata or {}).get("tenant_id", "") == identity_room
+            or (d.metadata or {}).get("visibility", "") == "public"
+        )
     ]
 
 

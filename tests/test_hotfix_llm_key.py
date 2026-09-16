@@ -26,6 +26,7 @@ def test_resolveLlmApiKey_cfg_empty_file_has(tmp_path):
     if not key:
         try:
             import pathlib
+
             secret = pathlib.Path(SECRET_FILE).read_text().strip()
             if secret:
                 key = secret

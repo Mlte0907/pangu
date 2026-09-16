@@ -65,9 +65,7 @@ async def handle_list_rooms(server, drawers, arguments):
                     bucket.append(r)
     except Exception:
         pass
-    return json.dumps(
-        {w: sorted(rooms) for w, rooms in sorted(result.items())}, ensure_ascii=False
-    )
+    return json.dumps({w: sorted(rooms) for w, rooms in sorted(result.items())}, ensure_ascii=False)
 
 
 HANDLERS["pangu_list_rooms"] = handle_list_rooms

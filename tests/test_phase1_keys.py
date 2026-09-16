@@ -91,13 +91,13 @@ def test_inject_identity_with_valid_key(tmp_keys):
 
     original_init = None
     try:
-        from pangu.keys import KeyManager as KM
+        from pangu.keys import KeyManager
 
-        original_init = KM.__init__
-        KM.__init__ = lambda self, kp=None: original_init(self, str(keys_path))
+        original_init = KeyManager.__init__
+        KeyManager.__init__ = lambda self, kp=None: original_init(self, str(keys_path))
         _inject_identity(msg, FakeRequest())
     finally:
-        KM.__init__ = original_init
+        KeyManager.__init__ = original_init
 
     assert "_identity" in msg
     assert msg["_identity"]["room"] == "dsh"
