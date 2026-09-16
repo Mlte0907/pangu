@@ -193,3 +193,59 @@
 ---
 
 **等你确认。** 决策完再动。
+## 6. 全仓复核（2026-09-16 增量，范围扩到 memory 之外）
+
+> **状态**：等用户确认；本节为增量结论，**未执行任何修改**（未删任何模块）。
+> **方法**：从真实入口（`api/server`、`server/mcp_server`、`server/web_server`、`cli`、
+> `client`）出发，用 `ast` 求 import 传递闭包。脚本 `scripts/p2_1_module_audit.py`，可复跑。
+> **范围**：全仓 217 个模块（含 `pangu/api`、`pangu/core`、`pangu/observability`、
+> `pangu/task_tracker.py` 与根目录 `experimental/`），不含 `tests/`。
+
+### 6.1 两处方法学修正（此前「约 88 个不在主链路」的来源）
+
+| 假象 | 后果 | 修正 |
+|---|---|---|
+| 包内 `from . import X` 的 level 基准算错 | `handlers/__init__.py` 里 19 个 handler 的静态导入全部解析失败，其整棵子树（含 memory 下大量模块）被误判为不可达 | **包**（`__init__.py`）的 level 1 指包自身，普通模块才指父包 |
+| 缺「祖先包执行」隐式边 | 只被包 `__init__` 导入的模块被误判为死代码。实例：`pangu/server/websocket_server.py` 只被 `pangu/server/__init__.py` 导入，而它正是插件 `/ws` 实时事件通道的实现 | 导入子模块必先执行祖先包 `__init__`，补隐式边 |
+
+修正后：**217 个模块中 197 个主链路可达（91%），主链路外 20 个**——其中 14 个在
+`experimental/` 容器内，**容器外仅 6 个**。
+
+### 6.2 桶一：真有用但没入口（建议接入）
+
+| 模块 | 行数 | 证据 | 建议 |
+|---|---|---|---|
+| `pangu/api/safe_eval.py` | 218 | 全仓 0 引用；但 ABAC 在 `pangu/api/abac.py:152` 用**内建 `eval()`** 求值条件（`eval(self.condition, {"__builtins__": {}}, ns)`），而 `abac_enabled=true` 是生效的 | **接入**：ABAC 求值改走 safe_eval（安全收益明确） |
+| `pangu/api/routes_tags.py` | 303 | 全仓 0 引用；`pangu/api/server.py` 未挂载（其中的 `tags=` 只是 OpenAPI 标签） | 接入或删除，**取决于标签功能是否还要** |
+| `pangu/task_tracker.py` | 143 | 全仓 0 引用（伏羲移植：工具执行后保存任务状态） | 接入或删除，**需你判断用途** |
+
+### 6.3 桶二：实验性容器（保留，明确标注）
+
+根目录 `experimental/` 下 14 个模块，由 `pangu/server/handlers/__init__.py` 的
+`load_experimental_tools()` 按需加载，`enabled_experiments` 当前未启用（config 中为 null）。
+属于**设计内的 opt-in**，不是死代码。**保留**。
+
+### 6.4 桶三：概念性、无实际调用（候选删除，需逐个确认）
+
+| 模块 | 行数 | 证据 |
+|---|---|---|
+| `pangu/core/errors.py` | 110 | 全仓 0 引用；错误码实际以字面量散落在 `mcp_server.py` / `exposure.py`（如 `code=1002`） |
+| `pangu/observability/tracing.py` | 115 | 全仓 0 引用，无初始化点、无开关、无环境变量引用 |
+| `pangu/ui/__init__.py` | 1 | 空壳包（仅 docstring，无子模块） |
+| **小计** | **226 行** | |
+
+### 6.5 与 2026-09-14 审计的关系
+
+- 上一轮范围是 `pangu/memory/`（132 个），结论「全部有调用方」；本轮全仓复核**与之一致**：
+  memory 下模块均可达，本轮新增发现全部集中在 memory 之外。
+- 上一轮 Q1 的 3 个删除候选（`advanced_reasoning` / `domain_knowledge` / `performance`，
+  2227 行）**已被 `f2c6467` 以「接入」方式处置**（挂到工具面），不再是删除候选。
+
+### 6.6 待你确认
+
+| # | 问题 | 我的倾向 |
+|---|---|---|
+| 1 | `safe_eval` 是否接入 ABAC（替换内建 `eval`）？ | 是：安全收益明确，独立小改动 |
+| 2 | `routes_tags` / `task_tracker` 接入还是删除？ | 取决于你是否还需要标签 API 与任务追踪 |
+| 3 | 桶三 3 个（226 行）是否删除？ | 可删；删除不可逆，等你逐项确认 |
+| 4 | 是否给 `experimental/` 加 opt-in 标注说明？ | 是，成本极低 |
