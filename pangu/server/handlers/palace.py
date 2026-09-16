@@ -13,8 +13,19 @@ HANDLERS = {}
 
 
 async def handle_list_wings(server, drawers, arguments):
-    """列出所有 Wing（空间）"""
-    return json.dumps(server.palace.list_wings(), ensure_ascii=False)
+    """列出所有 Wing（空间）
+
+    以**权威记忆库**（drawer.wing）为准，并集上 Palace 索引里额外登记的 wing。
+    此前只读 Palace：而 Palace 索引不参与 v2 写入路径（`palace_meta.json` 从未生成），
+    于是在 125 条记忆 / 6 个 wing 的库上返回 `["default"]`，与 dashboard 的知识翼分布、
+    检索看到的世界完全不一致 —— 属 P0-0 同类的路径分叉。
+    """
+    wings = {(d.wing or "default") for d in drawers}
+    try:
+        wings.update(server.palace.list_wings() or [])
+    except Exception:
+        pass
+    return json.dumps(sorted(wings), ensure_ascii=False)
 
 
 HANDLERS["pangu_list_wings"] = handle_list_wings
@@ -31,9 +42,32 @@ HANDLERS["pangu_create_wing"] = handle_create_wing
 
 
 async def handle_list_rooms(server, drawers, arguments):
-    """列出 Wing 下的所有 Room"""
+    """列出 Wing 下的所有 Room（返回 {wing: [room]}，与 Palace 原形状一致）
+
+    同 handle_list_wings：以权威记忆库为准，并集 Palace 索引登记的 room。
+    此前只读 Palace，实测在 20 个 room 的库上返回 `{}`。
+    """
     wing = arguments.get("wing")
-    return json.dumps(server.palace.list_rooms(wing), ensure_ascii=False)
+    result: dict[str, list[str]] = {}
+    for d in drawers:
+        w = d.wing or "default"
+        if wing and w != wing:
+            continue
+        bucket = result.setdefault(w, [])
+        r = d.room or "general"
+        if r not in bucket:
+            bucket.append(r)
+    try:
+        for w, rooms in (server.palace.list_rooms(wing) or {}).items():
+            bucket = result.setdefault(w, [])
+            for r in rooms or []:
+                if r not in bucket:
+                    bucket.append(r)
+    except Exception:
+        pass
+    return json.dumps(
+        {w: sorted(rooms) for w, rooms in sorted(result.items())}, ensure_ascii=False
+    )
 
 
 HANDLERS["pangu_list_rooms"] = handle_list_rooms
