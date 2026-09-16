@@ -494,6 +494,8 @@ window.__ModuleLoader__.load({
           h(StatTile, { icon: 'layers', tint: css.ok, label: '知识翼', value: fmtNum(s?.wings) }),
           h(StatTile, { icon: 'graph', tint: css.info, label: '图谱实体', value: fmtNum(s?.kgEntities) }),
           h(StatTile, { icon: 'network', tint: css.warn, label: '图谱关系', value: fmtNum(s?.kgRelations) }),
+          // 密级：高密级（classification>=2，机密/绝密）条数。全库视角由后端管理通道给出。
+          h(StatTile, { icon: 'alert', tint: css.warn, label: '高密级', value: fmtNum(s?.highClass) }),
         ),
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10, marginTop: 12 } },
           h('div', { className: 'pangu-card', style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 12, padding: '13px 14px' } },

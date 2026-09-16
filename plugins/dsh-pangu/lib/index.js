@@ -102,6 +102,7 @@ async function apply(ctx) {
     let kgEntities = 0
     let kgRelations = 0
     let byWing
+    let byClass
     try {
       // 面板是管理 UI：概览要显示**全库**规模（用户 2026-09-16 定），所以走 admin 通道
       // 的 /admin/stats —— MCP 的 pangu_stats 自 P1-3 收口后按调用方租户裁剪，只显示
@@ -137,6 +138,7 @@ async function apply(ctx) {
         kgEntities = Number(parsed?.knowledge_graph?.entities) || 0
         kgRelations = Number(parsed?.knowledge_graph?.relations) || 0
         byWing = parsed?.memory?.by_wing
+        byClass = parsed?.classification
       }
     } catch (e) {
       return { ok: false, error: 'pangu MCP unreachable: ' + String(e) }
@@ -157,7 +159,11 @@ async function apply(ctx) {
       health = 'unreachable'
     }
 
-    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, health, healthScore, version, uptimeSeconds, ts: Date.now() }
+    // 高密级＝classification>=2（机密/绝密）。管理视角看全库，租户视角看自己那份。
+    const highClass = byClass
+      ? Number(byClass['2'] || 0) + Number(byClass['3'] || 0)
+      : 0
+    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, highClass, health, healthScore, version, uptimeSeconds, ts: Date.now() }
   }
 
   async function fetchKG() {

@@ -74,7 +74,13 @@ def collect_stats(server, drawers: list | None = None) -> dict:
         "wiki": server.wiki.stats(),
         "knowledge_graph": server.knowledge_graph.stats(),
     }
-    apply_tenant_view(stats, drawers if drawers is not None else server.memory.get_drawers())
+    scoped = drawers if drawers is not None else server.memory.get_drawers()
+    apply_tenant_view(stats, scoped)
+    # 密级分布（管理视角＝全库；租户视角＝自己那份）—— 便于审计"库里有没有高密级数据"
+    by_class: dict[str, int] = {"0": 0, "1": 0, "2": 0, "3": 0}
+    for d in scoped:
+        by_class[str(_coerce_classification((d.metadata or {}).get("classification")))] += 1
+    stats["classification"] = by_class
     return stats
 
 
@@ -100,6 +106,18 @@ def apply_tenant_view(stats: dict, drawers: list) -> None:
     if isinstance(palace, dict):
         palace["wings_count"] = len({(d.wing or "default") for d in drawers})
         palace["rooms_count"] = len({((d.wing or "default"), (d.room or "general")) for d in drawers})
+
+
+def _coerce_classification(value) -> int:
+    """密级归一化为 int（0..3），非法值按 0 —— 与 layers 同一语义（历史数据有字符串）。"""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, min(3, value))
+    try:
+        return max(0, min(3, int(str(value).strip() or 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 async def handle_stats(server, drawers, arguments):

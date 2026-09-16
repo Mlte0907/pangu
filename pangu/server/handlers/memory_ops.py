@@ -36,7 +36,7 @@ async def handle_add_memory(server, drawers, arguments):
     修复后：走 remember() 全管道，与 REST 通道行为一致。
     """
     from ...memory.ingestion import remember
-    from ...memory.layers import _coerce_classification
+    from ...memory.layers import _coerce_classification, clamp_classification, current_clearance
 
     # remember() 的契约是 0.0–1.0（旧默认 3.0 属 1–5 量纲，会让写入 100% 失败）
     importance = arguments.get("importance", 0.5)
@@ -64,7 +64,14 @@ async def handle_add_memory(server, drawers, arguments):
         drawer.metadata["tenant_id"] = identity.get("room", arguments.get("tenant_id", "default"))
         # 密级是**数值** 0=public…3=secret（与 ABAC 的 Resource.classification 同一套）。
         # 此前默认写成字符串 "normal"，而 REST/ABAC 侧按 int 读取 → 遇到这些行会 ValueError。
-        drawer.metadata["classification"] = _coerce_classification(arguments.get("classification", 0))
+        #
+        # 钳制：写入方标定的密级**不得超过自己的 clearance**（否则低密级调用方能把数据
+        # 标成绝密，谁都读不了 —— 等于自锁）。超限部分静默收敛到自身密级并告警。
+        requested = _coerce_classification(arguments.get("classification", 0))
+        granted = clamp_classification(requested)
+        if granted != requested:
+            logger.warning(f"密级 {requested} 超过调用方 clearance {current_clearance()}，已钳制为 {granted}")
+        drawer.metadata["classification"] = granted
         # P1-3 收尾：用 setdefault 语义，门禁已决定 visibility 时以门禁为准。
         #
         # 默认值是 "tenant" 而不是 "private" —— 二者在 api/abac.py 里是**两档**：

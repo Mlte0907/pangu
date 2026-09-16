@@ -378,6 +378,17 @@ def _coerce_classification(value) -> int:
         return 0
 
 
+def clamp_classification(value, clearance: int | None = None) -> int:
+    """把写入方标定的密级钳制到**不超过自己的 clearance**。
+
+    策略原因：否则低密级调用方可以把数据标成绝密 —— 那样谁（包括它自己）都读不了，
+    等于自锁；也让密级变成任意调用方都能伪造的属性（标低也不是他想标就能标）。
+    """
+    level = _coerce_classification(value)
+    cap = current_clearance() if clearance is None else int(clearance or 0)
+    return min(level, max(0, cap))
+
+
 def metadata_readable(md, tenant: str | None = None, key_id: str | None = None, clearance: int | None = None) -> bool:
     """**是否可读** —— 两条轴的合取：
 

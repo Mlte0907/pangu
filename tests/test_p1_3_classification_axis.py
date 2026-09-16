@@ -62,9 +62,7 @@ def _drawer(did, tenant, classification):
 
 def test_secret_memory_needs_matching_clearance(stack):
     """★ 密级不足 → 即使同租户也读不到。"""
-    stack.add_drawers(
-        [_drawer("pub", "dsh", 0), _drawer("secret", "dsh", 3)]
-    )
+    stack.add_drawers([_drawer("pub", "dsh", 0), _drawer("secret", "dsh", 3)])
     token = set_tenant_scope("dsh", "k", 0)
     try:
         assert stack.get_drawer_by_id("pub") is not None
@@ -117,3 +115,66 @@ def test_rest_resource_builder_survives_string_classification():
     d = Drawer(id="x", content="", wing="w", room="r")
     d.metadata = {"tenant_id": "dsh", "classification": "normal"}
     assert _drawer_to_resource(d).classification == 0
+
+
+def test_write_clamps_classification_to_clearance():
+    """★ 写入方标定的密级不得超过自己的 clearance（否则低密级调用方能自锁数据）。"""
+    from pangu.memory.layers import clamp_classification
+
+    # 密级 0 的调用方想标 3 → 只能标 0
+    token = set_tenant_scope("dsh", "k", 0)
+    try:
+        assert clamp_classification(3) == 0
+        assert clamp_classification(1) == 0
+        assert clamp_classification(0) == 0
+    finally:
+        reset_tenant_scope(token)
+
+    # 密级 3 的调用方可以标到 3
+    token = set_tenant_scope("dsh", "k", 3)
+    try:
+        assert clamp_classification(3) == 3
+        assert clamp_classification(2) == 2
+        assert clamp_classification("normal") == 0, "非法/字符串值按 0 处理"
+    finally:
+        reset_tenant_scope(token)
+
+
+def test_stats_reports_classification_breakdown(stack):
+    """管理/租户统计里带密级分布，便于审计"库里有没有高密级数据"。"""
+    from pangu.server.handlers.system import collect_stats
+
+    class _Stub:
+        """collect_stats 用到 palace / memory / wiki / knowledge_graph 的 stats()。"""
+
+        class memory:
+            @staticmethod
+            def status():
+                return {"total_memories": 0, "by_wing": {}}
+
+            @staticmethod
+            def get_drawers():
+                return []
+
+        class palace:
+            @staticmethod
+            def stats():
+                return {"wings_count": 0, "rooms_count": 0}
+
+        class wiki:
+            @staticmethod
+            def stats():
+                return {"total_pages": 0}
+
+        class knowledge_graph:
+            @staticmethod
+            def stats():
+                return {"entities": 0, "relations": 0}
+
+    stack.add_drawers([_drawer("a", "dsh", 0), _drawer("b", "dsh", 3)])
+    token = set_tenant_scope("dsh", "k", 3)
+    try:
+        stats = collect_stats(_Stub(), stack.get_drawers())
+    finally:
+        reset_tenant_scope(token)
+    assert stats["classification"] == {"0": 1, "1": 0, "2": 0, "3": 1}
