@@ -18,7 +18,13 @@ from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from .layers import current_key_id, current_tenant
+from .layers import (
+    _coerce_classification,
+    clamp_classification,
+    current_clearance,
+    current_key_id,
+    current_tenant,
+)
 
 logger = logging.getLogger("pangu.memory.graph")
 
@@ -50,6 +56,10 @@ class KnowledgeGraph:
             conn.create_function(self._SCOPE_UDF, 0, lambda: current_tenant())
             # 第二档判据：private 档要看"是不是属主那把钥匙"（视图里用）
             conn.create_function(self._KEY_UDF, 0, lambda: current_key_id())
+            # 密级轴（第二条正交判据）：clearance >= classification，与记忆层
+            # metadata_readable 同规则。同样走 UDF —— 判据只写一份在视图里，不在
+            # 35 处 SQL 里各写一遍（记忆层 287 个 handler 漏 18 个的教训）。
+            conn.create_function(self._CLEARANCE_UDF, 0, lambda: current_clearance())
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=-32000")
@@ -71,6 +81,7 @@ class KnowledgeGraph:
 
     _SCOPE_UDF = "current_tenant"
     _KEY_UDF = "current_key_id"
+    _CLEARANCE_UDF = "current_clearance"
 
     def _init_db(self) -> None:
         """初始化数据库（含「基表 + 租户视图」多租户改造，幂等）
@@ -149,7 +160,11 @@ class KnowledgeGraph:
             cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
             if "owner_key_id" not in cols:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN owner_key_id TEXT NOT NULL DEFAULT ''")
-                logger.warning(f"knowledge_graph: {table} 补列 owner_key_id（private 档判据）")
+            # 密级（0=public … 3=secret）。存量缺列时 DEFAULT 0 ＝ 公开 —— 与记忆层
+            # 历史数据的处理一致（历史记忆正常化后也是 0）。
+            if "classification" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN classification INTEGER NOT NULL DEFAULT 0")
+                logger.warning(f"knowledge_graph: {table} 补列 classification（密级轴）")
 
     @staticmethod
     def _rename_legacy_tables(conn) -> None:
@@ -165,6 +180,10 @@ class KnowledgeGraph:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN visibility TEXT NOT NULL DEFAULT 'tenant'")
             if "owner_key_id" not in cols:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN owner_key_id TEXT NOT NULL DEFAULT ''")
+            # 密级（0=public … 3=secret）。存量缺列时 DEFAULT 0 ＝ 公开 —— 与记忆层
+            # 历史数据的处理一致（历史记忆正常化后也是 0）。
+            if "classification" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN classification INTEGER NOT NULL DEFAULT 0")
             conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy")
             logger.warning(f"knowledge_graph: 旧表 {table} → {table}_legacy（等待搬入新基表）")
 
@@ -213,25 +232,45 @@ class KnowledgeGraph:
                 CREATE VIEW {table} AS
                 SELECT * FROM {table}_all
                 WHERE current_tenant() = ''
-                   -- public：所有租户可读（毕业区）
-                   OR visibility = 'public'
-                   -- tenant（含未标注）：同租户可读；private：仅属主那把钥匙
                    OR (
-                        tenant_id = current_tenant()
-                        AND (
-                             visibility IS NULL
-                          OR visibility != 'private'
-                          -- private 但没记属主（老数据 / KG 无属主来源）→ 按 tenant 档，
-                          -- 收紧成"没人可见"会让老数据凭空消失
-                          OR owner_key_id IS NULL
-                          OR owner_key_id = ''
-                          OR owner_key_id = current_key_id()
+                        (
+                          -- 租户轴：public（毕业区）；或同租户且（非 private 或属主）
+                             visibility = 'public'
+                          OR (
+                               tenant_id = current_tenant()
+                               AND (
+                                    visibility IS NULL
+                                 OR visibility != 'private'
+                                 OR owner_key_id IS NULL
+                                 OR owner_key_id = ''
+                                 OR owner_key_id = current_key_id()
+                               )
+                             )
                         )
+                        -- 密级轴（与记忆层 metadata_readable 同规则）：clearance 不够
+                        -- 就读不到，与租户轴合取。全库视角走上面的短路分支，不受影响 ——
+                        -- 那是系统自身，密级对它没有意义（否则后台维护会看不见高密级数据）。
+                        AND COALESCE(classification, 0) <= current_clearance()
                       )
                 ORDER BY (tenant_id = current_tenant()) DESC
             """)
 
     # ── 实体操作 ──
+
+    @staticmethod
+    def _resolve_classification(classification, clamp: bool = True) -> int:
+        """把密级落成库里的值。
+
+        clamp=True（默认，调用方声明）：钳到**当前调用方的 clearance** —— 低密级调用方
+        不能把数据标成绝密（那样谁都读不了＝自锁，也让密级变成可伪造的属性）。
+
+        clamp=False（**继承**来源记忆的密级，后台抽取走这条）：来源记忆入库时已按当时
+        调用方的 clearance 钳过，这里再钳一次会把高密级实体降级成 0 —— 那等于给密级开
+        了一个旁路：从机密记忆里抽出实体、落进公开图谱。
+        """
+        if classification is None:
+            return 0
+        return clamp_classification(classification) if clamp else _coerce_classification(classification)
 
     def add_entity(
         self,
@@ -241,6 +280,8 @@ class KnowledgeGraph:
         description: str = "",
         tenant_id: str | None = None,
         owner_key_id: str | None = None,
+        classification=None,
+        clamp: bool = True,
     ) -> dict:
         """添加实体（落当前租户归属）
 
@@ -250,11 +291,13 @@ class KnowledgeGraph:
         owner = current_tenant() if tenant_id is None else tenant_id
         with self._conn() as conn:
             owner_key = current_key_id() if owner_key_id is None else owner_key_id
+            cls = self._resolve_classification(classification, clamp)
             conn.execute(
                 """INSERT OR REPLACE INTO entities_all
-                   (id, name, type, description, created_at, tenant_id, visibility, owner_key_id)
-                   VALUES (?, ?, ?, ?, ?, ?, 'tenant', ?)""",
-                (id, name, entity_type, description, datetime.now().isoformat(), owner, owner_key),
+                   (id, name, type, description, created_at, tenant_id, visibility,
+                    owner_key_id, classification)
+                   VALUES (?, ?, ?, ?, ?, ?, 'tenant', ?, ?)""",
+                (id, name, entity_type, description, datetime.now().isoformat(), owner, owner_key, cls),
             )
             # 回读走基表：抽取可能以来源租户落库（与当前作用域不同的公共记忆），
             # 走视图会因不可见而返回 None。
@@ -305,16 +348,20 @@ class KnowledgeGraph:
         source: str = "",
         tenant_id: str | None = None,
         owner_key_id: str | None = None,
+        classification=None,
+        clamp: bool = True,
     ) -> dict:
         """添加关系（落当前租户归属；tenant_id 语义同 add_entity）"""
         owner = current_tenant() if tenant_id is None else tenant_id
         with self._conn() as conn:
             owner_key = current_key_id() if owner_key_id is None else owner_key_id
+            cls = self._resolve_classification(classification, clamp)
             conn.execute(
                 """INSERT OR REPLACE INTO relations_all
                    (id, subject_id, predicate, object_id, valid_from, valid_until,
-                    confidence, source, created_at, tenant_id, visibility, owner_key_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tenant', ?)""",
+                    confidence, source, created_at, tenant_id, visibility, owner_key_id,
+                    classification)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tenant', ?, ?)""",
                 (
                     id,
                     subject_id,
@@ -327,6 +374,7 @@ class KnowledgeGraph:
                     datetime.now().isoformat(),
                     owner,
                     owner_key,
+                    cls,
                 ),
             )
             row = conn.execute("SELECT * FROM relations_all WHERE id = ? AND tenant_id = ?", (id, owner)).fetchone()
@@ -1111,6 +1159,10 @@ class KnowledgeGraph:
             owner = (drawer.metadata or {}).get("tenant_id") or current_tenant()
             # 属主钥匙同样继承来源记忆（private 档判据；来源未记则留空＝按 tenant 档）
             owner_key = (drawer.metadata or {}).get("owner_key_id", "")
+            # 密级**继承**来源记忆：图谱是这条记忆的衍生，密级必须跟着来源走（与
+            # tenant_id 同理）。否则「从机密记忆里抽出实体、落进公开图谱」就是绕过
+            # 密级的旁路 —— 租户挡住了，密级却漏了。
+            src_cls = (drawer.metadata or {}).get("classification")
 
             found_entities = []
             for etype, keywords in ENTITY_PATTERNS.items():
@@ -1118,12 +1170,26 @@ class KnowledgeGraph:
                     if kw.lower() in content.lower():
                         eid = f"entity-{hex_digest(kw)[:12]}"
                         self.add_entity(
-                            eid, kw, etype, f"从记忆 {drawer.id[:8]} 提取", tenant_id=owner, owner_key_id=owner_key
+                            eid,
+                            kw,
+                            etype,
+                            f"从记忆 {drawer.id[:8]} 提取",
+                            tenant_id=owner,
+                            owner_key_id=owner_key,
+                            classification=src_cls,
+                            clamp=False,
                         )
                         found_entities.append((eid, kw))
                         entities_added += 1
 
-            relations_added += self._find_and_create_relations(found_entities, content, drawer.id, owner, owner_key)
+            relations_added += self._find_and_create_relations(
+                found_entities,
+                content,
+                drawer.id,
+                owner,
+                owner_key,
+                classification=src_cls,
+            )
 
         return {
             "entities_added": entities_added,
@@ -1131,7 +1197,13 @@ class KnowledgeGraph:
         }
 
     def _find_and_create_relations(
-        self, found_entities, content, drawer_id, tenant_id: str | None = None, owner_key_id: str = ""
+        self,
+        found_entities,
+        content,
+        drawer_id,
+        tenant_id: str | None = None,
+        owner_key_id: str = "",
+        classification=None,
     ):
         import re
 
@@ -1151,6 +1223,8 @@ class KnowledgeGraph:
                             source=drawer_id[:8],
                             tenant_id=tenant_id,
                             owner_key_id=owner_key_id,
+                            classification=classification,
+                            clamp=False,
                         )
                         count += 1
                         break

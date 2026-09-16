@@ -10,7 +10,13 @@ from ..core.palace import WikiPage
 
 # 复用记忆层的请求级租户作用域 —— 全仓只有这一套语义（tenant_id + visibility），
 # 不在 wiki 里另起字段名，否则跨域查询/审计/迁移都要做翻译。
-from ..memory.layers import current_key_id, current_tenant, metadata_visible
+from ..memory.layers import (
+    clamp_classification,
+    current_key_id,
+    current_tenant,
+    metadata_readable,
+    metadata_visible,
+)
 
 
 def page_tenant(page: WikiPage) -> str:
@@ -58,19 +64,21 @@ class WikiEngine:
     # ── 租户作用域（读路径的唯一收口点）──
 
     def _visible(self, page: WikiPage | None) -> bool:
-        """当前请求作用域下该页面是否可见。
+        """当前请求作用域下该页面是否可读。
 
-        判据与记忆/KG 完全一致：本租户 或 visibility='public'；作用域为空＝全库视角。
-        不可见＝不存在（对外表现与"没有这个页面"一致，不泄露存在性）。
+        判据与记忆/KG 完全一致，是**两条正交轴的合取**：
+          1. 租户轴：本租户 或 visibility='public'（三档语义）
+          2. 密级轴：调用方 clearance >= 页面 classification
+        作用域为空＝全库视角。不可读＝不存在（对外表现与"没有这个页面"一致，不泄露存在性）。
         """
         if page is None:
             return False
         tenant = current_tenant()
         if not tenant:
             return True
-        # 三档语义（public / tenant / private）与记忆、KG 共用 layers.metadata_visible，
-        # 不在 wiki 里另写一套 —— 否则三处判据会各自漂移。
-        return metadata_visible(page.metadata, tenant, current_key_id())
+        # 两条轴都与记忆、KG 共用 layers.metadata_readable，不在 wiki 里另写一套 ——
+        # 否则三处判据会各自漂移（记忆层 287 个 handler 漏 18 个就是这么来的）。
+        return metadata_readable(page.metadata, tenant, current_key_id())
 
     def visible_pages(self) -> list[WikiPage]:
         """读路径入口：按作用域过滤后的页面集合。**所有读方法都应走它**。
@@ -124,6 +132,9 @@ class WikiEngine:
         # 与记忆写入一致：记住属主钥匙，供 private 档判定
         if current_key_id():
             page.metadata.setdefault("owner_key_id", current_key_id())
+        # 密级（与记忆写入同一策略）：**钳到调用方的 clearance** —— 低密级调用方不能
+        # 把页面标成绝密（那样谁都读不了＝自锁），也让密级不至于成为可伪造的属性。
+        page.metadata["classification"] = clamp_classification(page.metadata.get("classification"))
         page.id = self._non_colliding_id(page)
         self._pages[page.id] = page
 

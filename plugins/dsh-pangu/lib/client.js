@@ -437,6 +437,33 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // 密级四档（classification 0..3，与后端 layers 同一套语义：
+    // 0=公开 1=内部 2=机密 3=绝密；调用方 clearance >= 密级才可读）。
+    // 分档由后端 /admin/stats 的 classification 字段给出（管理视角＝全库）。
+    const CLASS_LEVELS = [['0', '公开', css.ok], ['1', '内部', css.info], ['2', '机密', css.warn], ['3', '绝密', css.err]]
+
+    function ClassDistCard({ byClass }) {
+      const rows = CLASS_LEVELS.map(([k, label, color]) => ({ label, color, count: Number(byClass?.[k] || 0) }))
+      const total = rows.reduce((a, r) => a + r.count, 0)
+      const max = Math.max(1, ...rows.map((r) => r.count))
+      return h('div', { className: 'pangu-card', style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 12, padding: '13px 14px' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 } },
+          h(Icon, { name: 'alert', size: 13, color: css.warn }),
+          h('span', { style: { fontSize: 12.5, fontWeight: 600, color: css.t1 } }, '密级分布'),
+          h('span', { style: { marginLeft: 'auto', fontSize: 11, color: css.t3 } }, total ? `共 ${fmtNum(total)} 条` : '—'),
+        ),
+        rows.map((r) => h('div', { key: r.label, style: { padding: '6px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 12 } },
+            h('span', { style: { color: css.t2 } }, r.label),
+            h('span', { style: { color: r.count ? css.t1 : css.t3, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, fmtNum(r.count)),
+          ),
+          h('div', { style: { height: 4, background: css.bg3, borderRadius: 2, overflow: 'hidden' } },
+            h('div', { style: { height: '100%', width: (r.count ? Math.max(3, (r.count / max) * 100) : 0) + '%', background: r.color, borderRadius: 2 } }),
+          ),
+        )),
+      )
+    }
+
     function OverviewPane({ dash, config, dashErr, loading, onRetry }) {
       const [deep, setDeep] = React.useState(null)
       const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
@@ -516,6 +543,7 @@ window.__ModuleLoader__.load({
             h(InfoRow, { label: 'LLM', value: config ? [config.llm_provider, config.llm_model].filter(Boolean).join(' / ') : '—' }),
           ),
           h(WingDistCard, { byWing: s?.byWing }),
+          h(ClassDistCard, { byClass: s?.byClass }),
         ),
         // 房间总览卡片
         rooms.length > 0 && (() => {
