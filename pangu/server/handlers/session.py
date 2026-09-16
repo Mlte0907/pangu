@@ -185,7 +185,7 @@ async def handle_portal_write(server, drawers, arguments):
         arguments["content"],
         arguments.get("wing", "default"),
         arguments.get("tags", []),
-        arguments.get("importance", 3.0),
+        arguments.get("importance", 0.5),  # 0.0–1.0 契约（旧默认 3.0 属 1–5 量纲）
     )
     return json.dumps(result, ensure_ascii=False, indent=2)
 

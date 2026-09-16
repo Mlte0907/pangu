@@ -252,7 +252,7 @@ _TOOL_SCHEMAS = {
             "content": {"type": "string", "description": "记忆内容"},
             "wing": {"type": "string", "description": "Wing 名称", "default": "default"},
             "room": {"type": "string", "description": "Room 名称", "default": "general"},
-            "importance": {"type": "number", "description": "重要性", "default": 3.0},
+            "importance": {"type": "number", "description": "重要性（0.0–1.0）", "default": 0.5},
             "tags": {"type": "array", "items": {"type": "string"}, "description": "标签"},
         },
         "required": ["content"],

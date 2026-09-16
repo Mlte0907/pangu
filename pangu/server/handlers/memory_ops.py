@@ -37,9 +37,10 @@ async def handle_add_memory(server, drawers, arguments):
     """
     from ...memory.ingestion import remember
 
-    importance = arguments.get("importance", 3.0)
+    # remember() 的契约是 0.0–1.0（旧默认 3.0 属 1–5 量纲，会让写入 100% 失败）
+    importance = arguments.get("importance", 0.5)
     if not isinstance(importance, (int, float)):
-        importance = Drawer._coerce_float(importance, 3.0)
+        importance = Drawer._coerce_float(importance, 0.5)
 
     # 走 remember() 全管道（脱敏 → 去重 → 冲突检测 → supersede → 版本链）
     item_id, drawer = remember(

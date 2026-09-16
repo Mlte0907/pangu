@@ -116,8 +116,20 @@ def test_inject_identity_without_key():
     assert "_identity" not in msg
 
 
-def test_inject_identity_invalid_key():
-    """无效钥匙不注入，mcp_require_auth=false 时不报错"""
+def test_inject_identity_invalid_key(monkeypatch):
+    """无效钥匙不注入，mcp_require_auth=false 时不报错
+
+    注意：本机 config.json 会显式写 mcp_require_auth，而 pydantic-settings 的
+    「显式构造参数 > 环境变量」规则（见 config.py 的 F2 注释）意味着 PANGU_MCP_REQUIRE_AUTH
+    压不过它 —— 靠环境变量设 false 是无效的。为了让断言不依赖生产配置，这里直接替换
+    PanguConfig.load()。
+    """
+    from pangu.core.config import PanguConfig
+
+    class _Cfg:
+        mcp_require_auth = False
+
+    monkeypatch.setattr(PanguConfig, "load", classmethod(lambda cls, *a, **k: _Cfg()))
     msg = {}
 
     class FakeRequest:

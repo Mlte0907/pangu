@@ -301,7 +301,8 @@ async function apply(ctx) {
             method: 'tools/call',
             params: {
               name: 'pangu_add_memory',
-              arguments: { content, wing: args?.wing || 'default', importance: Number(args?.importance) || 3 },
+              // importance 走 0.0–1.0 契约（remember() 的校验），旧值 3 属 1–5 量纲
+              arguments: { content, wing: args?.wing || 'default', importance: Number(args?.importance) || 0.5 },
             },
           }),
         })

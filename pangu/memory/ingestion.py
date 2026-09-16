@@ -542,6 +542,9 @@ def remember(
     """
     if not raw_text or not raw_text.strip():
         raise ValueError("raw_text is required")
+    # 契约：importance ∈ [0.0, 1.0]（tests/test_ingestion.py 与
+    # tests/test_v3_modules_g.py 都断言越界必须抛错）。调用方一律不得传 1–5
+    # 旧量纲 —— handler 与插件的默认值已同步改为 0.5。
     if not isinstance(importance, (int, float)) or importance < 0.0 or importance > 1.0:
         raise ValueError(f"importance must be between 0.0 and 1.0, got {importance}")
     if confidence is None:
