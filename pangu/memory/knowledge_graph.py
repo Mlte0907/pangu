@@ -107,7 +107,7 @@ class KnowledgeGraph:
                 description TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 tenant_id TEXT NOT NULL DEFAULT '',
-                visibility TEXT NOT NULL DEFAULT 'private',
+                visibility TEXT NOT NULL DEFAULT 'tenant',
                 PRIMARY KEY (id, tenant_id)
             )
         """)
@@ -123,7 +123,7 @@ class KnowledgeGraph:
                 source TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 tenant_id TEXT NOT NULL DEFAULT '',
-                visibility TEXT NOT NULL DEFAULT 'private',
+                visibility TEXT NOT NULL DEFAULT 'tenant',
                 PRIMARY KEY (id, tenant_id)
             )
         """)
@@ -216,7 +216,7 @@ class KnowledgeGraph:
             conn.execute(
                 """INSERT OR REPLACE INTO entities_all
                    (id, name, type, description, created_at, tenant_id, visibility)
-                   VALUES (?, ?, ?, ?, ?, ?, 'private')""",
+                   VALUES (?, ?, ?, ?, ?, ?, 'tenant')""",
                 (id, name, entity_type, description, datetime.now().isoformat(), owner),
             )
             # 回读走基表：抽取可能以来源租户落库（与当前作用域不同的公共记忆），
@@ -275,7 +275,7 @@ class KnowledgeGraph:
                 """INSERT OR REPLACE INTO relations_all
                    (id, subject_id, predicate, object_id, valid_from, valid_until,
                     confidence, source, created_at, tenant_id, visibility)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'private')""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tenant')""",
                 (
                     id,
                     subject_id,

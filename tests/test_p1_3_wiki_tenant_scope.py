@@ -227,3 +227,26 @@ def test_legacy_page_without_tenant_is_invisible_and_safe(engine):
     finally:
         reset_tenant_scope(token)
     assert engine.get_page("legacy") is not None, "全库视角（CLI/后台）应能看到无主页面"
+
+
+def test_private_page_visible_only_to_owner_key(engine):
+    """★ private 档：同租户的另一把钥匙也看不到（与记忆/KG 共用 layers.metadata_visible）。"""
+    token = set_tenant_scope("dsh", "key_owner")
+    try:
+        engine.create_page(_page("priv1", "私密页面", metadata={"visibility": "private"}))
+    finally:
+        reset_tenant_scope(token)
+
+    token = set_tenant_scope("dsh", "key_owner")
+    try:
+        assert engine.get_page("priv1") is not None, "属主钥匙应可见"
+        assert engine.get_page("priv1").metadata.get("owner_key_id") == "key_owner"
+    finally:
+        reset_tenant_scope(token)
+
+    token = set_tenant_scope("dsh", "key_sibling")
+    try:
+        assert engine.get_page("priv1") is None, "同租户的别的钥匙不得可见"
+        assert engine.list_pages() == []
+    finally:
+        reset_tenant_scope(token)

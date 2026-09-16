@@ -291,16 +291,31 @@ def _log_token_stats(operation: str, layers: dict) -> None:
 # **读**方法走 _read_drawers() 据此裁剪；**写**方法一律用全库快照（_save_drawers 落的是
 # self._drawers 全量，若被裁剪就是把别的租户的数据删掉）。
 _TENANT_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar("pangu_tenant_scope", default="")
+_KEY_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar("pangu_key_scope", default="")
+
+# 可见性三档（与 api/abac.py 的 Resource.visibility 同一套词汇，**不要**合并：
+#   public —— 所有租户可读（毕业区，有意共享）
+#   tenant —— 同租户可读（默认；房间=租户，同屋的多把钥匙互相可见）
+#   private —— 仅**属主那把钥匙**可读（同租户的其他钥匙也看不到）
+# 未标注（空串）按 tenant 处理 —— 历史数据的实际语义就是同租户可见，收紧会让老数据凭空消失。
+VIS_PUBLIC = "public"
+VIS_TENANT = "tenant"
+VIS_PRIVATE = "private"
 
 
-def set_tenant_scope(room: str = ""):
-    """设置本请求的租户作用域，返回 token 供 reset_tenant_scope 复原。"""
+def set_tenant_scope(room: str = "", key_id: str = ""):
+    """设置本请求的租户作用域（含调用方钥匙），返回 token 供 reset_tenant_scope 复原。
+
+    key_id 是第三档 private 的判据来源：只有写入时记下的 owner_key_id 与之相同才可见。
+    """
+    _KEY_SCOPE.set(key_id or "")
     return _TENANT_SCOPE.set(room or "")
 
 
 def reset_tenant_scope(token) -> None:
     """复原租户作用域（call_tool 在 finally 里调用，避免作用域泄漏到下一个请求）。"""
     _TENANT_SCOPE.reset(token)
+    _KEY_SCOPE.set("")
 
 
 def current_tenant() -> str:
@@ -308,10 +323,35 @@ def current_tenant() -> str:
     return _TENANT_SCOPE.get()
 
 
-def tenant_visible(drawer, tenant: str) -> bool:
-    """隔离轴判据：属于该租户，或显式 public。"""
-    md = drawer.metadata or {}
-    return md.get("tenant_id", "") == tenant or md.get("visibility", "") == "public"
+def current_key_id() -> str:
+    """当前请求所用钥匙的 id；用于判定 private 档。"""
+    return _KEY_SCOPE.get()
+
+
+def metadata_visible(md: dict | None, tenant: str, key_id: str = "") -> bool:
+    """三档可见性判据（记忆/KG/wiki 共用同一套语义，改这里全仓生效）。
+
+    作用域为空（CLI/后台/admin）＝全库视角 → 由调用方直接返回 True，不进本函数。
+    """
+    md = md or {}
+    vis = md.get("visibility") or ""
+    if vis == VIS_PUBLIC:
+        return True
+    if md.get("tenant_id", "") != tenant:
+        return False
+    if vis == VIS_PRIVATE:
+        owner = md.get("owner_key_id") or ""
+        if not owner:
+            # 老数据没有属主字段（KG 的行根本没有这一列）：按 tenant 档处理。
+            # 收紧成"没人可见"会让历史数据凭空消失 —— 那比"放宽"危险得多。
+            return True
+        return owner == key_id
+    return True
+
+
+def tenant_visible(drawer, tenant: str, key_id: str = "") -> bool:
+    """隔离轴判据（抽屉）：三档语义见 metadata_visible。"""
+    return metadata_visible(getattr(drawer, "metadata", None), tenant, key_id or current_key_id())
 
 
 class MemoryStack:
@@ -645,7 +685,8 @@ class MemoryStack:
         tenant = current_tenant()
         if not tenant:
             return drawers
-        return [d for d in drawers if tenant_visible(d, tenant)]
+        key_id = current_key_id()
+        return [d for d in drawers if tenant_visible(d, tenant, key_id)]
 
     def _read_drawers(self) -> list[Drawer]:
         """读路径入口：加载后按租户作用域裁剪。

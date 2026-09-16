@@ -62,8 +62,17 @@ async def handle_add_memory(server, drawers, arguments):
         identity = arguments.get("_identity", {})
         drawer.metadata["tenant_id"] = identity.get("room", arguments.get("tenant_id", "default"))
         drawer.metadata["classification"] = arguments.get("classification", "normal")
-        # P1-3 收尾：用 setdefault 语义，门禁已决定 visibility 时以门禁为准
+        # P1-3 收尾：用 setdefault 语义，门禁已决定 visibility 时以门禁为准。
+        #
+        # 默认值是 "tenant" 而不是 "private" —— 二者在 api/abac.py 里是**两档**：
+        #   tenant  = 同租户（房间）可见，同屋的多把钥匙互相可见 ← MCP 写入的合理默认
+        #   private = 仅属主那把钥匙可见（需要 owner_key_id 判据）
+        #   public  = 所有租户可见（毕业区）
+        # 曾经把这三档误读成"命名不一致"，这里写清楚，别再合并。
         drawer.metadata.setdefault("visibility", arguments.get("visibility", "tenant"))
+        # private 档的判据来源：记住写入方是哪把钥匙
+        if identity.get("key_id"):
+            drawer.metadata.setdefault("owner_key_id", identity["key_id"])
         # P1-3：remember() 不落盘（只创建 Drawer 对象），handler 的 add_drawer 才是唯一落盘点
         server.memory.add_drawer(drawer)
 

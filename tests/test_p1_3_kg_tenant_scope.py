@@ -66,7 +66,8 @@ def test_write_stamps_tenant(kg):
     with kg._conn() as conn:
         row = conn.execute("SELECT tenant_id, visibility FROM entities_all WHERE id='entity-abc'").fetchone()
     assert row["tenant_id"] == "dsh"
-    assert row["visibility"] == "private"
+    # 默认档是 tenant（同租户可见），不是 private —— KG 表没有属主列，标 private 无法执行
+    assert row["visibility"] == "tenant"
 
 
 def test_same_entity_id_coexists_across_tenants(kg):

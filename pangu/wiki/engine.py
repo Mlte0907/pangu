@@ -10,7 +10,7 @@ from ..core.palace import WikiPage
 
 # 复用记忆层的请求级租户作用域 —— 全仓只有这一套语义（tenant_id + visibility），
 # 不在 wiki 里另起字段名，否则跨域查询/审计/迁移都要做翻译。
-from ..memory.layers import current_tenant
+from ..memory.layers import current_key_id, current_tenant, metadata_visible
 
 
 def page_tenant(page: WikiPage) -> str:
@@ -68,7 +68,9 @@ class WikiEngine:
         tenant = current_tenant()
         if not tenant:
             return True
-        return page_tenant(page) == tenant or page_is_public(page)
+        # 三档语义（public / tenant / private）与记忆、KG 共用 layers.metadata_visible，
+        # 不在 wiki 里另写一套 —— 否则三处判据会各自漂移。
+        return metadata_visible(page.metadata, tenant, current_key_id())
 
     def visible_pages(self) -> list[WikiPage]:
         """读路径入口：按作用域过滤后的页面集合。**所有读方法都应走它**。
@@ -119,6 +121,9 @@ class WikiEngine:
         page.metadata = dict(page.metadata or {})
         if not page.metadata.get("tenant_id"):
             page.metadata["tenant_id"] = current_tenant()
+        # 与记忆写入一致：记住属主钥匙，供 private 档判定
+        if current_key_id():
+            page.metadata.setdefault("owner_key_id", current_key_id())
         page.id = self._non_colliding_id(page)
         self._pages[page.id] = page
 

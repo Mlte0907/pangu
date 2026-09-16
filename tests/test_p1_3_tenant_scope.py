@@ -116,3 +116,62 @@ def test_public_visible_to_all_tenants(stack):
             assert stack.get_drawer_by_id("pub1") is not None, f"{tenant} 应能看到 public"
         finally:
             reset_tenant_scope(token)
+
+
+# ── 三档可见性（private / tenant / public，语义见 api/abac.py 与 layers.metadata_visible）──
+
+
+def test_private_visible_only_to_owner_key(stack):
+    """★ private 档：同租户的**另一把钥匙也看不到**（此前被判成同租户可见 —— 只实现了两档）。"""
+    stack.add_drawer(_mk_drawer("p1", "dsh", "私密记忆"))
+    # 直接改 metadata 模拟 private + 属主钥匙
+    d = stack.get_drawer_by_id("p1")
+    d.metadata["visibility"] = "private"
+    d.metadata["owner_key_id"] = "key_owner"
+    stack.update_drawer(d)
+
+    token = set_tenant_scope("dsh", "key_owner")
+    try:
+        assert stack.get_drawer_by_id("p1") is not None, "属主钥匙应可见"
+    finally:
+        reset_tenant_scope(token)
+
+    token = set_tenant_scope("dsh", "key_sibling")
+    try:
+        assert stack.get_drawer_by_id("p1") is None, "同租户的别的钥匙不得可见"
+        assert "私密记忆" not in stack.wake_up()
+    finally:
+        reset_tenant_scope(token)
+
+
+def test_private_without_owner_falls_back_to_tenant(stack):
+    """历史兼容：private 但没记属主（KG 的行根本没这列）→ 按同租户档，不能让老数据消失。"""
+    stack.add_drawer(_mk_drawer("p2", "dsh", "无属主的私密记忆"))
+    d = stack.get_drawer_by_id("p2")
+    d.metadata["visibility"] = "private"  # 故意不设 owner_key_id
+    stack.update_drawer(d)
+
+    token = set_tenant_scope("dsh", "any_key")
+    try:
+        assert stack.get_drawer_by_id("p2") is not None
+    finally:
+        reset_tenant_scope(token)
+    token = set_tenant_scope("other", "any_key")
+    try:
+        assert stack.get_drawer_by_id("p2") is None, "别租户仍然看不到"
+    finally:
+        reset_tenant_scope(token)
+
+
+def test_explicit_tenant_level_is_room_wide(stack):
+    """tenant 档：同租户任意钥匙可见（MCP 写入的默认档）。"""
+    stack.add_drawer(_mk_drawer("t1", "dsh", "租户内共享"))
+    d = stack.get_drawer_by_id("t1")
+    d.metadata["visibility"] = "tenant"
+    stack.update_drawer(d)
+    for key in ("key_a", "key_b"):
+        token = set_tenant_scope("dsh", key)
+        try:
+            assert stack.get_drawer_by_id("t1") is not None, f"{key} 应可见"
+        finally:
+            reset_tenant_scope(token)
