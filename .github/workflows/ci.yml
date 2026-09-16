@@ -129,10 +129,14 @@ jobs:
           TRANSFORMERS_OFFLINE: "0"
         run: |
           mkdir -p reports
+          # 说明：清单里必须显式带上 tests/test_p1_3_*.py —— 那是租户隔离 / 密级 /
+          # 跨租户泄漏扫描的闸门。此前只写固定文件名，新增的隔离测试一个都没被跑到，
+          # 闸门形同虚设（CI 绿了但没在守）。改动测试清单时勿漏。
           python -m pytest tests/test_core.py tests/test_v2_features.py \
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
                           tests/test_integration.py \
+                          tests/test_p1_3_*.py \
                           --junitxml=reports/junit.xml \
                           -q --tb=short --maxfail=20
 
@@ -143,6 +147,7 @@ jobs:
           python -m pytest tests/test_core.py tests/test_v2_features.py \
                           tests/test_top_level_intelligence.py \
                           tests/test_v3_modules_*.py \
+                          tests/test_p1_3_*.py \
                           --cov=pangu --cov-report=xml:reports/coverage.xml \
                           --cov-report=term-missing:skip-covered \
                           -q --no-header
