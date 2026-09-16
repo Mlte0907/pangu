@@ -8,6 +8,74 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 > 本文件此前的 `v1.0.0` 标题是「分层共存重构」时期的旧称，代码侧已在
 > commit `ac563b4`（unify all version strings to 0.1.0）统一为 `0.1.0`，此处同步更正。
 
+## [0.3.0] — 2026-09-16
+
+记忆治理第一阶段 + 多平台接入第二阶段落地。**无破坏性变更**；新增 opt-in 的 MCP
+准入鉴权（`mcp_require_auth`，默认 `false`）。
+
+### 权威路径（P0-0）
+
+- 记忆读写统一到**唯一权威路径** `db_path/v2_memories`（`PanguConfig.authoritative_drawers_path`）。
+  此前全仓 49 处 `MemoryStack(...)` 只有 API 与 MCP 两处指向 v2，其余（CLI 34 处、
+  routes_memory、web_server、warmup、autonomous 维护）都读 v1 空库，导致同一进程内
+  「两条路径给出两个答案」、自主维护连续空转 81 次。`palace_path`（v1）保留作迁移输入。
+
+### 记忆治理（P0-1 / P0-2 / 缺口 1-3）
+
+- **P0-1 冲突治理接进检索链路**（`905251b`）：supersede 语义 + 检索结果标注 + 双缓存 bug 修复。
+- **P0-2 检索质量**（`fdfae8f`）：长度惩罚 + FTS 权重 + 加密内容过滤。
+- 缺口 1：supersede 暴露面修复（`b462047`）；缺口 2：`handle_add_memory` 接入
+  `remember()` 全管道 + REST update 路径改用 `update_drawer`（`e1830eb`）；
+  缺口 3：judge 四问准入接入 `remember()`（`d9748ce`）。
+
+### 平台分房（P1-3）
+
+- 按平台分房 + 毕业区（`cb6a4ab`）：写入打 `metadata.tenant_id`，读取按 `tenant_id`
+  （或 `visibility=public`）预过滤；`source_session` 全链路贯通（`cf325f0`、`f041981`）。
+- **租户语义默认为 `per_tenant`**（多用户定位）：不同钥匙（房间）之间互不可见；
+  `shared`（同一 wing 内不分写入者、统一可见）保留为可选。
+- MCP 身份解析：`X-API-Key` → 钥匙表 → `{key_id, room, scope}` 注入 `msg["_identity"]`，
+  再经 `server/mcp_server.py` 桥接进 handler 参数（阶段 1.4；读取侧消费于阶段 2.2，
+  过滤轴由 `Drawer.room` 改为 `metadata.tenant_id`，`69802bb`）。
+
+### 钥匙与准入（第二阶段 阶段 1 / 2 / 3）
+
+- 钥匙管理 CLI + REST 管理端点 + 房间隔离迁移脚本（`3db075b`、`3dc458a`、`a6c9b5a`）。
+- **MCP 准入鉴权 `mcp_require_auth`（opt-in）**：为 `true` 时 `/mcp` 无凭据或无效钥匙
+  返回 401。配套的 dsh 插件凭据链路：客户端改发 `X-API-Key`、服务端兼容
+  `Authorization: Bearer`、凭据解析 `PANGU_API_KEY` > `config.json:api_key` >
+  `~/.pangu/.mcp_key`(0600)（`9f37ca4`）。
+- **dsh 入住完成**：钥匙 `room=dsh`（0600 落盘、明文不入日志/会话），鉴权已开启，
+  三条 MCP 路径（配置页 / 注入通道 / 工具调用）均以 `keys.json:last_used_at` 取证。
+
+### 安装与运维（P1-1 / 阶段 0）
+
+- `pangu upgrade` / `pangu uninstall` / `--server`（`a4a8942`）；restart-and-verify + timer +
+  consolidate 压缩 + eval_report（`f5e9b4b`）。
+
+### 文档纪律（P1-2）
+
+- 文档新鲜度测试 6 条（`e0f395e`）：版本号三处一致、README 不得残留过期版本号、
+  ghcr 镜像 tag 不得带 `v` 前缀、文档提到的 `pangu_*` 工具名必须真实存在、
+  CHANGELOG 必须含当前版本条目。
+
+### 宿主兼容（DSH 0.1.6-alpha.1）
+
+- dsh-pangu 插件：typert.host 清单、CJS 化、客户端清单 `create:` 工厂迁移、
+  `typertRemote` 绑定补回（`b39367e`…`c8fd105`）。
+- dsh-teams-x：会话生命周期事件双基线注册（0.1.5 `agent/session-start` /
+  0.1.6 `agent/created`），并以显式监听器签名转型保住 peerDep 下限。
+
+### 已知问题
+
+- **AMD Radeon 网关上游故障**：`developer.amd.com.cn/radeon/api/v1` 当前对
+  `/v1/chat/completions` 与 `/v1/models` 一律返回 `502 Model gateway is unavailable`
+  （主机可达、TLS 正常）。非本仓库问题，但会拖累依赖 LLM 的能力（结晶 / 蒸馏 / 摘要）。
+- `llm_fallback_models` 仍为 OpenAI/Anthropic 模型名（`gpt-4o-mini`、`claude-3-haiku`），
+  在该网关上不存在，网关故障期间回退链无效。
+- ghcr 镜像 tag 仍为 `0.2.0`（0.3.0 镜像未构建发布），故 `docs/` 内镜像引用保持
+  `0.2.0`，避免指向不存在的 tag。
+
 ## [0.2.x] — 2026-09-13
 
 清理测试债务与生产死代码。**无破坏性变更，无 API 改动。**
