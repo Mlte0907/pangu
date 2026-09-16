@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
-from .layers import current_tenant
+from .layers import current_key_id, current_tenant
 
 logger = logging.getLogger("pangu.memory.graph")
 
@@ -48,6 +48,8 @@ class KnowledgeGraph:
             # UDF 是**连接级**的，必须每个新连接都注册；未注册的连接查视图会直接报
             # "no such function"（硬失败，不会静默漏数据 —— 这正是想要的）。
             conn.create_function(self._SCOPE_UDF, 0, lambda: current_tenant())
+            # 第二档判据：private 档要看"是不是属主那把钥匙"（视图里用）
+            conn.create_function(self._KEY_UDF, 0, lambda: current_key_id())
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=-32000")
@@ -68,6 +70,7 @@ class KnowledgeGraph:
             raise
 
     _SCOPE_UDF = "current_tenant"
+    _KEY_UDF = "current_key_id"
 
     def _init_db(self) -> None:
         """初始化数据库（含「基表 + 租户视图」多租户改造，幂等）
@@ -108,6 +111,7 @@ class KnowledgeGraph:
                 created_at TEXT NOT NULL,
                 tenant_id TEXT NOT NULL DEFAULT '',
                 visibility TEXT NOT NULL DEFAULT 'tenant',
+                owner_key_id TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (id, tenant_id)
             )
         """)
@@ -124,6 +128,7 @@ class KnowledgeGraph:
                 created_at TEXT NOT NULL,
                 tenant_id TEXT NOT NULL DEFAULT '',
                 visibility TEXT NOT NULL DEFAULT 'tenant',
+                owner_key_id TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (id, tenant_id)
             )
         """)
@@ -138,6 +143,13 @@ class KnowledgeGraph:
             "CREATE INDEX IF NOT EXISTS idx_relations_tenant ON relations_all(tenant_id, visibility)",
         ):
             conn.execute(stmt)
+        # 已迁移过的库不会再走 _rename_legacy_tables，新列要在这里幂等补上
+        # （SQLite 的 ADD COLUMN 是 O(1) 元数据操作）
+        for table in ("entities_all", "relations_all"):
+            cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if "owner_key_id" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN owner_key_id TEXT NOT NULL DEFAULT ''")
+                logger.warning(f"knowledge_graph: {table} 补列 owner_key_id（private 档判据）")
 
     @staticmethod
     def _rename_legacy_tables(conn) -> None:
@@ -150,7 +162,9 @@ class KnowledgeGraph:
             if "tenant_id" not in cols:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''")
             if "visibility" not in cols:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'")
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN visibility TEXT NOT NULL DEFAULT 'tenant'")
+            if "owner_key_id" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN owner_key_id TEXT NOT NULL DEFAULT ''")
             conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy")
             logger.warning(f"knowledge_graph: 旧表 {table} → {table}_legacy（等待搬入新基表）")
 
@@ -192,19 +206,41 @@ class KnowledgeGraph:
         所以这只是尽力而为，不影响正确性（两份都是当前租户**可见**的行）。
         """
         for table in ("entities", "relations"):
+            # DROP + CREATE：CREATE VIEW IF NOT EXISTS 不会更新已存在视图的定义，
+            # 改判据（例如本轮加 private 档）时旧库会静默沿用旧条件。
+            conn.execute(f"DROP VIEW IF EXISTS {table}")
             conn.execute(f"""
-                CREATE VIEW IF NOT EXISTS {table} AS
+                CREATE VIEW {table} AS
                 SELECT * FROM {table}_all
                 WHERE current_tenant() = ''
-                   OR tenant_id = current_tenant()
+                   -- public：所有租户可读（毕业区）
                    OR visibility = 'public'
+                   -- tenant（含未标注）：同租户可读；private：仅属主那把钥匙
+                   OR (
+                        tenant_id = current_tenant()
+                        AND (
+                             visibility IS NULL
+                          OR visibility != 'private'
+                          -- private 但没记属主（老数据 / KG 无属主来源）→ 按 tenant 档，
+                          -- 收紧成"没人可见"会让老数据凭空消失
+                          OR owner_key_id IS NULL
+                          OR owner_key_id = ''
+                          OR owner_key_id = current_key_id()
+                        )
+                      )
                 ORDER BY (tenant_id = current_tenant()) DESC
             """)
 
     # ── 实体操作 ──
 
     def add_entity(
-        self, id: str, name: str, entity_type: str, description: str = "", tenant_id: str | None = None
+        self,
+        id: str,
+        name: str,
+        entity_type: str,
+        description: str = "",
+        tenant_id: str | None = None,
+        owner_key_id: str | None = None,
     ) -> dict:
         """添加实体（落当前租户归属）
 
@@ -213,11 +249,12 @@ class KnowledgeGraph:
         """
         owner = current_tenant() if tenant_id is None else tenant_id
         with self._conn() as conn:
+            owner_key = current_key_id() if owner_key_id is None else owner_key_id
             conn.execute(
                 """INSERT OR REPLACE INTO entities_all
-                   (id, name, type, description, created_at, tenant_id, visibility)
-                   VALUES (?, ?, ?, ?, ?, ?, 'tenant')""",
-                (id, name, entity_type, description, datetime.now().isoformat(), owner),
+                   (id, name, type, description, created_at, tenant_id, visibility, owner_key_id)
+                   VALUES (?, ?, ?, ?, ?, ?, 'tenant', ?)""",
+                (id, name, entity_type, description, datetime.now().isoformat(), owner, owner_key),
             )
             # 回读走基表：抽取可能以来源租户落库（与当前作用域不同的公共记忆），
             # 走视图会因不可见而返回 None。
@@ -267,15 +304,17 @@ class KnowledgeGraph:
         confidence: float = 1.0,
         source: str = "",
         tenant_id: str | None = None,
+        owner_key_id: str | None = None,
     ) -> dict:
         """添加关系（落当前租户归属；tenant_id 语义同 add_entity）"""
         owner = current_tenant() if tenant_id is None else tenant_id
         with self._conn() as conn:
+            owner_key = current_key_id() if owner_key_id is None else owner_key_id
             conn.execute(
                 """INSERT OR REPLACE INTO relations_all
                    (id, subject_id, predicate, object_id, valid_from, valid_until,
-                    confidence, source, created_at, tenant_id, visibility)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tenant')""",
+                    confidence, source, created_at, tenant_id, visibility, owner_key_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tenant', ?)""",
                 (
                     id,
                     subject_id,
@@ -287,6 +326,7 @@ class KnowledgeGraph:
                     source,
                     datetime.now().isoformat(),
                     owner,
+                    owner_key,
                 ),
             )
             row = conn.execute("SELECT * FROM relations_all WHERE id = ? AND tenant_id = ?", (id, owner)).fetchone()
@@ -1069,24 +1109,30 @@ class KnowledgeGraph:
             # 归属继承：图谱条目是**这条记忆**的衍生，租户跟着来源记忆走。
             # 兜底用请求作用域（抽取若由租户调用，两者一致）。
             owner = (drawer.metadata or {}).get("tenant_id") or current_tenant()
+            # 属主钥匙同样继承来源记忆（private 档判据；来源未记则留空＝按 tenant 档）
+            owner_key = (drawer.metadata or {}).get("owner_key_id", "")
 
             found_entities = []
             for etype, keywords in ENTITY_PATTERNS.items():
                 for kw in keywords:
                     if kw.lower() in content.lower():
                         eid = f"entity-{hex_digest(kw)[:12]}"
-                        self.add_entity(eid, kw, etype, f"从记忆 {drawer.id[:8]} 提取", tenant_id=owner)
+                        self.add_entity(
+                            eid, kw, etype, f"从记忆 {drawer.id[:8]} 提取", tenant_id=owner, owner_key_id=owner_key
+                        )
                         found_entities.append((eid, kw))
                         entities_added += 1
 
-            relations_added += self._find_and_create_relations(found_entities, content, drawer.id, owner)
+            relations_added += self._find_and_create_relations(found_entities, content, drawer.id, owner, owner_key)
 
         return {
             "entities_added": entities_added,
             "relations_added": relations_added,
         }
 
-    def _find_and_create_relations(self, found_entities, content, drawer_id, tenant_id: str | None = None):
+    def _find_and_create_relations(
+        self, found_entities, content, drawer_id, tenant_id: str | None = None, owner_key_id: str = ""
+    ):
         import re
 
         from pangu.core.hashing import hex_digest
@@ -1097,7 +1143,15 @@ class KnowledgeGraph:
                 for pattern, predicate in self._RELATION_PATTERNS:
                     if re.search(pattern.replace(r"(\w+)", f".*{re.escape(name_b)}.*"), content):
                         rid = f"rel-{hex_digest(f'{eid_a}-{eid_b}-{predicate}')[:12]}"
-                        self.add_relation(rid, eid_a, predicate, eid_b, source=drawer_id[:8], tenant_id=tenant_id)
+                        self.add_relation(
+                            rid,
+                            eid_a,
+                            predicate,
+                            eid_b,
+                            source=drawer_id[:8],
+                            tenant_id=tenant_id,
+                            owner_key_id=owner_key_id,
+                        )
                         count += 1
                         break
         return count

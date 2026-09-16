@@ -233,7 +233,8 @@ def test_legacy_db_migration_keeps_rows():
             ent = c.execute("SELECT id, tenant_id, visibility FROM entities_all").fetchall()
             rel = c.execute("SELECT id, tenant_id FROM relations_all").fetchall()
         assert kinds == {"entities": "view", "entities_all": "table", "relations": "view", "relations_all": "table"}
-        assert [(r["id"], r["tenant_id"], r["visibility"]) for r in ent] == [("FAISS", "", "private")]
+        # 迁移路径补 visibility 时的默认档是 tenant（同租户可见）—— 老数据不该被收紧成 private
+        assert [(r["id"], r["tenant_id"], r["visibility"]) for r in ent] == [("FAISS", "", "tenant")]
         assert [r["id"] for r in rel] == ["r1"]
         # 无主数据（''）对任何租户都不可见，只有全库视角能看到 —— 安全默认
         token = set_tenant_scope("dsh")
@@ -242,3 +243,92 @@ def test_legacy_db_migration_keeps_rows():
         finally:
             reset_tenant_scope(token)
         assert kg.get_entity("FAISS") is not None
+
+
+def test_write_stamps_owner_key(kg):
+    """写入落 owner_key_id（private 档的判据来源）。"""
+    token = set_tenant_scope("dsh", "key_owner")
+    try:
+        kg.add_entity("entity-owned", "Owned", "system")
+    finally:
+        reset_tenant_scope(token)
+    with kg._conn() as conn:
+        row = conn.execute("SELECT owner_key_id FROM entities_all WHERE id='entity-owned'").fetchone()
+    assert row["owner_key_id"] == "key_owner"
+
+
+def test_private_entity_visible_only_to_owner_key(kg):
+    """★ private 档：同租户的**另一把钥匙也看不到**（视图里靠 current_key_id() 判定）。"""
+    token = set_tenant_scope("dsh", "key_owner")
+    try:
+        kg.add_entity("entity-priv", "Priv", "system")
+    finally:
+        reset_tenant_scope(token)
+    with kg._conn() as conn:
+        conn.execute("UPDATE entities_all SET visibility='private' WHERE id='entity-priv'")
+
+    token = set_tenant_scope("dsh", "key_owner")
+    try:
+        assert kg.get_entity("entity-priv") is not None, "属主钥匙应可见"
+    finally:
+        reset_tenant_scope(token)
+
+    token = set_tenant_scope("dsh", "key_sibling")
+    try:
+        assert kg.get_entity("entity-priv") is None, "同租户的别的钥匙不得可见"
+        assert [e["id"] for e in kg.list_entities()] == []
+    finally:
+        reset_tenant_scope(token)
+
+
+def test_private_without_owner_falls_back_to_tenant(kg):
+    """历史兼容：private 但没记属主 → 按 tenant 档（收紧会让老数据凭空消失）。"""
+    token = set_tenant_scope("dsh", "key_any")
+    try:
+        kg.add_entity("entity-legacy", "Legacy", "system")
+    finally:
+        reset_tenant_scope(token)
+    with kg._conn() as conn:
+        conn.execute("UPDATE entities_all SET visibility='private', owner_key_id='' WHERE id='entity-legacy'")
+
+    token = set_tenant_scope("dsh", "key_any")
+    try:
+        assert kg.get_entity("entity-legacy") is not None
+    finally:
+        reset_tenant_scope(token)
+    token = set_tenant_scope("other", "key_any")
+    try:
+        assert kg.get_entity("entity-legacy") is None, "别租户仍看不到"
+    finally:
+        reset_tenant_scope(token)
+
+
+def test_migration_adds_owner_column():
+    """旧库（已迁移过的 *_all）也要幂等补上 owner_key_id 列。"""
+    import pathlib
+    import sqlite3
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        db = pathlib.Path(td) / "knowledge_graph.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript("""
+            CREATE TABLE entities_all (id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL,
+                description TEXT DEFAULT '', created_at TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT '', visibility TEXT NOT NULL DEFAULT 'tenant',
+                PRIMARY KEY (id, tenant_id));
+            CREATE TABLE relations_all (id TEXT NOT NULL, subject_id TEXT NOT NULL, predicate TEXT NOT NULL,
+                object_id TEXT NOT NULL, valid_from TEXT, valid_until TEXT, confidence REAL DEFAULT 1.0,
+                source TEXT DEFAULT '', created_at TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT '', visibility TEXT NOT NULL DEFAULT 'tenant',
+                PRIMARY KEY (id, tenant_id));
+        """)
+        conn.commit()
+        conn.close()
+        kg = _mk_kg(td)
+        with kg._conn() as c:
+            ent_cols = {r["name"] for r in c.execute("PRAGMA table_info(entities_all)")}
+            rel_cols = {r["name"] for r in c.execute("PRAGMA table_info(relations_all)")}
+            view_sql = c.execute("SELECT sql FROM sqlite_master WHERE name='entities'").fetchone()["sql"]
+        assert "owner_key_id" in ent_cols and "owner_key_id" in rel_cols
+        assert "current_key_id" in view_sql, "视图定义应已升级到三档（含 private 判据）"
