@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
     let timer = null
 
     /* ════════════════ Typert Remote 清单(客户端面) ════════════════
-     * 与 lib/typert.host.mjs 的 invocations 对应;浏览器端用轻量 {parse} codec。
+     * 与 lib/typert.host.js 的 invocations 对应;浏览器端用轻量 {parse} codec。
      * 必须 remote.$mount 之后 ctx.get('remote.<namespace>') 才可用。 */
     function codec(parse) { return { parse } }
     function assertObject(v, name) {
