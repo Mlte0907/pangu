@@ -1,0 +1,2 @@
+# 钥匙明文不得入库——cordis.patch.yml 含 X-API-Key 运行时值
+cordis.patch.yml
