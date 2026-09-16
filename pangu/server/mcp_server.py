@@ -306,11 +306,13 @@ class MCPServer:
         req_id = request.get("id")
 
         if method == "initialize":
+            # 协议版本协商：回显客户端请求的版本（标准 MCP 行为）
+            client_version = request.get("params", {}).get("protocolVersion", "2024-11-05")
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": client_version,
                     "serverInfo": {"name": "pangu", "version": __version__},
                     "capabilities": {"tools": {}},
                 },
