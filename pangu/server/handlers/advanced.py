@@ -226,10 +226,13 @@ HANDLERS = {}
 
 async def handle_create_tunnel(server, drawers, arguments):
     """创建跨 Wing 隧道"""
+    from ...memory.layers import current_tenant
+
     tunnel = server.palace.create_tunnel(
         wing_a=arguments.get("wing_a", ""),
         wing_b=arguments.get("wing_b", ""),
         room=arguments.get("room", ""),
+        created_by=current_tenant(),
     )
     return json.dumps(tunnel, ensure_ascii=False)
 

@@ -35,7 +35,9 @@ async def handle_create_wing(server, drawers, arguments):
     """创建新 Wing"""
     name = arguments.get("name", "")
     desc = arguments.get("description", "")
-    return json.dumps({"wing": server.palace.create_wing(name, desc)}, ensure_ascii=False)
+    from ...memory.layers import current_tenant
+
+    return json.dumps({"wing": server.palace.create_wing(name, desc, created_by=current_tenant())}, ensure_ascii=False)
 
 
 HANDLERS["pangu_create_wing"] = handle_create_wing
@@ -76,7 +78,11 @@ async def handle_create_room(server, drawers, arguments):
     wing = arguments.get("wing", "default")
     room = arguments.get("room", "")
     desc = arguments.get("description", "")
-    return json.dumps({"room": server.palace.create_room(wing, room, desc)}, ensure_ascii=False)
+    from ...memory.layers import current_tenant
+
+    return json.dumps(
+        {"room": server.palace.create_room(wing, room, desc, created_by=current_tenant())}, ensure_ascii=False
+    )
 
 
 HANDLERS["pangu_create_room"] = handle_create_room

@@ -184,18 +184,29 @@ class Palace:
         """列出所有 Wing"""
         return self.meta.get("wings", ["default"])
 
-    def create_wing(self, name: str, description: str = "") -> str:
-        """创建新 Wing"""
+    def create_wing(self, name: str, description: str = "", created_by: str = "") -> str:
+        """创建新 Wing。
+
+        多租户（P1-3 阶段 3）：骨架是**共享硬件**（全局唯一的结构表），所以
+        - 读不裁剪：谁都能看到"有哪些翼/房间"（目录信息，不含记忆内容）
+        - 创建不限制：任何租户都能建，但记下 created_by
+        - 删除/改名：只有 created_by 相同，或**全库视角**（requester 为空，即 CLI/后台/admin）
+        """
         if name not in self.meta["wings"]:
             self.meta["wings"].append(name)
             self.meta.setdefault("rooms", {})[name] = []
             self.meta.setdefault("wing_descriptions", {})[name] = description
+            if created_by:
+                self.meta.setdefault("wing_owners", {})[name] = created_by
             self._save_meta()
         return name
 
-    def delete_wing(self, name: str) -> bool:
-        """删除 Wing"""
+    def delete_wing(self, name: str, requester: str = "") -> bool:
+        """删除 Wing（requester 非空时只能删自己创建的；空＝全库视角/管理员）"""
         if name == "default":
+            return False
+        owner = self.meta.get("wing_owners", {}).get(name, "")
+        if requester and owner and owner != requester:
             return False
         if name in self.meta["wings"]:
             self.meta["wings"].remove(name)
@@ -214,19 +225,24 @@ class Palace:
             return {wing: rooms.get(wing, [])}
         return rooms
 
-    def create_room(self, wing: str, room: str, description: str = "") -> str:
-        """在指定 Wing 下创建 Room"""
-        self.create_wing(wing)  # 确保 wing 存在
+    def create_room(self, wing: str, room: str, description: str = "", created_by: str = "") -> str:
+        """在指定 Wing 下创建 Room（归属规则同 create_wing）"""
+        self.create_wing(wing, created_by=created_by)  # 确保 wing 存在（首次建房顺带认领该 wing）
         rooms = self.meta.setdefault("rooms", {})
         wing_rooms = rooms.setdefault(wing, [])
         if room not in wing_rooms:
             wing_rooms.append(room)
             self.meta.setdefault("room_descriptions", {}).setdefault(wing, {})[room] = description
+            if created_by:
+                self.meta.setdefault("room_owners", {}).setdefault(wing, {})[room] = created_by
             self._save_meta()
         return room
 
-    def delete_room(self, wing: str, room: str) -> bool:
-        """删除 Room"""
+    def delete_room(self, wing: str, room: str, requester: str = "") -> bool:
+        """删除 Room（requester 非空时只能删自己创建的）"""
+        owner = self.meta.get("room_owners", {}).get(wing, {}).get(room, "")
+        if requester and owner and owner != requester:
+            return False
         rooms = self.meta.get("rooms", {})
         if wing in rooms and room in rooms[wing]:
             rooms[wing].remove(room)
@@ -237,14 +253,15 @@ class Palace:
 
     # ── Tunnel 管理 (跨 Wing 连接) ──
 
-    def create_tunnel(self, wing_a: str, wing_b: str, room: str) -> dict:
-        """创建跨 Wing 隧道"""
+    def create_tunnel(self, wing_a: str, wing_b: str, room: str, created_by: str = "") -> dict:
+        """创建跨 Wing 隧道（记录归属，规则同 create_wing）"""
         tunnel = {
             "id": str(uuid.uuid4())[:8],
             "wing_a": wing_a,
             "wing_b": wing_b,
             "room": room,
             "created_at": datetime.now().isoformat(),
+            "created_by": created_by,
         }
         self.meta.setdefault("tunnels", []).append(tunnel)
         self._save_meta()

@@ -136,6 +136,19 @@ def main() -> int:
         return 1
 
     a, b = Mcp(args.url, key_a), Mcp(args.url, key_b)
+
+    # 跨轮次自洁：上一次运行若被中断（限流/异常）会留下探针数据，先尽力清掉。
+    # 用**内容前缀**而不是本轮标记去搜 —— 残留是上一轮的，标记不同。
+    try:
+        stale = b.call("pangu_search_memories", {"query": "跨租户探针", "n_results": 50})
+        stale_ids = [r.get("id") for r in json.loads(stale).get("results", []) if r.get("id")]
+        for sid in stale_ids:
+            b.call("pangu_delete_memory", {"memory_id": sid})
+        if stale_ids:
+            print(f"已清理上一轮残留 {len(stale_ids)} 条")
+    except Exception as e:  # noqa: BLE001 — 自洁失败不影响本轮判定
+        print(f"(跨轮次自洁跳过: {e})", file=sys.stderr)
+
     stamp = int(time.time())
     marker = f"LEAKPROBE-{stamp}"        # 会作为查询词外传（工具可能回显它，故不能当泄漏判据）
     secret = f"SECRET-{stamp}-xyzzy"     # **绝不出现在任何请求参数里** → 响应里出现它只能是泄漏
