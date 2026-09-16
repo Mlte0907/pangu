@@ -168,8 +168,14 @@ async def list_rooms(request: Request):
         if cat > (room_data[tid]["last_write_at"] or ""):
             room_data[tid]["last_write_at"] = cat
 
-    # 补钥匙数
+    # 补钥匙数（只算未吊销的）
     key_counts = Counter(k["room"] for k in all_keys if not k.get("revoked_at"))
+
+    # 有钥匙但没有记忆的房间也要出现：例如刚入住、还没写入过记忆的平台房间
+    # （实测 dsh 房间此前因为 0 条记忆而完全不显示）。房间列表取两侧的并集。
+    for room in key_counts:
+        room_data.setdefault(room, {"room": room, "memory_count": 0, "chars": 0, "last_write_at": None})
+
     for room, data in room_data.items():
         data["key_count"] = key_counts.get(room, 0)
 
@@ -177,7 +183,12 @@ async def list_rooms(request: Request):
     if "none" in room_data:
         room_data["none"]["room"] = "(unmigrated)"
 
-    return {"rooms": list(room_data.values())}
+    # 排序：记忆多的在前，其次钥匙多的，最后按名字；便于 UI 直接按顺序渲染
+    rooms = sorted(
+        room_data.values(),
+        key=lambda r: (-r.get("memory_count", 0), -r.get("key_count", 0), str(r.get("room", ""))),
+    )
+    return {"rooms": rooms}
 
 
 @router.get("/admin/public-memories")

@@ -95,6 +95,11 @@ class KeyManager:
                     "scope": k["scope"],
                     "created_at": k["created_at"],
                     "last_used_at": k.get("last_used_at"),
+                    # revoked_at 必须带出来：调用方（如 admin/rooms 的房间钥匙计数）
+                    # 依赖它区分有效/已吊销。此前这个字段被丢弃，导致
+                    # `not k.get("revoked_at")` 恒为真 —— 吊销过的钥匙仍被计数
+                    # （实测 dsh 房间显示 2 把，实际只有 1 把有效）。
+                    "revoked_at": k.get("revoked_at"),
                 }
             )
         return result
