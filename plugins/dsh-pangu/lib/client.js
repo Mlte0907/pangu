@@ -44,6 +44,18 @@ window.__ModuleLoader__.load({
         { id: 'dsh-pangu#panguConfig/get', service: 'panguConfig', namespace: 'panguConfig', method: 'get', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#ConfigData', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguConfig/save', service: 'panguConfig', namespace: 'panguConfig', method: 'save', invocation: { kind: 'direct' }, parameters: [{ name: 'patch', wire: 'patch', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#SavePatch', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#SaveResult', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguConfig/testLlm', service: 'panguConfig', namespace: 'panguConfig', method: 'testLlm', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#TestLlmResult', create: () => okEnvelope } },
+        // ── 阶段 5A 钥匙与房间管理 ──
+        // 这 6 个此前只在宿主清单（lib/typert.host.js）里声明，客户端清单漏了，
+        // 于是 callRemote('panguAdminKeys', …) 在客户端就找不到服务（"远程服务
+        // panguAdminKeys 未就绪"），而调用处是 Promise.allSettled + catch(_){} ——
+        // 错误被静默吞掉，表现为钥匙列表 / 房间卡片 / 星系 / 公共区整片空白。
+        // 无参方法必须零参展开，带参方法统一传单个对象（见 callRemote 的注释）。
+        { id: 'dsh-pangu#panguAdminKeys/listKeys', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listKeys', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyList', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguAdminKeys/listRooms', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listRooms', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RoomList', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguAdminKeys/listPublicMemories', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listPublicMemories', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#PublicMemories', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguAdminKeys/createKey', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'createKey', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreateArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreate', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguAdminKeys/revokeKey', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'revokeKey', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevokeArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevoke', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguAdminKeys/rekeyRoom', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'rekeyRoom', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyResult', create: () => okEnvelope } },
       ],
     }
 
@@ -500,27 +512,6 @@ window.__ModuleLoader__.load({
             checkRow('memory', '记忆检查'),
             checkRow('embedding', '嵌入检查'),
             h(InfoRow, { label: 'LLM', value: config ? [config.llm_provider, config.llm_model].filter(Boolean).join(' / ') : '—' }),
-          ),
-          h('div', { className: 'pangu-card', style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 12, padding: '13px 14px' } },
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 } },
-              h(Icon, { name: 'gauge', size: 13, color: ACCENT }),
-              h('span', { style: { fontSize: 12.5, fontWeight: 600, color: css.t1 } }, '模型用量'),
-            ),
-            u?.keySet ? (
-              windows.length ? windows.map(([k, label]) => {
-                const w = usage[k], pct = w?.percent || 0
-                const c = pct >= 80 ? css.err : pct >= 50 ? css.warn : css.info
-                return h('div', { key: k, style: { padding: '7px 0', borderBottom: `1px solid ${css.borderSoft}` } },
-                  h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 } },
-                    h('span', { style: { color: css.t3 } }, label),
-                    h('span', { style: { color: c, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, pct + '%'),
-                  ),
-                  h('div', { style: { height: 4, background: css.bg3, borderRadius: 2, overflow: 'hidden' } },
-                    h('div', { style: { height: '100%', width: Math.min(100, pct) + '%', background: c, borderRadius: 2, transition: 'width .6s cubic-bezier(.22,1,.36,1)' } }),
-                  ),
-                )
-              }) : h('div', { style: { fontSize: 12, color: css.t3, padding: '10px 0' } }, '暂无用量数据')
-            ) : h('div', { style: { fontSize: 12, color: css.t3, padding: '10px 0' } }, '未配置 LLM API Key'),
           ),
           h(WingDistCard, { byWing: s?.byWing }),
         ),
@@ -1220,12 +1211,19 @@ window.__ModuleLoader__.load({
         keys.length > 0 && h('table', { style: { width: '100%', fontSize: 11.5, borderCollapse: 'collapse', marginBottom: 10 } },
           h('thead', null, h('tr', null,
             h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '房间'),
+            h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '钥匙 ID'),
             h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '权限'),
             h('th', { style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, '状态'),
             h('th', { style: { textAlign: 'right', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, ''),
           )),
           h('tbody', null, keys.map((k) => h('tr', { key: k.key_id },
             h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.room),
+            // 明文钥匙只在创建时出现一次（服务端只存 SHA-256），所以这里能展示的是 key_id；
+            // 悬停给出完整 ID 与创建时间，便于对照「本机插件用的是哪一把」。
+            h('td', {
+              title: k.key_id + (k.created_at ? '（创建于 ' + k.created_at + '）' : ''),
+              style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 10.5, color: css.t2, whiteSpace: 'nowrap' },
+            }, String(k.key_id || '').replace(/^key_/, '')),
             h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.scope),
             h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.last_used_at ? '已使用' : '未使用'),
             h('td', { style: { padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}`, textAlign: 'right' } },

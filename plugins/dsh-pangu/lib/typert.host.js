@@ -209,17 +209,17 @@ const TYPERT = {
       id: 'dsh-pangu#panguAdminKeys/createKey',
       service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'createKey',
       invocation: { kind: 'direct' },
-      parameters: [
-        { name: 'room', wire: 'room', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#Room', create: () => z.string() } },
-        { name: 'scope', wire: 'scope', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#Scope', create: () => z.string() } },
-      ],
+      // 实现与客户端都以「单个对象」传参（createKey(args)），此处原先声明成两个独立
+      // 参数 room/scope。typert 按声明严格校验，两侧不一致会让调用在网关就被拒
+      // （客户端则表现为静默失败：Promise.allSettled 吞掉错误 → UI 空白）。
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreateArgs', create: _patchCodec } }],
       result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreate', create: _keyCreate },
     },
     {
       id: 'dsh-pangu#panguAdminKeys/revokeKey',
       service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'revokeKey',
       invocation: { kind: 'direct' },
-      parameters: [{ name: 'key_id', wire: 'key_id', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyId', create: () => z.string() } }],
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevokeArgs', create: _patchCodec } }],
       result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevoke', create: _keyRevoke },
     },
     {
@@ -232,7 +232,7 @@ const TYPERT = {
       id: 'dsh-pangu#panguAdminKeys/rekeyRoom',
       service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'rekeyRoom',
       invocation: { kind: 'direct' },
-      parameters: [{ name: 'room', wire: 'room', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#Room', create: () => z.string() } }],
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyArgs', create: _patchCodec } }],
       result: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyResult', create: _rekeyResult },
     },
     {
