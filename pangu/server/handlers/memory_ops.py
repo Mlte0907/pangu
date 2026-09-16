@@ -42,10 +42,19 @@ async def handle_add_memory(server, drawers, arguments):
     from ...memory.ingestion import remember
     from ...memory.layers import _coerce_classification, clamp_classification, current_clearance
 
+    # P1-3：身份提取必须在 remember() 之前（admission_gate Q3 检查 source_session）
+    identity = arguments.get("_identity", {})
+
     # remember() 的契约是 0.0–1.0（旧默认 3.0 属 1–5 量纲，会让写入 100% 失败）
     importance = arguments.get("importance", 0.5)
     if not isinstance(importance, (int, float)):
         importance = Drawer._coerce_float(importance, 0.5)
+
+    # 溯源指针：调用方传了 source_session 就用；没传就从身份回退（key_id + room）
+    # 保证 admission_gate Q3"支撑"检查不会因缺溯源而卡死毕业通路
+    source_session = arguments.get("source_session", "")
+    if not source_session and identity:
+        source_session = f"key:{identity.get('key_id', 'unknown')}@{identity.get('room', 'unknown')}"
 
     # 走 remember() 全管道（脱敏 → 去重 → 冲突检测 → supersede → 版本链）
     item_id, drawer = remember(
@@ -56,15 +65,13 @@ async def handle_add_memory(server, drawers, arguments):
         tags=arguments.get("tags", []),
         source="mcp",
         created_by="mcp",
-        source_session=arguments.get("source_session", ""),
+        source_session=source_session,
     )
 
     # 设置 MCP 特有的 metadata（owner_id / tenant_id 等）
     if drawer is not None:
         drawer.metadata = dict(drawer.metadata or {})
         drawer.metadata["owner_id"] = arguments.get("owner_id", "mcp_user")
-        # P1-3 阶段 1.4：身份优先于参数
-        identity = arguments.get("_identity", {})
         drawer.metadata["tenant_id"] = identity.get("room", arguments.get("tenant_id", "default"))
         # 密级是**数值** 0=public…3=secret（与 ABAC 的 Resource.classification 同一套）。
         # 此前默认写成字符串 "normal"，而 REST/ABAC 侧按 int 读取 → 遇到这些行会 ValueError。
