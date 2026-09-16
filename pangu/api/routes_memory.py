@@ -128,11 +128,63 @@ def _authoritative_cfg() -> "PanguConfig":
     return base.authoritative_memory_config()
 
 
+def _tenant_from_key(request: Request) -> dict:
+    """从请求携带的**盘古钥匙**解析租户身份（与 MCP 侧同一张钥匙表）。
+
+    REST 与 MCP 必须是同一套租户语义：租户由凭据（钥匙的 room）决定，调用方无法声明。
+    返回 {"key_id", "room", "scope"}；无凭据或钥匙无效 → {}。
+    """
+    raw = (request.headers.get("X-API-Key") or "").strip()
+    if not raw:
+        auth = request.headers.get("Authorization") or ""
+        if auth[:7].lower() == "bearer ":
+            raw = auth[7:].strip()
+    if not raw:
+        return {}
+    try:
+        from pangu.keys import KeyManager
+
+        return KeyManager().verify(raw) or {}
+    except Exception as e:  # noqa: BLE001 — 解析失败按"无凭据"处理（下面的优先级会兜底）
+        logger.debug(f"REST 租户解析失败: {e}")
+        return {}
+
+
+def _is_admin_request(request: Request) -> bool:
+    """是否携带 admin 凭据（管理动作才允许代指定租户）。"""
+    try:
+        from pangu.api.routes_keys import _verify_admin
+
+        return bool(_verify_admin(request))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _resolve_tenant_id(request: Request) -> str:
-    """从 header / JWT claim 取 tenant_id。"""
-    hdr = request.headers.get(config.abac_tenant_header, "")
-    if hdr:
-        return hdr
+    """解析调用方租户。
+
+    ★ 优先级（P1-3 阶段 3 收口；此前的实现**直接采信客户端声明的头** —— 实测带
+    `x-tenant-id: dsh` 就能读到 dsh 的 124 条记忆，是跨租户旁路）：
+
+      1. 请求携带的**盘古钥匙**（X-API-Key / Bearer）→ 钥匙的 room。权威来源，与 MCP 一致；
+      2. **管理员**（admin 凭据）→ 允许用 `abac_tenant_header` 代指定租户（管理动作）；
+      3. 其它情况 → **忽略**该头并告警（客户端无权声明租户）；
+      4. 兜底：JWT claim 的 tenant_id → abac_default_tenant。
+    """
+    ident = _tenant_from_key(request)
+    if ident.get("room"):
+        return ident["room"]
+
+    hdr_name = config.abac_tenant_header
+    declared = (request.headers.get(hdr_name) or "").strip()
+    if declared:
+        if _is_admin_request(request):
+            return declared
+        logger.warning(
+            f"忽略客户端声明的 {hdr_name}={declared!r}：租户必须由凭据（X-API-Key）决定。"
+            "管理员如需代指定租户，请携带 admin 凭据。"
+        )
+
     principal = get_principal(request)
     if principal.method == "jwt" and principal.claims is not None:
         extra = getattr(principal.claims, "extra", {}) or {}
@@ -175,8 +227,7 @@ def _abac_evaluate_subject(request: Request, action: str, resource: AbacResource
     principal = get_principal(request)
     tid = _resolve_tenant_id(request)
     subject = AbacSubject.from_principal(principal, tenant_id=tid)
-    if request.headers.get(config.abac_tenant_header):
-        subject.tenant_id = request.headers.get(config.abac_tenant_header)
+    # 不再用客户端声明的头覆盖 subject —— tid 已由 _resolve_tenant_id 按凭据裁决
     env = AbacEnvironment(
         client_ip=request.client.host if request.client else "",
         method=request.method,
@@ -212,8 +263,7 @@ async def list_memories(
         tid = _resolve_tenant_id(request)
         principal = get_principal(request)
         subject = AbacSubject.from_principal(principal, tenant_id=tid)
-        if request.headers.get(config.abac_tenant_header):
-            subject.tenant_id = request.headers.get(config.abac_tenant_header)
+        # 同上：subject.tenant_id 只用 _resolve_tenant_id 的裁决结果
         if not subject.is_admin:
             filtered = []
             for d in drawers:
