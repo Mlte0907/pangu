@@ -124,7 +124,7 @@ jobs:
 
       - name: 单元 + 集成测试
         env:
-          PANGU_DATA_DIR: .test_data
+          PANGU_BASE_DIR: .test_data   # 注意：PANGU_DATA_DIR 是历史笔误，代码从不读它（conftest 另有隔离）
           HF_HUB_OFFLINE: "0"
           TRANSFORMERS_OFFLINE: "0"
         run: |
@@ -180,7 +180,7 @@ jobs:
 
       - name: 性能基准测试
         env:
-          PANGU_DATA_DIR: .test_data
+          PANGU_BASE_DIR: .test_data   # 注意：PANGU_DATA_DIR 是历史笔误，代码从不读它（conftest 另有隔离）
           HF_HUB_OFFLINE: "0"
         run: |
           mkdir -p reports

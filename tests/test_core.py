@@ -41,7 +41,7 @@ class TestConfig:
         assert config.backend == "chromadb"
         assert "pangu" in config.palace_path
 
-    def test_config_save_load(self, tmp_path):
+    def test_config_save_load(self, tmp_path, no_derived_path_isolation):
         config_path = str(tmp_path / "config.json")
         config = PanguConfig()
         config.palace_path = str(tmp_path / "palace")

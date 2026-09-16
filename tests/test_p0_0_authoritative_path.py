@@ -159,7 +159,7 @@ class TestAuthoritativePathResolution:
         )
         assert cfg.memory_data_dir == tmp_path / "elsewhere"
 
-    def test_authoritative_config_redirects_memory_paths(self, tmp_path):
+    def test_authoritative_config_redirects_memory_paths(self, tmp_path, no_derived_path_isolation):
         """authoritative_memory_config() 把记忆相关路径指向 v2 且不改原对象。"""
         cfg = PanguConfig(base_dir=tmp_path, db_path=tmp_path / "pangu.db")
         acc = cfg.authoritative_memory_config()
@@ -855,7 +855,7 @@ class TestAuthoritativeConfigPreservesIdentityAndWiki:
         p.write_text("我是盘古测试身份", encoding="utf-8")
         return p
 
-    def test_identity_path_keeps_txt_and_is_readable(self, clean_home):
+    def test_identity_path_keeps_txt_and_is_readable(self, clean_home, no_derived_path_isolation):
         """identity.txt 存在时，权威化后 L0 必须仍能读到。"""
         home = Path(clean_home)
         ident = self._seed_identity(home)

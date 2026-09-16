@@ -5,6 +5,8 @@
 """
 
 import hashlib
+import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -57,6 +59,51 @@ def _isolate_pangu_cache(tmp_path):
             os.environ["PANGU_CACHE_DIR"] = prev
 
 
+# 真实数据目录（生产）。测试解析到它之下，就说明隔离失效 —— 见 _assert_no_production_paths。
+_PATH_FIELDS = (
+    "base_dir",
+    "db_path",
+    "palace_path",
+    "wiki_path",
+    "identity_path",
+    "backup_dir",
+    "domain_knowledge_db_path",
+)
+
+
+def _assert_no_production_paths(data_dir: Path) -> None:
+    """★ 硬守卫：测试期间任何配置解析都不得落在真实 ~/.pangu 之下。
+
+    为什么需要它：隔离靠的是"每个路径字段都设了对应的 PANGU_* 环境变量"，而这是**靠人
+    记得**的 —— 新增一个路径字段（或有人改了字段名）就会静默失效，回退成写生产库。
+    2026-09-16 的 KG 半迁移事故正是这么发生的：palace_path 没被隔离，而 KG 库路径就是
+    `<palace_path>/knowledge_graph.db` → 迁移打到了生产库。
+
+    这道断言把"漏设"从"跑完才发现数据被改"变成"当场变红"。
+    """
+    from pangu.core.config import PanguConfig
+
+    real = Path(os.path.expanduser("~/.pangu")).resolve()
+    isolated = data_dir.resolve()
+    cfg = PanguConfig.load()
+    bad: list[str] = []
+    for field in _PATH_FIELDS:
+        raw = getattr(cfg, field, None)
+        if raw in (None, ""):
+            continue
+        p = Path(str(raw)).expanduser().resolve()
+        if p == real or real in p.parents:
+            bad.append(f"{field} = {p}  ← 指向真实数据目录")
+        elif p != isolated and isolated not in p.parents:
+            bad.append(f"{field} = {p}  ← 不在隔离目录 {isolated} 下")
+    if bad:
+        pytest.fail(
+            "测试隔离失效，以下配置路径跑到了隔离目录之外：\n  "
+            + "\n  ".join(bad)
+            + "\n修法：给 _isolate_pangu_data_dir 补上对应的 PANGU_* 环境变量。"
+        )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_pangu_data_dir(tmp_path, monkeypatch):
     """把每个用例的盘古**数据目录**指向独立临时目录。
@@ -94,10 +141,24 @@ def _isolate_pangu_data_dir(tmp_path, monkeypatch):
     # `Path(palace_path) / "knowledge_graph.db"` 会让 sqlite 报
     # `OperationalError: unable to open database file`
     # （实测：test_top_level_intelligence.py 两个用例在 3.10/3.11/3.12 全挂）。
-    for _sub in ("palace",):
+    for _sub in ("palace", "wiki", "backups"):
         (data_dir / _sub).mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("PANGU_BASE_DIR", str(data_dir))
     monkeypatch.setenv("PANGU_DB_PATH", str(data_dir / "pangu.db"))
+    # ★ 只设上面两个**不够** —— 这是 2026-09-16 生产事故的直接原因：
+    #   `PanguConfig.load()` 读真实 ~/.pangu/config.json，其中显式写死的绝对路径只有在
+    #   「对应环境变量已设置」时才会被摘掉（core/config.py 的 F2-b 逻辑）。palace_path
+    #   恰好没设 → 生产绝对路径胜出 → KG 库变成
+    #   ~/.pangu/pangu.db/v2_memories/knowledge_graph.db。实测后果：跑测试时 KG 迁移
+    #   作用到了生产库，且因旧库外键一度停在半迁移状态（表已改名、视图没建）。
+    #   所以所有派生路径都要显式覆盖，再由 _assert_no_production_paths 兜底。
+    monkeypatch.setenv("PANGU_PALACE_PATH", str(data_dir / "palace"))
+    monkeypatch.setenv("PANGU_WIKI_PATH", str(data_dir / "wiki"))
+    monkeypatch.setenv("PANGU_IDENTITY_PATH", str(data_dir / "identity.txt"))
+    monkeypatch.setenv("PANGU_BACKUP_DIR", str(data_dir / "backups"))
+    monkeypatch.setenv("PANGU_DOMAIN_KNOWLEDGE_DB_PATH", str(data_dir / "domain_knowledge.db"))
+
+    _assert_no_production_paths(data_dir)
 
     # 全局 config 单例是模块级对象，且可能已被前一个用例改成指向真实目录；
     # 每用例前按当前环境变量重建，避免上一个用例的路径残留。
@@ -118,6 +179,25 @@ def _isolate_pangu_data_dir(tmp_path, monkeypatch):
         config.__init__()
     except Exception:  # noqa: BLE001
         pass
+
+
+@pytest.fixture
+def no_derived_path_isolation(monkeypatch):
+    """临时撤掉「派生路径」隔离（palace / wiki / identity / backup / domain_knowledge）。
+
+    只给**专门测路径推导**的用例用：它们要么显式构造 `PanguConfig(base_dir=...)` 再断言
+    派生结果，要么自己搭了假 HOME 并预置 identity.txt —— 隔离环境变量会让这些字段非空，
+    于是 model_post_init 的派生逻辑根本不执行，"被测行为"当场消失。
+    用它的用例必须自己保证路径落在 temp / 假 HOME 下（本仓已有此约定）。
+    """
+    for key in (
+        "PANGU_PALACE_PATH",
+        "PANGU_WIKI_PATH",
+        "PANGU_IDENTITY_PATH",
+        "PANGU_BACKUP_DIR",
+        "PANGU_DOMAIN_KNOWLEDGE_DB_PATH",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture(autouse=True)

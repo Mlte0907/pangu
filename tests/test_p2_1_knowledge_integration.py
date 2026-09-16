@@ -71,7 +71,7 @@ def test_db_path_follows_base_dir(iso_env, monkeypatch, tmp_path):
     assert not str(db).startswith(str(home_pangu)), f"DB 落进了 HOME/.pangu: {db}"
 
 
-def test_db_path_moves_with_base_dir(monkeypatch, tmp_path):
+def test_db_path_moves_with_base_dir(monkeypatch, tmp_path, no_derived_path_isolation):
     """must-allow：改 PANGU_BASE_DIR，DB 路径必须跟着移动到新的 base_dir。
 
     这是"路径由 config 派生"的最强判据：硬编码 HOME 的实现**不会**随
