@@ -35,6 +35,26 @@ const HTTP_TIMEOUT_MS = 8000
 // 否则「测试连接」会比真实调用更容易失败/更容易成功，失去验证意义。
 const LLM_SESSION_ID = process.env.PANGU_LLM_SESSION_ID || crypto.randomBytes(8).toString('hex')
 
+/**
+ * 把一个普通服务对象绑定到 Typert Remote 网关。
+ *
+ * 网关的 validateBinding 要求服务对象上存在可见的 typertRemote 绑定
+ * （形如 { service, serviceKey, namespace }）；缺了它，该命名空间下**每个**
+ * 端点都会以 `gateway/binding-invalid: Service "X" has no visible typertRemote
+ * binding` 失败。
+ *
+ * 特别注意：lib/typert.host.js 清单只声明端点描述符，**不会**替你装这个绑定 ——
+ * 清单经 typert loader 注册进 registry，加载器全程不接触服务对象。
+ * 因此即使清单完整，也必须在这里逐服务挂绑定。
+ */
+function bindRemote(service, serviceKey, namespace = serviceKey) {
+  Object.defineProperty(service, 'typertRemote', {
+    configurable: false, enumerable: false, writable: false,
+    value: { service, serviceKey, namespace },
+  })
+  return service
+}
+
 async function apply(ctx) {
   async function fetchJson(url, options = {}) {
     const res = await fetch(url, {
@@ -291,8 +311,8 @@ async function apply(ctx) {
       catch (e) { return { ok: false, error: String(e) } }
     },
   }
-  // typertRemote 由 lib/typert.host.js 清单提供，不再 inline 注册（避免空壳覆盖清单完整描述符）
-  ctx.provide('panguDashboard', dashboardService)
+  // 绑定必须逐服务挂：清单只声明端点描述符，加载器不会碰服务对象（见 bindRemote 注释）
+  ctx.provide('panguDashboard', bindRemote(dashboardService, 'panguDashboard'))
 
   // ── KG Remote ──
   const kgService = {
@@ -300,8 +320,7 @@ async function apply(ctx) {
       return fetchKG()
     },
   }
-  // typertRemote 由清单提供，不再 inline 注册
-  ctx.provide('panguKG', kgService)
+  ctx.provide('panguKG', bindRemote(kgService, 'panguKG'))
 
   // ── Config Remote ──
   // 敏感字段：读取时脱敏，避免明文 API Key 经过 Typert Remote 流入前端
@@ -495,11 +514,7 @@ async function apply(ctx) {
       }
     },
   }
-  Object.defineProperty(configService, 'typertRemote', {
-    configurable: false, enumerable: false, writable: false,
-    value: { service: configService, serviceKey: 'panguConfig', namespace: 'panguConfig' },
-  })
-  ctx.provide('panguConfig', configService)
+  ctx.provide('panguConfig', bindRemote(configService, 'panguConfig'))
 
   // ── 阶段 5：Admin Key Service（钥匙/房间管理）──
   // admin secret 由插件后端读 ~/.pangu/.admin_secret（0600），前端 JS 永不接触
@@ -524,8 +539,7 @@ async function apply(ctx) {
     async rekeyRoom(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms/' + encodeURIComponent(args.room) + '/rekey', { method: 'POST' }) },
     async listPublicMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/public-memories') },
   }
-  // typertRemote 由清单提供，不再 inline 注册
-  ctx.provide('panguAdminKeys', adminKeyService)
+  ctx.provide('panguAdminKeys', bindRemote(adminKeyService, 'panguAdminKeys'))
 
   // 实时事件通道(随插件卸载关闭,断线自动重连)
   startEvents()
