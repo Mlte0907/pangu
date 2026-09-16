@@ -736,17 +736,23 @@ class MemoryStack:
             base = int(base * 1.5)  # L3 = 1.5x L2
         return base
 
-    def recall(self, wing: str = None, room: str = None, n_results: int = 10) -> str:
-        """按需回忆: L2（动态 token 预算截断）"""
-        drawers = self._load_drawers()
+    def recall(self, wing: str = None, room: str = None, n_results: int = 10, drawers: list | None = None) -> str:
+        """按需回忆: L2（动态 token 预算截断）
+
+        drawers: 显式指定候选集合。用于按调用方身份（租户）收口 —— 此前本方法只读
+        自身存储，调用方算好的过滤集合无处传入，于是 `handle_recall` 里的租户过滤
+        等于空转（实测：dsh 钥匙的 recall 返回了 default 租户的记忆，分母仍是全库
+        125 条）。
+        """
+        candidates = self._load_drawers() if drawers is None else drawers
         budget = self._dynamic_budget("L2")
-        result = self.l2.retrieve(drawers, wing=wing, room=room, n_results=n_results, token_budget=budget)
+        result = self.l2.retrieve(candidates, wing=wing, room=room, n_results=n_results, token_budget=budget)
         _log_token_stats(
             "recall",
             {
                 "L2": _estimate_tokens(result),
                 "budget": budget,
-                "total_drawers": len(drawers),
+                "total_drawers": len(candidates),
             },
         )
         return result

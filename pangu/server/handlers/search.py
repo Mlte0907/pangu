@@ -317,6 +317,20 @@ async def handle_hybrid_search(server, drawers, arguments):
 
     query = arguments.get("query", "")
     limit = arguments.get("limit", 10)
+
+    # P1-3 读取侧隔离：有身份时先按 metadata.tenant_id（或 visibility=public）裁剪候选集，
+    # 与 search/recall 同一套隔离轴。此前这里直接拿全库检索 —— 多平台 per_tenant 语义下
+    # 任何平台的钥匙都能经这条路径读到别家的记忆（实测：dsh 钥匙经本工具检索到了
+    # default 租户的 tech 记忆，而同一 query 走 search_memories 只返回 dsh 自己的）。
+    identity = arguments.get("_identity") or {}
+    tenant = identity.get("room", "") if identity else ""
+    if tenant:
+        drawers = [
+            d for d in drawers
+            if ((d.metadata or {}).get("tenant_id", "") == tenant
+                or (d.metadata or {}).get("visibility", "") == "public")
+        ]
+
     results = hybrid_search(query, drawers, server.config, limit)
     return json.dumps({"results": results, "total": len(results)}, ensure_ascii=False, indent=2)
 

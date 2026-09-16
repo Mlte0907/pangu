@@ -153,7 +153,28 @@ async def handle_recall(server, drawers, arguments):
         ]
         drawers = filtered
 
-    return server.memory.recall(wing=wing, room=room)
+    # 必须把过滤后的集合传进去：recall 默认只读自身存储，不传等于隔离空转
+    result = server.memory.recall(wing=wing, room=room, drawers=drawers)
+
+    # 记忆内容在盘上是加密的（Fernet，密文以 gAAAAAB 开头）。search 路径会逐条解密，
+    # 而 recall 直接把这些密文拼进 Markdown 返回 —— 调用方拿到的是不可读的乱码
+    # （实测 dsh 钥匙 recall 出 [general] gAAAAABqqp5v4dO3…）。这里做同样的解密。
+    try:
+        import re as _re
+
+        from ...memory.encryption import decrypt
+
+        def _decrypt_match(m: "_re.Match[str]") -> str:
+            try:
+                return decrypt(m.group(0))
+            except Exception:
+                return m.group(0)
+
+        result = _re.sub(r"gAAAAAB[\w\-=]+", _decrypt_match, result)
+    except Exception:
+        pass
+
+    return result
 
 
 HANDLERS["pangu_recall"] = handle_recall
