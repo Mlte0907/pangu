@@ -62,7 +62,7 @@ def _extract_experimental_from_tools(tools: list[dict]) -> list[str]:
 
 CORE_WHITELIST: frozenset[str] = frozenset(
     {
-        # 记忆 CRUD 与召回 (7)
+        # 记忆 CRUD 与召回 (8)
         "pangu_add_memory",
         "pangu_recall",
         "pangu_search_memories",
@@ -70,6 +70,9 @@ CORE_WHITELIST: frozenset[str] = frozenset(
         "pangu_delete_memory",
         "pangu_archive_memory",
         "pangu_wake_up",
+        # 密级变更（解密级 / 升级）的唯一通道 —— 与 delete/archive 同属按 id 的
+        # 单条写操作，权限模型一致（读得到 + 是自己的 + 钳到自身 clearance）
+        "pangu_set_classification",
         # 关联与统计 (5)
         "pangu_find_related",
         "pangu_stats",
@@ -100,7 +103,7 @@ CORE_WHITELIST: frozenset[str] = frozenset(
         # P0-1 supersede 变更链追踪（缺口 1：必须在默认暴露面）
         "pangu_get_supersede_chain",
     }
-)  # 共 29 个
+)  # 共 30 个
 
 
 # ── 模块注册表 ──

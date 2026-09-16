@@ -24,6 +24,10 @@ TOOLS = [
         "name": "pangu_archive_memory",
         "description": "按 memory_id 归档记忆（移出正常搜索/recall，可经 pangu_get_archive 查看）",
     },
+    {
+        "name": "pangu_set_classification",
+        "description": "调整已有记忆的密级（0=公开/1=内部/2=机密/3=绝密）—— 解密级与升级的唯一通道。只能改本租户、且自己当前读得到的记忆；目标密级会被钳到调用方自身的 clearance。",
+    },
 ]
 
 HANDLERS = {}
@@ -262,3 +266,86 @@ async def handle_archive_memory(server, drawers, arguments):
 
 
 HANDLERS["pangu_archive_memory"] = handle_archive_memory
+
+
+async def handle_set_classification(server, drawers, arguments):
+    """调整已有记忆的密级（解密级 / 升级）—— **密级变更的唯一通道**。
+
+    为什么需要专门通道：此前已有记忆要调低密级，只能用高密级钥匙把整条重写一遍（会丢
+    supersede 链、访问计数等派生信息），或走系统视角（绕过鉴权）。
+
+    权限模型（三条，缺一不可）：
+
+    1. **读得到**：先按当前作用域读，`get_drawer_by_id` 已受租户轴 + 密级轴双重保护，
+       读不到＝不存在。所以低密级调用方**够不着**高密级记忆 —— 不能解密级自己看不见的
+       东西（否则"猜 id"就能把别人的机密数据刷成公开）。
+    2. **是自己的**：只能改本租户的（作用域为空＝系统/admin，跳过）。否则 A 能读到 B 的
+       public 记忆，就能把 B 的数据再降级 —— 那是越权。
+    3. **钳到自身 clearance**：不能一步标成绝密（与写入同策略）。解密级天然满足本条：
+       能读到说明 clearance >= 当前密级 >= 目标密级。
+    """
+    from ...memory.layers import (
+        _coerce_classification,
+        clamp_classification,
+        current_clearance,
+        current_tenant,
+    )
+
+    memory_id = arguments.get("memory_id", "")
+    if not memory_id:
+        return json.dumps({"code": 2002, "error": "参数缺失: memory_id 为必填"}, ensure_ascii=False)
+    if arguments.get("classification") is None:
+        return json.dumps(
+            {
+                "code": 2002,
+                "error": "参数缺失: classification 为必填（0=公开/1=内部/2=机密/3=绝密）",
+            },
+            ensure_ascii=False,
+        )
+
+    drawer = server.memory.get_drawer_by_id(memory_id)
+    if not drawer:
+        return json.dumps({"code": 2001, "error": f"记忆不存在: {memory_id}"}, ensure_ascii=False)
+
+    tenant = current_tenant()
+    if tenant and (drawer.metadata or {}).get("tenant_id", "") != tenant:
+        return json.dumps(
+            {"code": 2003, "error": f"无权修改该记忆的密级（不属于本租户）: {memory_id}"},
+            ensure_ascii=False,
+        )
+
+    requested = _coerce_classification(arguments.get("classification"))
+    old = _coerce_classification((drawer.metadata or {}).get("classification"))
+    new = clamp_classification(requested)  # 钳到自身 clearance
+
+    drawer.metadata = dict(drawer.metadata or {})
+    drawer.metadata["classification"] = new
+    # update_drawer 是单条替换（内部以 _load_drawers() 全库快照为基底），
+    # 不会把租户裁剪后的列表整份写回 —— 写路径安全的既有保证。
+    if not server.memory.update_drawer(drawer):
+        return json.dumps({"code": 2004, "error": f"密级更新失败: {memory_id}"}, ensure_ascii=False)
+
+    # 审计：密级变更是敏感操作（尤其解密级＝把数据变公开），必须留痕。
+    # 留痕失败不阻断主流程 —— 它是"最好有"，不能因此让功能不可用。
+    try:
+        from ...memory.audit_analytics import get_audit
+
+        get_audit(server.config).log("set_classification", memory_id)
+    except Exception:
+        pass
+
+    return json.dumps(
+        {
+            "status": "updated",
+            "memory_id": memory_id,
+            "classification": new,
+            "previous": old,
+            "direction": "declassify" if new < old else ("escalate" if new > old else "unchanged"),
+            "clamped": new != requested,
+            "caller_clearance": current_clearance(),
+        },
+        ensure_ascii=False,
+    )
+
+
+HANDLERS["pangu_set_classification"] = handle_set_classification

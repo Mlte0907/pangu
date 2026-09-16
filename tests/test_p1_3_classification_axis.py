@@ -178,3 +178,106 @@ def test_stats_reports_classification_breakdown(stack):
     finally:
         reset_tenant_scope(token)
     assert stats["classification"] == {"0": 1, "1": 0, "2": 0, "3": 1}
+
+
+# ── 密级变更通道：pangu_set_classification ──
+
+
+@pytest.fixture
+def srv(tmp_path):
+    """最小 server 桩 —— handler 只用到 server.memory 与 server.config。"""
+    from pangu.core.config import PanguConfig
+    from pangu.memory.layers import MemoryStack
+
+    cfg = PanguConfig()
+    cfg.base_dir = tmp_path
+    cfg.db_path = tmp_path
+    cfg.palace_path = str(tmp_path / "palace")
+    cfg.ensure_dirs()
+
+    class _S:
+        pass
+
+    s = _S()
+    s.memory = MemoryStack(cfg)
+    s.config = cfg
+    return s
+
+
+def _call(srv, **args):
+    import asyncio
+    import json
+
+    from pangu.server.handlers.memory_ops import handle_set_classification
+
+    return json.loads(asyncio.run(handle_set_classification(srv, [], args)))
+
+
+def _cls_of(srv, mid, tenant="dsh", clearance=3):
+    tok = set_tenant_scope(tenant, "k", clearance)
+    try:
+        d = srv.memory.get_drawer_by_id(mid)
+        return _coerce_classification((d.metadata or {}).get("classification")) if d else None
+    finally:
+        reset_tenant_scope(tok)
+
+
+def test_declassify_own_memory(srv):
+    """本工具存在的理由：所有者把自己的高密级记忆解密级。"""
+    srv.memory.add_drawers([_drawer("m1", "dsh", 3)])
+    tok = set_tenant_scope("dsh", "k3", 3)
+    try:
+        r = _call(srv, memory_id="m1", classification=0)
+    finally:
+        reset_tenant_scope(tok)
+    assert r.get("status") == "updated", r
+    assert r["previous"] == 3 and r["classification"] == 0
+    assert r["direction"] == "declassify", r
+    assert _cls_of(srv, "m1") == 0, "必须真的落库，不能只在返回值里说改了"
+
+
+def test_low_clearance_cannot_declassify_what_it_cannot_see(srv):
+    """低密级调用方够不着高密级记忆 —— 不能解密级自己看不见的东西。"""
+    srv.memory.add_drawers([_drawer("m1", "dsh", 3)])
+    tok = set_tenant_scope("dsh", "k0", 0)  # 同租户，但 clearance=0
+    try:
+        r = _call(srv, memory_id="m1", classification=0)
+    finally:
+        reset_tenant_scope(tok)
+    assert r.get("code") == 2001, r  # 记忆不存在（不泄露存在性）
+    assert _cls_of(srv, "m1") == 3, "密级必须纹丝不动"
+
+
+def test_cannot_change_others_memory(srv):
+    """A 能读到 B 的 public 记忆，但不能改它的密级 —— 可读 ≠ 可改。"""
+    d = _drawer("b1", "other", 3)
+    d.metadata["visibility"] = "public"
+    srv.memory.add_drawers([d])
+    tok = set_tenant_scope("dsh", "k3", 3)
+    try:
+        assert srv.memory.get_drawer_by_id("b1") is not None, "public 记忆本应可读"
+        r = _call(srv, memory_id="b1", classification=0)
+    finally:
+        reset_tenant_scope(tok)
+    assert r.get("code") == 2003, r
+    assert _cls_of(srv, "b1", tenant="other") == 3, "别人的密级不能被改"
+
+
+def test_escalate_clamped_to_caller_clearance(srv):
+    """升级方向：钳到自身 clearance（与写入同策略，不能一步标成绝密）。"""
+    srv.memory.add_drawers([_drawer("m1", "dsh", 0)])
+    tok = set_tenant_scope("dsh", "k1", 1)
+    try:
+        r = _call(srv, memory_id="m1", classification=3)
+    finally:
+        reset_tenant_scope(tok)
+    assert r["classification"] == 1 and r["clamped"] is True, r
+    assert _cls_of(srv, "m1") == 1
+
+
+def test_system_view_can_declassify(srv):
+    """全库视角（CLI/后台/admin）不受限 —— 后台维护需要这条通道。"""
+    srv.memory.add_drawers([_drawer("m1", "dsh", 3)])
+    r = _call(srv, memory_id="m1", classification=0)  # 无作用域
+    assert r.get("status") == "updated", r
+    assert _cls_of(srv, "m1") == 0
