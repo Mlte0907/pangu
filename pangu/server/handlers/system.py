@@ -58,13 +58,15 @@ TOOLS = [
 HANDLERS = {}
 
 
-async def handle_stats(server, drawers, arguments):
-    """获取系统统计
+def collect_stats(server, drawers: list | None = None) -> dict:
+    """收集系统统计。MCP 的 pangu_stats 与管理通道 /api/v2/admin/stats 共用这一份装配
+    （两处各写一遍最容易在加字段时漂移）。
 
-    注意：`memory` / `palace` 两个区块必须由**传入的 drawers** 计算 —— call_tool 已按
-    调用方身份裁剪过它（per_tenant 收口）。此前这里直接取 `server.memory.status()` 与
-    `server.palace.stats()`，两者都读全库，于是面板拿到的是全库视角、越过收口
-    （实测 dsh 钥匙下 total_memories=124 而同一进程内 pangu_analyze 已按租户报 1）。
+    drawers: 记忆/宫殿数字据此现算。传 None ＝用全库（管理视角，请求外自然就是全库）。
+
+    ⚠ palace.stats() 读的是 Palace 索引 —— 那是历史结构，与 drawers 已经脱节（实测
+    索引里 wings=1，而 drawers 里实际有 6 个翼）。所以 wings_count/rooms_count 一律按
+    drawers 现算，不能用 palace.stats() 的原始值。
     """
     stats = {
         "palace": server.palace.stats(),
@@ -72,6 +74,20 @@ async def handle_stats(server, drawers, arguments):
         "wiki": server.wiki.stats(),
         "knowledge_graph": server.knowledge_graph.stats(),
     }
+    apply_tenant_view(stats, drawers if drawers is not None else server.memory.get_drawers())
+    return stats
+
+
+def apply_tenant_view(stats: dict, drawers: list) -> None:
+    """把 memory / palace 两个区块的数字换成**调用方租户可见集合**现算的值（就地修改）。
+
+    为什么需要：这两个区块原先直接取 server.memory.status() / server.palace.stats()，
+    两者都读全库，于是面板拿到全库视角、越过 call_tool 的租户收口（实测 dsh 钥匙下
+    total_memories=124，而同一进程内 pangu_analyze 已按租户报 1）。
+
+    面板若要**全库**视角，不走 MCP 这条路，而是走管理通道 /api/v2/admin/stats
+    （admin secret 鉴权，见 api/routes_keys.py 的 admin_stats）。
+    """
     mem = stats.get("memory")
     if isinstance(mem, dict):
         by_wing: dict[str, int] = {}
@@ -84,7 +100,11 @@ async def handle_stats(server, drawers, arguments):
     if isinstance(palace, dict):
         palace["wings_count"] = len({(d.wing or "default") for d in drawers})
         palace["rooms_count"] = len({((d.wing or "default"), (d.room or "general")) for d in drawers})
-    return json.dumps(stats, ensure_ascii=False, indent=2)
+
+
+async def handle_stats(server, drawers, arguments):
+    """获取系统统计（记忆/宫殿两个区块按调用方租户裁剪，见 apply_tenant_view）"""
+    return json.dumps(collect_stats(server, drawers), ensure_ascii=False, indent=2)
 
 
 HANDLERS["pangu_stats"] = handle_stats

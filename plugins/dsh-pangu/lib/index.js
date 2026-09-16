@@ -103,20 +103,33 @@ async function apply(ctx) {
     let kgRelations = 0
     let byWing
     try {
-      const body = await fetchJson(`${PANGU_BASE}/mcp`, {
-        method: 'POST',
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'tools/call',
-          params: { name: 'pangu_stats', arguments: {} },
-        }),
-      })
-      const text = body?.result?.content?.[0]?.text
-      if (!text) return { ok: false, error: 'pangu stats empty' }
-      // pangu_stats 返回缩进 JSON;解析失败时回退正则
+      // 面板是管理 UI：概览要显示**全库**规模（用户 2026-09-16 定），所以走 admin 通道
+      // 的 /admin/stats —— MCP 的 pangu_stats 自 P1-3 收口后按调用方租户裁剪，只显示
+      // 本租户那一份，不适合当"全库看板"。admin secret 只在插件后端读取，前端不接触。
+      // admin 不可用时回退到 /mcp（退化为本租户视角，面板仍然可用）。
       let parsed = null
-      try { parsed = JSON.parse(text) } catch (_) {}
+      const adminStats = await adminFetch(`${PANGU_BASE}/api/v2/admin/stats`)
+      if (adminStats && !adminStats.error && (adminStats.memory || adminStats.palace)) {
+        parsed = adminStats
+      } else {
+        const body = await fetchJson(`${PANGU_BASE}/mcp`, {
+          method: 'POST',
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: { name: 'pangu_stats', arguments: {} },
+          }),
+        })
+        const text = body?.result?.content?.[0]?.text
+        if (!text) return { ok: false, error: 'pangu stats empty' }
+        // pangu_stats 返回缩进 JSON;解析失败时回退正则
+        try { parsed = JSON.parse(text) } catch (_) {}
+        if (!parsed) {
+          total = Number((text.match(/"total_memories".{0,3}[: ]+([0-9]+)/) || [])[1]) || 0
+          wings = Number((text.match(/"wings_count".{0,3}[: ]+([0-9]+)/) || [])[1]) || 0
+        }
+      }
       if (parsed) {
         total = Number(parsed?.memory?.total_memories) || 0
         wings = Number(parsed?.palace?.wings_count) || 0
@@ -124,9 +137,6 @@ async function apply(ctx) {
         kgEntities = Number(parsed?.knowledge_graph?.entities) || 0
         kgRelations = Number(parsed?.knowledge_graph?.relations) || 0
         byWing = parsed?.memory?.by_wing
-      } else {
-        total = Number((text.match(/"total_memories".{0,3}[: ]+([0-9]+)/) || [])[1]) || 0
-        wings = Number((text.match(/"wings_count".{0,3}[: ]+([0-9]+)/) || [])[1]) || 0
       }
     } catch (e) {
       return { ok: false, error: 'pangu MCP unreachable: ' + String(e) }

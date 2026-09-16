@@ -139,6 +139,24 @@ async def rekey_room(room: str, request: Request):
     }
 
 
+@router.get("/admin/stats")
+async def admin_stats(request: Request):
+    """全局统计（管理视角）：记忆/宫殿等数字**不做租户裁剪**。
+
+    面板（盘古标签页概览、侧栏卡片的「记忆」）要显示全库规模；而 /mcp 的 pangu_stats
+    自 P1-3 收口后按调用方租户裁剪，只显示本租户那一份。与其给 MCP 开一个「谁都能要
+    全局」的后门，不如走本模块的管理通道 —— admin secret（0600）+ X-Admin-Key，且该
+    凭据只在插件后端读取，前端 JS 永不接触（见 dsh-pangu/lib/index.js）。
+    """
+    if not _verify_admin(request):
+        return {"error": "需要 admin 凭据", "code": 401}
+
+    from pangu.api.routes_tools import _get_server
+    from pangu.server.handlers.system import collect_stats
+
+    return collect_stats(_get_server())
+
+
 @router.get("/admin/rooms")
 async def list_rooms(request: Request):
     """房间总览：按 tenant_id 聚合记忆条数、字符体积、钥匙数"""
