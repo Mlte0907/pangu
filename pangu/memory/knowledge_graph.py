@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..core.config import PanguConfig
+from .layers import current_tenant
 
 logger = logging.getLogger("pangu.memory.graph")
 
@@ -43,6 +44,10 @@ class KnowledgeGraph:
                 check_same_thread=False,
             )
             conn.row_factory = sqlite3.Row
+            # 租户作用域的 SQL 侧入口：视图 entities/relations 靠它过滤（见 _init_db）。
+            # UDF 是**连接级**的，必须每个新连接都注册；未注册的连接查视图会直接报
+            # "no such function"（硬失败，不会静默漏数据 —— 这正是想要的）。
+            conn.create_function(self._SCOPE_UDF, 0, lambda: current_tenant())
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=-32000")
@@ -62,57 +67,162 @@ class KnowledgeGraph:
             conn.rollback()
             raise
 
+    _SCOPE_UDF = "current_tenant"
+
     def _init_db(self) -> None:
-        """初始化数据库"""
+        """初始化数据库（含「基表 + 租户视图」多租户改造，幂等）
+
+        多租户（P1-3 阶段 3）：
+        - 物理表是 `entities_all` / `relations_all`，主键为 **(id, tenant_id)** —— 同名实体
+          在不同租户下各有一份，`INSERT OR REPLACE` 天然只覆盖自己那份，踩不到别人
+        - 对外暴露**同名视图** entities / relations，按 current_tenant() 过滤
+          （我的 + visibility='public'；作用域为空＝全库视角，供 CLI/后台/admin）
+        - 写路径一律显式打基表：SQLite 的 UPDATE/DELETE **不会**套用视图的 WHERE，
+          直接写视图就是"删掉所有租户的关系"这类跨租户写
+
+        为什么用视图而不是逐个改 SQL：本文件有 30+ 处 SQL，逐个加条件必然漏（记忆层的
+        教训：287 个 handler 里 18 个漏了，靠人工扫描才发现）。视图把过滤收敛到唯一一处。
+        """
         with self._conn() as conn:
+            # 迁移期间关外键：旧库的 relations 表带 `REFERENCES entities(id)`，而我们要把
+            # entities 改名、之后建同名**视图** —— SQLite 按名字解析外键，父表变成视图/不存在
+            # 时插入会报 "FOREIGN KEY constraint failed"（实测：关系搬运卡住、legacy 表残留，
+            # 库处于半迁移状态）。新 schema 已不含任何外键，故迁移后无需恢复语义，只恢复 pragma。
+            conn.execute("PRAGMA foreign_keys=OFF")
+            try:
+                self._rename_legacy_tables(conn)
+                self._create_tenant_tables(conn)
+                self._copy_legacy_rows(conn)
+                self._create_tenant_views(conn)
+            finally:
+                conn.execute("PRAGMA foreign_keys=ON")
+
+    def _create_tenant_tables(self, conn) -> None:
+        """建基表与索引（幂等）。"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS entities_all (
+                id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT '',
+                visibility TEXT NOT NULL DEFAULT 'private',
+                PRIMARY KEY (id, tenant_id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS relations_all (
+                id TEXT NOT NULL,
+                subject_id TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                valid_from TEXT,
+                valid_until TEXT,
+                confidence REAL DEFAULT 1.0,
+                source TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT '',
+                visibility TEXT NOT NULL DEFAULT 'private',
+                PRIMARY KEY (id, tenant_id)
+            )
+        """)
+        # 不再声明 entity↔relation 外键：复合主键后 id 单独不再唯一，SQLite 要求外键指向
+        # 唯一索引，按 (subject_id) 写会直接 "foreign key mismatch"。级联删除本来就是
+        # delete_entity 里手工做的，去掉不丢语义。
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS idx_relations_subject ON relations_all(subject_id)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_object ON relations_all(object_id)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_valid ON relations_all(valid_from, valid_until)",
+            "CREATE INDEX IF NOT EXISTS idx_entities_tenant ON entities_all(tenant_id, visibility)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_tenant ON relations_all(tenant_id, visibility)",
+        ):
+            conn.execute(stmt)
+
+    @staticmethod
+    def _rename_legacy_tables(conn) -> None:
+        """旧库的 entities / relations 表补列并改名，等新结构建好后搬运（幂等）。"""
+        for table in ("entities", "relations"):
+            row = conn.execute("SELECT type FROM sqlite_master WHERE name = ?", (table,)).fetchone()
+            if row is None or row["type"] != "table":
+                continue  # 不存在（新库）或已是视图（已迁移）
+            cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if "tenant_id" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''")
+            if "visibility" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'")
+            conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy")
+            logger.warning(f"knowledge_graph: 旧表 {table} → {table}_legacy（等待搬入新基表）")
+
+    @staticmethod
+    def _copy_legacy_rows(conn) -> None:
+        """把 _legacy 表的数据搬进新基表并删除旧表。
+
+        列名显式写出（不用 SELECT *）—— 新旧列序不同，`SELECT *` 会错位。
+        搬运后 tenant_id 保持 ''（无主）：**谁都读不到**，只有全库视角和后续的归属回填
+        能处理它。这是安全默认 —— 漏填不会把历史数据暴露给某个租户。
+        """
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='entities_legacy'").fetchone():
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS entities (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    description TEXT DEFAULT '',
-                    created_at TEXT NOT NULL
-                )
+                INSERT OR REPLACE INTO entities_all
+                    (id, name, type, description, created_at, tenant_id, visibility)
+                SELECT id, name, type, description, created_at, tenant_id, visibility
+                FROM entities_legacy
             """)
+            conn.execute("DROP TABLE entities_legacy")
+            logger.warning("knowledge_graph: 实体已搬入 entities_all（tenant_id 为空＝无主，需一次性回填）")
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='relations_legacy'").fetchone():
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS relations (
-                    id TEXT PRIMARY KEY,
-                    subject_id TEXT NOT NULL,
-                    predicate TEXT NOT NULL,
-                    object_id TEXT NOT NULL,
-                    valid_from TEXT,
-                    valid_until TEXT,
-                    confidence REAL DEFAULT 1.0,
-                    source TEXT DEFAULT '',
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (subject_id) REFERENCES entities(id),
-                    FOREIGN KEY (object_id) REFERENCES entities(id)
-                )
+                INSERT OR REPLACE INTO relations_all
+                    (id, subject_id, predicate, object_id, valid_from, valid_until,
+                     confidence, source, created_at, tenant_id, visibility)
+                SELECT id, subject_id, predicate, object_id, valid_from, valid_until,
+                       confidence, source, created_at, tenant_id, visibility
+                FROM relations_legacy
             """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_relations_subject
-                ON relations(subject_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_relations_object
-                ON relations(object_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_relations_valid
-                ON relations(valid_from, valid_until)
+            conn.execute("DROP TABLE relations_legacy")
+            logger.warning("knowledge_graph: 关系已搬入 relations_all（tenant_id 为空＝无主，需一次性回填）")
+
+    @staticmethod
+    def _create_tenant_views(conn) -> None:
+        """创建同名租户视图（读路径的唯一收口点）。
+
+        ORDER BY 是"自己的行优先"—— 同名 id 在别的租户里也存在时（复合主键允许多份），
+        by-id 查询应优先命中自己那份；SQLite 在带 JOIN 的外层查询里会忽略视图内的排序，
+        所以这只是尽力而为，不影响正确性（两份都是当前租户**可见**的行）。
+        """
+        for table in ("entities", "relations"):
+            conn.execute(f"""
+                CREATE VIEW IF NOT EXISTS {table} AS
+                SELECT * FROM {table}_all
+                WHERE current_tenant() = ''
+                   OR tenant_id = current_tenant()
+                   OR visibility = 'public'
+                ORDER BY (tenant_id = current_tenant()) DESC
             """)
 
     # ── 实体操作 ──
 
-    def add_entity(self, id: str, name: str, entity_type: str, description: str = "") -> dict:
-        """添加实体"""
+    def add_entity(
+        self, id: str, name: str, entity_type: str, description: str = "", tenant_id: str | None = None
+    ) -> dict:
+        """添加实体（落当前租户归属）
+
+        tenant_id 默认取请求作用域（无则 ''＝无主）；**自动抽取会显式传入来源记忆的租户**
+        —— 图谱是记忆的衍生，归属必须跟着来源走，否则后台一跑就产生"无主知识"。
+        """
+        owner = current_tenant() if tenant_id is None else tenant_id
         with self._conn() as conn:
             conn.execute(
-                """INSERT OR REPLACE INTO entities (id, name, type, description, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (id, name, entity_type, description, datetime.now().isoformat()),
+                """INSERT OR REPLACE INTO entities_all
+                   (id, name, type, description, created_at, tenant_id, visibility)
+                   VALUES (?, ?, ?, ?, ?, ?, 'private')""",
+                (id, name, entity_type, description, datetime.now().isoformat(), owner),
             )
-        return self.get_entity(id)
+            # 回读走基表：抽取可能以来源租户落库（与当前作用域不同的公共记忆），
+            # 走视图会因不可见而返回 None。
+            row = conn.execute("SELECT * FROM entities_all WHERE id = ? AND tenant_id = ?", (id, owner)).fetchone()
+        return dict(row) if row else None
 
     def get_entity(self, id: str) -> dict | None:
         """获取实体"""
@@ -130,10 +240,18 @@ class KnowledgeGraph:
             return [dict(r) for r in rows]
 
     def delete_entity(self, id: str) -> bool:
-        """删除实体及其所有关系"""
+        """删除实体及其所有关系（只动当前租户的行 —— 同名实体在别的租户下各有一份）"""
+        owner = current_tenant()
         with self._conn() as conn:
-            conn.execute("DELETE FROM relations WHERE subject_id = ? OR object_id = ?", (id, id))
-            cursor = conn.execute("DELETE FROM entities WHERE id = ?", (id,))
+            if owner:
+                conn.execute(
+                    "DELETE FROM relations_all WHERE (subject_id = ? OR object_id = ?) AND tenant_id = ?",
+                    (id, id, owner),
+                )
+                cursor = conn.execute("DELETE FROM entities_all WHERE id = ? AND tenant_id = ?", (id, owner))
+            else:
+                conn.execute("DELETE FROM relations_all WHERE subject_id = ? OR object_id = ?", (id, id))
+                cursor = conn.execute("DELETE FROM entities_all WHERE id = ?", (id,))
             return cursor.rowcount > 0
 
     # ── 关系操作 ──
@@ -148,14 +266,16 @@ class KnowledgeGraph:
         valid_until: str = None,
         confidence: float = 1.0,
         source: str = "",
+        tenant_id: str | None = None,
     ) -> dict:
-        """添加关系"""
+        """添加关系（落当前租户归属；tenant_id 语义同 add_entity）"""
+        owner = current_tenant() if tenant_id is None else tenant_id
         with self._conn() as conn:
             conn.execute(
-                """INSERT OR REPLACE INTO relations
+                """INSERT OR REPLACE INTO relations_all
                    (id, subject_id, predicate, object_id, valid_from, valid_until,
-                    confidence, source, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence, source, created_at, tenant_id, visibility)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'private')""",
                 (
                     id,
                     subject_id,
@@ -166,9 +286,11 @@ class KnowledgeGraph:
                     confidence,
                     source,
                     datetime.now().isoformat(),
+                    owner,
                 ),
             )
-        return self.get_relation(id)
+            row = conn.execute("SELECT * FROM relations_all WHERE id = ? AND tenant_id = ?", (id, owner)).fetchone()
+        return dict(row) if row else None
 
     def get_relation(self, id: str) -> dict | None:
         """获取关系"""
@@ -220,17 +342,28 @@ class KnowledgeGraph:
     def invalidate_relation(self, id: str, invalidated_at: str = None) -> bool:
         """使关系失效"""
         invalidated_at = invalidated_at or datetime.now().isoformat()
+        owner = current_tenant()
         with self._conn() as conn:
-            cursor = conn.execute(
-                "UPDATE relations SET valid_until = ? WHERE id = ?",
-                (invalidated_at, id),
-            )
+            if owner:
+                cursor = conn.execute(
+                    "UPDATE relations_all SET valid_until = ? WHERE id = ? AND tenant_id = ?",
+                    (invalidated_at, id, owner),
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE relations_all SET valid_until = ? WHERE id = ?",
+                    (invalidated_at, id),
+                )
             return cursor.rowcount > 0
 
     def delete_relation(self, id: str) -> bool:
-        """删除关系"""
+        """删除关系（只动当前租户的行）"""
+        owner = current_tenant()
         with self._conn() as conn:
-            cursor = conn.execute("DELETE FROM relations WHERE id = ?", (id,))
+            if owner:
+                cursor = conn.execute("DELETE FROM relations_all WHERE id = ? AND tenant_id = ?", (id, owner))
+            else:
+                cursor = conn.execute("DELETE FROM relations_all WHERE id = ?", (id,))
             return cursor.rowcount > 0
 
     # ── 图查询 ──
@@ -704,11 +837,18 @@ class KnowledgeGraph:
         }
 
     def _downgrade_relation(self, row_id, score):
+        owner = current_tenant()
         with self._conn() as c:
-            c.execute(
-                "UPDATE relations SET predicate='related_to', confidence=? WHERE id=?",
-                (score, row_id),
-            )
+            if owner:
+                c.execute(
+                    "UPDATE relations_all SET predicate='related_to', confidence=? WHERE id=? AND tenant_id=?",
+                    (score, row_id, owner),
+                )
+            else:
+                c.execute(
+                    "UPDATE relations_all SET predicate='related_to', confidence=? WHERE id=?",
+                    (score, row_id),
+                )
 
     def get_graph_quality_stats(self) -> dict:
         """获取图谱质量统计（从伏羲移植）"""
@@ -926,24 +1066,27 @@ class KnowledgeGraph:
 
         for drawer in drawers[:max_drawers]:
             content = drawer.content
+            # 归属继承：图谱条目是**这条记忆**的衍生，租户跟着来源记忆走。
+            # 兜底用请求作用域（抽取若由租户调用，两者一致）。
+            owner = (drawer.metadata or {}).get("tenant_id") or current_tenant()
 
             found_entities = []
             for etype, keywords in ENTITY_PATTERNS.items():
                 for kw in keywords:
                     if kw.lower() in content.lower():
                         eid = f"entity-{hex_digest(kw)[:12]}"
-                        self.add_entity(eid, kw, etype, f"从记忆 {drawer.id[:8]} 提取")
+                        self.add_entity(eid, kw, etype, f"从记忆 {drawer.id[:8]} 提取", tenant_id=owner)
                         found_entities.append((eid, kw))
                         entities_added += 1
 
-            relations_added += self._find_and_create_relations(found_entities, content, drawer.id)
+            relations_added += self._find_and_create_relations(found_entities, content, drawer.id, owner)
 
         return {
             "entities_added": entities_added,
             "relations_added": relations_added,
         }
 
-    def _find_and_create_relations(self, found_entities, content, drawer_id):
+    def _find_and_create_relations(self, found_entities, content, drawer_id, tenant_id: str | None = None):
         import re
 
         from pangu.core.hashing import hex_digest
@@ -954,7 +1097,7 @@ class KnowledgeGraph:
                 for pattern, predicate in self._RELATION_PATTERNS:
                     if re.search(pattern.replace(r"(\w+)", f".*{re.escape(name_b)}.*"), content):
                         rid = f"rel-{hex_digest(f'{eid_a}-{eid_b}-{predicate}')[:12]}"
-                        self.add_relation(rid, eid_a, predicate, eid_b, source=drawer_id[:8])
+                        self.add_relation(rid, eid_a, predicate, eid_b, source=drawer_id[:8], tenant_id=tenant_id)
                         count += 1
                         break
         return count
