@@ -291,10 +291,7 @@ async function apply(ctx) {
       catch (e) { return { ok: false, error: String(e) } }
     },
   }
-  Object.defineProperty(dashboardService, 'typertRemote', {
-    configurable: false, enumerable: false, writable: false,
-    value: { service: dashboardService, serviceKey: 'panguDashboard', namespace: 'panguDashboard' },
-  })
+  // typertRemote 由 lib/typert.host.js 清单提供，不再 inline 注册（避免空壳覆盖清单完整描述符）
   ctx.provide('panguDashboard', dashboardService)
 
   // ── KG Remote ──
@@ -303,10 +300,7 @@ async function apply(ctx) {
       return fetchKG()
     },
   }
-  Object.defineProperty(kgService, 'typertRemote', {
-    configurable: false, enumerable: false, writable: false,
-    value: { service: kgService, serviceKey: 'panguKG', namespace: 'panguKG' },
-  })
+  // typertRemote 由清单提供，不再 inline 注册
   ctx.provide('panguKG', kgService)
 
   // ── Config Remote ──
@@ -530,10 +524,7 @@ async function apply(ctx) {
     async rekeyRoom(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms/' + encodeURIComponent(args.room) + '/rekey', { method: 'POST' }) },
     async listPublicMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/public-memories') },
   }
-  Object.defineProperty(adminKeyService, 'typertRemote', {
-    configurable: false, enumerable: false, writable: false,
-    value: { service: adminKeyService, serviceKey: 'panguAdminKeys', namespace: 'panguAdminKeys' },
-  })
+  // typertRemote 由清单提供，不再 inline 注册
   ctx.provide('panguAdminKeys', adminKeyService)
 
   // 实时事件通道(随插件卸载关闭,断线自动重连)
