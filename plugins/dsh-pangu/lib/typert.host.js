@@ -3,7 +3,7 @@
  * panguDashboard.data 扩展宫殿/图谱统计与健康详情;服务清单与 v2 兼容。
  * panguAdminKeys: 钥匙/房间管理。
  */
-import { z } from 'zod'
+const { z } = require('zod')
 
 // ── Schema 工厂（延迟创建，供 codec.create 引用）──
 let _dashboardData$v
@@ -131,7 +131,7 @@ const _publicMemories = () => (_publicMemories$v ??= z.object({
   count: z.number(),
 }))
 
-export const TYPERT = {
+const TYPERT = {
   package: 'dsh-pangu',
   face: 'host',
   schemas: [],
@@ -290,4 +290,4 @@ export const TYPERT = {
   },
 }
 
-export default TYPERT
+module.exports = { TYPERT }
