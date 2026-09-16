@@ -28,7 +28,16 @@ class KeyManager:
 
     def __init__(self, keys_path: str = None):
         if keys_path is None:
-            self.keys_path = Path.home() / ".pangu" / "keys.json"
+            # ⚠ 默认路径必须走 PanguConfig.base_dir，**不要**用 Path.home()：
+            # conftest 隔离的是 base_dir（PANGU_BASE_DIR），硬编码 home 会让每个用例把
+            # 钥匙写进**真实**钥匙表 —— 实测跑几轮测试就在生产库里攒了 13 把 room-x 的
+            # 测试钥匙。生产环境 base_dir 就是 ~/.pangu，路径不变。
+            try:
+                from pangu.core.config import PanguConfig
+
+                self.keys_path = Path(PanguConfig.load().base_dir) / "keys.json"
+            except Exception:  # noqa: BLE001 — 配置不可用时退回历史路径
+                self.keys_path = Path.home() / ".pangu" / "keys.json"
         else:
             self.keys_path = Path(keys_path)
         self._ensure_file()
