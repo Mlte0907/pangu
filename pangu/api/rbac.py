@@ -143,10 +143,12 @@ class Principal:
     """当前请求的主体（用户/服务）。"""
 
     user_id: str
-    method: str  # "jwt" | "api_key" | "anonymous"
+    method: str  # "jwt" | "api_key" | "pangu_key" | "anonymous"
     role: str = ""
     scopes: set[str] = field(default_factory=set)
     claims: object = None  # TokenClaims | None
+    tenant: str = ""  # 盘古钥匙的 room（method="pangu_key" 时有值）
+    key_id: str = ""  # 盘古钥匙 id（审计用）
 
     def has_scope(self, required: str) -> bool:
         return has_scope(self.scopes, required)
@@ -171,8 +173,8 @@ def get_principal(request: Request) -> Principal:
         # 若 token 没带 role 字段但带了 scope，回填 role 推断
         if not role and "*" in scopes:
             role = ROLE_ADMIN
-    elif method == "api_key":
-        # API Key 默认赋予 service 角色权限
+    elif method in ("api_key", "pangu_key"):
+        # API Key / 盘古钥匙默认赋予 service 角色权限
         role = ROLE_SERVICE
         scopes = set(ROLE_PRESETS.get(ROLE_SERVICE, []))
 
@@ -186,6 +188,8 @@ def get_principal(request: Request) -> Principal:
         role=role,
         scopes=scopes,
         claims=claims,
+        tenant=auth.get("tenant", ""),
+        key_id=auth.get("key_id", ""),
     )
 
 

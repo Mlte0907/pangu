@@ -31,6 +31,7 @@ def _request(headers: dict | None = None, jwt_tenant: str | None = None) -> Requ
         "state": {},
     }
     if jwt_tenant is not None:
+
         class _Claims:
             extra = {"tenant_id": jwt_tenant}
             scope = ""
@@ -71,9 +72,79 @@ def test_declared_header_honored_for_admin(monkeypatch):
 def test_invalid_key_falls_back_to_default(monkeypatch):
     """无效钥匙不能成为租户来源，也不能因为带了声明头就生效。"""
     monkeypatch.setattr(rm, "_is_admin_request", lambda r: False)
-    assert _resolve_tenant_id(_request({"X-API-Key": "pgk_bogus", "x-tenant-id": "dsh"})) == rm.config.abac_default_tenant
+    assert (
+        _resolve_tenant_id(_request({"X-API-Key": "pgk_bogus", "x-tenant-id": "dsh"})) == rm.config.abac_default_tenant
+    )
 
 
 def test_jwt_claim_is_last_resort():
     """无钥匙无声明头 → 用 JWT claim 的 tenant_id。"""
     assert _resolve_tenant_id(_request(jwt_tenant="room-jwt")) == "room-jwt"
+
+
+# ── REST 凭据统一：verify_credentials 认盘古钥匙（与 MCP 共用一套凭据）──
+
+
+def test_verify_credentials_accepts_pangu_key(key_room):
+    """★ 盘古钥匙成为 REST 的合法凭据，两种头形式都认，并带出租户。"""
+    from pangu.api.auth import verify_credentials
+
+    plain, room = key_room
+    for headers in ({"x-api-key": plain}, {"authorization": f"Bearer {plain}"}):
+        res = verify_credentials(headers=headers)
+        assert res.ok is True
+        assert res.method == "pangu_key"
+        assert res.tenant == room, "租户必须来自钥匙的 room"
+        assert res.key_id
+
+
+def test_verify_credentials_rejects_bogus_pangu_key():
+    """形如盘古钥匙但校验失败 → 明确失败（不能被当成匿名放过）。"""
+    from pangu.api.auth import verify_credentials
+
+    res = verify_credentials(headers={"x-api-key": "pgk_not_a_real_key"})
+    assert res.ok is False
+    assert res.method == "pangu_key"
+    assert "盘古钥匙" in (res.reason or "")
+
+
+def test_verify_credentials_anonymous_when_nothing_provided():
+    """没配静态 key/JWT 且没带凭据 → 仍是 anonymous（保持既有放行语义）。"""
+    from pangu.api.auth import verify_credentials
+
+    res = verify_credentials(headers={})
+    assert res.ok is True and res.method == "anonymous"
+
+
+def test_principal_carries_tenant_from_pangu_key():
+    """中间件注入的身份要能被 get_principal 还原出 tenant/key_id，并给 service 角色。"""
+    from pangu.api.rbac import ROLE_SERVICE, get_principal
+
+    req = _request()
+    req.scope["state"]["auth"] = {
+        "method": "pangu_key",
+        "user_id": "key_abc",
+        "tenant": "room-x",
+        "key_id": "key_abc",
+    }
+    p = get_principal(req)
+    assert p.method == "pangu_key"
+    assert p.tenant == "room-x"
+    assert p.key_id == "key_abc"
+    assert p.role == ROLE_SERVICE
+
+
+def test_middleware_identity_short_circuits_key_lookup(monkeypatch):
+    """中间件已确认身份时，路由直接用它的租户，不再重复查钥匙表。"""
+    req = _request(headers={"x-tenant-id": "dsh"})  # 带上声明头，但应以身份里的租户为准
+    req.scope["state"]["auth"] = {"method": "pangu_key", "user_id": "k", "tenant": "room-x", "key_id": "k"}
+
+    called = {"n": 0}
+
+    def _boom(r):
+        called["n"] += 1
+        return {}
+
+    monkeypatch.setattr(rm, "_tenant_from_key", _boom)
+    assert _resolve_tenant_id(req) == "room-x"
+    assert called["n"] == 0, "不应再次查钥匙表"

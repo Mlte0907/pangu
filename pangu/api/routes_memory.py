@@ -171,6 +171,11 @@ def _resolve_tenant_id(request: Request) -> str:
       3. 其它情况 → **忽略**该头并告警（客户端无权声明租户）；
       4. 兜底：JWT claim 的 tenant_id → abac_default_tenant。
     """
+    # 中间件若已用盘古钥匙确认身份（含租户），直接采信，避免重复查表
+    principal = get_principal(request)
+    if principal.method == "pangu_key" and principal.tenant:
+        return principal.tenant
+
     ident = _tenant_from_key(request)
     if ident.get("room"):
         return ident["room"]

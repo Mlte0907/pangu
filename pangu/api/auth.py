@@ -403,7 +403,10 @@ class AuthResult:
     """鉴权结果"""
 
     ok: bool
-    method: str = ""  # "api_key" | "jwt" | "anonymous"
+    method: str = ""  # "api_key" | "jwt" | "pangu_key" | "anonymous"
+    # 盘古钥匙（pgk_*）解析出的身份：租户＝钥匙的 room；与 MCP 侧同一来源
+    tenant: str = ""
+    key_id: str = ""
     user_id: str = ""  # 凭据对应的用户（JWT 模式下为 sub）
     claims: TokenClaims | None = None
     reason: str = ""
@@ -425,14 +428,40 @@ def verify_credentials(
         secret: JWT 签名密钥；空表示不启用 JWT 鉴权
         user_store: 用于校验 refresh token 是否被撤销
     """
-    if not api_key and not secret:
-        return AuthResult(ok=True, method="anonymous")
-
     api_key_provided = headers.get("x-api-key", "")
     auth_header = headers.get("authorization", "")
     bearer = ""
     if auth_header.lower().startswith("bearer "):
         bearer = auth_header[7:].strip()
+
+    # ── 0) 盘古钥匙（pgk_*）──
+    # 必须排在下面那条"未配置鉴权则一律匿名"的短路**之前**：生产常常没配静态
+    # api_key/JWT（两者都为空），若先短路，携带盘古钥匙的请求永远只能解析成
+    # anonymous —— REST 侧的租户收口就落不了地（实测：加上分支后仍是 anonymous）。
+    # 与 MCP 侧同一张钥匙表：一套凭据、一套租户语义（租户＝钥匙的 room）。
+    pangu_candidate = api_key_provided or (bearer if bearer.startswith("pgk_") else "")
+    if pangu_candidate.startswith("pgk_"):
+        try:
+            from pangu.keys import KeyManager
+
+            ident = KeyManager().verify(pangu_candidate)
+        except Exception as e:  # noqa: BLE001 — 钥匙表异常按"凭据无效"处理，不静默放行
+            logger.debug(f"盘古钥匙校验异常: {e}")
+            ident = None
+        if ident:
+            return AuthResult(
+                ok=True,
+                method="pangu_key",
+                user_id=ident.get("key_id", ""),
+                tenant=ident.get("room", ""),
+                key_id=ident.get("key_id", ""),
+            )
+        # 形如盘古钥匙却校验失败：明确失败 —— 不能落进后面的 JWT 分支被当成匿名放过，
+        # 否则"无效凭据"与"没带凭据"就分不出来了。
+        return AuthResult(ok=False, method="pangu_key", reason="无效的盘古钥匙")
+
+    if not api_key and not secret:
+        return AuthResult(ok=True, method="anonymous")
 
     # ── 1) API Key 路径 ──
     # X-API-Key 或 Authorization: Bearer <key> 形式

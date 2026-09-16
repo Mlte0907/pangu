@@ -542,6 +542,15 @@ def create_app() -> FastAPI:
                     elif _res.ok and _res.method == "api_key":
                         scope["state"] = scope.get("state", {})
                         scope["state"]["auth"] = {"method": _res.method, "user_id": "api_key_user"}
+                    elif _res.ok and _res.method == "pangu_key":
+                        # 盘古钥匙：把租户一起注入，路由无需再查一次钥匙表
+                        scope["state"] = scope.get("state", {})
+                        scope["state"]["auth"] = {
+                            "method": _res.method,
+                            "user_id": _res.user_id,
+                            "tenant": _res.tenant,
+                            "key_id": _res.key_id,
+                        }
                 except Exception:
                     pass
                 await self.app(scope, receive, send)
@@ -576,6 +585,14 @@ def create_app() -> FastAPI:
             elif result.method == "api_key":
                 scope["state"] = scope.get("state", {})
                 scope["state"]["auth"] = {"method": result.method, "user_id": "api_key_user"}
+            elif result.method == "pangu_key":
+                scope["state"] = scope.get("state", {})
+                scope["state"]["auth"] = {
+                    "method": result.method,
+                    "user_id": result.user_id,
+                    "tenant": result.tenant,
+                    "key_id": result.key_id,
+                }
 
             await self.app(scope, receive, send)
 
