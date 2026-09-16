@@ -15,12 +15,19 @@ logger = logging.getLogger("pangu.mcp.http")
 
 
 def _inject_identity(msg: dict, request: Request):
-    """P1-3 阶段 1.4：从 X-API-Key 解析身份，注入 MCP 请求上下文
+    """P1-3 阶段 1.4 + 阶段 3：从 X-API-Key 解析身份，注入 MCP 请求上下文
+
+    凭据可来自 X-API-Key，或 Authorization: Bearer <key>（兼容其他 MCP 客户端）。
 
     - 有凭据 → 查钥匙表 → {key_id, room, scope} 注入 msg["_identity"]
     - 无凭据 → 放行（mcp_require_auth=false 时）或 401（true 时）
     """
-    api_key = request.headers.get("X-API-Key", "")
+    api_key = (request.headers.get("X-API-Key") or "").strip()
+    if not api_key:
+        # 兼容 Authorization: Bearer <key>
+        auth = request.headers.get("Authorization") or ""
+        if auth[:7].lower() == "bearer ":
+            api_key = auth[7:].strip()
     if not api_key:
         # 无凭据：检查 mcp_require_auth
         from pangu.core.config import PanguConfig

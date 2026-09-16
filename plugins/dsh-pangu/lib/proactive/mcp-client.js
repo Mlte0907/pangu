@@ -28,7 +28,10 @@ function createPanguMcpClient({ apiKey, baseUrl, logger } = {}) {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(key ? { authorization: 'Bearer ' + key } : {}),
+          // 服务端 pangu/api/mcp_http.py 读的是 X-API-Key；这里原先发的是
+          // Authorization: Bearer，两端口径不一致 —— 配了钥匙也等于没配，
+          // 一旦打开 mcp_require_auth 就会 401。
+          ...(key ? { 'x-api-key': key } : {}),
         },
         body: JSON.stringify({
           jsonrpc: '2.0',

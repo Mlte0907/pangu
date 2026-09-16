@@ -1,10 +1,38 @@
 'use strict'
 
 const fsp = require('fs/promises')
+const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
 const CONFIG_PATH = path.join(os.homedir(), '.pangu', 'config.json')
+// MCP 身份凭据（KeyManager 的 pgk_* 钥匙）不落 config.json —— 那是 0644 且会被
+// 设置页整份取走（redactConfig 只对 SECRET_KEYS 脱敏）。凭据只放 0600 独立文件，
+// 与 .llm_api_key 同一套约定。
+const MCP_KEY_FILE = path.join(os.homedir(), '.pangu', '.mcp_key')
+
+/**
+ * 解析 MCP 身份凭据（同步版，供 fetchJson 这类没有 await 的调用点复用）。
+ *
+ * 优先级与 LLM Key 的既有约定一致：
+ *   PANGU_API_KEY 环境变量 > config.json 的 api_key > ~/.pangu/.mcp_key(0600)
+ *
+ * @param {object} [parsedRaw] 已解析的 config.json，避免重复读盘
+ * @returns {string} 凭据原文，未配置时为空串
+ */
+function readStoredApiKey(parsedRaw) {
+  const envKey = typeof process.env.PANGU_API_KEY === 'string' ? process.env.PANGU_API_KEY.trim() : ''
+  if (envKey) return envKey
+  try {
+    const raw = parsedRaw ?? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    if (typeof raw?.api_key === 'string' && raw.api_key) return raw.api_key
+  } catch (_) { /* config.json 缺失或损坏 → 继续回落 */ }
+  try {
+    return fs.readFileSync(MCP_KEY_FILE, 'utf8').trim()
+  } catch (_) {
+    return ''
+  }
+}
 
 const DEFAULTS = {
   enabled: true,
@@ -62,9 +90,9 @@ async function loadInjectionConfig(logger) {
     raw = {}
   }
   const result = validate(raw, logger)
-  const envKey = typeof process.env.PANGU_API_KEY === 'string' ? process.env.PANGU_API_KEY : ''
-  if (envKey) result.apiKey = envKey
+  // 三级回落：环境变量 > config.json 的 api_key > 0600 凭据文件
+  result.apiKey = readStoredApiKey(raw)
   return result
 }
 
-module.exports = { loadInjectionConfig, validateInjectionConfig: validate, DEFAULTS, CONFIG_PATH }
+module.exports = { loadInjectionConfig, readStoredApiKey, validateInjectionConfig: validate, DEFAULTS, CONFIG_PATH, MCP_KEY_FILE }

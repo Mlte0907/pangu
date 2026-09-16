@@ -15,7 +15,7 @@ const os = require('os')
 const path = require('path')
 
 const { createMessageCache } = require('./proactive/message-cache')
-const { loadInjectionConfig, DEFAULTS: INJECTION_DEFAULTS } = require('./proactive/config')
+const { loadInjectionConfig, readStoredApiKey, DEFAULTS: INJECTION_DEFAULTS } = require('./proactive/config')
 const { createPanguMcpClient } = require('./proactive/mcp-client')
 const { createCircuitBreaker } = require('./proactive/circuit-breaker')
 const { createDedupTracker } = require('./proactive/dedup-tracker')
@@ -57,9 +57,17 @@ function bindRemote(service, serviceKey, namespace = serviceKey) {
 
 async function apply(ctx) {
   async function fetchJson(url, options = {}) {
+    const headers = { 'content-type': 'application/json', ...(options.headers || {}) }
+    // 身份凭据只挂盘古自己的 /mcp。fetchJson 同时被 /health、/v1/usage 复用，
+    // 后者是外部 LLM 端点 —— 把 pgk_* 钥匙发过去等于主动外泄，所以按路径判定
+    // 而不是无差别加头。
+    if (/\/mcp$/.test(url)) {
+      const key = readStoredApiKey()
+      if (key) headers['x-api-key'] = key
+    }
     const res = await fetch(url, {
       method: options.method || 'GET',
-      headers: { 'content-type': 'application/json', ...(options.headers || {}) },
+      headers,
       body: options.body,
       signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
     })
