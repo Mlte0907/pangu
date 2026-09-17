@@ -65,6 +65,7 @@ const _kgData = () => (_kgData$v ??= z.object({
 let _configData$v
 const _configData = () => (_configData$v ??= z.object({
   ok: z.boolean(), config: z.record(z.any()).optional(),
+  versions: z.object({ plugin: z.string().optional(), server: z.string().optional() }).optional(),
 }))
 
 let _okResult$v

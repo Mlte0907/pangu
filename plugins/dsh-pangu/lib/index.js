@@ -25,6 +25,7 @@ const { createInjectionPipeline } = require('./proactive/injection-pipeline')
 const { createConsolidationWriter } = require('./proactive/consolidation-writer')
 
 const PANGU_BASE = 'http://127.0.0.1:19529'
+const PLUGIN_VERSION = require('../package.json').version
 const CONFIG_PATH = path.join(os.homedir(), '.pangu', 'config.json')
 // 密钥不落 config.json（PanguConfig.save() 用 exclude 排除），而是独立存这个文件（0600）。
 // 所以判断「Key 是否已配置」必须看这个文件，光读 config.json 会永远显示未配置。
@@ -174,6 +175,18 @@ async function apply(ctx) {
     } catch (e) {
       return { ok: false, error: 'graph unreachable: ' + String(e) }
     }
+  }
+
+  // 本地真实版本：插件读自己的 package.json，盘古服务读 /health 自报版本。
+  // 设置页「关于与更新」用它显示本地版本 —— 原先那里是写死的字符串，会与实际不符。
+  async function localVersions() {
+    const versions = { plugin: PLUGIN_VERSION }
+    try {
+      const hd = await fetchJson(`${PANGU_BASE}/health`)
+      const v = hd?.data?.version
+      if (v) versions.server = String(v)
+    } catch (_) { /* 服务不可达时只显示插件版本 */ }
+    return versions
   }
 
   // ── 实时事件:连 pangu /ws(SEC-004 修复后需 api_key/JWT),断线指数退避重连 ──
@@ -473,7 +486,7 @@ async function apply(ctx) {
           if (config[key] === undefined || config[key] === '') config[key] = live[key]
         }
       }
-      return { ok: true, config: redactConfig(config) }
+      return { ok: true, config: redactConfig(config), versions: await localVersions() }
     },
     async save(args) {
       const patch = args?.patch ?? args

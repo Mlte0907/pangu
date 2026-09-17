@@ -180,3 +180,22 @@ DSH 已安装 `dsh-brake` 插件，自动检测"方法循环"（同类工具高�
   不要依赖系统级 `apt` / `systemctl`（非 `--user`）。
 - 长时安装/下载务必用 `setsid nohup <cmd> > log 2>&1 < /dev/null &` 完全脱离
   控制终端，否则工具调用中断会连带杀死子进程，导致"缓存涨了但包没装上"。
+
+## 重启 dsh-web（插件改动生效的唯一规范方式）
+
+盘古的 dsh 插件跑在系统级服务 `dsh-web.service`（端口 3080）里。改了
+`plugins/dsh-pangu/` 下的宿主代码（lib/index.js、lib/typert.host.js）后，
+必须重启该服务才生效；`lib/client.js` 是浏览器按需拉取的，刷新页面即可。
+
+```sh
+dsh-restart        # = ~/.local/bin/dsh-restart，唯一推荐入口
+```
+
+**绝不要**自己 `node --import tsx/esm apps/cli/src/bin.ts web &` 手工拉起：
+那会产生占着 3080 的孤儿进程，导致 systemd 每次启动都 `EADDRINUSE` 崩溃循环，
+而界面显示的还是旧进程的代码（2026-09-17 插件设置页"不显示"就是这个原因）。
+
+`dsh-restart` 会先清掉占端口的孤儿，再执行
+`sudo -n /usr/bin/systemctl restart dsh-web.service`
+（sudoers 只放行全路径 + 全单元名这种写法；写成 `sudo systemctl restart dsh-web`
+会要密码而失败），最后等到新主进程持有端口才算成功。

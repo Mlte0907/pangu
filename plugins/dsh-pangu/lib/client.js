@@ -1291,12 +1291,14 @@ window.__ModuleLoader__.load({
       const [rooms, setRooms] = React.useState([])
       const [updateInfo, setUpdateInfo] = React.useState(null)
       const [updateLoading, setUpdateLoading] = React.useState(false)
+      const [versions, setVersions] = React.useState(null)
 
       const load = React.useCallback(async () => {
         try {
           const value = unwrap(await callRemote('panguConfig', 'get'))
           const cfg = value?.config || {}
           setConfig(cfg)
+          setVersions(value?.versions || null)
           setDraft({
             ce: cfg.consolidation_enabled !== false,
             ci: Number(cfg.consolidation_interval_hours) || 24,
@@ -1514,14 +1516,19 @@ window.__ModuleLoader__.load({
           h('div', { key: 's5-body', style: { marginTop: 6 } },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '12px 14px', background: css.bg1 } },
               h('div', { style: { flex: 1 } },
-                h('div', { style: { fontSize: 12.5, fontWeight: 600 } }, 'dsh-pangu v1.5.0'),
+                h('div', { style: { fontSize: 12.5, fontWeight: 600 } },
+                  'dsh-pangu v' + (versions?.plugin || '…'),
+                  h('span', { style: { fontSize: 10.5, fontWeight: 400, color: css.t3, marginLeft: 8 } },
+                    '盘古服务 v' + (versions?.server || '未识别')),
+                ),
                 h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 3 } },
                   updateInfo
                     ? updateInfo.ok
-                      ? h('span', null, '最新版本 ', h('b', { style: { color: css.t1 } }, updateInfo.tag),
-                        updateInfo.publishedAt && h('span', null, ' · 发布于 ' + updateInfo.publishedAt.slice(0, 10)))
-                      : h('span', { style: { color: css.warn } }, '检查失败：' + (updateInfo.error || ''))
-                    : h('span', null, updateLoading ? '检查中…' : '点击右侧按钮检查更新'),
+                      ? h('span', null, '上游发布 ', h('b', { style: { color: css.t1 } }, updateInfo.tag),
+                        updateInfo.publishedAt && h('span', null, ' · 发布于 ' + updateInfo.publishedAt.slice(0, 10)),
+                        h('span', { style: { color: css.t3 } }, '（GitHub Release，仅供参考；本地是否最新以 git 为准）'))
+                      : h('span', { style: { color: css.warn } }, '上游检查失败：' + (updateInfo.error || ''))
+                    : h('span', null, updateLoading ? '检查中…' : '点击右侧按钮检查上游发布'),
                 ),
                 updateInfo?.ok && updateInfo.body && h('div', { style: { fontSize: 10, color: css.t3, marginTop: 5, lineHeight: 1.6, maxHeight: 60, overflow: 'hidden' } }, updateInfo.body),
               ),
@@ -1529,7 +1536,7 @@ window.__ModuleLoader__.load({
                 updateLoading ? '检查中…' : '检查更新'),
             ),
             h('div', { style: { fontSize: 10, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
-              '更新源：GitHub Releases（通过 gh-proxy.org 加速）。手动更新：',
+              '上游发布仅作参考（GitHub Releases，经 gh-proxy.org 加速）；本机是本地源码运行，更新方式：',
               h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 10 } }, 'cd ~/pangu && git pull origin master && pnpm install'),
             ),
           ),
