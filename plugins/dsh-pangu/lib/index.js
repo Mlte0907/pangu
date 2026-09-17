@@ -59,10 +59,11 @@ function bindRemote(service, serviceKey, namespace = serviceKey) {
 async function apply(ctx) {
   async function fetchJson(url, options = {}) {
     const headers = { 'content-type': 'application/json', ...(options.headers || {}) }
-    // 身份凭据只挂盘古自己的 /mcp。fetchJson 同时被 /health、/v1/usage 复用，
-    // 后者是外部 LLM 端点 —— 把 pgk_* 钥匙发过去等于主动外泄，所以按路径判定
-    // 而不是无差别加头。
-    if (/\/mcp$/.test(url)) {
+    // 身份凭据挂所有发往盘古本机的请求（/mcp、/health、/api/v2/graph 等 —— REST
+    // 网关已接入钥匙体系）。fetchJson 也会被 /v1/usage 复用，但那是以 LLM 供应商
+    // 的 base_url 开头的外部端点 —— 把 pgk_* 钥匙发过去等于主动外泄，所以按
+    // URL 前缀判定，而不是无差别加头。
+    if (url.startsWith(PANGU_BASE)) {
       const key = readStoredApiKey()
       if (key) headers['x-api-key'] = key
     }

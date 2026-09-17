@@ -194,8 +194,7 @@ context = server.call_tool("pangu_wake_up", {})
 | Method | Path | Description |
 |:---|:---|:---|
 | GET | `/health` | Health check |
-| GET | `/dashboard` | Monitoring dashboard |
-| GET/POST | `/api/v2/memories` | Memory CRUD |
+| GET/POST | `/api/v2/memories` | Memory CRUD (requires a `pgk_` key or JWT when auth is enabled) |
 | POST | `/api/v2/memories/search` | Search memories |
 | GET | `/ws` | WebSocket real-time events |
 

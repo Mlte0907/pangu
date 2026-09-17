@@ -10,6 +10,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 > 自 `0.4.1` 起 `plugins/dsh-pangu/package.json` 与上述两者保持同一版本号，
 > 设置页「关于与更新」显示的插件版本即读自此文件。
 
+## [Unreleased]
+
+### 安全：REST 网关接入钥匙体系，老网页退役
+
+- **REST 全面要求凭据**（`mcp_require_auth=true` 时）：`_AuthMiddleware` 启用条件
+  增加 `mcp_require_auth`；`/api/v2/memories`、`/api/v2/graph`、`/api/v2/tools*`、
+  `/api/v2/autonomous/status` 不再豁免，无凭据一律 401。凭据三选一：盘古钥匙
+  （pgk_，与 MCP 同一张钥匙表，租户＝room）、静态 api_key、JWT。`/ws` 握手同样
+  接受 pgk_ 钥匙。豁免名单收窄为探针（/health*、/metrics）、文档（/docs*）与
+  登录（/api/v2/auth/*）；`/api/v2/admin/*` 仍走自己的 X-Admin-Key 自保护。
+- **老网页退役**：`/`（重定向保留）、`/dashboard`、`/graph`、`/performance` 中的
+  三个 HTML 页面与路由删除（`pangu/ui/templates/` 清空）。它们是无钥匙直连 REST
+  的唯一消费者，也是此前豁免名单存在的原因。
+- **dsh 插件适配**：宿主侧 `fetchJson` 给所有发往盘古本机的请求（/mcp、/health、
+  /api/v2/graph）自动带 `X-API-Key`；发往外部 LLM 端点（/v1/usage）的请求依旧
+  不带，防钥匙外泄。
+
 ## [0.4.1] — 2026-09-17
 
 dsh 插件（0.1.6 基座）兼容与可用性修复 + 版本号统一。**无破坏性变更**。

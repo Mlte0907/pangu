@@ -453,14 +453,19 @@ def create_app() -> FastAPI:
     app.state.jwt_algorithm = config.jwt_algorithm
     app.state.user_store = user_store
     app.state.role_map = role_map
-    app.state.auth_enabled = bool(config.api_key or jwt_secret)
+    # 钥匙系统启用（mcp_require_auth）时 REST 网关同样上锁 —— 一套凭据（pgk_）管
+    # MCP 与 REST 两扇门，避免"MCP 锁了、REST 还开着"的绕行面。
+    app.state.auth_enabled = bool(config.api_key or jwt_secret or getattr(config, "mcp_require_auth", False))
 
-    # ── 鉴权中间件：API Key 或 JWT 二选一通过 ──
+    # ── 鉴权中间件：盘古钥匙（pgk_）/ API Key / JWT 三选一通过 ──
     class _AuthMiddleware:
-        """双鉴权中间件：支持 X-API-Key + Authorization: Bearer <jwt>。
+        """网关粗粒度鉴权。
 
-        启用条件：config.api_key 非空 或 jwt_secret 非空。
-        公开端点始终豁免：/、/health*、/metrics、/docs、/openapi.json、/api/v2/auth/*。
+        启用条件：config.api_key 非空、jwt_secret 非空，或钥匙系统启用
+        （mcp_require_auth=true）——三种情况下数据面路由都必须带凭据。
+        公开端点仅限探针与文档：/、/health*、/metrics、/docs、/openapi.json、
+        /api/v2/auth/*（登录本身）。/api/v2/admin/* 走自己的 X-Admin-Key
+        自保护（0600 secret，常量时间比对），不在网关重复设卡。
         """
 
         _EXEMPT_PATHS = {
@@ -471,20 +476,9 @@ def create_app() -> FastAPI:
             "/docs",
             "/openapi.json",
             "/redoc",
-            "/dashboard",
-            "/graph",
-            "/performance",
-            # 注意：/api/v2/system/info 曾被豁免，但它会返回 host / port /
-            # backend / llm_provider / embedding_model 以及认证状态、
-            # 用户数与角色列表——认证启用时这等于把系统画像交给未认证调用方。
-            # 该端点现已纳入鉴权（tests/test_auth.py 断言无 Key 时 401）。
-            "/api/v2/autonomous/status",
-            "/api/v2/graph",
-            "/api/v2/tools",
-            "/api/v2/tools-batch",
         }
         _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh"}
-        _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/memories", "/api/v2/admin", "/mcp")
+        _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/admin", "/mcp")
 
         def __init__(self, app: ASGIApp):
             self.app = app
@@ -492,7 +486,7 @@ def create_app() -> FastAPI:
             self.secret = jwt_secret
             self.algorithm = config.jwt_algorithm
             self.user_store = user_store
-            self.enabled = bool(self.api_key or self.secret)
+            self.enabled = bool(self.api_key or self.secret or getattr(config, "mcp_require_auth", False))
 
         async def __call__(self, scope: Scope, receive: Receive, send: Send):
             if scope["type"] != "http" or not self.enabled:
@@ -517,12 +511,10 @@ def create_app() -> FastAPI:
             if _exempt:
                 # 豁免路径不拦截请求，但仍**尽力解析**凭据并注入身份。
                 #
-                # 原因：/api/v2/memories 这类豁免前缀下的路由自己做细粒度
-                # RBAC/ABAC 授权（见 pangu/api/routes_memory.py 的
-                # `get_principal(request)`）。而 get_principal 读的是本中间件
-                # 注入的 `scope["state"]["auth"]`——若豁免时直接放行、不解析，
-                # 路由永远只能看到 anonymous，于是带着合法 Bearer 也会被
-                # 自己的路由判成未认证（HTTP 200 但 body.code=401）。
+                # 原因：仍在豁免名单里、又需要身份的路径（如 /api/v2/admin/*，
+                # 自保护用 X-Admin-Key；以及探针类）可能读取本中间件注入的
+                # `scope["state"]["auth"]`——若豁免时直接放行、不解析，这类
+                # 路由永远只能看到 anonymous。
                 #
                 # 分层意图：中间件负责粗粒度网关，路由负责细粒度授权。
                 # 因此这里静默解析、失败不拦截，把授权决定权留给路由。
@@ -1121,24 +1113,6 @@ def create_app() -> FastAPI:
     async def root():
         return RedirectResponse(url="/health")
 
-    @app.get("/dashboard", include_in_schema=False)
-    async def dashboard():
-        from fastapi.responses import HTMLResponse
-
-        dashboard_path = Path(__file__).parent.parent / "ui" / "templates" / "dashboard.html"
-        if dashboard_path.exists():
-            return HTMLResponse(content=dashboard_path.read_text(encoding="utf-8"))
-        return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
-
-    @app.get("/performance", include_in_schema=False)
-    async def performance():
-        from fastapi.responses import HTMLResponse
-
-        perf_path = Path(__file__).parent.parent / "ui" / "templates" / "performance.html"
-        if perf_path.exists():
-            return HTMLResponse(content=perf_path.read_text(encoding="utf-8"))
-        return HTMLResponse(content="<h1>Performance page not found</h1>", status_code=404)
-
     # ── 知识图谱 API ──
     @app.get("/api/v2/graph")
     async def graph_data(entity_type: str = None, limit: int = 100):
@@ -1177,15 +1151,6 @@ def create_app() -> FastAPI:
         except Exception as e:
             return {"code": 500, "error": str(e)}
 
-    @app.get("/graph", include_in_schema=False)
-    async def graph_page():
-        from fastapi.responses import HTMLResponse
-
-        graph_path = Path(__file__).parent.parent / "ui" / "templates" / "graph.html"
-        if graph_path.exists():
-            return HTMLResponse(content=graph_path.read_text(encoding="utf-8"))
-        return HTMLResponse(content="<h1>Graph page not found</h1>", status_code=404)
-
     # ── WebSocket 实时通知 ──
 
     from fastapi import WebSocket
@@ -1194,16 +1159,24 @@ def create_app() -> FastAPI:
     async def websocket_endpoint(websocket: WebSocket, token: str = ""):
         """实时通知。
 
-        认证(SEC-004):auth_enabled(config.api_key 或 jwt_secret 非空)时,
-        要求 query 参数 token 为 api_key(常量时间比对)或有效 JWT;
-        未通过则在握手阶段以 1008 拒绝。auth 未启用时放行(本机部署)。
+        认证(SEC-004)：auth_enabled（config.api_key / jwt_secret 非空，或
+        mcp_require_auth=true）时，要求 query 参数 token 为 api_key（常量时间
+        比对）、有效 JWT 或有效盘古钥匙（pgk_）；未通过则在握手阶段以 1008 拒绝。
+        auth 未启用时放行(本机部署)。
         """
-        auth_enabled = bool(config.api_key or jwt_secret)
+        auth_enabled = bool(config.api_key or jwt_secret or getattr(config, "mcp_require_auth", False))
         if auth_enabled:
             token_ok = False
             if token:
                 if config.api_key and hmac.compare_digest(token, config.api_key):
                     token_ok = True
+                elif token.startswith("pgk_"):
+                    try:
+                        from pangu.keys import KeyManager
+
+                        token_ok = bool(KeyManager().verify(token))
+                    except Exception:
+                        token_ok = False
                 else:
                     try:
                         verify_token(token, jwt_secret, algorithm=config.jwt_algorithm)

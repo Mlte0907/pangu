@@ -941,16 +941,16 @@ def run_all_phases():
         report.record(phase, "REST API 根路径", "FAIL", str(e))
         print(f"  ❌ REST 根路径 {e}")
 
-    # 9.2 Dashboard
+    # 9.2 老网页仪表盘（2026-09-18 退役：页面与路由删除，REST 接入钥匙体系）
     try:
         r = req.get("http://127.0.0.1:19529/dashboard", timeout=5)
-        status = "PASS" if r.status_code == 200 else "WARN"
-        detail = f"HTTP {r.status_code}, 内容长度 {len(r.text)}"
-        report.record(phase, "Dashboard", status, detail, 0)
-        print(f"  {'✅' if status == 'PASS' else '⚠️'} Dashboard {detail}")
+        status = "PASS" if r.status_code == 404 else "WARN"
+        detail = f"HTTP {r.status_code}（期望 404=已退役）"
+        report.record(phase, "Dashboard(退役)", status, detail, 0)
+        print(f"  {'✅' if status == 'PASS' else '⚠️'} Dashboard(退役) {detail}")
     except Exception as e:
-        report.record(phase, "Dashboard", "FAIL", str(e))
-        print(f"  ❌ Dashboard {e}")
+        report.record(phase, "Dashboard(退役)", "FAIL", str(e))
+        print(f"  ❌ Dashboard(退役) {e}")
 
     # 9.3 API 文档
     try:
