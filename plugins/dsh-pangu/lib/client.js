@@ -1011,7 +1011,7 @@ window.__ModuleLoader__.load({
         if (!createState.room) return
         setCreateState((p) => ({ ...p, result: null }))
         try {
-          const r = await callRemote('panguAdminKeys', 'createKey', { room: createState.room, scope: createState.scope })
+          const r = unwrap(await callRemote('panguAdminKeys', 'createKey', { room: createState.room, scope: createState.scope }))
           if (r.error) { setCreateState((p) => ({ ...p, result: { ok: false, msg: r.error } })); return }
           if (!r.key) { setCreateState((p) => ({ ...p, result: { ok: false, msg: '服务端未返回明文密钥（响应字段缺失：' + JSON.stringify(Object.keys(r || {})) + '）。请吊销该钥匙并用 CLI 重发。' } })); return }
           setCreateState((p) => ({ ...p, result: { ok: true, key: r.key, key_id: r.key_id }, room: '' }))
@@ -1026,7 +1026,7 @@ window.__ModuleLoader__.load({
         if (!window.confirm('重发房间「' + room + '」的钥匙？旧钥匙将被吊销。')) return
         setRekeyResult(null)
         try {
-          const r = await callRemote('panguAdminKeys', 'rekeyRoom', { room })
+          const r = unwrap(await callRemote('panguAdminKeys', 'rekeyRoom', { room }))
           if (r.error) { setRekeyResult({ ok: false, msg: r.error }); return }
           if (!r.key) { setRekeyResult({ ok: false, msg: '服务端未返回明文密钥（响应字段缺失：' + JSON.stringify(Object.keys(r || {})) + '）。该房间的新钥匙无法得知，请立即吊销并用 CLI 重发。' }); return }
           setRekeyResult({ ok: true, room, key: r.key, revoked: r.revoked || [] })
