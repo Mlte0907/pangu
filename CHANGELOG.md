@@ -7,6 +7,39 @@ Format based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/).
 > 版本号以 `pyproject.toml` 与 `pangu/__init__.py` 的 `__version__` 为唯一事实源。
 > 本文件此前的 `v1.0.0` 标题是「分层共存重构」时期的旧称，代码侧已在
 > commit `ac563b4`（unify all version strings to 0.1.0）统一为 `0.1.0`，此处同步更正。
+> 自 `0.4.1` 起 `plugins/dsh-pangu/package.json` 与上述两者保持同一版本号，
+> 设置页「关于与更新」显示的插件版本即读自此文件。
+
+## [0.4.1] — 2026-09-17
+
+dsh 插件（0.1.6 基座）兼容与可用性修复 + 版本号统一。**无破坏性变更**。
+
+### 版本号统一（0.3.0 / 1.4.0 → 0.4.1）
+
+- `pyproject.toml` 的 version、`pangu/__init__.py` 的 `__version__`（`/health` 自报）
+  与 `plugins/dsh-pangu/package.json` 的 version 原来各不相同（0.3.0 / 0.3.0 / 1.4.0），
+  设置页还另有一个写死的 `v1.5.0`。现全部对齐到 `0.4.1`。
+- 插件设置页「关于与更新」不再显示硬编码版本：本地插件版本读 `package.json`、
+  盘古服务版本读 `/health`，GitHub Release 仅标注为「上游发布，仅供参考」。
+
+### 插件修复（`plugins/dsh-pangu`）
+
+- **设置页整段不显示**：`updateInfo` / `updateLoading` 状态残留在 `AdminPane`，
+  而使用它们的更新检查 UI 已在 `PanguSettings`，渲染时抛 `ReferenceError`，
+  槽位条目崩溃（控制台 `slot entry crashed in 'settings.section'`）。状态移回
+  `PanguSettings`（`5ed3b0f`）。
+- **`/api/panguDashboard/checkUpdate` 404**：宿主 Typert 清单缺该 invocation 与
+  `CheckUpdateResult` schema，已补齐（`5ed3b0f`）。
+- 钥匙创建/重发响应缺明文字段时改为大声报错，避免静默丢钥匙（`309d6b3`）。
+- 客户端 `DESCRIPTORS` 补 `checkUpdate`，`apply()` 加 try-catch（`2a9413d`）。
+
+### 运维规范
+
+- 新增 `dsh-restart`（`~/.local/bin/`）作为 dsh-web 的唯一重启入口：先清掉占用
+  3080 的孤儿进程，再执行 `sudo -n /usr/bin/systemctl restart dsh-web.service`
+  （sudoers 仅精确放行全路径 + 全单元名），最后校验新主进程持有端口。
+  手工 `node ... web &` 产生的孤儿会让 systemd 进入 `EADDRINUSE` 崩溃循环、
+  界面停留在旧代码——即本次设置页问题的现场成因。详见 `DSH-WEB-OPS.md`。
 
 ## [0.3.0] — 2026-09-16
 
