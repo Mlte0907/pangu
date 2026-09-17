@@ -1,5 +1,0 @@
-# dsh-brake: 死循环刹车器
-- insert:
-    - id: dsh-brake
-      name: dsh-brake
-      config: {}
