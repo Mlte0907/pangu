@@ -978,8 +978,6 @@ window.__ModuleLoader__.load({
       const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
       const [keys, setKeys] = React.useState([])
       const [rooms, setRooms] = React.useState([])
-      const [updateInfo, setUpdateInfo] = React.useState(null)
-      const [updateLoading, setUpdateLoading] = React.useState(false)
       const [createState, setCreateState] = React.useState({ room: '', scope: 'readwrite', result: null })
       const [rekeyResult, setRekeyResult] = React.useState(null)
       const [loading, setLoading] = React.useState(true)
@@ -1291,6 +1289,8 @@ window.__ModuleLoader__.load({
       const [testState, setTestState] = React.useState({ s: 'idle', msg: '', ok: false })
       const [keyDirty, setKeyDirty] = React.useState(false)
       const [rooms, setRooms] = React.useState([])
+      const [updateInfo, setUpdateInfo] = React.useState(null)
+      const [updateLoading, setUpdateLoading] = React.useState(false)
 
       const load = React.useCallback(async () => {
         try {

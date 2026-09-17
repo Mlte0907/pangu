@@ -82,6 +82,14 @@ const _testLlmResult = () => (_testLlmResult$v ??= z.object({
 let _sinceCodec$v
 const _sinceCodec = () => (_sinceCodec$v ??= z.number().optional())
 
+let _checkUpdate$v
+const _checkUpdate = () => (_checkUpdate$v ??= z.object({
+  ok: z.boolean(), tag: z.string().optional(), name: z.string().optional(),
+  publishedAt: z.string().optional(), body: z.string().optional(),
+  size: z.number().optional(), downloadUrl: z.string().nullable().optional(),
+  error: z.string().optional(),
+}))
+
 let _addArgsCodec$v
 const _addArgsCodec = () => (_addArgsCodec$v ??= z.record(z.any()))
 
@@ -175,6 +183,12 @@ const TYPERT = {
       result: { mode: 'strict', typeSymbol: 'dsh-pangu#AddResult', create: _addResult },
     },
     {
+      id: 'dsh-pangu#panguDashboard/checkUpdate',
+      service: 'panguDashboard', namespace: 'panguDashboard', method: 'checkUpdate',
+      invocation: { kind: 'direct' }, parameters: [],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#CheckUpdateResult', create: _checkUpdate },
+    },
+    {
       id: 'dsh-pangu#panguKG/graph',
       service: 'panguKG', namespace: 'panguKG', method: 'graph',
       invocation: { kind: 'direct' }, parameters: [],
@@ -253,6 +267,7 @@ const TYPERT = {
           { kind: 'method', name: 'backup', signature: 'backup(): BackupResult', summary: '创建记忆备份快照。' },
           { kind: 'method', name: 'events', signature: 'events(since): Events', summary: '获取 since 之后的事件(实时通道缓冲),用于增量刷新。' },
           { kind: 'method', name: 'add', signature: 'add(args): AddResult', summary: '快速添加一条记忆片段。' },
+          { kind: 'method', name: 'checkUpdate', signature: 'checkUpdate(): CheckUpdateResult', summary: '查询 GitHub Releases 最新版本。' },
         ],
         types: [],
       },
