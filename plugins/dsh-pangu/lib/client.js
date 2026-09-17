@@ -977,6 +977,8 @@ window.__ModuleLoader__.load({
       const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
       const [keys, setKeys] = React.useState([])
       const [rooms, setRooms] = React.useState([])
+      const [updateInfo, setUpdateInfo] = React.useState(null)
+      const [updateLoading, setUpdateLoading] = React.useState(false)
       const [createState, setCreateState] = React.useState({ room: '', scope: 'readwrite', result: null })
       const [rekeyResult, setRekeyResult] = React.useState(null)
       const [loading, setLoading] = React.useState(true)
@@ -1285,6 +1287,7 @@ window.__ModuleLoader__.load({
       const [saveState, setSaveState] = React.useState({ s: 'idle', msg: '' })
       const [testState, setTestState] = React.useState({ s: 'idle', msg: '', ok: false })
       const [keyDirty, setKeyDirty] = React.useState(false)
+      const [rooms, setRooms] = React.useState([])
 
       const load = React.useCallback(async () => {
         try {
@@ -1301,6 +1304,10 @@ window.__ModuleLoader__.load({
           })
           setKeyDirty(false)
           setLoadErr(null)
+          // fetch rooms for section 04
+          callRemote('panguAdminKeys', 'listRooms').then(unwrap).then((v) => setRooms(v?.rooms || [])).catch(() => {})
+          // auto-check update on load
+          callRemote('panguDashboard', 'checkUpdate').then(unwrap).then((v) => setUpdateInfo(v)).catch(() => {})
         } catch (e) {
           setLoadErr(String(e.message || e))
         }
@@ -1354,6 +1361,15 @@ window.__ModuleLoader__.load({
         } catch (e) {
           setTestState({ s: 'done', ok: false, msg: String(e.message || e) })
         }
+      }
+
+      const checkUpdate = async () => {
+        setUpdateLoading(true)
+        try {
+          const v = unwrap(await callRemote('panguDashboard', 'checkUpdate'))
+          setUpdateInfo(v)
+        } catch (_) {}
+        setUpdateLoading(false)
       }
 
       const pickProvider = (id) => {
@@ -1479,8 +1495,41 @@ window.__ModuleLoader__.load({
             h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '房间与钥匙'),
             h('span', { style: { fontSize: 10.5, color: css.t3 } }, '完整管理在「盘古」标签页 · 管理'),
           ),
-          h('div', { key: 's4-body', style: { padding: '9px 0 2px', fontSize: 11, color: css.t3, lineHeight: 1.6 } },
-            '房间轮换 / 钥匙创建与吊销已移至「盘古」标签页 · 管理 —— 设置页不再重复操作面。'),
+          h('div', { key: 's4-body', style: { marginTop: 6 } },
+            rooms.length > 0 ? rooms.map((r) => h('div', { key: r.room, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${css.borderSoft}`, fontSize: 11.5 } },
+              h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 11 } }, r.room),
+              h('span', { style: { color: css.t3, fontSize: 10.5, flex: 1, textAlign: 'right', marginRight: 8 } }, (r.memory_count || 0) + ' 条 · ' + (r.key_count || 0) + ' 钥匙'),
+              h('button', { onClick: () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'admin' } })), style: { fontSize: 10.5, color: css.warn, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, '管理'),
+            )) : h('div', { style: { padding: '6px 0', fontSize: 11, color: css.t3 } }, '暂无房间'),
+            h('div', { style: { fontSize: 10, color: css.t3, marginTop: 6, lineHeight: 1.5 } }, '钥匙创建 / 吊销 / 轮换完整操作面在「盘古」标签页 · 管理。'),),
+          // ── 05 关于与更新 ──
+          h('div', { key: 's5-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '05'),
+            h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '关于与更新'),
+            h('span', { style: { fontSize: 10.5, color: css.t3 } }, '版本信息 · 在线更新'),
+          ),
+          h('div', { key: 's5-body', style: { marginTop: 6 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '12px 14px', background: css.bg1 } },
+              h('div', { style: { flex: 1 } },
+                h('div', { style: { fontSize: 12.5, fontWeight: 600 } }, 'dsh-pangu v1.5.0'),
+                h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 3 } },
+                  updateInfo
+                    ? updateInfo.ok
+                      ? h('span', null, '最新版本 ', h('b', { style: { color: css.t1 } }, updateInfo.tag),
+                        updateInfo.publishedAt && h('span', null, ' · 发布于 ' + updateInfo.publishedAt.slice(0, 10)))
+                      : h('span', { style: { color: css.warn } }, '检查失败：' + (updateInfo.error || ''))
+                    : h('span', null, updateLoading ? '检查中…' : '点击右侧按钮检查更新'),
+                ),
+                updateInfo?.ok && updateInfo.body && h('div', { style: { fontSize: 10, color: css.t3, marginTop: 5, lineHeight: 1.6, maxHeight: 60, overflow: 'hidden' } }, updateInfo.body),
+              ),
+              h('button', { onClick: checkUpdate, disabled: updateLoading, style: { flexShrink: 0, padding: '6px 14px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 12, fontWeight: 500, cursor: updateLoading ? 'default' : 'pointer' } },
+                updateLoading ? '检查中…' : '检查更新'),
+            ),
+            h('div', { style: { fontSize: 10, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
+              '更新源：GitHub Releases（通过 gh-proxy.org 加速）。手动更新：',
+              h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 10 } }, 'cd ~/pangu && git pull origin master && pnpm install'),
+            ),
+          ),
           h('div', { key: 'save', style: { position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, padding: '10px 14px', border: `1px solid ${css.borderSoft}`, borderRadius: 10, background: css.bg2 } },
             h('button', { onClick: save, disabled: !dirty || saveState.s === 'saving', style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 17px', borderRadius: 7, border: 'none', background: dirty ? ACCENT : css.bg3, color: dirty ? '#fff' : css.t3, fontSize: 12.5, fontWeight: 600, cursor: dirty ? 'pointer' : 'default', transition: 'background .2s' } },
               h(Icon, { name: saveState.s === 'saved' ? 'check' : 'save', size: 13, color: dirty ? '#fff' : undefined }),

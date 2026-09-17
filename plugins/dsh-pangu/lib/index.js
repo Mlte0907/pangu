@@ -331,6 +331,28 @@ async function apply(ctx) {
         return { ok: false, error: String(e) }
       }
     },
+
+    async checkUpdate() {
+      try {
+        const proxy = 'https://gh-proxy.org/'
+        const api = 'https://api.github.com/repos/Mlte0907/pangu/releases/latest'
+        const res = await fetch(proxy + api, { signal: AbortSignal.timeout(10000) })
+        if (!res.ok) return { ok: false, error: 'GitHub API ' + res.status }
+        const data = await res.json()
+        const asset = (data.assets || [])[0] || null
+        return {
+          ok: true,
+          tag: data.tag_name || '',
+          name: data.name || data.tag_name || '',
+          publishedAt: data.published_at || '',
+          body: (data.body || '').slice(0, 800),
+          size: asset ? asset.size : 0,
+          downloadUrl: asset ? asset.browser_download_url : null,
+        }
+      } catch (e) {
+        return { ok: false, error: String(e.message || e) }
+      }
+    },
     async injectionStats() {
       try { return { ok: true, stats: statsCollector.query() } }
       catch (e) { return { ok: false, error: String(e) } }
