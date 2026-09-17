@@ -8,11 +8,11 @@
         url: http://127.0.0.1:19529/mcp
         toolCallTimeoutMs: 60000
         # ── MCP 认证凭据 ──────────────────────────────────────────
-        # X-API-Key 从环境变量 PANGU_API_KEY 读取（!!js 表达式在 Loader 挂载时求值）。
-        # 优先级链：PANGU_API_KEY 环境变量 > ~/.pangu/.mcp_key (0600)
-        # 见 lib/index.js readStoredApiKey() 的三级回落逻辑。
+        # X-API-Key 从 ~/.pangu/.mcp_key (0600) 读取（!!js IIFE 在 Loader 挂载时求值）。
+        # 优先级链：~/.pangu/.mcp_key 文件 > PANGU_API_KEY 环境变量 > 空串
+        # 不依赖 /etc/dsh-harness.env（不需要 sudo 写系统文件）
         headers:
-          X-API-Key: !!js process.env.PANGU_API_KEY || ''
+          X-API-Key: !!js (function(){ try { return require('fs').readFileSync(require('path').join(require('os').homedir(),'.pangu','.mcp_key'),'utf8').trim() } catch(e) { return process.env.PANGU_API_KEY || '' } })()
         # ── 关于工具白名单 ──────────────────────────────────────────
         # 早期版本此处配置了 `tools.allow` 白名单（11 个工具）。
         # 但 `@deepseek-ai/dsh-mcp-client` 的 Config schema 并不包含
