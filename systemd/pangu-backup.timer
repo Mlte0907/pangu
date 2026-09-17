@@ -1,0 +1,11 @@
+[Unit]
+Description=盘古记忆系统每日备份定时器
+
+# 05:30 执行：晚于 03:00–05:00 的夜间巩固窗口，备份到的是巩固后的稳定状态；
+# 08:00 的健康巡检据此判断「备份新鲜」（阈值 25h）。
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+
+[Install]
+WantedBy=default.target

@@ -33,9 +33,19 @@ class BackupInfo:
 class BackupRestoreEngine:
     """备份恢复引擎"""
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, backup_dir=None):
+        """备份目录解析顺序：显式 backup_dir > config.backup_dir > ~/.pangu/backups。
+
+        显式参数是给测试用的：默认落到 $HOME 会让每次跑测试都往用户真实备份目录里
+        写测试数据（曾累积 700+ 个 "test content" 假备份，见 2026-09-17 记录）。
+        """
         self.config = config
-        self._backup_dir = Path.home() / ".pangu" / "backups"
+        if backup_dir is not None:
+            self._backup_dir = Path(backup_dir)
+        elif config is not None and getattr(config, "backup_dir", None):
+            self._backup_dir = Path(config.backup_dir)
+        else:
+            self._backup_dir = Path.home() / ".pangu" / "backups"
         self._backup_dir.mkdir(parents=True, exist_ok=True)
         self._backup_index: list[BackupInfo] = []
         self._load_index()

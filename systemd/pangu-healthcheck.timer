@@ -1,0 +1,10 @@
+[Unit]
+Description=盘古每日健康巡检定时器
+
+# 08:00 巡检：此时 05:30 的每日备份已落盘，可一并校验备份时效（阈值 25h）。
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+
+[Install]
+WantedBy=default.target

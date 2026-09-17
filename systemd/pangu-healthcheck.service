@@ -1,0 +1,7 @@
+[Unit]
+Description=盘古每日健康巡检
+After=pangu-api.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/xiaoxin/pangu/scripts/healthcheck_daily.sh

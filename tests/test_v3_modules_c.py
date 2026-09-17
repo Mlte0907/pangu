@@ -1,5 +1,8 @@
 """盘古 V3.0 模块测试 C — 7 个记忆引擎"""
 
+import tempfile
+from pathlib import Path
+
 from pangu.core.palace import Drawer
 from pangu.memory.backup_restore import BackupRestoreEngine
 from pangu.memory.distillation import DistillationEngine
@@ -334,9 +337,15 @@ class TestHealthMonitor:
 
 class TestBackupRestoreEngine:
     def setup_method(self):
-        self.engine = BackupRestoreEngine()
+        # 必须给临时目录：默认的 ~/.pangu/backups 是用户真实备份目录，
+        # 从那里跑测试会写入假备份（过去累积过 700+ 个 "test content" 文件）。
+        self._tmp = tempfile.TemporaryDirectory()
+        self.engine = BackupRestoreEngine(backup_dir=Path(self._tmp.name) / "backups")
         self.engine._backup_index.clear()
         self.engine._save_index()
+
+    def teardown_method(self):
+        self._tmp.cleanup()
 
     def test_backup_empty(self):
         info = self.engine.backup([])

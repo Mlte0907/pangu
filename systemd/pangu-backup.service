@@ -1,0 +1,7 @@
+[Unit]
+Description=盘古记忆系统每日备份
+After=pangu-api.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/xiaoxin/pangu/scripts/backup_pangu.sh
