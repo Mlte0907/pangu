@@ -56,6 +56,7 @@ window.__ModuleLoader__.load({
         { id: 'dsh-pangu#panguAdminKeys/createKey', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'createKey', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreateArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreate', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/revokeKey', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'revokeKey', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevokeArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevoke', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/rekeyRoom', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'rekeyRoom', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyResult', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguDashboard/checkUpdate', service: 'panguDashboard', namespace: 'panguDashboard', method: 'checkUpdate', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#CheckUpdateResult', create: () => okEnvelope } },
       ],
     }
 
@@ -1544,6 +1545,7 @@ window.__ModuleLoader__.load({
       )
     }
     async function apply(ctxRef) {
+      try {
       ctx = ctxRef
       const slots = ctxRef.get('slots')
       timer = ctxRef.get('timer')
@@ -1568,6 +1570,7 @@ window.__ModuleLoader__.load({
       slots.inject('settings.section', () =>
         slots.register({ name: 'settings.section', id: 'pangu-settings', order: 40, label: () => '盘古记忆系统' }, PanguSettings),
       )
+      } catch (e) { console.error('[dsh-pangu] apply error:', e) }
     }
 
     module.exports = { apply, inject }
