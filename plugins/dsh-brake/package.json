@@ -1,0 +1,18 @@
+{
+  "name": "dsh-brake",
+  "version": "0.1.0",
+  "description": "DSH 死循环刹车器：检测方法循环（同类工具高频调用），注入警告或拒绝执行",
+  "main": "lib/index.js",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {}
+}
