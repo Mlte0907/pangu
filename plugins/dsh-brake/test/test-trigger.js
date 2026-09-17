@@ -47,6 +47,12 @@ function detectLoop(state, cfg) {
   if (state.window.entries.length < 4) return null
   const { family, ratio } = state.window.dominantFamily()
   if (family === 'other' || ratio < familyThreshold) return null
+  // 重复率检测：同一工具名出现次数 / 总数 < 50% → 正常工作流
+  const nameCounts = {}
+  for (const e of state.window.entries) nameCounts[e.name] = (nameCounts[e.name] || 0) + 1
+  let maxNameCount = 0
+  for (const c of Object.values(nameCounts)) if (c > maxNameCount) maxNameCount = c
+  if (maxNameCount / state.window.entries.length < 0.5) return null
   state.consecutiveSteps++
   if (state.consecutiveSteps >= denySteps && state.lastDeniedStep < state.consecutiveSteps) {
     state.lastDeniedStep = state.consecutiveSteps
@@ -152,6 +158,27 @@ test('pangu tools dont count as filesystem', () => {
   const tools = [...Array(5).fill('grep'), ...Array(7).fill('pangu_add_memory')]
   const results = feedTools(s, tools, cfg)
   assert.strictEqual(results.length, 0)
+})
+
+// ── 7: 正常工作流不触发（不同工具同族） ──
+console.log('\n7. normal workflow — different tools in same family')
+test('git add→commit→push does NOT trigger (different tool names)', () => {
+  const s = createState()
+  const cfg = { warnSteps: 6, denySteps: 10, familyThreshold: 0.75 }
+  // bash 族但不同工具名：bash(git add), bash(git commit), bash(git push), ...
+  // classifyTool 只看前缀，但实际工具名是 bash。需要模拟不同名字。
+  // 用 code 族的不同工具：bash, python, node
+  const tools = ['bash', 'python', 'node', 'bash', 'python', 'node', 'bash', 'python', 'node', 'bash', 'python', 'node']
+  const results = feedTools(s, tools, cfg)
+  assert.strictEqual(results.length, 0, 'different tool names in same family should NOT trigger')
+})
+
+test('read→write→edit→grep does NOT trigger (different filesystem tools)', () => {
+  const s = createState()
+  const cfg = { warnSteps: 6, denySteps: 10, familyThreshold: 0.75 }
+  const tools = ['read', 'write', 'edit', 'grep', 'read', 'write', 'edit', 'grep', 'read', 'write', 'edit', 'grep']
+  const results = feedTools(s, tools, cfg)
+  assert.strictEqual(results.length, 0, 'different filesystem tools should NOT trigger')
 })
 
 // ── 汇总 ──
