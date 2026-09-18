@@ -478,10 +478,17 @@ window.__ModuleLoader__.load({
     }
 
     function MemRow({ m }) {
+      // 点击整行展开/收起：摘要默认 2 行截断（line-clamp），此前行是死的 —— 截断后
+      // 没有任何办法看到全文（用户报"底部无法点击"）。
+      const [open, setOpen] = React.useState(false)
       // 优先用后端给的 encrypted 字段（后端已解密并给出 summary）
       const enc = m.encrypted === true || (typeof m.content === 'string' && m.content.startsWith('gAAAAA'))
       const imp = Number(m.importance || 0)
-      return h('div', { style: { display: 'flex', gap: 10, padding: '9px 2px', borderBottom: `1px solid ${css.borderSoft}`, alignItems: 'flex-start' } },
+      return h('div', {
+        onClick: () => setOpen((v) => !v),
+        title: open ? '点击收起' : '点击展开全文',
+        style: { display: 'flex', gap: 10, padding: '9px 2px', borderBottom: `1px solid ${css.borderSoft}`, alignItems: 'flex-start', cursor: 'pointer' },
+      },
         h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, color: css.t3, width: 34, flexShrink: 0, paddingTop: 2 } }, (m.graduated_at || m.created_at || '').slice(5, 10)),
         h('div', { style: { flex: 1, minWidth: 0 } },
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', fontSize: 10, color: css.t3 } },
@@ -489,9 +496,10 @@ window.__ModuleLoader__.load({
             (m.tags || []).slice(0, 3).map((t) => h('span', { key: t, style: { border: `1px solid ${css.borderSoft}`, borderRadius: 4, padding: '0 5px', fontSize: 9.5 } }, t)),
             enc && h('span', { className: 'pangu-stampline' }, '已加密'),
           ),
-          h('div', { style: { fontSize: 11.5, color: (enc && !m.summary) ? css.t3 : css.t1, marginTop: 3, lineHeight: 1.55, fontStyle: (enc && !m.summary) ? 'italic' : 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } },
+          h('div', { style: { fontSize: 11.5, color: (enc && !m.summary) ? css.t3 : css.t1, marginTop: 3, lineHeight: 1.55, fontStyle: (enc && !m.summary) ? 'italic' : 'normal', display: '-webkit-box', WebkitLineClamp: open ? 'unset' : 2, WebkitBoxOrient: 'vertical', overflow: open ? 'visible' : 'hidden' } },
             // 摘要优先（后端已解密/取 facts）；拿不到才退回占位文案
             m.summary || (enc ? '（加密内容 · 摘要不可用）' : (m.content || '').slice(0, 120))),
+          open && h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 3 } }, '点击收起'),
         ),
         h('div', { style: { flexShrink: 0, textAlign: 'right' } },
           h('div', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 11.5, fontWeight: 600 } }, imp ? imp.toFixed(1) : '—'),
@@ -668,7 +676,7 @@ window.__ModuleLoader__.load({
         ),
         // ⑤ 最近入库
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '05', title: '最近入库', hint: '公共区最新 ' + Math.min(5, pubMems.length) + ' 条 · 加密盖印章' }),
+          h(SecHead, { num: '05', title: '最近入库', hint: '公共区最新 ' + Math.min(5, pubMems.length) + ' 条 · 加密盖印章 · 点击条目展开全文' }),
           pubMems.length
             ? h('div', { style: { marginTop: 4 } }, pubMems.slice(0, 5).map((m) => h(MemRow, { key: m.id, m })))
             : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无公共区记忆'),
