@@ -506,16 +506,34 @@ window.__ModuleLoader__.load({
       const days = (created || []).slice(-7)
       const recalls = (recalled || []).slice(-7)
       const n = Math.max(1, days.length)
-      const W = 620, H = 132, TOP = 26, BOTTOM = 102
+      // 宽度跟随容器：viewBox 与实际像素 1:1，柱宽/字号/圆都按设计值固定。
+      // 此前 viewBox 固定 620 + preserveAspectRatio:'none'，容器一宽（宽屏实测 1248px）
+      // 整个图被横向拉 2.01 倍 —— 字变胖、柱变宽、圆变椭圆（用户报"宽屏拉长变形"）。
+      const wrapRef = React.useRef(null)
+      const [W, setW] = React.useState(620)
+      React.useEffect(() => {
+        const el = wrapRef.current
+        if (!el || typeof ResizeObserver === 'undefined') return undefined
+        const ro = new ResizeObserver((entries) => {
+          const w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0
+          if (w) setW(Math.max(320, Math.round(w)))
+        })
+        ro.observe(el)
+        return () => ro.disconnect()
+      }, [])
+      const H = 132, TOP = 26, BOTTOM = 102
       const maxC = Math.max(1, ...days.map((d) => Number(d.count) || 0))
       const maxR = Math.max(1, ...recalls.map((d) => Number(d.count) || 0))
       const step = W / n
+      // 柱宽取设计值 22，但容器很窄时收窄到 step 的 60% 防重叠（宽屏下不再被拉宽）
+      const barW = Math.max(8, Math.min(22, Math.round(step * 0.6)))
       const xC = (i) => Math.round(step * i + step / 2)
       const barH = (c) => Math.round(((BOTTOM - TOP) * (Number(c) || 0)) / maxC)
       const yR = (c) => Math.round(BOTTOM - ((BOTTOM - TOP) * (Number(c) || 0)) / maxR)
       const hasRecall = recalls.some((d) => (Number(d.count) || 0) > 0)
-      return h('div', null,
-        h('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', style: { width: '100%', height: H, display: 'block' }, 'aria-hidden': 'true' },
+      return h('div', { ref: wrapRef },
+        // preserveAspectRatio 用 meet（非 none）：首帧测量未回来时宁可两侧留白也不拉伸
+        h('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet', style: { width: '100%', height: H, display: 'block' }, 'aria-hidden': 'true' },
           h('g', { stroke: css.borderSoft, strokeWidth: 1 },
             [TOP, Math.round((TOP + BOTTOM) / 2), BOTTOM].map((y, i) => h('line', { key: i, x1: 0, y1: y, x2: W, y2: y })),
           ),
@@ -529,7 +547,7 @@ window.__ModuleLoader__.load({
           h('g', null, days.map((d, i) => {
             const hh = Math.max(2, barH(d.count))
             return h('rect', {
-              key: i, x: xC(i) - 11, y: BOTTOM - hh, width: 22, height: hh, rx: 2.5,
+              key: i, x: xC(i) - barW / 2, y: BOTTOM - hh, width: barW, height: hh, rx: 2.5,
               fill: ACCENT, opacity: (0.45 + (0.5 * hh) / (BOTTOM - TOP)).toFixed(2),
             })
           })),
@@ -585,6 +603,9 @@ window.__ModuleLoader__.load({
       }
       const consLabel = cons?.last_run ? relTime(cons.last_run) : cons ? '从未运行' : '—'
       return h('div', { style: { padding: '14px 16px 20px', overflow: 'auto', height: '100%', boxSizing: 'border-box', animation: 'panguFade .25s ease' } },
+        // 宽屏下内容会被无限拉长（宽屏实测主区 1248px）：卡片横条、管线三格右侧出现大片
+        // 空白，脉搏图更被拉变形。统一限宽居中 —— 面板是用来读数字的，不是铺满大屏的仪表盘。
+        h('div', { style: { maxWidth: 1120, margin: '0 auto' } },
         // ① 体征带
         h('div', { style: { display: 'flex', borderTop: `1px solid ${css.borderSoft}`, borderBottom: `1px solid ${css.borderSoft}` } },
           h(Vital, { v: fmtNum(s?.total || 0), l: '记忆总量', d: h('span', null, '健康 ', h('b', { style: { color: degraded ? css.warn : css.t2 } }, s ? (s.health || '—') : '—')) }),
@@ -651,6 +672,7 @@ window.__ModuleLoader__.load({
           pubMems.length
             ? h('div', { style: { marginTop: 4 } }, pubMems.slice(0, 5).map((m) => h(MemRow, { key: m.id, m })))
             : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无公共区记忆'),
+        ),
         ),
       )
     }
