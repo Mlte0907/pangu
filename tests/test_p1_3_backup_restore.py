@@ -61,8 +61,10 @@ def test_backup_stores_all_fields(tmp_path):
     ms.add_drawers([_full_drawer()])
     info = be.backup(ms.get_drawers(), "全字段")
     raw = json.loads((pathlib.Path(tmp_path) / "bk" / f"{info.backup_id}.json").read_text())
-    assert set(raw[0].keys()) == set(Drawer.__dataclass_fields__)
-    assert raw[0]["metadata"]["tenant_id"] == "dsh"
+    assert raw["version"] == 2
+    item = raw["drawers"][0]
+    assert set(item.keys()) == set(Drawer.__dataclass_fields__)
+    assert item["metadata"]["tenant_id"] == "dsh"
 
 
 def test_restore_really_writes_to_disk(tmp_path):
@@ -111,7 +113,7 @@ def test_restore_rejects_tampered_backup(tmp_path):
     info = be.backup(ms.get_drawers(), "t")
     f = pathlib.Path(tmp_path) / "bk" / f"{info.backup_id}.json"
     data = json.loads(f.read_text())
-    data[0]["content"] = "篡改"
+    data["drawers"][0]["content"] = "篡改"
     f.write_text(json.dumps(data))
 
     r = be.restore(info.backup_id, memory=ms)
@@ -198,6 +200,58 @@ def test_v1_backup_compat(tmp_path):
     assert r["success"] is True
     assert _disk_ids(ms) == ["old"]
     assert ms.get_drawer_by_id("old").room == "general"  # 默认值兜底
+
+
+def test_backup_includes_assets_and_restores(tmp_path):
+    """★ 新能力：KG/wiki/遗忘归档 一并备份与恢复（此前完全在备份范围之外）。
+
+    KG 走 SQLite 在线备份 API —— 直接拷 .db 会丢掉 WAL 里未 checkpoint 的数据。
+    """
+    import sqlite3
+
+    cfg, ms, be = _setup(tmp_path)
+    ms.add_drawers([Drawer(id="a", content="A", wing="w", room="r")])
+    base = pathlib.Path(cfg.palace_path)
+    base.mkdir(parents=True, exist_ok=True)
+
+    # 造资产：KG（SQLite）+ wiki + 遗忘归档
+    kg = base / "knowledge_graph.db"
+    c = sqlite3.connect(str(kg))
+    c.execute("CREATE TABLE entities_all (id TEXT PRIMARY KEY, name TEXT)")
+    c.execute("INSERT INTO entities_all VALUES ('Python', 'Python语言')")
+    c.commit()
+    c.close()
+
+    wiki = base / "wiki.json" / "wiki_index.json"
+    wiki.parent.mkdir(parents=True, exist_ok=True)
+    wiki.write_text('{"pages": ["p1"]}')
+    arch = base.parent / "forgetting_archive.json"
+    arch.write_text('[{"id": "old"}]')
+
+    info = be.backup(ms.get_drawers(), "含资产")
+    v = be.verify_backup(info.backup_id)
+    assert v["format"] == "v2"
+    assert {"knowledge_graph", "wiki_index", "forgetting_archive"} <= set(v["assets"])
+
+    # 破坏三类资产
+    c = sqlite3.connect(str(kg))
+    c.execute("DELETE FROM entities_all")
+    c.commit()
+    c.close()
+    wiki.write_text("{}")
+    arch.unlink()
+
+    # 恢复
+    r = be.restore(info.backup_id, memory=ms)
+    assert r["success"] is True
+    assert r["assets_restored"]["knowledge_graph"] == "ok"
+
+    c = sqlite3.connect(str(kg))
+    n = c.execute("SELECT COUNT(*) FROM entities_all").fetchone()[0]
+    c.close()
+    assert n == 1, "KG 数据未恢复"
+    assert "p1" in wiki.read_text()
+    assert arch.exists()
 
 
 def test_index_survives_corruption(tmp_path):

@@ -8,6 +8,7 @@
 5. 备份管理：管理多个备份版本
 """
 
+import base64
 import hashlib
 import json
 import logging
@@ -108,9 +109,129 @@ class BackupRestoreEngine:
                 out.append(Drawer.from_dict(item))
         return out
 
+    # ── 附属资产（2026-09-19 扩展）──
+    #
+    # 此前备份只覆盖 drawers.json，而权威目录里还有知识图谱 / wiki / 遗忘归档 /
+    # 任务表 —— "全量备份"名不符实（恢复后 KG 与 wiki 全丢）。
+    # 刻意**不含 users.db**：它是用户与钥匙凭据，恢复它会覆盖现有凭据（危险），
+    # 应由运维单独处置。
+    _ASSET_FILES = (
+        ("wiki_index", "wiki.json/wiki_index.json"),
+        ("forgetting_archive", "../forgetting_archive.json"),
+        ("tasks_db", "tasks.db"),
+    )
+
+    def _collect_assets(self) -> dict:
+        """收集附属资产（base64 编码），供 backup 打包。
+
+        KG 必须走 sqlite3 在线备份 API，不能直接拷 .db 文件：库跑在 WAL 模式，
+        直接拷贝主文件会丢掉尚未 checkpoint 的 WAL 数据（实测该库主文件 57KB
+        对应 WAL 2MB）。
+        """
+        assets: dict = {}
+        if self.config is None:
+            return assets
+        base = Path(self.config.palace_path)
+        if not base.exists():
+            return assets
+
+        kg = base / "knowledge_graph.db"
+        if kg.exists():
+            raw = self._dump_sqlite(kg)
+            if raw is not None:
+                assets["knowledge_graph"] = raw
+
+        for key, rel in self._ASSET_FILES:
+            p = (base / rel).resolve()
+            try:
+                if p.exists() and p.is_file():
+                    assets[key] = base64.b64encode(p.read_bytes()).decode()
+            except Exception as e:
+                logger.warning(f"资产收集跳过 {p}: {e}")
+        return assets
+
+    @staticmethod
+    def _dump_sqlite(db_path: Path) -> str | None:
+        """用 SQLite 在线备份 API 导出为 base64（正确处理 WAL，含未 checkpoint 数据）"""
+        import sqlite3
+
+        src = dst = None
+        tmp = db_path.with_name(db_path.name + ".dump.tmp")
+        try:
+            src = sqlite3.connect(str(db_path))
+            dst = sqlite3.connect(str(tmp))
+            src.backup(dst)
+            dst.close()
+            dst = None
+            return base64.b64encode(tmp.read_bytes()).decode()
+        except Exception as e:
+            logger.warning(f"SQLite 导出失败 {db_path}: {e}")
+            return None
+        finally:
+            for c in (dst, src):
+                if c is not None:
+                    c.close()
+            if tmp.exists():
+                tmp.unlink()
+
+    def _restore_assets(self, assets: dict) -> dict:
+        """还原附属资产，返回 {资产键: "ok" | 错误信息}。
+
+        KG 走反向 backup（备份内容 → 活跃库）：不用手工处理 WAL，也不破坏
+        已打开的连接。
+        """
+        result: dict = {}
+        if self.config is None or not assets:
+            return result
+        base = Path(self.config.palace_path)
+        base.mkdir(parents=True, exist_ok=True)
+
+        if assets.get("knowledge_graph"):
+            import sqlite3
+
+            tmp = base / "_restore_kg.tmp"
+            try:
+                tmp.write_bytes(base64.b64decode(assets["knowledge_graph"]))
+                src = sqlite3.connect(str(tmp))
+                dst = sqlite3.connect(str(base / "knowledge_graph.db"))
+                try:
+                    src.backup(dst)
+                finally:
+                    dst.close()
+                    src.close()
+                result["knowledge_graph"] = "ok"
+            except Exception as e:
+                result["knowledge_graph"] = f"失败: {e}"
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
+
+        for key, rel in self._ASSET_FILES:
+            if key not in assets:
+                continue
+            p = (base / rel).resolve()
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(base64.b64decode(assets[key]))
+                result[key] = "ok"
+            except Exception as e:
+                result[key] = f"失败: {e}"
+        return result
+
     def backup(self, drawers: list, description: str = "") -> BackupInfo:
-        """全量备份"""
-        serialized = self._serialize_drawers(drawers)
+        """全量备份（记忆抽屉 + 附属资产）。
+
+        格式 v2：{"version": 2, "generated_at": …, "drawers": [...], "assets": {...}}
+        v1（纯数组）仍可被 restore / verify 读取（_parse_backup_payload 兼容）。
+        """
+        assets = self._collect_assets()
+        payload = {
+            "version": 2,
+            "generated_at": datetime.now().isoformat(),
+            "drawers": [d.to_dict() if hasattr(d, "to_dict") else d for d in drawers],
+            "assets": assets,
+        }
+        serialized = json.dumps(payload, ensure_ascii=False)
         checksum = hashlib.sha256(serialized.encode()).hexdigest()[:16]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_id = f"backup_{timestamp}_{checksum[:8]}"
@@ -118,18 +239,28 @@ class BackupRestoreEngine:
         backup_file = self._backup_dir / f"{backup_id}.json"
         backup_file.write_text(serialized)
 
+        asset_note = f" + {len(assets)} 类附属资产" if assets else ""
         info = BackupInfo(
             backup_id=backup_id,
             timestamp=datetime.now().isoformat(),
             memory_count=len(drawers),
             size_bytes=len(serialized.encode()),
             checksum=checksum,
-            description=description or f"全量备份 {len(drawers)} 条记忆",
+            description=description or f"全量备份 {len(drawers)} 条记忆{asset_note}",
         )
         self._backup_index.append(info)
         self._save_index()
 
         return info
+
+    @staticmethod
+    def _parse_backup_payload(data):
+        """兼容两层格式：v2 dict → (drawers, assets)；v1 纯数组 → (drawers, {})"""
+        if isinstance(data, dict):
+            return data.get("drawers") or [], data.get("assets") or {}
+        if isinstance(data, list):
+            return data, {}
+        return [], {}
 
     def backup_incremental(self, drawers: list, since_id: str = None) -> BackupInfo:
         """增量备份。
@@ -185,12 +316,15 @@ class BackupRestoreEngine:
 
         try:
             data = json.loads(content)
+            drawers, assets = self._parse_backup_payload(data)
             return {
                 "valid": True,
                 "backup_id": backup_id,
-                "memory_count": len(data),
+                "memory_count": len(drawers),
                 "checksum": checksum,
                 "size": len(content.encode()),
+                "format": "v2" if isinstance(data, dict) else "v1",
+                "assets": sorted(assets.keys()),
             }
         except json.JSONDecodeError:
             return {"valid": False, "error": "JSON 解析失败"}
@@ -229,11 +363,14 @@ class BackupRestoreEngine:
         except Exception as e:
             return {"success": False, "error": f"读取备份失败: {e}"}
 
-        # ② 空备份保护
-        if not data:
+        # v2（dict：drawers + assets）/ v1（纯数组）统一解析
+        drawers_raw, assets = self._parse_backup_payload(data)
+
+        # ② 空备份保护（按抽屉条数判：v2 里 dict 非空但 drawers 可能是空表）
+        if not drawers_raw:
             return {"success": False, "error": "备份为空（0 条），拒绝恢复以防清库"}
 
-        drawers = self._deserialize_drawers(data)
+        drawers = self._deserialize_drawers(drawers_raw)
 
         if dry_run:
             return {
@@ -241,6 +378,7 @@ class BackupRestoreEngine:
                 "dry_run": True,
                 "backup_id": backup_id,
                 "would_restore": len(drawers),
+                "assets": sorted(assets.keys()),
                 "checksum": verdict.get("checksum"),
             }
 
@@ -266,12 +404,17 @@ class BackupRestoreEngine:
             # 这里给中性描述，具体原因看服务日志里 layers 的 warning。
             return {"success": False, "error": "落盘失败（磁盘未变），原因见服务日志"}
 
+        # ⑤ 附属资产（KG/wiki/归档/任务表）—— 记忆落盘成功后再还原。
+        #    单个资产失败不回滚记忆：记忆是主体，资产可下次单独恢复。
+        assets_result = self._restore_assets(assets) if assets else {}
+
         return {
             "success": True,
             "backup_id": backup_id,
             "restored_count": len(drawers),
             "safety_backup": safety,
             "checksum": verdict.get("checksum"),
+            "assets_restored": assets_result,
         }
 
     def _get_memory(self):
@@ -328,10 +471,12 @@ class BackupRestoreEngine:
         except json.JSONDecodeError:
             return {"success": False, "error": "JSON 解析失败"}
 
-        filtered = self._apply_filters(data, wing, min_importance)
+        # v2（dict）/ v1（数组）统一解析 —— 此前直接遍历 data，v2 下会拿 str 调 .get
+        drawers_raw, _assets = self._parse_backup_payload(data)
+        filtered = self._apply_filters(drawers_raw, wing, min_importance)
         base = {
             "backup_id": backup_id,
-            "total_in_backup": len(data),
+            "total_in_backup": len(drawers_raw),
             "filter": {"wing": wing, "min_importance": min_importance},
         }
 
