@@ -341,6 +341,21 @@ class MCPServer:
         # key_id 用于第三档 private（仅属主钥匙可见）；见 layers.metadata_visible
         key_id = identity.get("key_id", "") if isinstance(identity, dict) else ""
         clearance = identity.get("clearance", 0) if isinstance(identity, dict) else 0
+
+        # scope 强制（2026-09-19 补）：scope 此前自建钥匙起只存不查，readonly 钥匙
+        # 实际拥有全部写权限（可增删记忆/导入/改配置）。这里在唯一的执行点强制：
+        #   readonly → 写类工具一律拒绝（code=1003）。
+        # 保守取值：identity 缺 scope 时按 readwrite 放行（不锁死既有调用方——
+        # 本地 CLI/测试直调 handler 不经过此处，也不受影响）。
+        if isinstance(identity, dict) and identity.get("scope") == "readonly":
+            from .module_registry import WRITE_TOOLS  # noqa: PLC0415
+
+            if tool_name in WRITE_TOOLS:
+                return json.dumps(
+                    {"code": 1003, "error": f"只读钥匙不能调用写类工具: {tool_name}"},
+                    ensure_ascii=False,
+                )
+
         token = set_tenant_scope(tenant, key_id, clearance)
         try:
             drawers = self.memory.get_drawers()  # 读路径：已按作用域裁剪

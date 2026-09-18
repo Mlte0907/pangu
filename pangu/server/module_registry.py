@@ -108,6 +108,41 @@ CORE_WHITELIST: frozenset[str] = frozenset(
     }
 )  # 共 31 个
 
+# ── 写类工具名单（供 mcp_server 的 scope 强制；2026-09-19）──
+#
+# 背景：scope（readwrite/readonly/admin）自建钥匙起就是**纸面的** —— 全仓只存不查
+# （keys.py 存、cli.py 建，没有任何执行点读它），readonly 钥匙实际拥有全部写权限。
+# 这里定义写类清单，mcp_server 在工具执行前强制：
+#   readonly → 写类一律拒绝（code=1003）
+# 取"保守"策略：拿不准是否写的一律列入（宁可误拦，不放过）；读类不列。
+# 注意：admin 档的名单暂不定义（哪些工具算 admin 需要产品决策，先只做 readonly 强制；
+# 最危险的单点 config_set 已在 handler 内部加保护名单）。
+WRITE_TOOLS = frozenset(
+    {
+        # 记忆 CRUD / 准入变更
+        "pangu_add_memory",
+        "pangu_delete_memory",
+        "pangu_archive_memory",
+        "pangu_set_classification",
+        "pangu_set_source",
+        # 数据进出（写入/覆盖）
+        "pangu_import",
+        "pangu_batch_import",
+        "pangu_restore_backup",
+        "pangu_backup",
+        "pangu_export",
+        # 采集（读文件 + 落库）
+        "pangu_collect_file",
+        "pangu_collect_dir",
+        # KG 写入
+        "pangu_knowledge_create",
+        "pangu_knowledge_update",
+        "pangu_knowledge_delete",
+        # 配置写入（已有 handler 内保护名单，双保险）
+        "pangu_config_set",
+    }
+)
+
 
 # ── 模块注册表 ──
 

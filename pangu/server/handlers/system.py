@@ -224,7 +224,8 @@ async def handle_config_get(server, drawers, arguments):
         val = getattr(cfg, key, None)
         return json.dumps({key: str(val) if val is not None else None}, ensure_ascii=False)
     # 返回所有非敏感配置
-    safe = cfg.model_dump(exclude={"api_key", "llm_api_key", "siliconflow_key"})
+    # 排除密钥类（jwt_secret 此前会明文返回 —— 拿到它可伪造 JWT 提权）
+    safe = cfg.model_dump(exclude={"api_key", "llm_api_key", "siliconflow_key", "jwt_secret", "jwt_secret_file"})
     return json.dumps(safe, ensure_ascii=False, indent=2, default=str)
 
 
@@ -235,6 +236,28 @@ async def handle_config_set(server, drawers, arguments):
     """更新配置项（设置后同步落盘持久化，避免 reload 丢失——T6-F1 修复）"""
     key = arguments.get("key", "")
     value = arguments.get("value")
+
+    # 保护名单（2026-09-19 补）：此前只查 hasattr(config, key) 就放行 —— 而 config 上
+    # 存在 base_dir/db_path/palace_path（改存储路径）、jwt_secret（伪造 JWT 提权）、
+    # host/port（改监听）等属性，等于任何有效钥匙都能把它们改掉（含 readonly）。
+    # 这些项没有"远程修改"的正当需求（改它们应当 SSH 到机器上用 CLI），一律拒绝。
+    # 不拦 url 类（llm_base_url 是文档明确支持的配置途径、feishu_webhook_url 是功能项，
+    # 且持钥匙者本就能读数据，增量风险有限）。
+    # 精确规则（不做裸子串匹配 —— "imp-ort-ance_decay_rate" 含 "port" 会被误伤，
+    # 实测 importance_decay_rate 被第一版规则错拦，靠单测抓出）：
+    def _protected(name: str) -> bool:
+        k = (name or "").lower()
+        if "jwt" in k or "secret" in k or k == "api_key":
+            return True  # jwt_* 整族（含 default_password/roles/users）与密钥类
+        if k in ("host", "port") or k.endswith(("_host", "_port")):
+            return True  # 监听地址/端口（改它 = 改服务可达性）
+        return "_path" in k or "_dir" in k or k.endswith(("path", "dir"))
+
+    if key and _protected(key):
+        return json.dumps(
+            {"error": f"该配置项受保护，禁止远程修改: {key}（请到机器上用 CLI 修改）"},
+            ensure_ascii=False,
+        )
     if key and hasattr(server.config, key):
         # 密钥字段走独立文件的持久化路径（config.json 有意排除它们），
         # 否则通过设置页写入的 Key 只存在于内存，重启即丢。
