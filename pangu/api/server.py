@@ -229,6 +229,39 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning(f"Embedding health probe failed: {e}")
 
+        # 加密体检（2026-09-19）：确认已有密文还能解开。
+        # 典型故障：换机器/重装时丢了 ~/.pangu/.encryption_key，新密钥生成后旧密文
+        # 全部不可解 —— 旧行为是静默返回密文，用户只看得到 gAAAAAB… 乱码查不到原因。
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+
+            from pangu.memory import encryption as _enc
+
+            sample = None
+            _drawers_file = _Path(config.palace_path) / "drawers.json"
+            if _drawers_file.exists():
+                for _item in _json.loads(_drawers_file.read_text()):
+                    _c = str((_item or {}).get("content") or "")
+                    if _c.startswith("gAAAAA"):
+                        sample = _c
+                        break
+            _verdict = _enc.self_check(sample)
+            if not _verdict["enabled"]:
+                logger.error(f"启动体检：加密不可用 —— {_verdict['error']}（新数据将以明文写入）")
+            elif _verdict["sample_ok"] is False:
+                logger.error(
+                    "启动体检：**已有密文无法解密**（密钥不匹配）—— 旧加密记忆将显示为占位符。"
+                    "检查 ~/.pangu/.encryption_key 与 PANGU_ENCRYPTION_KEY 是否与加密时一致"
+                )
+            else:
+                logger.info(
+                    f"启动体检：加密可用（{_verdict['keys']} 把密钥，"
+                    f"样本解密 {'通过' if _verdict['sample_ok'] else '无密文样本'}）"
+                )
+        except Exception as e:
+            logger.warning(f"Encryption health probe failed: {e}")
+
         # 预加载 MCPServer 实例（避免每次请求重建）
         try:
             from pangu.api.routes_tools import _get_server
