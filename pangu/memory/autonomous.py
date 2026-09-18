@@ -91,6 +91,14 @@ SCHEDULE_RULES = {
     "knowledge_gaps": {
         "interval_hours": 12,
     },
+    # KG 实体抽取（2026-09-19 接线）：
+    # 此前它挂在 LifecycleManager 的两个钩子上（on_memory_added / on_session_end），
+    # 但（a）on_memory_added 被同文件的简化版重复定义覆盖、（b）on_session_end 在
+    # 服务里从未被调用（只有 CLI run_lifecycle_check 会调）—— 结果服务跑了 172 轮
+    # 维护，KG 里只有 4 个实体。正则抽取成本毫秒级（50 条/轮），6 小时一次足够。
+    "kg_enrichment": {
+        "interval_hours": 6,
+    },
 }
 
 
@@ -329,6 +337,29 @@ class AutonomousMemoryEngine:
             )
         except Exception as e:
             return TaskResult(name="curiosity", status="failed", details={"error": str(e)})
+
+    def _task_kg_enrichment(self, drawers: list[Drawer]) -> TaskResult:
+        """KG 实体自动提取（正则规则，成本毫秒级）。
+
+        2026-09-19 接线：此前该能力只挂在 LifecycleManager.on_memory_added /
+        on_session_end 两个钩子上，而两个钩子在服务里都到不了（一个被同文件简化版
+        重复定义覆盖，另一个只有 CLI 调用）—— 服务跑了 172 轮维护，KG 里只有 4 个
+        实体。接入自主周期后，图谱随记忆量自然生长。
+        """
+        start = time.time()
+        try:
+            from .knowledge_graph import KnowledgeGraph
+
+            kg = KnowledgeGraph(self.config)
+            result = kg.auto_extract_entities(drawers, max_drawers=50)
+            return TaskResult(
+                name="kg_enrichment",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
+                details=result,
+            )
+        except Exception as e:
+            return TaskResult(name="kg_enrichment", status="failed", details={"error": str(e)})
 
     def _task_vector_rebuild(self, drawers: list[Drawer]) -> TaskResult:
         """重建向量索引"""
@@ -587,6 +618,10 @@ class AutonomousMemoryEngine:
         # 知识缺口识别（P2-1 Step 2）
         if force or self._should_run("knowledge_gaps"):
             tasks.append(("knowledge_gaps", self._task_knowledge_gaps, True))
+
+        # KG 实体抽取（2026-09-19 接线：此前挂在从未被调用的 LifecycleManager 钩子上）
+        if force or self._should_run("kg_enrichment"):
+            tasks.append(("kg_enrichment", self._task_kg_enrichment, True))
 
         trigger = f"new={new_count},old={old_count},force={force}"
         success = 0

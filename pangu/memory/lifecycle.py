@@ -560,12 +560,12 @@ class LifecycleManager:
 
         return {"status": "completed", "fused": fused_count, "total": len(drawers)}
 
-    def on_memory_added(self) -> dict:
-        """新记忆入库后触发"""
-        # 检查是否需要重建索引
-        if self.needs_index_rebuild():
-            return self.rebuild_vector_index()
-        return {"status": "deferred"}
+    # NOTE（2026-09-19）：此处原有一个简化版 on_memory_added（只重建索引），它覆盖了
+    # 第 328 行的完整版（含 fusion / compression / KG enrichment 触发链）——Python
+    # 同名后定义覆盖先定义，完整钩子因此从未执行过。已删除覆盖版。
+    # 另外两个钩子（on_memory_added / on_session_end）在服务进程中都没有调用方
+    # （on_session_end 只有 CLI 的 run_lifecycle_check 会调），KG 抽取已改由自主
+    # 周期任务 kg_enrichment 承担，见 autonomous.py。
 
     def run_cross_session(self) -> dict:
         """跨会话记忆整合"""
