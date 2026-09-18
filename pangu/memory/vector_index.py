@@ -154,10 +154,29 @@ class VectorIndex:
 
     @property
     def is_built(self) -> bool:
-        return self._is_built
+        """索引是否真的可用。
+
+        除了 _is_built 标志，还必须确认后端数据存在 —— 此前只返回标志位，于是
+        "标志为真但没有索引数据"的状态会被当成可用（size 也跟着撒谎），调用方
+        以为有 N 条向量、搜索却永远为空（2026-09-19）。
+        """
+        if not self._is_built:
+            return False
+        if self._use_hnsw:
+            return self._hnsw_index is not None
+        if self._use_faiss:
+            return self._faiss_index is not None
+        return self._index is not None
 
     @property
     def size(self) -> int:
+        """已加入索引的向量数；维度与实例不符时返回 0（脏缓存不该被当成有数据）。
+
+        注意：这里**不依赖** is_built —— 单条 add 后向量可能还在 _pending 未构建，
+        此时"已加入 1 条"依然是事实（is_built 才表示"能否搜索"）。
+        """
+        if self._index is not None and self._index.ndim >= 2 and self._index.shape[-1] != self.dim:
+            return 0
         return self._size
 
     def build(self, vectors: list[list[float]], ids: list[str]) -> bool:
@@ -173,7 +192,16 @@ class VectorIndex:
             return False
 
         try:
-            arr = np.array(vectors, dtype=np.float32)
+            arr = np.asarray(vectors, dtype=np.float32)
+            # 形状归一（2026-09-19）：调用方有时传入 list of (1, dim)（嵌入器返回二维），
+            # 直接 np.asarray 会得到 (N, 1, dim) 并**原样落盘**；下次 _load 读到三维数组
+            # 后被维度自检拒绝（实测 vector_index.npz 就是 (100, 1, 384)），索引永久失效。
+            # 这里压成 (N, dim)，从源头杜绝脏缓存。
+            if arr.ndim == 3 and arr.shape[1] == 1:
+                arr = arr[:, 0, :]
+            if arr.ndim != 2:
+                logger.warning(f"Vector index build: 意外的向量形状 {arr.shape}，已跳过")
+                return False
             # 预归一化
             norms = np.linalg.norm(arr, axis=1, keepdims=True)
             norms = np.where(norms > 1e-8, norms, 1.0)
@@ -340,7 +368,13 @@ class VectorIndex:
             return 0
 
         with self._lock:
-            batch = np.array(vectors, dtype=np.float32)
+            batch = np.asarray(vectors, dtype=np.float32)
+            # 与 build 同理：压掉多余的中间维，避免写入 (N, 1, dim) 脏形状
+            if batch.ndim == 3 and batch.shape[1] == 1:
+                batch = batch[:, 0, :]
+            if batch.ndim != 2:
+                logger.warning(f"Vector index add_batch: 意外的向量形状 {batch.shape}，已跳过")
+                return 0
             # 维度自检：与已有索引不一致必须显式报错，不能静默丢弃
             if self._is_built and self._index is not None and self._index.size:
                 existing_dim = self._index.shape[1] if self._index.ndim == 2 else None

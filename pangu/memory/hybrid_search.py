@@ -15,6 +15,8 @@ logger = logging.getLogger("pangu.memory.hybrid_search")
 
 RRF_K = 60  # RRF 常数
 VECTOR_SIM_THRESHOLD = 0.2  # 向量相似度阈值
+VECTOR_TOP_K = 50  # 向量通道进入 RRF 融合前的候选上限
+VECTOR_MIN_COUNT = 1  # VectorIndex 至少要有这么多条才可信（空索引一律不信）
 KG_KEYWORD_MIN_LEN = 2  # KG 关键词最小长度
 KG_MAX_ENTITIES = 5  # KG 最大实体数
 ONNX_EMBED_FAILED_MSG = "ONNX embedding failed: {}"
@@ -77,32 +79,54 @@ def _vector_recall(
     drawers: list[Drawer],
     all_ids: dict[str, Drawer],
 ) -> dict[str, int]:
-    """向量召回，返回 {memory_id: rank}"""
+    """向量召回，返回 {memory_id: rank}。
+
+    数据源（2026-09-19）：优先用 **VectorIndex**（系统真正的向量存储，
+    `vector_rebuild` 任务的产物）。此前只用 `metadata.embedding`，而库里非加密
+    记忆根本没有这个字段（实测 165 条中 0 条命中），向量通道恒为空 ——
+    hybrid_search 实际退化成 FTS+KG 两路，许多正常查询返回 0 条。
+    VectorIndex 不可用或规模不足时回退到 metadata.embedding（兼容旧数据）。
+    """
     vector_ranks: dict[str, int] = {}
     try:
         query_vec = _get_query_embedding(query)
         if query_vec is None:
             return vector_ranks
 
-        scored = []
-        for d in drawers:
-            # P0-2 C: 跳过加密内容（Fernet 密文以 gAAAAA 开头，无语义意义）
-            content = d.content or ""
-            if content.startswith("gAAAAA"):
-                continue
-            stored_vec = d.metadata.get("embedding")
-            if not stored_vec:
-                continue
-            try:
-                n = min(len(query_vec), len(stored_vec))
-                dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n], strict=False))
-                norm_a = sum(a * a for a in query_vec[:n]) ** 0.5
-                norm_b = sum(b * b for b in stored_vec[:n]) ** 0.5
-                sim = dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0.0
-                if sim > VECTOR_SIM_THRESHOLD:
-                    scored.append((d.id, sim))
-            except Exception:
-                continue
+        scored: list[tuple[str, float]] = []
+
+        # ① 优先：共享向量索引（先确认它真的可用再信它）
+        try:
+            from .vector_index import get_vector_index
+
+            idx = get_vector_index()
+            if idx is not None and idx.is_built and idx.size >= VECTOR_MIN_COUNT:
+                for mid, sim in idx.search(query_vec, top_k=VECTOR_TOP_K):
+                    if mid in all_ids and sim > VECTOR_SIM_THRESHOLD:
+                        scored.append((mid, float(sim)))
+        except Exception as e:
+            logger.debug(f"VectorIndex 召回失败，回退 metadata.embedding: {e}")
+
+        # ② 回退：逐条 metadata.embedding（跳过加密内容 —— 密文无语义）
+        if not scored:
+            for d in drawers:
+                content = d.content or ""
+                if content.startswith("gAAAAA"):
+                    continue
+                stored_vec = (d.metadata or {}).get("embedding")
+                if not stored_vec:
+                    continue
+                try:
+                    n = min(len(query_vec), len(stored_vec))
+                    dot = sum(a * b for a, b in zip(query_vec[:n], stored_vec[:n], strict=False))
+                    norm_a = sum(a * a for a in query_vec[:n]) ** 0.5
+                    norm_b = sum(b * b for b in stored_vec[:n]) ** 0.5
+                    sim = dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0.0
+                    if sim > VECTOR_SIM_THRESHOLD:
+                        scored.append((d.id, sim))
+                except Exception:
+                    continue
+
         scored.sort(key=lambda x: -x[1])
         for rank, (mid, _) in enumerate(scored):
             vector_ranks[mid] = rank + 1
@@ -205,6 +229,18 @@ def _build_results(
     results = []
     for mid in sorted_ids[:limit]:
         d = all_ids[mid]
+        # 密文在返回前解密（2026-09-19）：search / recall 两条路径此前各修过一次
+        # "返回 gAAAAAB… 乱码"，hybrid 这条漏了 —— 实测 hybrid_search 的 Top-3 直接
+        # 返回密文。这里解密后再进 rerank（rerank 也依赖可读文本）。
+        # decrypt 对非密文原样返回；真解密失败会给明确占位符（见 encryption.py 三态）。
+        content = d.content
+        if isinstance(content, str) and content.startswith("gAAAAA"):
+            try:
+                from .encryption import decrypt
+
+                content = decrypt(content)
+            except Exception:
+                pass
         # P0-1 supersede 标注：当 drawer 的 metadata.memory_status == "superseded" 时
         # 标记 superseded=True 并填 superseded_by（list）+ warning="⚠ 已被更新"。
         # 客户端可据此高亮/折叠/排序。
@@ -220,7 +256,7 @@ def _build_results(
         results.append(
             {
                 "id": mid,
-                "content": d.content,
+                "content": content,
                 "wing": d.wing,
                 "room": d.room,
                 "importance": d.importance,
