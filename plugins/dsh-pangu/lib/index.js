@@ -189,7 +189,20 @@ async function apply(ctx) {
       }
     } catch (_) {}
 
-    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, pipeline, highClass, health, healthScore, version, uptimeSeconds, dailyCounts, ts: Date.now() }
+    // 7 日召回序列（插件侧采集，见 bumpRecallDaily）—— 与 dailyCounts 配对画双序列脉搏图
+    let dailyRecalls = []
+    try {
+      const data = readRecallDaily()
+      const now = new Date()
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now)
+        d.setDate(d.getDate() - i)
+        const key = d.toISOString().slice(0, 10)
+        dailyRecalls.push({ date: key, count: Number(data[key]) || 0 })
+      }
+    } catch (_) {}
+
+    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, pipeline, highClass, health, healthScore, version, uptimeSeconds, dailyCounts, dailyRecalls, ts: Date.now() }
   }
 
   async function fetchKG() {
@@ -215,12 +228,48 @@ async function apply(ctx) {
   }
 
   // ── 实时事件:连 pangu /ws(SEC-004 修复后需 api_key/JWT),断线指数退避重连 ──
+  // ── 召回日计数（7 日脉搏的「召回」序列）──
+  // 为什么从插件侧采集：盘古只存每条记忆的 access_count 累计值，没有"哪一天召回了几次"的
+  // 历史（~/.pangu/events 也是空的）。而设计稿的脉搏是「创建柱 + 召回折线」双序列，
+  // 所以这里接 /ws 的 memory_recall 事件按天累加，落 30 天滚动 JSON —— 7 天后自然完整。
+  const RECALL_DAILY_FILE = require('path').join(
+    require('os').homedir(), '.dsh', 'storages', 'pangu-recall-daily.json',
+  )
+
+  function bumpRecallDaily() {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      let data = {}
+      try { data = JSON.parse(require('fs').readFileSync(RECALL_DAILY_FILE, 'utf8')) } catch (_) {}
+      data[today] = (Number(data[today]) || 0) + 1
+      const keep = {}
+      for (const k of Object.keys(data).sort().slice(-30)) keep[k] = data[k]
+      require('fs').mkdirSync(require('path').dirname(RECALL_DAILY_FILE), { recursive: true })
+      require('fs').writeFileSync(RECALL_DAILY_FILE, JSON.stringify(keep), 'utf8')
+    } catch (_) {}
+  }
+
+  function readRecallDaily() {
+    try { return JSON.parse(require('fs').readFileSync(RECALL_DAILY_FILE, 'utf8')) } catch (_) { return {} }
+  }
+
   const evState = { list: [], lastTs: 0, ws: null, retryMs: 1000, closed: false, reconnectTimer: null }
 
   async function startEvents() {
     if (evState.ws) return
     let token = ''
-    try { token = (await readConfig()).api_key || '' } catch (_) {}
+    try {
+      token = (await readConfig()).api_key || ''
+      if (!token) {
+        // 回退：与 MCP headers 同源 —— ~/.pangu/.mcp_key（0600，盘古钥匙 pgk_*）。
+        // 不这样做的后果（2026-09-18 实测）：插件配置里的 api_key 为空 → /ws 握手被
+        // 1008 拒绝 → 收不到 memory_recall 事件 → 7 日脉搏的召回序列永远是空的。
+        // /ws 的鉴权本就接受 pgk_ 钥匙（见 pangu/api/server.py 的 websocket_endpoint）。
+        token = require('fs')
+          .readFileSync(require('path').join(require('os').homedir(), '.pangu', '.mcp_key'), 'utf8')
+          .trim()
+      }
+    } catch (_) {}
     const url = `${PANGU_BASE.replace('http', 'ws')}/ws` + (token ? `?token=${encodeURIComponent(token)}` : '')
     try {
       const ws = new WebSocket(url)
@@ -236,6 +285,8 @@ async function apply(ctx) {
           evState.list.push(item)
           if (evState.list.length > 100) evState.list.shift()
           evState.lastTs = item.ts
+          // 召回计数（7 日脉搏的召回序列）
+          if (item.type === 'memory_recall') bumpRecallDaily()
         } catch (_) {}
       }
       ws.onclose = () => {

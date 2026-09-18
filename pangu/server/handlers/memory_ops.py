@@ -192,6 +192,19 @@ async def handle_recall(server, drawers, arguments):
     # 必须把过滤后的集合传进去：recall 默认只读自身存储，不传等于隔离空转
     result = server.memory.recall(wing=wing, room=room, drawers=drawers)
 
+    # 发布召回事件（/ws）—— 面板「7 日脉搏」的召回序列按天计数依赖它。
+    # 盘古只存每条记忆的 access_count 累计值，没有"哪天召回了几次"的历史（events 目录为空），
+    # 事件是唯一可聚合的来源。观测用途，失败不影响召回结果本身。
+    try:
+        from ...memory.realtime import get_connection_manager
+
+        await get_connection_manager().emit(
+            "memory_recall",
+            {"wing": wing or "", "room": room or ""},
+        )
+    except Exception:
+        pass
+
     # 记忆内容在盘上是加密的（Fernet，密文以 gAAAAAB 开头）。search 路径会逐条解密，
     # 而 recall 直接把这些密文拼进 Markdown 返回 —— 调用方拿到的是不可读的乱码
     # （实测 dsh 钥匙 recall 出 [general] gAAAAABqqp5v4dO3…）。这里做同样的解密。

@@ -499,6 +499,57 @@ window.__ModuleLoader__.load({
         ),
       )
     }
+    // 7 日记忆脉搏：创建柱（accent）+ 召回折线（info），照重设计稿样品实现。
+    // created 来自后端按 created_at 现算；recalled 来自插件侧按天采集的 /ws memory_recall
+    // （盘古没有按日召回历史，采集从本版本开始，前几日为 0 属预期）。
+    function PulseChart({ created, recalled }) {
+      const days = (created || []).slice(-7)
+      const recalls = (recalled || []).slice(-7)
+      const n = Math.max(1, days.length)
+      const W = 620, H = 132, TOP = 26, BOTTOM = 102
+      const maxC = Math.max(1, ...days.map((d) => Number(d.count) || 0))
+      const maxR = Math.max(1, ...recalls.map((d) => Number(d.count) || 0))
+      const step = W / n
+      const xC = (i) => Math.round(step * i + step / 2)
+      const barH = (c) => Math.round(((BOTTOM - TOP) * (Number(c) || 0)) / maxC)
+      const yR = (c) => Math.round(BOTTOM - ((BOTTOM - TOP) * (Number(c) || 0)) / maxR)
+      const hasRecall = recalls.some((d) => (Number(d.count) || 0) > 0)
+      return h('div', null,
+        h('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', style: { width: '100%', height: H, display: 'block' }, 'aria-hidden': 'true' },
+          h('g', { stroke: css.borderSoft, strokeWidth: 1 },
+            [TOP, Math.round((TOP + BOTTOM) / 2), BOTTOM].map((y, i) => h('line', { key: i, x1: 0, y1: y, x2: W, y2: y })),
+          ),
+          hasRecall && h('polyline', {
+            points: recalls.map((d, i) => xC(i) + ',' + yR(d.count)).join(' '),
+            fill: 'none', stroke: css.info, strokeWidth: 1.7, opacity: 0.9,
+          }),
+          hasRecall && h('g', { fill: css.info },
+            recalls.map((d, i) => h('circle', { key: i, cx: xC(i), cy: yR(d.count), r: 2.5 })),
+          ),
+          h('g', null, days.map((d, i) => {
+            const hh = Math.max(2, barH(d.count))
+            return h('rect', {
+              key: i, x: xC(i) - 11, y: BOTTOM - hh, width: 22, height: hh, rx: 2.5,
+              fill: ACCENT, opacity: (0.45 + (0.5 * hh) / (BOTTOM - TOP)).toFixed(2),
+            })
+          })),
+          h('g', { fontSize: 9, fill: css.t3, textAnchor: 'middle', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' },
+            days.map((d, i) => h('text', { key: i, x: xC(i), y: H - 8 }, i === n - 1 ? '今日' : String((d.date || '').slice(5)))),
+          ),
+        ),
+        h('div', { style: { display: 'flex', gap: 14, marginTop: 3, fontSize: 10.5, color: css.t3 } },
+          h('span', null,
+            h('i', { style: { display: 'inline-block', width: 9, height: 9, borderRadius: 2, marginRight: 4, verticalAlign: -1, background: ACCENT } }),
+            '摄入（条）'),
+          h('span', null,
+            h('i', { style: { display: 'inline-block', width: 9, height: 9, borderRadius: '50%', marginRight: 4, verticalAlign: -1, background: css.info } }),
+            hasRecall ? '召回（次）' : '召回（本版起采集）'),
+          h('span', { style: { marginLeft: 'auto' } },
+            '夜间巩固窗口 ', h('b', { style: { color: css.t2 } }, '03:00–05:00')),
+        ),
+      )
+    }
+
     function OverviewPane({ dash, config, dashErr, loading, onRetry }) {
       const [pubMems, setPubMems] = React.useState([])
       React.useEffect(() => {
@@ -543,9 +594,9 @@ window.__ModuleLoader__.load({
         ),
         // ② 7日记忆脉搏
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '02', title: '7日记忆脉搏', hint: '创建趋势 · 7 日滑窗' }),
-          h('div', { style: { marginTop: 9, padding: '8px 0' } },
-            h(Sparkline7, { data: s?.dailyCounts, width: 320, height: 36, showLabel: true }),
+          h(SecHead, { num: '02', title: '7日记忆脉搏', hint: '创建与召回 · 数据源 /ws + created_at' }),
+          h('div', { style: { marginTop: 9, border: `1px solid ${css.borderSoft}`, borderRadius: 12, padding: '12px 14px 8px', background: css.bg1 } },
+            h(PulseChart, { created: s?.dailyCounts, recalled: s?.dailyRecalls }),
           ),
         ),
         // ③ 记忆管线
