@@ -3,6 +3,7 @@
  * panguDashboard.data 扩展宫殿/图谱统计与健康详情;服务清单与 v2 兼容。
  * panguAdminKeys: 钥匙/房间管理。
  */
+
 const { z } = require('zod')
 
 // ── Schema 工厂（延迟创建，供 codec.create 引用）──
