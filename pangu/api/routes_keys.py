@@ -217,25 +217,46 @@ async def list_public_memories(request: Request):
 
     from pangu.core.config import PanguConfig
     from pangu.memory.drawer_storage import JsonDrawerStorage
+    from pangu.memory.encryption import decrypt, is_enabled
 
     cfg = PanguConfig.load().authoritative_memory_config()
     drawers = JsonDrawerStorage(str(cfg.authoritative_drawers_path)).load()
 
     public = []
     for d in drawers:
-        vis = (d.metadata or {}).get("visibility") if isinstance(d.metadata, dict) else None
+        md = d.metadata if isinstance(d.metadata, dict) else {}
+        vis = md.get("visibility")
         if vis != "public":
             continue
-        tid = (d.metadata or {}).get("tenant_id", "default") if isinstance(d.metadata, dict) else "default"
+        tid = md.get("tenant_id", "default")
+        # 摘要（本轮补）：加密条目此前在面板只显示"（加密内容）"四个字，信息量为零。
+        # 这里给一个可读摘要 —— 优先写入者提供的 facts，否则**解密正文**后截断
+        # （管理端点已有 admin 鉴权，返回明文属预期；面板是管理 UI）。
+        summary = str(md.get("facts") or "").strip()
+        body = d.content or ""
+        encrypted = body.startswith("gAAAAA")
+        if not summary:
+            text = body
+            if encrypted and is_enabled():
+                try:
+                    text = decrypt(body)
+                except Exception:
+                    text = ""
+            summary = " ".join(str(text).split())[:120]
         public.append(
             {
                 "id": d.id,
-                "content": d.content or "",
+                "content": body,  # 保留原字段：面板据它盖章（是否加密）
+                "summary": summary,
+                "encrypted": encrypted,
+                "wing": d.wing,
+                "importance": getattr(d, "importance", None),
                 "tags": d.tags or [],
-                "source_room": tid,
-                "graduated_at": d.metadata.get("graduated_at") if isinstance(d.metadata, dict) else None,
+                "source_wing": d.wing,
+                "source_room": tid or d.room,
+                "graduated_at": md.get("graduated_at"),
                 "created_at": d.created_at,
-                "chars": len(d.content or ""),
+                "chars": len(body),
             }
         )
 

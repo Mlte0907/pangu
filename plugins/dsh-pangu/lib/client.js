@@ -478,7 +478,8 @@ window.__ModuleLoader__.load({
     }
 
     function MemRow({ m }) {
-      const enc = typeof m.content === 'string' && m.content.startsWith('gAAAAA')
+      // 优先用后端给的 encrypted 字段（后端已解密并给出 summary）
+      const enc = m.encrypted === true || (typeof m.content === 'string' && m.content.startsWith('gAAAAA'))
       const imp = Number(m.importance || 0)
       return h('div', { style: { display: 'flex', gap: 10, padding: '9px 2px', borderBottom: `1px solid ${css.borderSoft}`, alignItems: 'flex-start' } },
         h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, color: css.t3, width: 34, flexShrink: 0, paddingTop: 2 } }, (m.graduated_at || m.created_at || '').slice(5, 10)),
@@ -488,8 +489,9 @@ window.__ModuleLoader__.load({
             (m.tags || []).slice(0, 3).map((t) => h('span', { key: t, style: { border: `1px solid ${css.borderSoft}`, borderRadius: 4, padding: '0 5px', fontSize: 9.5 } }, t)),
             enc && h('span', { className: 'pangu-stampline' }, '已加密'),
           ),
-          h('div', { style: { fontSize: 11.5, color: enc ? css.t3 : css.t1, marginTop: 3, lineHeight: 1.55, fontStyle: enc ? 'italic' : 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } },
-            enc ? '（加密内容）' : (m.content || '').slice(0, 120)),
+          h('div', { style: { fontSize: 11.5, color: (enc && !m.summary) ? css.t3 : css.t1, marginTop: 3, lineHeight: 1.55, fontStyle: (enc && !m.summary) ? 'italic' : 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } },
+            // 摘要优先（后端已解密/取 facts）；拿不到才退回占位文案
+            m.summary || (enc ? '（加密内容 · 摘要不可用）' : (m.content || '').slice(0, 120))),
         ),
         h('div', { style: { flexShrink: 0, textAlign: 'right' } },
           h('div', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 11.5, fontWeight: 600 } }, imp ? imp.toFixed(1) : '—'),
