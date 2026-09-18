@@ -52,6 +52,8 @@ def decay_batch(
             current_score=d.metadata.get("decay_score", 1.0),
             importance=d.importance / 5.0,  # 标准化到 0-1
             updated_at=d.created_at,
+            # 增量基准：上次衰减时刻（没有则回退创建时间）—— 幂等
+            basis_at=d.metadata.get("decay_updated_at"),
             now=now,
             decay_base=decay_base,
             decay_floor=decay_floor,
@@ -103,8 +105,18 @@ def _calculate_decay_v2(
     touch_boost_long: float = 1.06,
     night_decay_factor: float = 1.2,
     min_idle_hours: float = 0.5,
+    basis_at: str | None = None,
 ) -> tuple:
-    """计算衰减分数 v2 — 含夜间因子和重要性保护"""
+    """计算衰减分数 v2 — 含夜间因子和重要性保护。
+
+    修复（2026-09-19）：基础衰减改为**按时间差增量**（basis_at = 上次衰减时刻，
+    首次回退创建时间）。此前 `base_decay` 用距创建的总年龄、又乘在 current_score
+    上 —— 每次跑都重复应用同一段年龄的衰减（不幂等）：30 天记忆单次因子≈0.81，
+    跑 3 次≈0.53，实测 171 条里 129 条（75%）已被打到 floor 0.15。
+    `decay_updated_at` 一直只写不读，正是这里该读的"上次衰减时刻"。
+
+    其余因子（重要性/夜间/触碰保护）保持原语义：idle_hours 仍指"距创建"的年龄。
+    """
     try:
         updated_dt = datetime.fromisoformat(updated_at)
     except (ValueError, TypeError):
@@ -112,12 +124,20 @@ def _calculate_decay_v2(
 
     idle_hours = (now - updated_dt).total_seconds() / 3600
 
-    # 低于最小空闲时间，不衰减
-    if idle_hours < min_idle_hours:
+    # 增量基准：上次衰减时刻（没有则=创建时间，首次衰减用全年龄）
+    basis_raw = basis_at or updated_at
+    try:
+        basis_dt = datetime.fromisoformat(basis_raw)
+    except (ValueError, TypeError):
+        basis_dt = updated_dt
+    elapsed_hours = max(0.0, (now - basis_dt).total_seconds() / 3600)
+
+    # 低于最小空闲时间，不衰减（对"距上次衰减"判定 —— 防止频繁重跑叠加）
+    if elapsed_hours < min_idle_hours:
         return current_score, "unchanged"
 
-    # 基础衰减（每周衰减率）
-    base_decay = decay_base ** (idle_hours / 168)
+    # 基础衰减（每周衰减率）：只对"距上次衰减的新增时长"生效 → 幂等
+    base_decay = decay_base ** (elapsed_hours / 168)
 
     # 重要性因子：高重要性记忆衰减更慢
     importance_factor = 1.0 - (importance * 0.4)
