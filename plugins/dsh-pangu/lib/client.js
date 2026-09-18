@@ -453,7 +453,7 @@ window.__ModuleLoader__.load({
                   )),
               ),
               h('div', { key: 'pipe', style: { marginTop: 7, paddingTop: 7, borderTop: `1px dashed ${css.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 2 } },
-                pipeRow(css.warn, '入库审核 · 高密级护栏', s?.pipeline ? fmtNum(s.pipeline.pending_review) + ' 条待审' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'overview' } }))),
+                pipeRow(css.warn, '准入验证 · 高密级护栏', s?.pipeline ? fmtNum(s.pipeline.pending_review) + ' 条待验证' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'overview' } }))),
                 pipeRow(css.ok, '知识结晶', s?.kgEntities != null ? fmtNum(s.kgEntities) + ' 实体' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'crystal' } }))),
               ),
             ],
@@ -668,10 +668,12 @@ window.__ModuleLoader__.load({
           h(SecHead, { num: '03', title: '记忆管线', hint: '脱敏 → 加密 → 去重 → 审核 → 巩固' }),
           h('div', { style: { display: 'flex', border: `1px solid ${css.borderSoft}`, borderRadius: 10, overflow: 'hidden', marginTop: 9, background: css.bg1 } },
             h(PipelineBox, {
-              st: '入库审核',
+              st: '准入验证',
               v: pipe ? fmtNum(pipe.pending_review) : '—',
-              small: '待审',
-              d: pipe && pipe.pending_review > 0 ? '缺来源指针进入人工审' : '全部通过',
+              small: '待验证',
+              // 不做人工审：记忆被召回成功/被验证（正向反馈）且带来源指针时自动毕业
+              // （原文案"缺来源指针进入人工审"不实 —— 全仓没有人工审核入口）。
+              d: pipe && pipe.pending_review > 0 ? '召回成功自动毕业' : '全部通过',
               warn: !!(pipe && pipe.pending_review > 0),
               arrow: true,
             }),
