@@ -71,13 +71,17 @@ def test_first_run_decays_by_full_age():
 def test_incremental_basis_changes_decay():
     """同一 current_score：距上次衰减 1 天 vs 30 天，衰减幅度必须不同（增量语义）。"""
     s_fresh, _ = _calculate_decay_v2(
-        current_score=0.8, importance=0.5,
-        updated_at=(NOW - timedelta(days=60)).isoformat(), now=NOW,
-        basis_at=(NOW - timedelta(days=1)).isoformat(),   # 昨天刚衰减过
+        current_score=0.8,
+        importance=0.5,
+        updated_at=(NOW - timedelta(days=60)).isoformat(),
+        now=NOW,
+        basis_at=(NOW - timedelta(days=1)).isoformat(),  # 昨天刚衰减过
     )
     s_stale, _ = _calculate_decay_v2(
-        current_score=0.8, importance=0.5,
-        updated_at=(NOW - timedelta(days=60)).isoformat(), now=NOW,
+        current_score=0.8,
+        importance=0.5,
+        updated_at=(NOW - timedelta(days=60)).isoformat(),
+        now=NOW,
         basis_at=(NOW - timedelta(days=30)).isoformat(),  # 30 天没衰减
     )
     assert s_fresh > s_stale, f"刚衰减过的应几乎不变（{s_fresh}），久未衰减的应更低（{s_stale}）"
@@ -86,9 +90,12 @@ def test_incremental_basis_changes_decay():
 def test_floor_respected():
     """极限老记忆不跌破 floor。"""
     score, _ = _calculate_decay_v2(
-        current_score=0.2, importance=0.0,
-        updated_at=(NOW - timedelta(days=3650)).isoformat(), now=NOW,
+        current_score=0.2,
+        importance=0.0,
+        updated_at=(NOW - timedelta(days=3650)).isoformat(),
+        now=NOW,
         basis_at=None,
-        touch_boost_long=1.0, touch_boost_short=1.0,
+        touch_boost_long=1.0,
+        touch_boost_short=1.0,
     )
     assert score >= 0.15, score
