@@ -280,25 +280,60 @@ window.__ModuleLoader__.load({
      * ════════════════════════════════════════════ */
 
     // 7 日记忆脉搏 sparkline（内联 SVG，供侧栏和概览页共用）
-    function Sparkline7({ data, width, height, color, showLabel }) {
-      if (!data || data.length < 2) return null
-      const w = width || 140, ht = height || 22
-      const max = Math.max(...data.map(d => d.count), 1)
-      const padY = 3
-      const pts = data.map((d, i) => {
-        const x = (i / (data.length - 1)) * w
-        const y = ht - padY - (d.count / max) * (ht - padY * 2)
-        return `${x.toFixed(1)},${y.toFixed(1)}`
-      })
-      const total = data.reduce((s, d) => s + d.count, 0)
-      const last = data[data.length - 1]
-      return h('div', { style: { marginTop: 6 } },
-        h('svg', { width: w, height: ht, viewBox: `0 0 ${w} ${ht}`, style: { display: 'block' } },
-          h('polyline', { points: pts.join(' '), fill: 'none', stroke: color || ACCENT, 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+    // 侧栏迷你脉搏（v6 改进）：柱=创建 + 线=召回，与概览页 PulseChart 同一视觉语言。
+    // 此前是一条 140×22 的裸折线：无填充/端点/标签，宽度写死（226px 的侧栏里偏窄），
+    // 且只有创建没有召回。
+    function Sparkline7({ created, recalled, data, height, showLabel }) {
+      // 兼容旧调用（data 即 created）
+      const days = ((created || data || []).slice(-7))
+      const rcs = (recalled || []).slice(-7)
+      if (!days || days.length < 2) return null
+      const wrapRef = React.useRef(null)
+      const [W, setW] = React.useState(190)
+      React.useEffect(() => {
+        const el = wrapRef.current
+        if (!el || typeof ResizeObserver === 'undefined') return undefined
+        const ro = new ResizeObserver((entries) => {
+          const w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0
+          if (w) setW(Math.max(120, Math.round(w)))
+        })
+        ro.observe(el)
+        return () => ro.disconnect()
+      }, [])
+      const H = height || 30, TOP = 4, BOTTOM = H - 4
+      const n = days.length
+      const step = W / n
+      const maxC = Math.max(1, ...days.map((d) => Number(d.count) || 0))
+      const maxR = Math.max(1, ...rcs.map((d) => Number(d.count) || 0))
+      const barW = Math.max(6, Math.min(16, Math.round(step * 0.5)))
+      const xC = (i) => Math.round(step * i + step / 2)
+      const barH = (c) => Math.round(((BOTTOM - TOP) * (Number(c) || 0)) / maxC)
+      const yR = (c) => Math.round(BOTTOM - ((BOTTOM - TOP) * (Number(c) || 0)) / maxR)
+      const hasRecall = rcs.some((d) => (Number(d.count) || 0) > 0)
+      const total = days.reduce((a, d) => a + (Number(d.count) || 0), 0)
+      const rTotal = rcs.reduce((a, d) => a + (Number(d.count) || 0), 0)
+      const today = Number(days[n - 1]?.count) || 0
+      const yesterday = Number(days[n - 2]?.count) || 0
+      const delta = today - yesterday
+      return h('div', { ref: wrapRef, style: { marginTop: 8 } },
+        h('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet', style: { width: '100%', height: H, display: 'block' }, 'aria-hidden': 'true' },
+          // 基线
+          h('line', { x1: 0, y1: BOTTOM, x2: W, y2: BOTTOM, stroke: css.borderSoft, strokeWidth: 1 }),
+          // 创建柱（accent，随高度加深）
+          h('g', null, days.map((d, i) => {
+            const hh = Math.max(2, barH(d.count))
+            return h('rect', { key: i, x: xC(i) - barW / 2, y: BOTTOM - hh, width: barW, height: hh, rx: 2, fill: ACCENT, opacity: (0.35 + (0.45 * hh) / (BOTTOM - TOP)).toFixed(2) })
+          })),
+          // 召回折线（info；没采集到时不出）
+          hasRecall && h('polyline', { points: rcs.map((d, i) => xC(i) + ',' + yR(d.count)).join(' '), fill: 'none', stroke: css.info, strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', opacity: 0.9 }),
+          // 今日端点
+          h('circle', { cx: xC(n - 1), cy: BOTTOM - Math.max(2, barH(today)), r: 2.5, fill: ACCENT }),
         ),
-        showLabel && h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 2, display: 'flex', justifyContent: 'space-between' } },
-          h('span', null, '7日摄入 ' + total + ' 条'),
-          h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' } }, (last?.date || '').slice(5)),
+        showLabel !== false && h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } },
+          h('span', null, '7日 ', h('b', { style: { color: css.t2 } }, total), ' 条',
+            hasRecall ? h('span', null, ' · 召回 ', h('b', { style: { color: css.t2 } }, rTotal)) : null),
+          h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', color: delta > 0 ? css.ok : delta < 0 ? css.warn : css.t3 } },
+            '今日 ' + today, delta !== 0 ? (delta > 0 ? ' ↑' + delta : ' ↓' + Math.abs(delta)) : ''),
         ),
       )
     }
@@ -407,7 +442,7 @@ window.__ModuleLoader__.load({
                 ' 条记忆', h('span', { style: { color: css.border, margin: '0 5px' } }, '·'),
                 '健康 ', h('b', { style: { color: degraded ? css.warn : css.t1, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' } }, health),
               ),
-              h(Sparkline7, { key: 'pulse', data: s?.dailyCounts, width: 140, height: 22 }),
+              h(Sparkline7, { key: 'pulse', created: s?.dailyCounts, recalled: s?.dailyRecalls, height: 30 }),
               h('div', { key: 'mini', style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', marginTop: 8, borderTop: `1px solid ${css.borderSoft}`, borderBottom: `1px solid ${css.borderSoft}` } },
                 [['实体', s?.kgEntities != null ? fmtNum(s.kgEntities) : '—'],
                  ['关系', s?.kgRelations != null ? fmtNum(s.kgRelations) : '—'],
