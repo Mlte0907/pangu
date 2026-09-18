@@ -1,6 +1,7 @@
 """盘古 MCP Handler — system (44 tools)"""
 
 import json
+from datetime import datetime
 
 TOOLS = [
     {"name": "pangu_stats", "description": "\u83b7\u53d6\u7cfb\u7edf\u7edf\u8ba1"},
@@ -81,7 +82,46 @@ def collect_stats(server, drawers: list | None = None) -> dict:
     for d in scoped:
         by_class[str(_coerce_classification((d.metadata or {}).get("classification")))] += 1
     stats["classification"] = by_class
+    # 管线状态（入库审核 / 加密存储 / 夜间巩固）—— 「记忆管线」三格的真实数据源。
+    #
+    # 为什么必须在这里给：此前那三格在面板里是**硬编码**（审核写死 '—'、巩固写死 '未运行'、
+    # 加密错取了高密级数），实测把 57 条待审、62 条已加密全藏了起来，还把"巩固从未运行"
+    # 当装饰文案展示。口径与隔离轴共用同一份 scoped 集合 → 租户/管理视角各自自洽。
+    pending = sum(1 for d in scoped if (d.metadata or {}).get("admission") == "pending_review")
+    encrypted = sum(1 for d in scoped if str(d.content or "").startswith("gAAAAA"))
+    decays = [
+        float((d.metadata or {}).get("decay_score") or 0.0)
+        for d in scoped
+        if (d.metadata or {}).get("decay_score") is not None
+    ]
+    stats["pipeline"] = {
+        "pending_review": pending,
+        "encrypted": encrypted,
+        "decay_average": round(sum(decays) / len(decays), 3) if decays else 0.0,
+        "consolidation": consolidation_state(server),
+    }
     return stats
+
+
+def consolidation_state(server) -> dict:
+    """夜间巩固的真实状态（面板管线第三格的数据源）。
+
+    ⚠ 本轮排查发现：`LifecycleManager` 从来没被任何模块引用过（死代码）—— `last_run` 恒为
+    0，而面板把"未运行"写成静态文案，看起来像有意为之的装饰。现在如实给字段，并补上调度
+    （见 mcp_server 的夜间巩固循环）。
+    """
+    state = {"last_run": None, "interval_hours": 24.0, "window": "03:00–05:00", "due": True}
+    try:
+        from ...memory.lifecycle import LifecycleManager
+
+        mgr = LifecycleManager(server.config)
+        last = float(getattr(mgr, "_last_consolidation", 0.0) or 0.0)
+        state["last_run"] = datetime.fromtimestamp(last).isoformat() if last > 0 else None
+        state["interval_hours"] = float(getattr(server.config, "consolidation_interval_hours", 24.0) or 24.0)
+        state["due"] = bool(mgr.needs_consolidation())
+    except Exception as exc:  # 状态文件读不到不该让整个 stats 失败
+        state["error"] = str(exc)[:120]
+    return state
 
 
 def apply_tenant_view(stats: dict, drawers: list) -> None:

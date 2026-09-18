@@ -11,10 +11,39 @@ L3: 深度搜索 (无限) — 全文语义搜索
 - 记忆访问追踪（用于巩固引擎）"""
 
 import contextvars
+import functools
 import json
 import logging
 import os
+import threading
 import time
+
+# ── drawers 文件 IO 的进程内串行锁（2026-09-18）──
+#
+# 为什么需要：`_load_drawers` / `_save_drawers` 是所有读写路径的必经点（MemoryStack 的
+# add/update/remove、以及 lifecycle 的维护任务都会经过），而 lifecycle 的三个维护方法
+# 是「读全库快照 → 改 → 整份写回」。两个线程交错时**后写的会覆盖前者的改动** ——
+# 表现是"并发写入的记忆无声消失"，且没有任何报错。
+# 单进程内用一把可重入锁串行化即可（跨进程/CLI 直改文件不在覆盖范围）。
+_DRAWERS_IO_LOCK = threading.RLock()
+
+
+def drawers_io_lock() -> "threading.RLock":
+    """暴露给需要让整段「读-改-写」保持原子的调用方（lifecycle 的维护任务）。"""
+    return _DRAWERS_IO_LOCK
+
+
+def _synchronized(fn):
+    """把方法体放进 _DRAWERS_IO_LOCK。RLock 可重入，内部互调不会死锁。"""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _DRAWERS_IO_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 
@@ -486,6 +515,7 @@ class MemoryStack:
 
     # ── 缓存逻辑 ──
 
+    @_synchronized
     def _load_drawers(self) -> list[Drawer]:
         """从磁盘加载抽屉（带缓存），合并主文件 + 只读源，按 id 去重"""
         cache_key = f"drawers_{self._drawers_file}"
@@ -588,6 +618,7 @@ class MemoryStack:
             return self._drawers_file.exists()
         return False
 
+    @_synchronized
     def _save_drawers(self) -> bool:
         """保存抽屉到磁盘并刷新缓存（带脏检查 + 原子写，防止并发写入损坏文件）
 

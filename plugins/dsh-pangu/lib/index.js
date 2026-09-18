@@ -105,12 +105,14 @@ async function apply(ctx) {
     let kgRelations = 0
     let byWing
     let byClass
+    let pipeline
+    let parsed = null
     try {
       // 面板是管理 UI：概览要显示**全库**规模（用户 2026-09-16 定），所以走 admin 通道
       // 的 /admin/stats —— MCP 的 pangu_stats 自 P1-3 收口后按调用方租户裁剪，只显示
       // 本租户那一份，不适合当"全库看板"。admin secret 只在插件后端读取，前端不接触。
       // admin 不可用时回退到 /mcp（退化为本租户视角，面板仍然可用）。
-      let parsed = null
+      parsed = null
       const adminStats = await adminFetch(`${PANGU_BASE}/api/v2/admin/stats`)
       if (adminStats && !adminStats.error && (adminStats.memory || adminStats.palace)) {
         parsed = adminStats
@@ -141,6 +143,7 @@ async function apply(ctx) {
         kgRelations = Number(parsed?.knowledge_graph?.relations) || 0
         byWing = parsed?.memory?.by_wing
         byClass = parsed?.classification
+        pipeline = parsed?.pipeline
       }
     } catch (e) {
       return { ok: false, error: 'pangu MCP unreachable: ' + String(e) }
@@ -165,7 +168,28 @@ async function apply(ctx) {
     const highClass = byClass
       ? Number(byClass['2'] || 0) + Number(byClass['3'] || 0)
       : 0
-    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, highClass, health, healthScore, version, uptimeSeconds, ts: Date.now() }
+
+    // 7 日记忆脉搏：按 created_at 聚合最近 7 天的创建数（供前端 sparkline）
+    let dailyCounts = []
+    try {
+      const palacePath = parsed?.memory?.palace_path
+      if (palacePath) {
+        const drawers = JSON.parse(require('fs').readFileSync(require('path').join(palacePath, 'drawers.json'), 'utf8'))
+        const now = new Date()
+        const counts = {}
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(now); d.setDate(d.getDate() - i)
+          counts[d.toISOString().slice(0, 10)] = 0
+        }
+        for (const m of drawers) {
+          const dt = (m.created_at || '').slice(0, 10)
+          if (counts[dt] !== undefined) counts[dt]++
+        }
+        dailyCounts = Object.entries(counts).map(([date, count]) => ({ date, count }))
+      }
+    } catch (_) {}
+
+    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, pipeline, highClass, health, healthScore, version, uptimeSeconds, dailyCounts, ts: Date.now() }
   }
 
   async function fetchKG() {

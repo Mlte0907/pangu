@@ -41,6 +41,9 @@ class MCPServer:
         self._warmup_task: asyncio.Task | None = None
         self._vacuum_task: asyncio.Task | None = None
         self._periodic_vacuum_task: asyncio.Task | None = None
+        # 夜间巩固循环（03:00–05:00 窗口）。2026-09-18 补：此前 LifecycleManager 从没被
+        # 任何模块引用过（死代码），巩固从未运行、记忆一直只衰减不合并。
+        self._consolidation_task: asyncio.Task | None = None
 
         # 加载实验模块（根据 config.exposure.enabled_experiments）
         from .handlers import load_experimental_tools
@@ -133,6 +136,53 @@ class MCPServer:
         _ = self.wiki
         _ = self.search
         _ = self.llm
+        self._maybe_schedule_consolidation()
+
+    def _maybe_schedule_consolidation(self) -> None:
+        """调度**夜间巩固**循环（03:00–05:00 窗口内、距上次 ≥ interval 才执行）。
+
+        ⚠ 为什么需要它（2026-09-18 排查）：`LifecycleManager` —— 巩固的完整实现（合并
+        相关记忆 / 衰减低价值 / 重建索引）—— **从未被任何模块引用过**，是死代码。于是
+        lifecycle_state.json 的 last_consolidation 恒为 0：面板那条「夜间巩固 未运行」
+        是字面事实，记忆一直在按 decay 衰减却从没被巩固过。
+
+        约定与 warmup / vacuum 一致：
+        - 无运行中的事件循环（同步上下文 / 测试）→ 跳过
+        - 已调度 → 跳过（幂等；_ensure_initialized 每次调用都会进来）
+        """
+        if self._consolidation_task is not None and not self._consolidation_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # 无事件循环，跳过（与 _maybe_schedule_warmup 同约定）
+        self._consolidation_task = loop.create_task(
+            self._consolidation_loop(),
+            name="pangu-nightly-consolidation",
+        )
+
+    async def _consolidation_loop(self) -> None:
+        """夜间巩固循环：每 30 分钟检查一次，只在 03:00–05:00 窗口且到期时执行。
+
+        巩固要读全库、写全库（含索引重建），必须放线程池 —— 否则阻塞事件循环，
+        期间所有 MCP 调用都会卡住。
+        """
+        from datetime import datetime
+
+        while True:
+            try:
+                if 3 <= datetime.now().hour < 5:
+                    from ..memory.lifecycle import LifecycleManager
+
+                    manager = LifecycleManager(self.config)
+                    if manager.needs_consolidation():
+                        result = await asyncio.to_thread(manager.run_consolidation)
+                        logger.info(f"夜间巩固完成: {result}")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # 单次失败不该终止循环
+                logger.warning(f"夜间巩固异常: {exc}")
+            await asyncio.sleep(1800)
 
     def invalidate_config_dependents(self) -> list[str]:
         """丢弃缓存中依赖 config 的组件，使其按新 config 惰性重建。

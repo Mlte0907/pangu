@@ -278,6 +278,30 @@ window.__ModuleLoader__.load({
     /* ════════════════════════════════════════════
      * 1. 侧边栏体征帧(v5:方向 A——状态点+三格体征+管线行+快速入库)
      * ════════════════════════════════════════════ */
+
+    // 7 日记忆脉搏 sparkline（内联 SVG，供侧栏和概览页共用）
+    function Sparkline7({ data, width, height, color, showLabel }) {
+      if (!data || data.length < 2) return null
+      const w = width || 140, ht = height || 22
+      const max = Math.max(...data.map(d => d.count), 1)
+      const padY = 3
+      const pts = data.map((d, i) => {
+        const x = (i / (data.length - 1)) * w
+        const y = ht - padY - (d.count / max) * (ht - padY * 2)
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      const total = data.reduce((s, d) => s + d.count, 0)
+      const last = data[data.length - 1]
+      return h('div', { style: { marginTop: 6 } },
+        h('svg', { width: w, height: ht, viewBox: `0 0 ${w} ${ht}`, style: { display: 'block' } },
+          h('polyline', { points: pts.join(' '), fill: 'none', stroke: color || ACCENT, 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+        ),
+        showLabel && h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 2, display: 'flex', justifyContent: 'space-between' } },
+          h('span', null, '7日摄入 ' + total + ' 条'),
+          h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' } }, (last?.date || '').slice(5)),
+        ),
+      )
+    }
     function SidebarCard({ wide }) {
       const [state, setState] = React.useState({ status: 'loading', data: null, at: 0 })
       const [addState, setAddState] = React.useState({ s: 'idle', msg: '' })
@@ -383,6 +407,7 @@ window.__ModuleLoader__.load({
                 ' 条记忆', h('span', { style: { color: css.border, margin: '0 5px' } }, '·'),
                 '健康 ', h('b', { style: { color: degraded ? css.warn : css.t1, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' } }, health),
               ),
+              h(Sparkline7, { key: 'pulse', data: s?.dailyCounts, width: 140, height: 22 }),
               h('div', { key: 'mini', style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', marginTop: 8, borderTop: `1px solid ${css.borderSoft}`, borderBottom: `1px solid ${css.borderSoft}` } },
                 [['实体', s?.kgEntities != null ? fmtNum(s.kgEntities) : '—'],
                  ['关系', s?.kgRelations != null ? fmtNum(s.kgRelations) : '—'],
@@ -393,7 +418,7 @@ window.__ModuleLoader__.load({
                   )),
               ),
               h('div', { key: 'pipe', style: { marginTop: 7, paddingTop: 7, borderTop: `1px dashed ${css.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 2 } },
-                pipeRow(css.warn, '入库审核 · 高密级护栏', s?.highClass != null ? fmtNum(s.highClass) + ' 条' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'overview' } }))),
+                pipeRow(css.warn, '入库审核 · 高密级护栏', s?.pipeline ? fmtNum(s.pipeline.pending_review) + ' 条待审' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'overview' } }))),
                 pipeRow(css.ok, '知识结晶', s?.kgEntities != null ? fmtNum(s.kgEntities) + ' 实体' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'crystal' } }))),
               ),
             ],
@@ -493,6 +518,19 @@ window.__ModuleLoader__.load({
         )
       }
       const degraded = s?.health === 'degraded' || s?.health === 'unreachable'
+      // 管线真实数据（后端 stats.pipeline）。此前三格是硬编码：审核写死 '—' 把 57 条待审
+      // 藏了、加密错取高密级数（真实 62 条已加密显示成 0）、巩固写死 '未运行'。
+      const pipe = s?.pipeline
+      const cons = pipe?.consolidation
+      const relTime = (iso) => {
+        const t = Date.parse(iso)
+        if (!t) return '—'
+        const sec = Math.max(0, (Date.now() - t) / 1000)
+        if (sec < 3600) return Math.max(1, Math.floor(sec / 60)) + ' 分钟前'
+        if (sec < 86400) return Math.floor(sec / 3600) + ' 小时前'
+        return Math.floor(sec / 86400) + ' 天前'
+      }
+      const consLabel = cons?.last_run ? relTime(cons.last_run) : cons ? '从未运行' : '—'
       return h('div', { style: { padding: '14px 16px 20px', overflow: 'auto', height: '100%', boxSizing: 'border-box', animation: 'panguFade .25s ease' } },
         // ① 体征带
         h('div', { style: { display: 'flex', borderTop: `1px solid ${css.borderSoft}`, borderBottom: `1px solid ${css.borderSoft}` } },
@@ -501,20 +539,39 @@ window.__ModuleLoader__.load({
           h(Vital, { v: s?.kgEntities != null ? fmtNum(s.kgEntities) : '—', l: '图谱实体', d: '知识结晶' }),
           h(Vital, { v: s?.highClass != null ? fmtNum(s.highClass) : '—', l: '高密级', d: h('b', { style: { color: css.t2 } }, '机密 + 绝密'), danger: (s?.highClass || 0) > 0 }),
         ),
-        // ② 记忆管线
+        // ② 7日记忆脉搏
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '02', title: '记忆管线', hint: '脱敏 → 加密 → 去重 → 审核 → 巩固' }),
+          h(SecHead, { num: '02', title: '7日记忆脉搏', hint: '创建趋势 · 7 日滑窗' }),
+          h('div', { style: { marginTop: 9, padding: '8px 0' } },
+            h(Sparkline7, { data: s?.dailyCounts, width: 320, height: 36, showLabel: true }),
+          ),
+        ),
+        // ③ 记忆管线
+        h('div', { style: { marginTop: 4 } },
+          h(SecHead, { num: '03', title: '记忆管线', hint: '脱敏 → 加密 → 去重 → 审核 → 巩固' }),
           h('div', { style: { display: 'flex', border: `1px solid ${css.borderSoft}`, borderRadius: 10, overflow: 'hidden', marginTop: 9, background: css.bg1 } },
-            h(PipelineBox, { st: '入库审核', v: '—', small: '待审', d: h('span', null, '缺来源指针进入人工审'), warn: true, arrow: true }),
-            h(PipelineBox, { st: '加密存储', v: s?.highClass != null ? fmtNum(s.highClass) : '—', small: '高密级', d: 'Fernet · 密级 0–3', arrow: true }),
-            h(PipelineBox, { st: '夜间巩固', v: '未运行', d: h('span', null, '窗口 ', h('b', { style: { color: css.t2 } }, '03:00–05:00'), ' · 24h'), off: true }),
+            h(PipelineBox, {
+              st: '入库审核',
+              v: pipe ? fmtNum(pipe.pending_review) : '—',
+              small: '待审',
+              d: pipe && pipe.pending_review > 0 ? '缺来源指针进入人工审' : '全部通过',
+              warn: !!(pipe && pipe.pending_review > 0),
+              arrow: true,
+            }),
+            h(PipelineBox, { st: '加密存储', v: pipe ? fmtNum(pipe.encrypted) : '—', small: '已加密', d: 'Fernet · 读取时自动解密', arrow: true }),
+            h(PipelineBox, {
+              st: '夜间巩固',
+              v: consLabel,
+              d: h('span', null, '窗口 ', h('b', { style: { color: css.t2 } }, '03:00–05:00'), ' · 24h'),
+              off: !(cons && cons.last_run),
+            }),
           ),
           degraded && h('div', { style: { marginTop: 8, border: `1px solid ${css.warn}`, borderRadius: 8, padding: '9px 12px', fontSize: 11, color: css.t2, background: withAlpha(css.warn, '0d'), lineHeight: 1.6 } },
             '健康状态 ', h('b', null, s?.health), ' —— 检查 identity 层（L0）、夜间巩固与检索链路；操作见「管理」页。'),
         ),
         // ③ 宫殿速览
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '03', title: '宫殿速览', hint: 'Wing 分布 · 悬停看计数' }),
+          h(SecHead, { num: '04', title: '宫殿速览', hint: 'Wing 分布 · 悬停看计数' }),
           (() => {
             const byWing = s?.byWing || {}
             const entries = Object.entries(byWing).sort((a, b) => b[1] - a[1]).slice(0, 6)
@@ -535,9 +592,9 @@ window.__ModuleLoader__.load({
             )
           })(),
         ),
-        // ④ 最近入库
+        // ⑤ 最近入库
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '04', title: '最近入库', hint: '公共区最新 ' + Math.min(5, pubMems.length) + ' 条 · 加密盖印章' }),
+          h(SecHead, { num: '05', title: '最近入库', hint: '公共区最新 ' + Math.min(5, pubMems.length) + ' 条 · 加密盖印章' }),
           pubMems.length
             ? h('div', { style: { marginTop: 4 } }, pubMems.slice(0, 5).map((m) => h(MemRow, { key: m.id, m })))
             : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无公共区记忆'),

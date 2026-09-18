@@ -79,22 +79,33 @@ class LifecycleManager:
         return False
 
     def run_consolidation(self) -> dict:
-        """执行记忆巩固"""
+        """执行记忆巩固。
+
+        ⚠ 写路径（2026-09-18 加固）：**必须走 MemoryStack.update_drawer**，而不是
+        读快照后 `json.dump` 全量覆盖。后者是典型的"读-改-写"竞态：从读盘到写回之间
+        若有并发写入（服务在跑时随时可能），那些新记忆会被整份覆盖抹掉 —— 与 layers
+        里反复出现的空写保护/整份写回是同一类失败模式（那套保护只覆盖 MemoryStack，
+        管不到这里的裸文件写）。update_drawer 每次以「重读全库 + 改单条 + 原子写 +
+        失效缓存」落盘，与其它写入共享同一语义。
+        """
         from pangu.memory.consolidation import MemoryConsolidator
+        from pangu.memory.layers import MemoryStack
 
         logger.info("Starting memory consolidation...")
 
-        # 加载记忆
-        # P0-0：读权威路径 v2（此前读 v1 → 维护任务在空库上空转）
-        raw = PanguConfig.load_drawers_nonempty(self.config.authoritative_drawers_path)
-        drawers_file = self.config.authoritative_drawers_path
-        if not raw:
+        # 读全库（经 MemoryStack，拿到缓存与空写保护的语义）。
+        # 后台线程无租户作用域 → 自然是全库视角（正确：巩固是系统自身的行为）。
+        stack = MemoryStack(self.config)
+        stack.invalidate_cache()  # 强制读盘：不能拿 30 秒 TTL 内的旧缓存当基底
+        drawers = stack.get_drawers()
+        if not drawers:
             return {"status": "no_memories"}
-        drawers = [Drawer.from_dict(d) for d in raw]
 
         # 执行巩固
         consolidator = MemoryConsolidator(self.config)
         consolidator.stats(drawers)
+
+        changed: list[Drawer] = []
 
         # 找出需要遗忘的记忆
         forgotten = consolidator.find_forgotten(drawers)
@@ -104,6 +115,7 @@ class LifecycleManager:
             for d in forgotten:
                 d.importance = max(0.1, d.importance * 0.5)
                 d.metadata["forgotten_at"] = datetime.now().isoformat()
+                changed.append(d)
 
         # 找出需要复习的记忆
         due_reviews = consolidator.find_due_reviews(drawers)
@@ -113,13 +125,21 @@ class LifecycleManager:
             for d in due_reviews:
                 d.importance = min(5.0, d.importance * 1.1)
                 d.metadata["reviewed_at"] = datetime.now().isoformat()
+                changed.append(d)
 
-        # 保存更新后的记忆
-        with open(drawers_file, "w", encoding="utf-8") as f:
-            json.dump([d.to_dict() for d in drawers], f, ensure_ascii=False, indent=2)
+        # 逐条落盘（每条都是"重读全库 + 改单条 + 原子写"）。
+        # 代价是 N 次写；换来的是**任何时刻都不覆盖别人刚写入的内容**。
+        saved = 0
+        for d in changed:
+            try:
+                if stack.update_drawer(d):
+                    saved += 1
+            except Exception as e:  # 单条失败不中断整轮巩固
+                logger.warning(f"巩固落盘失败 {d.id}: {e}")
 
         self._last_consolidation = time.time()
         self._save_state()
+        drawers_file = self.config.authoritative_drawers_path
 
         # 神经睡眠巩固（海马体 → 新皮层重播）
         neural_stats = {}
@@ -209,6 +229,18 @@ class LifecycleManager:
         return result
 
     def run_decay(self) -> dict:
+        """整段「读-改-写」持 drawers IO 锁后转内部实现（2026-09-18 加固）。
+
+        为什么要锁：本方法读全库快照、改完**整份写回**。与并发写入交错时，后写者会
+        覆盖前者的改动（记忆无声消失、无报错）。锁定义在 layers，与 MemoryStack 的
+        写路径（add/update/remove）共用同一把，故单进程内互相串行。
+        """
+        from pangu.memory.layers import drawers_io_lock
+
+        with drawers_io_lock():
+            return self._run_decay_locked()
+
+    def _run_decay_locked(self) -> dict:
         """执行记忆衰减"""
         try:
             from pangu.memory.decay import decay_batch
@@ -358,6 +390,18 @@ class LifecycleManager:
         return results
 
     def run_auto_decay(self) -> dict:
+        """整段「读-改-写」持 drawers IO 锁后转内部实现（2026-09-18 加固）。
+
+        为什么要锁：本方法读全库快照、改完**整份写回**。与并发写入交错时，后写者会
+        覆盖前者的改动（记忆无声消失、无报错）。锁定义在 layers，与 MemoryStack 的
+        写路径（add/update/remove）共用同一把，故单进程内互相串行。
+        """
+        from pangu.memory.layers import drawers_io_lock
+
+        with drawers_io_lock():
+            return self._run_auto_decay_locked()
+
+    def _run_auto_decay_locked(self) -> dict:
         """自动衰减：定期降低未访问记忆的重要性"""
         try:
             from pangu.memory.decay import decay_batch
