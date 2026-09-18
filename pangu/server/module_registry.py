@@ -143,6 +143,21 @@ WRITE_TOOLS = frozenset(
     }
 )
 
+# ── 管理类工具名单（需要 scope=admin；2026-09-19 产品决策）──
+#
+# 判据："一次操作影响全库"——restore 整体覆盖、import/batch_import 是批量写。
+# 刻意不含 config_set（handler 内已有保护名单，且设置页要用它，列为 admin 会弄坏设置页），
+# 也不含 backup/export（只读数据 + 写文件，不破坏本体）。
+# 生效方式与 readonly 对称：scope != admin 调用 → code=1004。
+# 注意：现有 readwrite 钥匙将无法调用这三者（主钥匙已同步升为 admin，日常不受影响）。
+ADMIN_TOOLS = frozenset(
+    {
+        "pangu_restore_backup",
+        "pangu_import",
+        "pangu_batch_import",
+    }
+)
+
 
 # ── 模块注册表 ──
 

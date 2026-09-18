@@ -343,16 +343,23 @@ class MCPServer:
         clearance = identity.get("clearance", 0) if isinstance(identity, dict) else 0
 
         # scope 强制（2026-09-19 补）：scope 此前自建钥匙起只存不查，readonly 钥匙
-        # 实际拥有全部写权限（可增删记忆/导入/改配置）。这里在唯一的执行点强制：
-        #   readonly → 写类工具一律拒绝（code=1003）。
+        # 实际拥有全部写权限（可增删记忆/导入/改配置）。这里在唯一的执行点强制两档：
+        #   readonly → 写类工具一律拒绝（code=1003）
+        #   非 admin → 管理类工具拒绝（code=1004；恢复/导入等"一次影响全库"的操作）
         # 保守取值：identity 缺 scope 时按 readwrite 放行（不锁死既有调用方——
         # 本地 CLI/测试直调 handler 不经过此处，也不受影响）。
-        if isinstance(identity, dict) and identity.get("scope") == "readonly":
-            from .module_registry import WRITE_TOOLS  # noqa: PLC0415
+        if isinstance(identity, dict):
+            from .module_registry import ADMIN_TOOLS, WRITE_TOOLS  # noqa: PLC0415
 
-            if tool_name in WRITE_TOOLS:
+            _scope = identity.get("scope", "readwrite")
+            if _scope == "readonly" and tool_name in WRITE_TOOLS:
                 return json.dumps(
                     {"code": 1003, "error": f"只读钥匙不能调用写类工具: {tool_name}"},
+                    ensure_ascii=False,
+                )
+            if _scope != "admin" and tool_name in ADMIN_TOOLS:
+                return json.dumps(
+                    {"code": 1004, "error": f"该工具需要 admin 权限（当前 scope={_scope}）: {tool_name}"},
                     ensure_ascii=False,
                 )
 

@@ -93,3 +93,21 @@ def test_write_tools_sane():
     # 抽查：读类工具绝不能进写名单（否则 readonly 连读都被拦）
     read_only = {"pangu_stats", "pangu_search_memories", "pangu_recall", "pangu_system_health"}
     assert not (read_only & WRITE_TOOLS), "读类工具被误列进写名单"
+
+
+def test_admin_tools_sane():
+    """管理类名单（2026-09-19 产品决策）：存在性 + 与写类名单的包含关系 + 刻意排除项。"""
+    from pangu.server.handlers import HANDLERS
+    from pangu.server.module_registry import ADMIN_TOOLS, WRITE_TOOLS
+
+    assert ADMIN_TOOLS, "管理类名单不应为空"
+    missing = ADMIN_TOOLS - set(HANDLERS)
+    assert not missing, f"名单里有不存在的工具: {missing}"
+    # readonly 应先被 1003 拦（管理类必须同时是写类）
+    assert ADMIN_TOOLS <= WRITE_TOOLS, "管理类工具应同时属于写类"
+    # 刻意排除：config_set（设置页要用；handler 内已有保护名单）
+    assert "pangu_config_set" not in ADMIN_TOOLS
+    # 刻意排除：backup/export（只读数据 + 写文件，不破坏本体）
+    assert "pangu_backup" not in ADMIN_TOOLS and "pangu_export" not in ADMIN_TOOLS
+    # 判据核心：恢复与导入类在列
+    assert {"pangu_restore_backup", "pangu_import", "pangu_batch_import"} <= ADMIN_TOOLS
