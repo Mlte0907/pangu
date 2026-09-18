@@ -136,3 +136,93 @@ def test_lock_is_reentrant(tmp_path):
     d.content = "2"
     assert ms.update_drawer(d) is True
     assert ms._load_drawers()[0].content == "2"
+
+
+# ── 批量替换（O(N+M) 优化，2026-09-19）──
+
+
+def test_bulk_update_matches_individual(tmp_path):
+    """功能等价：批量改 20 条的结果与逐条一致。"""
+    import json
+
+    def make(tag):
+        d = tmp_path / tag
+        d.mkdir()
+        cfg = PanguConfig()
+        cfg.base_dir = d
+        cfg.db_path = d
+        cfg.palace_path = str(d / "palace")
+        cfg.ensure_dirs()
+        ms = MemoryStack(cfg)
+        # created_at 显式固定：默认取 now()，两个库会差几毫秒，JSON 比对会假失败
+        ms.add_drawers(
+            [
+                Drawer(id=f"m{i}", content=f"原{i}", wing="w", room="r", created_at="2026-01-01T00:00:00")
+                for i in range(50)
+            ]
+        )
+        return ms
+
+    def edits(ms):
+        out = []
+        for i in range(20):
+            d = ms.get_drawer_by_id(f"m{i}")
+            d.content = f"改{i}"
+            out.append(d)
+        return out
+
+    ms_bulk = make("bulk")
+    n_bulk = ms_bulk.update_drawers_bulk(edits(ms_bulk))
+
+    ms_each = make("each")
+    n_each = sum(1 for d in edits(ms_each) if ms_each.update_drawer(d))
+
+    assert n_bulk == n_each == 20
+    assert json.dumps([d.to_dict() for d in ms_bulk._load_drawers()], sort_keys=True) == json.dumps(
+        [d.to_dict() for d in ms_each._load_drawers()], sort_keys=True
+    )
+
+
+def test_bulk_update_writes_disk_once(tmp_path, monkeypatch):
+    """★ 性能契约：批量改 M 条只落盘一次（逐条要 M 次全量读+写）。"""
+    ms = _stack(tmp_path)
+    ms.add_drawers([Drawer(id=f"m{i}", content="x", wing="w", room="r") for i in range(30)])
+    calls = []
+    orig = ms._save_drawers
+
+    def counting():
+        calls.append(1)
+        return orig()
+
+    monkeypatch.setattr(ms, "_save_drawers", counting)
+    updates = []
+    for i in range(30):
+        d = ms.get_drawer_by_id(f"m{i}")
+        d.content = f"改{i}"
+        updates.append(d)
+
+    assert ms.update_drawers_bulk(updates) == 30
+    assert len(calls) == 1, f"批量落盘应为 1 次，实际 {len(calls)} 次"
+
+    calls.clear()
+    for d in updates:
+        ms.update_drawer(d)
+    assert len(calls) == 30, f"逐条落盘应为 30 次，实际 {len(calls)} 次"
+
+
+def test_bulk_update_skips_unknown_ids(tmp_path):
+    ms = _stack(tmp_path)
+    ms.add_drawers([Drawer(id="a", content="A", wing="w", room="r")])
+    d = ms.get_drawer_by_id("a")
+    d.content = "A2"
+    ghost = Drawer(id="不存在", content="x", wing="w", room="r")
+    assert ms.update_drawers_bulk([d, ghost]) == 1  # 只算真实命中
+
+
+def test_bulk_update_empty_is_noop(tmp_path, monkeypatch):
+    ms = _stack(tmp_path)
+    ms.add_drawers([Drawer(id="a", content="A", wing="w", room="r")])
+    calls = []
+    monkeypatch.setattr(ms, "_save_drawers", lambda: calls.append(1) or True)
+    assert ms.update_drawers_bulk([]) == 0
+    assert calls == []
