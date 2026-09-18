@@ -28,6 +28,10 @@ TOOLS = [
         "name": "pangu_set_classification",
         "description": "调整已有记忆的密级（0=公开/1=内部/2=机密/3=绝密）—— 解密级与升级的唯一通道。只能改本租户、且自己当前读得到的记忆；目标密级会被钳到调用方自身的 clearance。",
     },
+    {
+        "name": "pangu_set_source",
+        "description": "给记忆补来源指针（source_file / source_session）—— 解「缺来源」导致的准入死结（毕业要求有来源，缺来源的记忆被召回验证过也永远毕不了业）。补上后重新过准入门：满足条件即自动毕业进全平台只读区。只能改本租户、且自己读得到的记忆；已有来源不覆盖（只补不删）。支持单条 memory_id 或批量 memory_ids。",
+    },
 ]
 
 HANDLERS = {}
@@ -369,3 +373,126 @@ async def handle_set_classification(server, drawers, arguments):
 
 
 HANDLERS["pangu_set_classification"] = handle_set_classification
+
+
+async def handle_set_source(server, drawers, arguments):
+    """给记忆补来源指针（source_file / source_session）—— 解「缺来源」的准入死结。
+
+    为什么需要：毕业（admission=graduated → visibility=public 进全平台只读区）要求
+    has_source 与 has_positive_feedback **同时**成立；缺来源的记忆即使被召回验证过也
+    永远毕不了业 —— 面板上那 16 条实证死结（把"待验证"数字永远占住）。此前只能重写
+    整条记忆（丢 supersede 链/访问计数等派生信息）。
+
+    权限模型（与 pangu_set_classification 一致的三条）：
+    1. **读得到**：get_drawer_by_id 已受租户轴 + 密级轴双重保护，读不到＝不存在；
+    2. **是自己的**：只能改本租户（作用域为空＝系统/admin，跳过）；
+    3. **只补不删**：只允许「从无到有」，不覆盖已有来源 —— 否则可以拿它伪造来历。
+
+    补上后**重新过准入门**（复用 ingestion._admission_gate 单点判定）：若此刻四问全过
+    （有来源 + 有正向反馈）则自动毕业；仍缺反馈的保持 pending_review（等使用信号）。
+    """
+    from ...memory.ingestion import _admission_gate
+    from ...memory.layers import current_tenant
+
+    mem_ids = arguments.get("memory_ids") or []
+    mem_id = arguments.get("memory_id", "")
+    if mem_ids:
+        if not isinstance(mem_ids, list):
+            return json.dumps({"code": 2002, "error": "参数错误: memory_ids 应为数组"}, ensure_ascii=False)
+        ids = [str(x) for x in mem_ids if x][:200]  # 单次上限 200 条
+    elif mem_id:
+        ids = [str(mem_id)]
+    else:
+        ids = []
+    if not ids:
+        return json.dumps(
+            {"code": 2002, "error": "参数缺失: memory_id 或 memory_ids 至少给一个"},
+            ensure_ascii=False,
+        )
+
+    src_file = str(arguments.get("source_file") or "").strip()
+    src_session = str(arguments.get("source_session") or "").strip()
+    if not src_file and not src_session:
+        return json.dumps(
+            {"code": 2002, "error": "参数缺失: source_file 或 source_session 至少给一个"},
+            ensure_ascii=False,
+        )
+
+    tenant = current_tenant()
+    results = []
+    for mid in ids:
+        drawer = server.memory.get_drawer_by_id(mid)
+        if not drawer:
+            results.append({"memory_id": mid, "code": 2001, "error": "记忆不存在"})
+            continue
+        if tenant and (drawer.metadata or {}).get("tenant_id", "") != tenant:
+            results.append({"memory_id": mid, "code": 2003, "error": "无权修改（不属于本租户）"})
+            continue
+
+        drawer.metadata = dict(drawer.metadata or {})
+        before = {
+            "source_file": drawer.source_file or None,
+            "source_session": drawer.metadata.get("source_session") or None,
+            "admission": drawer.metadata.get("admission"),
+        }
+        filled, skipped = [], []
+        if src_file:
+            if not drawer.source_file:
+                drawer.source_file = src_file
+                filled.append("source_file")
+            else:
+                skipped.append("source_file")  # 只补不覆盖
+        if src_session:
+            if not drawer.metadata.get("source_session"):
+                drawer.metadata["source_session"] = src_session
+                filled.append("source_session")
+            else:
+                skipped.append("source_session")
+
+        if not filled:
+            results.append({"memory_id": mid, "status": "unchanged", "skipped": skipped, "before": before})
+            continue
+
+        # 重新过准入门（单点复用）：满足四问 → admission=graduated + visibility=public
+        _admission_gate(drawer, None, mid)
+        after_admission = drawer.metadata.get("admission")
+        # update_drawer 是单条替换（内部以 _load_drawers() 全库快照为基底），写路径安全
+        if not server.memory.update_drawer(drawer):
+            results.append({"memory_id": mid, "code": 2004, "error": "写回失败"})
+            continue
+
+        # 审计：来源指针是毕业判据的一部分（改它 = 影响可见性），留痕；失败不阻断
+        try:
+            from ...memory.audit_analytics import get_audit
+
+            get_audit(server.config).log("set_source", mid)
+        except Exception:
+            pass
+
+        results.append(
+            {
+                "memory_id": mid,
+                "status": "updated",
+                "filled": filled,
+                "skipped": skipped,
+                "admission": after_admission,
+                "graduated": after_admission == "graduated",
+                "before": before,
+            }
+        )
+
+    updated = sum(1 for r in results if r.get("status") == "updated")
+    graduated = sum(1 for r in results if r.get("graduated"))
+    return json.dumps(
+        {
+            "status": "ok" if updated else "noop",
+            "total": len(results),
+            "updated": updated,
+            "graduated": graduated,
+            "results": results,
+        },
+        ensure_ascii=False,
+    )
+
+
+HANDLERS["pangu_set_source"] = handle_set_source

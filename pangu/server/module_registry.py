@@ -73,6 +73,9 @@ CORE_WHITELIST: frozenset[str] = frozenset(
         # 密级变更（解密级 / 升级）的唯一通道 —— 与 delete/archive 同属按 id 的
         # 单条写操作，权限模型一致（读得到 + 是自己的 + 钳到自身 clearance）
         "pangu_set_classification",
+        # 补来源指针（解「缺来源」的准入死结 —— 毕业要求 has_source；与
+        # set_classification 同属按 id 的单条/批量写操作，权限模型一致）
+        "pangu_set_source",
         # 关联与统计 (5)
         "pangu_find_related",
         "pangu_stats",
@@ -103,7 +106,7 @@ CORE_WHITELIST: frozenset[str] = frozenset(
         # P0-1 supersede 变更链追踪（缺口 1：必须在默认暴露面）
         "pangu_get_supersede_chain",
     }
-)  # 共 30 个
+)  # 共 31 个
 
 
 # ── 模块注册表 ──
