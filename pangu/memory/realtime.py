@@ -1,5 +1,6 @@
 """盘古实时事件通知 — WebSocket 实时推送记忆变更"""
 
+import asyncio
 import json
 import logging
 from collections import defaultdict
@@ -16,6 +17,7 @@ class ConnectionManager:
         self._subscriptions: dict[str, set[str]] = defaultdict(set)
         self._message_history: list[dict] = []
         self._max_history = 500
+        self._send_timeout = 2.0  # 单连接发送超时（秒）；超时即刻摘除
 
     def connect(self, client_id: str, websocket) -> None:
         self._connections[client_id] = websocket
@@ -65,9 +67,12 @@ class ConnectionManager:
             ws = self._connections.get(client_id)
             if ws:
                 try:
-                    await ws.send_text(message)
+                    # 每连接独立超时：旧实现裸 await，一个僵死连接会拖住后面所有
+                    # 客户端（队头阻塞）。超时/失败即摘除该连接。
+                    await asyncio.wait_for(ws.send_text(message), timeout=self._send_timeout)
                     sent += 1
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"WebSocket 推送失败，断开 {client_id}: {type(e).__name__}")
                     self.disconnect(client_id)
 
         return sent
