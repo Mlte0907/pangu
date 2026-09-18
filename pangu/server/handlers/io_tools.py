@@ -121,52 +121,6 @@ async def handle_restore_backup(server, drawers, arguments):
 HANDLERS["pangu_restore_backup"] = handle_restore_backup
 
 
-async def handle_backup(server, drawers, arguments):
-    """全量备份记忆"""
-    from ...memory.backup_restore import get_backup_engine
-
-    be = get_backup_engine(server.config)
-    desc = arguments.get("description", "")
-    info = be.backup(drawers, desc)
-    return json.dumps(
-        {
-            "backup_id": info.backup_id,
-            "memories": info.memory_count,
-            "size": info.size_bytes,
-            "checksum": info.checksum,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-
-HANDLERS["pangu_backup"] = handle_backup
-
-
-async def handle_list_backups(server, drawers, arguments):
-    """列出所有备份"""
-    from ...memory.backup_restore import get_backup_engine
-
-    be = get_backup_engine(server.config)
-    return json.dumps({"backups": be.list_backups(), "count": len(be.list_backups())}, ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_list_backups"] = handle_list_backups
-
-
-async def handle_restore_backup(server, drawers, arguments):
-    """恢复备份"""
-    from ...memory.backup_restore import get_backup_engine
-
-    be = get_backup_engine(server.config)
-    result = be.restore(arguments["backup_id"])
-    result.pop("drawers", None)
-    return json.dumps(result, ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_restore_backup"] = handle_restore_backup
-
-
 async def handle_backup_stats(server, drawers, arguments):
     """备份统计"""
     from ...memory.backup_restore import get_backup_engine

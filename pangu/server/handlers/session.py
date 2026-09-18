@@ -350,17 +350,6 @@ async def handle_session_record(server, drawers, arguments):
 HANDLERS["pangu_session_record"] = handle_session_record
 
 
-async def handle_session_stats(server, drawers, arguments):
-    """获取会话统计"""
-    from ...memory.session_bridge import get_session_bridge
-
-    bridge = get_session_bridge(server.config)
-    return json.dumps(bridge.get_session_stats(), ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_session_stats"] = handle_session_stats
-
-
 async def handle_autopilot_activate(server, drawers, arguments):
     """激活自动驾驶模式（自动管理记忆）"""
     from ...memory.auto_pilot import get_auto_pilot

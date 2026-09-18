@@ -2094,17 +2094,6 @@ async def handle_inject_stats(server, drawers, arguments):
 HANDLERS["pangu_inject_stats"] = handle_inject_stats
 
 
-async def handle_cache_stats(server, drawers, arguments):
-    """查看搜索缓存统计"""
-    from ...memory.search_cache import get_search_cache
-
-    cache = get_search_cache()
-    return json.dumps(cache.get_stats(), ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_cache_stats"] = handle_cache_stats
-
-
 async def handle_cache_clear(server, drawers, arguments):
     """清空搜索缓存"""
     from ...memory.search_cache import get_search_cache

@@ -496,22 +496,6 @@ async def handle_forget_stats(server, drawers, arguments):
 HANDLERS["pangu_forget_stats"] = handle_forget_stats
 
 
-async def handle_consolidation_stats(server, drawers, arguments):
-    """巩固统计"""
-    from ...memory.consolidation_intelligence import get_consolidation_intel
-    from ...memory.lifecycle import LifecycleManager
-
-    ci = get_consolidation_intel(server.config)
-    stats = ci.get_consolidation_stats()
-    # 同时从 LifecycleManager 读取 last_consolidation
-    lifecycle = LifecycleManager(server.config)
-    stats["last_consolidation"] = lifecycle._last_consolidation if lifecycle._last_consolidation else None
-    return json.dumps(stats, ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_consolidation_stats"] = handle_consolidation_stats
-
-
 async def handle_distill(server, drawers, arguments):
     """蒸馏所有记忆为精炼知识"""
     from ...memory.distillation import get_distiller

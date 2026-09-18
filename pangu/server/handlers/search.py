@@ -460,21 +460,6 @@ async def handle_search_suggestions(server, drawers, arguments):
 HANDLERS["pangu_search_suggestions"] = handle_search_suggestions
 
 
-async def handle_recommend(server, drawers, arguments):
-    """综合记忆推荐"""
-    from ...memory.recommendation import get_recommendation
-
-    rec = get_recommendation(server.config)
-    context = arguments.get("context", "")
-    memory_id = arguments.get("memory_id", "")
-    top_k = arguments.get("top_k", 5)
-    result = rec.get_full_recommendations(context, memory_id, drawers, top_k)
-    return json.dumps(result, ensure_ascii=False, indent=2)
-
-
-HANDLERS["pangu_recommend"] = handle_recommend
-
-
 async def handle_recommend_similar(server, drawers, arguments):
     """推荐相似记忆"""
     from ...memory.recommendation import get_recommendation
