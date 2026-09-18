@@ -109,12 +109,16 @@ HANDLERS["pangu_list_backups"] = handle_list_backups
 
 
 async def handle_restore_backup(server, drawers, arguments):
-    """从备份恢复"""
+    """从备份恢复（真落盘）。
+
+    旧实现的结果里带 drawers 全量、handler 再 pop 掉 —— 看着像"传输过数据"，
+    实则 engine 根本没落盘（假成功）。现在 engine 真恢复，返回里也不再有 drawers；
+    dry_run=true 可先预览将要发生什么（校验 + 条数），不动数据。
+    """
     from ...memory.backup_restore import get_backup_engine
 
     be = get_backup_engine(server.config)
-    result = be.restore(arguments["backup_id"])
-    result.pop("drawers", None)
+    result = be.restore(arguments["backup_id"], dry_run=bool(arguments.get("dry_run", False)))
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 

@@ -554,6 +554,14 @@ class PanguConfig(BaseSettings):
         os.makedirs(self.wiki_path, exist_ok=True)
         os.makedirs(os.path.dirname(self.identity_path), exist_ok=True)
         os.makedirs(self.backup_dir, exist_ok=True)
+        # 权威记忆目录（MemoryStack 的 _drawers_file 落在这里）。
+        # 此前漏建 —— 服务长期运行时该目录早已存在所以没暴露；全新部署/测试环境
+        # 首次写入会以 "No such file or directory: .../v2_memories/drawers.json.tmp"
+        # 失败（2026-09-19 在备份恢复测试中撞到）。
+        try:
+            os.makedirs(os.path.join(str(self.db_path), "v2_memories"), exist_ok=True)
+        except Exception:
+            pass
 
     @classmethod
     def reload(cls) -> "PanguConfig":

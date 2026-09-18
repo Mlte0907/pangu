@@ -51,17 +51,23 @@ class BackupRestoreEngine:
         self._load_index()
 
     def _load_index(self) -> None:
-        """加载备份索引"""
+        """加载备份索引。
+
+        索引损坏时**不再静默清空**：旧实现 `except: self._backup_index = []` 会让
+        list_backups 显示"0 个备份"（文件其实都在），且下次 _save_index 把坏索引
+        覆盖成空表 —— 静默的数据丢失。现在保留可解析的部分并留日志。
+        """
         index_file = self._backup_dir / "index.json"
-        if index_file.exists():
-            try:
-                data = json.loads(index_file.read_text())
-                self._backup_index = [BackupInfo(**b) for b in data]
-            except Exception:
-                self._backup_index = []
+        if not index_file.exists():
+            return
+        try:
+            data = json.loads(index_file.read_text())
+            self._backup_index = [BackupInfo(**b) for b in data]
+        except Exception as e:
+            logger.warning(f"备份索引损坏（{index_file}）：{e}；本次不覆盖它，请人工检查")
 
     def _save_index(self) -> None:
-        """保存备份索引"""
+        """保存备份索引（原子写：tmp + rename，避免写一半崩溃损坏索引）"""
         index_file = self._backup_dir / "index.json"
         data = [
             {
@@ -74,23 +80,33 @@ class BackupRestoreEngine:
             }
             for b in self._backup_index
         ]
-        index_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        tmp = index_file.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        tmp.replace(index_file)
 
     def _serialize_drawers(self, drawers: list) -> str:
-        """序列化记忆"""
-        data = []
-        for d in drawers:
-            item = {
-                "id": d.id,
-                "content": d.content,
-                "wing": d.wing,
-                "importance": d.importance,
-                "tags": d.tags,
-                "created_at": getattr(d, "created_at", ""),
-                "updated_at": getattr(d, "updated_at", ""),
-            }
-            data.append(item)
+        """序列化记忆。
+
+        用 Drawer.to_dict() 存**全部 12 个字段**。旧实现手挑 7 个字段，丢了
+        room / hall（宫殿定位）与 metadata（tenant_id / classification / decay_score /
+        source_session…），即使恢复成功也回不到原状态 —— 2026-09-19 修。
+        旧备份文件（7 字段）仍可恢复：Drawer.from_dict 对缺字段用默认值。
+        """
+        data = [d.to_dict() if hasattr(d, "to_dict") else d for d in drawers]
         return json.dumps(data, ensure_ascii=False)
+
+    @staticmethod
+    def _deserialize_drawers(data: list) -> list:
+        """备份条目 → Drawer 对象（缺字段由 Drawer.from_dict 兜默认值，兼容 v1 备份）"""
+        from ..core.palace import Drawer
+
+        out = []
+        for item in data:
+            if isinstance(item, Drawer):
+                out.append(item)
+            else:
+                out.append(Drawer.from_dict(item))
+        return out
 
     def backup(self, drawers: list, description: str = "") -> BackupInfo:
         """全量备份"""
@@ -116,7 +132,14 @@ class BackupRestoreEngine:
         return info
 
     def backup_incremental(self, drawers: list, since_id: str = None) -> BackupInfo:
-        """增量备份（备份自上次以来变更的记忆）"""
+        """增量备份。
+
+        ⚠ 诚实说明（2026-09-19）：**当前实现三个分支都走全量**（self.backup），
+        "增量"只体现在描述文案。真正做增量需要"自 since_id 以来变更的条目"，
+        而 backup() 只拿到抽屉列表、无变更日志可用。不改行为（调用方依赖返回一个
+        可用备份），只把语义说清楚 + 描述里显式标注，避免运维按"小体积"预期
+        误判备份内容。
+        """
         if not since_id:
             return self.backup(drawers, "增量备份（无基准，执行全量）")
 
@@ -172,22 +195,105 @@ class BackupRestoreEngine:
         except json.JSONDecodeError:
             return {"valid": False, "error": "JSON 解析失败"}
 
-    def restore(self, backup_id: str) -> dict:
-        """恢复备份"""
+    def restore(self, backup_id: str, memory=None, dry_run: bool = False) -> dict:
+        """从备份恢复（**真落盘**）。
+
+        旧实现只把 JSON 读出来塞进返回值、handler 侧还 result.pop("drawers") —— 调用方
+        拿到 success=True / restored_count=N，磁盘却毫无变化（假成功；2026-09-19 实证）。
+        现在真落盘，并按"恢复是危险操作"设四道闸：
+          ① 校验 checksum —— 损坏/被改动的备份不许覆盖现库
+          ② 拒绝空备份 —— 0 条恢复 == 清库，直接拒绝
+          ③ 恢复前自动快照当前状态（BackupRestoreEngine 快照 + replace_all 内
+             _backup_drawers 双保险），任何时候可回滚
+          ④ dry_run=True 只报告将要发生什么，不动数据
+
+        注意：服务侧与 engine 不共享 MemoryStack 实例，落盘后服务内存最多滞后一个
+        缓存 TTL（30s）—— 恢复属于运维级低频操作，接受该窗口。
+
+        Args:
+            backup_id: 备份 id
+            memory: 可选的 MemoryStack（测试注入）；缺省按 config 新建
+            dry_run: True 时只做校验与统计，不落盘
+        """
         backup_file = self._backup_dir / f"{backup_id}.json"
         if not backup_file.exists():
             return {"success": False, "error": "备份文件不存在"}
 
+        # ① 完整性校验
+        verdict = self.verify_backup(backup_id)
+        if not verdict.get("valid"):
+            return {"success": False, "error": f"备份校验失败: {verdict.get('error')}"}
+
         try:
             data = json.loads(backup_file.read_text())
+        except Exception as e:
+            return {"success": False, "error": f"读取备份失败: {e}"}
+
+        # ② 空备份保护
+        if not data:
+            return {"success": False, "error": "备份为空（0 条），拒绝恢复以防清库"}
+
+        drawers = self._deserialize_drawers(data)
+
+        if dry_run:
             return {
                 "success": True,
+                "dry_run": True,
                 "backup_id": backup_id,
-                "restored_count": len(data),
-                "drawers": data,
+                "would_restore": len(drawers),
+                "checksum": verdict.get("checksum"),
             }
+
+        ms = memory if memory is not None else self._get_memory()
+
+        # ③ 恢复前快照（失败即中止；宁可不动，不可无回滚点）
+        safety = None
+        try:
+            current = ms.get_drawers()
+            if current:
+                safety = self.backup(current, f"restore {backup_id} 前置快照").backup_id
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"前置快照失败，已中止恢复: {e}"}
+
+        # ④ 真落盘
+        try:
+            ok = ms.replace_all(drawers)
+        except Exception as e:
+            return {"success": False, "error": f"落盘失败: {e}"}
+
+        if not ok:
+            # _save_drawers 返回 False 的原因不止一种（空写保护 / 存储后端写失败），
+            # 这里给中性描述，具体原因看服务日志里 layers 的 warning。
+            return {"success": False, "error": "落盘失败（磁盘未变），原因见服务日志"}
+
+        return {
+            "success": True,
+            "backup_id": backup_id,
+            "restored_count": len(drawers),
+            "safety_backup": safety,
+            "checksum": verdict.get("checksum"),
+        }
+
+    def _get_memory(self):
+        """按 config 新建 MemoryStack —— restore 落盘用（服务侧缓存 TTL 30s 自会同步）。
+
+        先 ensure_dirs：恢复要写 drawers.json，目录不存在会让 _save_drawers 失败
+        （实测：No such file or directory .../v2_memories/drawers.json.tmp）。
+        config 为空时补 PanguConfig.load()（与 MemoryStack(None) 的路径一致），
+        否则这里的 ensure_dirs 会被静默跳过、白建。
+        """
+        cfg = self.config
+        if cfg is None:
+            from ..core.config import PanguConfig
+
+            cfg = PanguConfig.load()
+        try:
+            cfg.ensure_dirs()
+        except Exception:
+            pass
+        from .layers import MemoryStack
+
+        return MemoryStack(cfg)
 
     def _apply_filters(self, data: list, wing: str = None, min_importance: float = None) -> list:
         filtered = data
@@ -197,27 +303,61 @@ class BackupRestoreEngine:
             filtered = [d for d in filtered if d.get("importance", 0) >= min_importance]
         return filtered
 
-    def _load_and_filter_backup(self, backup_id: str, wing: str = None, min_importance: float = None) -> dict:
-        """加载并过滤备份数据"""
-        data = json.loads((self._backup_dir / f"{backup_id}.json").read_text())
-        filtered = self._apply_filters(data, wing, min_importance)
-        return {
-            "success": True,
-            "backup_id": backup_id,
-            "total_in_backup": len(data),
-            "restored_count": len(filtered),
-            "filter": {"wing": wing, "min_importance": min_importance},
-        }
+    def restore_by_filter(
+        self,
+        backup_id: str,
+        wing: str = None,
+        min_importance: float = None,
+        memory=None,
+        dry_run: bool = False,
+    ) -> dict:
+        """按条件恢复备份中的一部分（**追加**语义，真落盘）。
 
-    def restore_by_filter(self, backup_id: str, wing: str = None, min_importance: float = None) -> dict:
+        与 restore 的分工：restore 是"整库回滚到备份时刻"（覆盖，危险）；本方法供
+        "误删某个 wing 的一批、想找回来"这类局部需求 —— 只把筛选出的条目**追加**回库
+        （已存在的 id 跳过），不删任何现有记忆，故无需前置快照。
+
+        旧实现只返回统计、不落盘（名字骗人；2026-09-19 修）。
+        """
         backup_file = self._backup_dir / f"{backup_id}.json"
         if not backup_file.exists():
             return {"success": False, "error": "备份文件不存在"}
 
         try:
-            return self._load_and_filter_backup(backup_id, wing, min_importance)
+            data = json.loads(backup_file.read_text())
         except json.JSONDecodeError:
             return {"success": False, "error": "JSON 解析失败"}
+
+        filtered = self._apply_filters(data, wing, min_importance)
+        base = {
+            "backup_id": backup_id,
+            "total_in_backup": len(data),
+            "filter": {"wing": wing, "min_importance": min_importance},
+        }
+
+        if not filtered:
+            return {"success": False, "error": "筛选结果为空，无可恢复", **base}
+
+        if dry_run:
+            return {"success": True, "dry_run": True, "would_restore": len(filtered), **base}
+
+        ms = memory if memory is not None else self._get_memory()
+        existing = {d.id for d in ms.get_drawers()}
+        to_add = [d for d in self._deserialize_drawers(filtered) if d.id not in existing]
+        skipped = len(filtered) - len(to_add)
+
+        if to_add:
+            try:
+                ms.add_drawers(to_add)
+            except Exception as e:
+                return {"success": False, "error": f"落盘失败: {e}", **base}
+
+        return {
+            "success": True,
+            "restored_count": len(to_add),
+            "skipped_existing": skipped,
+            **base,
+        }
 
     def delete_backup(self, backup_id: str) -> dict:
         """删除备份"""

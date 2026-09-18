@@ -463,7 +463,12 @@ class MemoryStack:
         self.config = config
         # 写路径互斥锁（2026-09-19）：MCP 主循环与自主调度线程都会写记忆，
         # add/update/remove 是"读-改-写"组合，无锁时并发会丢更新。
-        self._write_lock = threading.RLock()
+        #
+        # ⚠ 必须复用模块级 _DRAWERS_IO_LOCK（_synchronized 用的同一把），不能新起一个
+        # 实例锁：lifecycle 的维护任务通过 get_drawers_io_lock() 持模块锁包"整段读-改-
+        # 写"，若这里另起锁，两把锁互不排斥，等于没锁住。（初版用 threading.RLock()
+        # 新建 —— 2026-09-19 修正。）
+        self._write_lock = _DRAWERS_IO_LOCK
         self.l0 = Layer0(self.config.identity_path)
         self.l1 = Layer1(self.config.palace_path)
         self.l2 = Layer2(self.config.palace_path)
@@ -907,6 +912,46 @@ class MemoryStack:
                         f"remove_drawers: 已从内存删除 {removed} 条但**未落盘**（被空写保护拦截），磁盘未同步"
                     )
             return removed
+
+    def replace_all(self, drawers: list[Drawer]) -> bool:
+        """整体替换主文件抽屉（恢复备份用）。
+
+        与 add/remove 的差别：这是"把整个库换成另一份"的操作，所以额外做三件事：
+        - 拒绝空列表：空备份恢复 == 清库（本仓出现过"内存假空 → 落盘清库"的失败模式，
+          这里直接挡在入口；真要清空必须显式调 remove_drawers）
+        - 落盘前自动快照（_backup_drawers）：恢复本身可回滚
+        - 向量索引摘掉"恢复后已不存在"的 id，否则搜索会返回幽灵 id
+        """
+        # 与自主调度线程互斥（见 __init__._write_lock 注释）
+        with self._write_lock:
+            if not drawers:
+                raise ValueError("replace_all 拒绝空列表（防清库）；要清空请显式调用 remove_drawers")
+            self._backup_drawers()
+            self._drawers = list(drawers)
+            # 恢复的语义就是"库 == 这份备份"，故全部视为主文件来源
+            self._primary_ids = {d.id for d in drawers}
+            saved = self._save_drawers()
+            if saved:
+                keep = {d.id for d in drawers}
+                try:
+                    from pangu.memory.vector_index import get_vector_index
+
+                    idx = get_vector_index()
+                    stale = [i for i in list(getattr(idx, "_ids", [])) if i not in keep]
+                    if stale:
+                        self._remove_from_vector_index(stale)
+                except Exception as e:
+                    logger.warning(f"replace_all: 向量索引清理跳过（{e}）")
+                self._cache.invalidate()
+                try:
+                    from pangu.memory.search_cache import get_search_cache
+
+                    get_search_cache().clear()
+                except Exception:
+                    pass
+            else:
+                logger.warning("replace_all: 内存已替换但**未落盘**（被空写保护拦截）")
+            return saved
 
         # ── 记忆栈接口 ──
 
