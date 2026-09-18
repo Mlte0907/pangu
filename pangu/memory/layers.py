@@ -461,6 +461,9 @@ class MemoryStack:
                 extra_drawers_files = original.authoritative_extra_drawers_files()
             config = original.authoritative_memory_config()
         self.config = config
+        # 写路径互斥锁（2026-09-19）：MCP 主循环与自主调度线程都会写记忆，
+        # add/update/remove 是"读-改-写"组合，无锁时并发会丢更新。
+        self._write_lock = threading.RLock()
         self.l0 = Layer0(self.config.identity_path)
         self.l1 = Layer1(self.config.palace_path)
         self.l2 = Layer2(self.config.palace_path)
@@ -631,73 +634,75 @@ class MemoryStack:
             这与本项目反复出现的 `except: return []` 是同一类失败模式，
             所以这里让"跳过"变成调用方可感知的事实。
         """
-        # 仅取主文件来源的 drawer 做脏检查与落盘
-        primary_drawers = [d for d in self._drawers if d.id in self._primary_ids]
+        # 与自主调度线程互斥（见 __init__._write_lock 注释）
+        with self._write_lock:
+            # 仅取主文件来源的 drawer 做脏检查与落盘
+            primary_drawers = [d for d in self._drawers if d.id in self._primary_ids]
 
-        # P0-0 修复：存储后端路径也必须受空写保护约束。
-        # 下面 JSON 分支的守卫管不到这里——`JsonDrawerStorage.save()` /
-        # `SqliteDrawerStorage.save()` 都是**无条件**写入，对 `[]` 零防护，
-        # 于是"内存以为自己是空库"时会直接把非空存储清成 0 条
-        # （实测：预置 3 条 → 0 条）。故在分派前统一做一次保护。
-        #
-        # ⚠ 判据必须区分**意图**，不能只看"结果形状"（空 vs 非空）：
-        #   危险：内存从未成功加载（读异常）→ 内存空是**假空** → 落盘会清库 → 拦
-        #   合法：加载成功后用户删光 → 内存空是**真空** → 必须落盘
-        # 早期版本只判 `not primary_drawers and _disk_has_records()`，
-        # 导致 `remove_drawer()` 删除**最后一条**时被误拦：
-        # 返回 True 但磁盘没变 ⇒ 内存与磁盘静默不一致
-        # （回归证据：tests/test_core.py::test_remove_drawer）。
-        # 引入 `_loaded_ok` 后，两种场景被正确区分。
-        if not primary_drawers and not self._loaded_ok and self._disk_has_records():
-            logger.warning("跳过保存: 内存主集为空且主存从未成功加载，疑似读失败后的空库误写（数据保护）")
-            return False
+            # P0-0 修复：存储后端路径也必须受空写保护约束。
+            # 下面 JSON 分支的守卫管不到这里——`JsonDrawerStorage.save()` /
+            # `SqliteDrawerStorage.save()` 都是**无条件**写入，对 `[]` 零防护，
+            # 于是"内存以为自己是空库"时会直接把非空存储清成 0 条
+            # （实测：预置 3 条 → 0 条）。故在分派前统一做一次保护。
+            #
+            # ⚠ 判据必须区分**意图**，不能只看"结果形状"（空 vs 非空）：
+            #   危险：内存从未成功加载（读异常）→ 内存空是**假空** → 落盘会清库 → 拦
+            #   合法：加载成功后用户删光 → 内存空是**真空** → 必须落盘
+            # 早期版本只判 `not primary_drawers and _disk_has_records()`，
+            # 导致 `remove_drawer()` 删除**最后一条**时被误拦：
+            # 返回 True 但磁盘没变 ⇒ 内存与磁盘静默不一致
+            # （回归证据：tests/test_core.py::test_remove_drawer）。
+            # 引入 `_loaded_ok` 后，两种场景被正确区分。
+            if not primary_drawers and not self._loaded_ok and self._disk_has_records():
+                logger.warning("跳过保存: 内存主集为空且主存从未成功加载，疑似读失败后的空库误写（数据保护）")
+                return False
 
-        if self._storage:
+            if self._storage:
+                try:
+                    # 使用存储后端保存
+                    self._storage.save(primary_drawers)
+                    self._cache.invalidate()
+                    return True
+                except Exception as e:
+                    logger.error(f"存储后端保存失败: {e}")
+                    # 回退到 JSON 文件
+
+            # JSON 文件保存逻辑
             try:
-                # 使用存储后端保存
-                self._storage.save(primary_drawers)
-                self._cache.invalidate()
-                return True
+                if self._drawers_file.exists():
+                    with open(self._drawers_file, encoding="utf-8") as f:
+                        disk_data = json.load(f)
+                    disk_ids = {x.get("id") for x in disk_data}
+                    # 主文件在内存中的集合不可凭空丢失（合并源不计入），否则跳过以防误覆盖
+                    missing = self._primary_ids - disk_ids
+                    if missing and len(disk_data) >= len(primary_drawers):
+                        logger.warning(f"跳过保存: 内存主文件集缺少 {len(missing)} 条磁盘记录")
+                        return False
+                    # P0-0 修复：空写保护（上面那条守卫在内存为空时**失效**——
+                    # 内存为空 ⇒ _primary_ids 也是空集 ⇒ missing 为空 ⇒ 守卫不触发）。
+                    # 实测（假 HOME，v1 预置 3 条）：_drawers=[] + _primary_ids=set()
+                    # → 文件从 3 条被清成 0 条，这正是 v1 变成 `[]` 的可达路径。
+                    # 判断必须基于**磁盘条数 > 0**（而不是 _primary_ids），否则又是
+                    # 一个恒不触发的死守卫。
+                    # 同时用 `_loaded_ok` 区分意图：加载成功后删空必须放行。
+                    if disk_data and not primary_drawers and not self._loaded_ok:
+                        logger.warning(
+                            f"跳过保存: 内存主集为空且主存从未成功加载，磁盘有 "
+                            f"{len(disk_data)} 条记录，疑似空库误写（数据保护）"
+                        )
+                        return False
             except Exception as e:
-                logger.error(f"存储后端保存失败: {e}")
-                # 回退到 JSON 文件
+                # 磁盘文件损坏/不可读时记录警告，用内存数据原子覆写以修复损坏
+                logger.warning(f"磁盘 drawers.json 读取失败，将用内存数据覆写: {e}")
 
-        # JSON 文件保存逻辑
-        try:
-            if self._drawers_file.exists():
-                with open(self._drawers_file, encoding="utf-8") as f:
-                    disk_data = json.load(f)
-                disk_ids = {x.get("id") for x in disk_data}
-                # 主文件在内存中的集合不可凭空丢失（合并源不计入），否则跳过以防误覆盖
-                missing = self._primary_ids - disk_ids
-                if missing and len(disk_data) >= len(primary_drawers):
-                    logger.warning(f"跳过保存: 内存主文件集缺少 {len(missing)} 条磁盘记录")
-                    return False
-                # P0-0 修复：空写保护（上面那条守卫在内存为空时**失效**——
-                # 内存为空 ⇒ _primary_ids 也是空集 ⇒ missing 为空 ⇒ 守卫不触发）。
-                # 实测（假 HOME，v1 预置 3 条）：_drawers=[] + _primary_ids=set()
-                # → 文件从 3 条被清成 0 条，这正是 v1 变成 `[]` 的可达路径。
-                # 判断必须基于**磁盘条数 > 0**（而不是 _primary_ids），否则又是
-                # 一个恒不触发的死守卫。
-                # 同时用 `_loaded_ok` 区分意图：加载成功后删空必须放行。
-                if disk_data and not primary_drawers and not self._loaded_ok:
-                    logger.warning(
-                        f"跳过保存: 内存主集为空且主存从未成功加载，磁盘有 "
-                        f"{len(disk_data)} 条记录，疑似空库误写（数据保护）"
-                    )
-                    return False
-        except Exception as e:
-            # 磁盘文件损坏/不可读时记录警告，用内存数据原子覆写以修复损坏
-            logger.warning(f"磁盘 drawers.json 读取失败，将用内存数据覆写: {e}")
-
-        tmp_file = self._drawers_file.with_suffix(".json.tmp")
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump([d.to_dict() for d in primary_drawers], f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_file, self._drawers_file)
-        self._cache.invalidate()
-        return True
+            tmp_file = self._drawers_file.with_suffix(".json.tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump([d.to_dict() for d in primary_drawers], f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, self._drawers_file)
+            self._cache.invalidate()
+            return True
 
     def invalidate_cache(self) -> None:
         """手动刷新缓存"""
@@ -727,12 +732,14 @@ class MemoryStack:
 
     def add_drawers(self, drawers: list[Drawer]) -> None:
         """批量添加记忆抽屉"""
-        self._drawers = self._load_drawers()
-        self._drawers.extend(drawers)
-        for drawer in drawers:
-            self._primary_ids.add(drawer.id)
-        self._save_drawers()
-        self._cache.invalidate()
+        # 与自主调度线程互斥（见 __init__._write_lock 注释）
+        with self._write_lock:
+            self._drawers = self._load_drawers()
+            self._drawers.extend(drawers)
+            for drawer in drawers:
+                self._primary_ids.add(drawer.id)
+            self._save_drawers()
+            self._cache.invalidate()
 
     def update_drawer(self, drawer: Drawer) -> bool:
         """按 id 替换抽屉内容（P0-1：supersede 等场景的落盘）
@@ -744,29 +751,31 @@ class MemoryStack:
             True — 找到了匹配的 id 并完成替换；
             False — 未找到匹配 id（无操作）。
         """
-        self._drawers = self._load_drawers()
-        found = False
-        for i, d in enumerate(self._drawers):
-            if d.id == drawer.id:
-                self._drawers[i] = drawer
-                found = True
-                break
-        if not found:
-            return False
-        saved = self._save_drawers()
-        if saved:
-            self._cache.invalidate()
-            # 顺便清掉 search_cache：supersede 写完后旧 drawer 的 metadata 变了，
-            # 之前的查询结果（缓存里可能还把旧 drawer 当"未取代"返回）必须失效。
-            try:
-                from pangu.memory.search_cache import get_search_cache
+        # 与自主调度线程互斥（见 __init__._write_lock 注释）
+        with self._write_lock:
+            self._drawers = self._load_drawers()
+            found = False
+            for i, d in enumerate(self._drawers):
+                if d.id == drawer.id:
+                    self._drawers[i] = drawer
+                    found = True
+                    break
+            if not found:
+                return False
+            saved = self._save_drawers()
+            if saved:
+                self._cache.invalidate()
+                # 顺便清掉 search_cache：supersede 写完后旧 drawer 的 metadata 变了，
+                # 之前的查询结果（缓存里可能还把旧 drawer 当"未取代"返回）必须失效。
+                try:
+                    from pangu.memory.search_cache import get_search_cache
 
-                get_search_cache().clear()
-            except Exception:
-                pass
-        else:
-            logger.warning(f"update_drawer({drawer.id[:8]}): 内存已替换但落盘被拦截")
-        return found
+                    get_search_cache().clear()
+                except Exception:
+                    pass
+            else:
+                logger.warning(f"update_drawer({drawer.id[:8]}): 内存已替换但落盘被拦截")
+            return found
 
     def _visible(self, drawers: list[Drawer]) -> list[Drawer]:
         """按当前请求的租户作用域裁剪（作用域为空 → 原样返回＝全库视角）。"""
@@ -846,54 +855,60 @@ class MemoryStack:
         写路径用**全库**快照；作用域非空时先做所有权检查 —— 本租户不可见的 id 视为
         不存在，拒绝删除（否则调用方可用别的租户的 id 越权删除）。
         """
-        if current_tenant() and not any(d.id == drawer_id for d in self._read_drawers()):
-            logger.warning(f"remove_drawer({drawer_id}): 该条目在本租户作用域内不可见，拒绝删除")
+        # 与自主调度线程互斥（见 __init__._write_lock 注释）
+        with self._write_lock:
+            if current_tenant() and not any(d.id == drawer_id for d in self._read_drawers()):
+                logger.warning(f"remove_drawer({drawer_id}): 该条目在本租户作用域内不可见，拒绝删除")
+                return False
+            self._drawers = self._load_drawers()
+            original_len = len(self._drawers)
+            self._drawers = [d for d in self._drawers if d.id != drawer_id]
+            if len(self._drawers) < original_len:
+                self._backup_drawers()
+                saved = self._save_drawers()
+                if saved:
+                    self._remove_from_vector_index([drawer_id])
+                    self._cache.invalidate()
+                else:
+                    # 不再静默：落盘被拦时内存与磁盘已不一致，必须让调用方知道
+                    logger.warning(
+                        f"remove_drawer({drawer_id}): 删除已应用到内存但**未落盘**（被空写保护拦截），磁盘仍含该记录"
+                    )
+                return True
             return False
-        self._drawers = self._load_drawers()
-        original_len = len(self._drawers)
-        self._drawers = [d for d in self._drawers if d.id != drawer_id]
-        if len(self._drawers) < original_len:
-            self._backup_drawers()
-            saved = self._save_drawers()
-            if saved:
-                self._remove_from_vector_index([drawer_id])
-                self._cache.invalidate()
-            else:
-                # 不再静默：落盘被拦时内存与磁盘已不一致，必须让调用方知道
-                logger.warning(
-                    f"remove_drawer({drawer_id}): 删除已应用到内存但**未落盘**（被空写保护拦截），磁盘仍含该记录"
-                )
-            return True
-        return False
 
     def remove_drawers(self, drawer_ids: list[str]) -> int:
         """批量删除抽屉（自动备份 + 向量索引同步）
 
         同 remove_drawer：先按租户作用域过滤掉不可见的 id（越权保护），再全库快照写回。
         """
-        if current_tenant():
-            visible = {d.id for d in self._read_drawers()}
-            skipped = [i for i in drawer_ids if i not in visible]
-            if skipped:
-                logger.warning(f"remove_drawers: 跳过 {len(skipped)} 个本租户不可见的 id（越权保护）")
-            drawer_ids = [i for i in drawer_ids if i in visible]
-            if not drawer_ids:
-                return 0
-        self._drawers = self._load_drawers()
-        ids_set = set(drawer_ids)
-        original_len = len(self._drawers)
-        self._drawers = [d for d in self._drawers if d.id not in ids_set]
-        removed = original_len - len(self._drawers)
-        if removed > 0:
-            self._backup_drawers()
-            saved = self._save_drawers()
-            self._remove_from_vector_index(drawer_ids)
-            self._cache.invalidate()
-            if not saved:
-                logger.warning(f"remove_drawers: 已从内存删除 {removed} 条但**未落盘**（被空写保护拦截），磁盘未同步")
-        return removed
+        # 与自主调度线程互斥（见 __init__._write_lock 注释）
+        with self._write_lock:
+            if current_tenant():
+                visible = {d.id for d in self._read_drawers()}
+                skipped = [i for i in drawer_ids if i not in visible]
+                if skipped:
+                    logger.warning(f"remove_drawers: 跳过 {len(skipped)} 个本租户不可见的 id（越权保护）")
+                drawer_ids = [i for i in drawer_ids if i in visible]
+                if not drawer_ids:
+                    return 0
+            self._drawers = self._load_drawers()
+            ids_set = set(drawer_ids)
+            original_len = len(self._drawers)
+            self._drawers = [d for d in self._drawers if d.id not in ids_set]
+            removed = original_len - len(self._drawers)
+            if removed > 0:
+                self._backup_drawers()
+                saved = self._save_drawers()
+                self._remove_from_vector_index(drawer_ids)
+                self._cache.invalidate()
+                if not saved:
+                    logger.warning(
+                        f"remove_drawers: 已从内存删除 {removed} 条但**未落盘**（被空写保护拦截），磁盘未同步"
+                    )
+            return removed
 
-    # ── 记忆栈接口 ──
+        # ── 记忆栈接口 ──
 
     def wake_up(self, wing: str = None) -> str:
         """唤醒: L0 + L1 (~600-900 tokens)（读路径：本租户可见集合）"""
