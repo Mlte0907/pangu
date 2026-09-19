@@ -54,6 +54,7 @@ def decay_batch(
             updated_at=d.created_at,
             # 增量基准：上次衰减时刻（没有则回退创建时间）—— 幂等
             basis_at=d.metadata.get("decay_updated_at"),
+            last_accessed=d.metadata.get("last_accessed"),
             now=now,
             decay_base=decay_base,
             decay_floor=decay_floor,
@@ -106,6 +107,7 @@ def _calculate_decay_v2(
     night_decay_factor: float = 1.2,
     min_idle_hours: float = 0.5,
     basis_at: str | None = None,
+    last_accessed: str | None = None,
 ) -> tuple:
     """计算衰减分数 v2 — 含夜间因子和重要性保护。
 
@@ -146,10 +148,19 @@ def _calculate_decay_v2(
     hour = now.hour + now.minute / 60.0
     night_factor = 1.0 - (night_decay_factor - 1.0) * math.exp(-0.5 * ((hour - 5.0) / 1.5) ** 2)
 
-    # 时间保护因子
-    if idle_hours < 24:
+    # 时间保护因子（2026-09-19 接真实访问）：此前 idle_hours 恒为"距创建"的年龄，
+    # touch_boost 名为访问加固实为年龄加成 —— 天天被搜的记忆照样衰减。现在优先用
+    # metadata.last_accessed（record_access 在搜索命中时写），没有才回退创建时间。
+    touch_hours = idle_hours
+    if last_accessed:
+        try:
+            la = datetime.fromisoformat(last_accessed)
+            touch_hours = max(0.0, (now - la).total_seconds() / 3600)
+        except (ValueError, TypeError):
+            pass
+    if touch_hours < 24:
         touch_factor = touch_boost_short
-    elif idle_hours > 720:  # 30天
+    elif touch_hours > 720:  # 30天
         touch_factor = touch_boost_long
     else:
         touch_factor = 1.0

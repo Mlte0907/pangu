@@ -17,6 +17,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 
 # ── drawers 文件 IO 的进程内串行锁（2026-09-18）──
 #
@@ -1072,6 +1073,28 @@ class MemoryStack:
             },
         )
         return result
+
+    def record_access(self, ids: list[str]) -> int:
+        """记录访问（搜索/召回命中时调用）—— 衰减与遗忘模型的"使用信号"。
+
+        此前 access_count 全仓没有任何写入方：遗忘模型永远看到"从未访问"，
+        天天被搜的记忆也照常衰减（touch_boost 实际按创建年龄算）。现由搜索
+        命中侧调用本方法，衰减任务的 touch 因子改读 last_accessed。
+
+        用 update_drawers_bulk 一次落盘（O(N)），不要逐条 update_drawer（O(N×M)）。
+        Returns: 真正更新的条数。
+        """
+        if not ids:
+            return 0
+        now_iso = datetime.now().isoformat()
+        want = set(ids)
+        current = [d for d in self._load_drawers() if d.id in want]
+        for d in current:
+            meta = d.metadata if isinstance(d.metadata, dict) else {}
+            meta["access_count"] = int(meta.get("access_count", 0)) + 1
+            meta["last_accessed"] = now_iso
+            d.metadata = meta
+        return self.update_drawers_bulk(current) if current else 0
 
     def search(self, query: str, wing: str = None, room: str = None, n_results: int = 5) -> str:
         """深度搜索: L3（动态 token 预算截断）（读路径：本租户可见集合）"""

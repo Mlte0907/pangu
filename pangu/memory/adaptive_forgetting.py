@@ -138,8 +138,29 @@ class AdaptiveForgetting:
         )
 
     def evaluate_all(self, drawers: list, access_log: dict = None) -> ForgettingReport:
-        """评估所有记忆"""
-        access_log = access_log or {}
+        """评估所有记忆。
+
+        access_log 缺省时从记忆 metadata 取（access_count/last_accessed，由
+        record_access 在搜索命中时写入）。此前调用方从不传 access_log 且无
+        其他来源 —— 遗忘模型永远看到"从未访问"，常用记忆也可能被归档
+        （2026-09-19 接线）。
+        """
+        if access_log is None:
+            access_log = {}
+            now = datetime.now()
+            for d in drawers:
+                meta = d.metadata if isinstance(d.metadata, dict) else {}
+                la = meta.get("last_accessed")
+                days = 30
+                if la:
+                    try:
+                        days = max(0, (now - datetime.fromisoformat(la)).days)
+                    except (ValueError, TypeError):
+                        pass
+                access_log[d.id] = {
+                    "access_count": int(meta.get("access_count", 0)),
+                    "days_since_access": days,
+                }
         decisions = []
 
         for d in drawers:

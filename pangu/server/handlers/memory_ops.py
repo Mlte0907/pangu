@@ -189,6 +189,21 @@ async def handle_search_memories(server, drawers, arguments):
     except Exception:
         pass
 
+    # 访问反馈（2026-09-19 接线）：命中即记 access_count/last_accessed ——
+    # 衰减任务的 touch 因子读 last_accessed（常用记忆不再衰减）、自适应遗忘读
+    # access_count（常用记忆不被归档）。此前 access_count 全仓无写入方，
+    # "使用信号"完全断裂。批量一次落盘（record_access 走 update_drawers_bulk）。
+    try:
+        _hit_ids = [
+            r["id"]
+            for r in (payload.get("results", []) if isinstance(payload, dict) else [])
+            if isinstance(r, dict) and r.get("id") and r.get("relevant", True)
+        ]
+        if _hit_ids:
+            server.memory.record_access(_hit_ids)
+    except Exception:
+        pass
+
     # 搜索分析（2026-09-19 接线）：SearchAnalytics 的 log_search 与 4 个分析工具
     # （热门查询/空搜索/慢搜索）早就实现，但记录端从未被调用 —— analytics 文件
     # 一直为空，分析工具全部返回空数据。这里接入主搜索入口。
