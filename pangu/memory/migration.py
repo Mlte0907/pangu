@@ -141,6 +141,55 @@ class MemoryImporter:
             memory = MemoryStack(self.config)
             memory.l0.set_identity(data["identity"])
 
+        # 导入知识图谱（2026-09-19 补）：此前 import_from_file 只认
+        # memories/wiki_pages/identity，export_all 写出的 knowledge_graph 被
+        # 静默丢弃 —— 导出→导入往返后 KG 全丢（与当初备份漏 KG 同族问题）。
+        # add_entity/add_relation 均为 INSERT OR REPLACE，天然幂等。
+        if data.get("knowledge_graph"):
+            try:
+                from .knowledge_graph import KnowledgeGraph
+
+                kg = KnowledgeGraph(self.config)
+                graph = data["knowledge_graph"]
+                for ent in graph.get("entities", []):
+                    try:
+                        kg.add_entity(
+                            id=ent.get("id"),
+                            name=ent.get("name") or ent.get("id") or "",
+                            entity_type=ent.get("type") or "concept",
+                            description=ent.get("description") or "",
+                            tenant_id=ent.get("tenant_id"),
+                            classification=ent.get("classification"),
+                            clamp=False,
+                        )
+                        stats["entities_imported"] += 1
+                    except Exception:
+                        continue
+                for rel in graph.get("relations", []):
+                    try:
+                        kg.add_relation(
+                            id=rel.get("id"),
+                            subject_id=rel.get("subject_id"),
+                            predicate=rel.get("predicate") or "related_to",
+                            object_id=rel.get("object_id"),
+                            valid_from=rel.get("valid_from"),
+                            valid_until=rel.get("valid_until"),
+                            confidence=rel.get("confidence", 1.0),
+                            source=rel.get("source") or "import",
+                            tenant_id=rel.get("tenant_id"),
+                            classification=rel.get("classification"),
+                            clamp=False,
+                        )
+                    except Exception:
+                        continue
+            except Exception as e:
+                stats["knowledge_graph_error"] = str(e)
+
+        # 宫殿结构：export_structure 是可视化导出（nodes/edges），重建 meta 有损，
+        # 且无对应导入实现 —— 显式报告"跳过"，不静默丢弃。
+        if "palace" in data:
+            stats["palace_skipped"] = "导出为可视化结构，无导入实现（结构会随记忆 wing/room 重建）"
+
         return stats
 
     def _load_json_from_zip(self, file_path: str) -> dict:
