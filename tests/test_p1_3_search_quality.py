@@ -44,6 +44,7 @@ def test_relevant_flag_on_results(tmp_path, monkeypatch):
 
     def cos(x, y):
         return float(np.dot(x, y) / (np.linalg.norm(x) * np.linalg.norm(y)))
+
     # 嵌入本身要有区分度（守住 mask/模型两个根因不回退）
     assert cos(a, a) > 0.99
     # 同义对相似度应明显高于阈值；无关对应低于阈值
