@@ -148,6 +148,9 @@ async def handle_search_memories(server, drawers, arguments):
         ]
         drawers = filtered
 
+    from time import perf_counter as _perf_counter
+
+    _t0 = _perf_counter()
     results = server.search.search(query, drawers, wing=wing, room=room)
     try:
         from ...memory.encryption import decrypt
@@ -167,8 +170,27 @@ async def handle_search_memories(server, drawers, arguments):
         pass
     # 统一返回格式：{"results": [...], "total": N}
     if isinstance(results, list):
-        return json.dumps({"results": results, "total": len(results), "query": query}, ensure_ascii=False, default=str)
-    return json.dumps(results, ensure_ascii=False, default=str)
+        payload = {"results": results, "total": len(results), "query": query}
+    else:
+        payload = results
+
+    # 搜索分析（2026-09-19 接线）：SearchAnalytics 的 log_search 与 4 个分析工具
+    # （热门查询/空搜索/慢搜索）早就实现，但记录端从未被调用 —— analytics 文件
+    # 一直为空，分析工具全部返回空数据。这里接入主搜索入口。
+    try:
+        from ...memory.search_analytics import get_search_analytics
+
+        _n = len(payload.get("results", [])) if isinstance(payload, dict) else 0
+        get_search_analytics().log_search(
+            query,
+            _n,
+            (_perf_counter() - _t0) * 1000,
+            user_id=(identity.get("room") if isinstance(identity, dict) else "") or "default",
+        )
+    except Exception:
+        pass
+
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 HANDLERS["pangu_search_memories"] = handle_search_memories

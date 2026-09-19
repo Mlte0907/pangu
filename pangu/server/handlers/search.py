@@ -334,7 +334,21 @@ async def handle_hybrid_search(server, drawers, arguments):
             )
         ]
 
+    from time import perf_counter as _perf_counter
+
+    _t0 = _perf_counter()
     results = hybrid_search(query, drawers, server.config, limit)
+
+    # 搜索分析接线（2026-09-19，同 search_memories）：记录端此前从未被调用
+    try:
+        from ...memory.search_analytics import get_search_analytics
+
+        get_search_analytics().log_search(
+            query, len(results), (_perf_counter() - _t0) * 1000, user_id=tenant or "default"
+        )
+    except Exception:
+        pass
+
     return json.dumps({"results": results, "total": len(results)}, ensure_ascii=False, indent=2)
 
 
