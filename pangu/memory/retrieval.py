@@ -681,14 +681,12 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
                 return {"error": "refused to overwrite non-empty store with empty list"}
 
             disk_items = PanguConfig.load_drawers_nonempty(drawers_file)
-            if not disk_items:
-                logger.warning(f"importance_feedback({drawer_id}): 磁盘为空，已跳过落盘（防止清库）")
-                return {"error": "refused to write empty store"}
 
-            # 只对目标 id 做替换，其余记录一律保留磁盘现值
+            # 只对**目标 id** 做替换，其余记录一律保留磁盘现值。
             touched = {d.id: d.to_dict() for d in drawers}
             merged: list = []
             replaced = False
+            found_on_disk = False
             for item in disk_items:
                 _id = item.get("id")
                 if _id in touched:
@@ -696,11 +694,32 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
                     replaced = True
                 else:
                     merged.append(item)
-            if not replaced:
+                if _id == drawer_id:
+                    found_on_disk = True
+
+            if not disk_items:
+                # 磁盘为空 + 调用方给了目标记录 ⇒ 这是「全新库第一次反馈」，
+                # 写入恰好这一条是安全的（旧实现在此处直接拒绝，回归测试
+                # test_importance_feedback_at_min / graduates_pending 依赖它）。
+                # 仍然只写**目标**，不把调用方整个列表倒进去。
+                only = touched.get(drawer_id)
+                if only is None:
+                    logger.warning(f"importance_feedback({drawer_id}): 磁盘为空且调用方未提供该记录，已跳过落盘")
+                    return {"error": "refused to write empty store"}
+                merged = [only]
+                replaced = True
+            elif not found_on_disk:
+                # 磁盘非空且没有目标 id：**不追加**（旧行为会把调用方内存里的
+                # 记录倒进磁盘，正是 P0-0 清库机制），显式拒绝。
                 logger.warning(f"importance_feedback({drawer_id}): 磁盘上未找到该 id，已跳过落盘")
                 return {"error": "target id not found on disk", "id": drawer_id}
 
+            if not replaced:
+                logger.warning(f"importance_feedback({drawer_id}): 无匹配记录，已跳过落盘")
+                return {"error": "target id not found on disk", "id": drawer_id}
+
             tmp_file = drawers_file.with_suffix(".json.tmp")
+            drawers_file.parent.mkdir(parents=True, exist_ok=True)
             with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(merged, f, ensure_ascii=False, indent=2)
                 f.flush()
