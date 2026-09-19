@@ -174,6 +174,21 @@ async def handle_search_memories(server, drawers, arguments):
     else:
         payload = results
 
+    # 结果质量自检（2026-09-19）：语义搜索修好打分后，无关查询的 Top1 只有
+    # 0.19-0.31（相关查询 0.36+）。若全部低于阈值，显式告诉调用方"没有高度
+    # 相关的记忆"——而不是硬凑 10 条不相关的让它猜。结果照常返回供参考。
+    try:
+        _items = payload.get("results", []) if isinstance(payload, dict) else []
+        _scores = [r.get("score") for r in _items if isinstance(r, dict) and isinstance(r.get("score"), (int, float))]
+        if _items and all(not r.get("relevant", True) for r in _items if isinstance(r, dict)):
+            payload["no_strong_match"] = True
+            payload["note"] = (
+                f"未找到与查询高度相关的记忆（最高相似度 {max(_scores):.2f}，"
+                f"低于可信阈值 0.32）；以下为最接近的条目，仅供参考"
+            )
+    except Exception:
+        pass
+
     # 搜索分析（2026-09-19 接线）：SearchAnalytics 的 log_search 与 4 个分析工具
     # （热门查询/空搜索/慢搜索）早就实现，但记录端从未被调用 —— analytics 文件
     # 一直为空，分析工具全部返回空数据。这里接入主搜索入口。

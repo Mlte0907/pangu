@@ -20,6 +20,10 @@ import logging
 import time
 from collections import OrderedDict
 
+# 相关性下限（2026-09-19 实测标定）：无关查询 Top1 0.19-0.31，相关查询 0.36-0.62。
+# 取鸿沟中点略偏下。只打标不删除——"没找到"应由调用方显式呈现，而非静默吞结果。
+RELEVANCE_FLOOR = 0.32
+
 import numpy as np
 
 from ..core.config import PanguConfig
@@ -434,6 +438,10 @@ class VectorEmbedder:
         for sim, item in scored[:top_k]:
             item_copy = dict(item)
             item_copy["score"] = round(float(sim), 4)
+            # 相关性自检（2026-09-19）：语义搜索修好后分数有真实区分度
+            # （实测无关查询 Top1 0.19-0.31，相关查询 0.36-0.62，鸿沟清晰）。
+            # 低于阈值只**打标不删除**——让调用方决定怎么呈现"没找到"。
+            item_copy["relevant"] = bool(sim >= RELEVANCE_FLOOR)
             item_copy["source"] = "semantic"
             results.append(item_copy)
 
