@@ -156,16 +156,17 @@ class VectorIndex:
     def is_built(self) -> bool:
         """索引是否真的可用。
 
-        除了 _is_built 标志，还必须确认后端数据存在 —— 此前只返回标志位，于是
-        "标志为真但没有索引数据"的状态会被当成可用（size 也跟着撒谎），调用方
-        以为有 N 条向量、搜索却永远为空（2026-09-19）。
+        必须确认：(a) 构建标志为真；(b) 有数据（size>0）；(c) 至少有一路后端持有
+        数据。单条 add 走 _flush_pending 的 else 分支（只设 _index，不建 hnsw/faiss
+        对象），此时也要算"已就绪"（2026-09-19 修正：初版只查后端对象，把单条写入
+        误判为未就绪，导致 size 永远为 0）。
         """
-        if not self._is_built:
+        if not self._is_built or self._size == 0:
             return False
         if self._use_hnsw:
-            return self._hnsw_index is not None
+            return self._hnsw_index is not None or self._index is not None
         if self._use_faiss:
-            return self._faiss_index is not None
+            return self._faiss_index is not None or self._index is not None
         return self._index is not None
 
     @property
