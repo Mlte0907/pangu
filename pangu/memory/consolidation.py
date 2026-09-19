@@ -206,13 +206,13 @@ class MemoryConsolidator:
             summary = "。".join(key_sentences[:3])
             if len(summary) > 150:
                 summary = summary[:150] + "..."
-        else:
-            # 降级：保留前 80 字
-            summary = content[:80] + ("..." if len(content) > 80 else "")
+            # ⚠ 曾经这里直接掉到末尾的 `return content[:100] + "..."`，把刚算出的
+            # summary 整个丢弃 —— 实测 355 字含关键词的文本被压缩成 103 字，
+            # 关键词句并未保留。返回真正的 summary。
             return summary
 
-        # 降级：保留前100字
-        return content[:100] + "..."
+        # 降级：保留前 80 字
+        return content[:80] + ("..." if len(content) > 80 else "")
 
     # ── 巩固检查 ──
 

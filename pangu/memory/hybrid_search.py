@@ -29,27 +29,53 @@ RERANKING_SKIPPED_MSG = "Reranking skipped: {}"
 SEARCH_EXPLANATION_SKIPPED_MSG = "Search explanation skipped: {}"
 
 
-def _cache_get(query: str, limit: int) -> list[dict] | None:
+def _cache_get(query: str, limit: int, scope: str = "") -> list[dict] | None:
     """从缓存获取搜索结果"""
     try:
         from pangu.memory.search_cache import get_search_cache
 
         cache = get_search_cache()
-        return cache.get(query, limit=limit)
+        return cache.get(query, limit=limit, scope=scope)
     except Exception as e:
         logger.debug(CACHE_RETRIEVAL_FAILED_MSG.format(e))
         return None
 
 
-def _cache_set(query: str, results: list[dict], limit: int) -> None:
+def _cache_set(query: str, results: list[dict], limit: int, scope: str = "") -> None:
     """将搜索结果存入缓存"""
     try:
         from pangu.memory.search_cache import get_search_cache
 
         cache = get_search_cache()
-        cache.set(query, results, limit=limit)
+        cache.set(query, results, limit=limit, scope=scope)
     except Exception as e:
         logger.debug(CACHE_STORAGE_FAILED_MSG.format(e))
+
+
+def _cache_scope(drawers: list[Drawer] | None) -> str:
+    """缓存作用域指纹：当前租户 + drawers 的 id/更新时间集合。
+
+    租户保证「A 身份的结果不给 B 身份」；id+updated_at 保证「记忆增删改后不命中旧结果」。
+    两者共同替代此前只按 (query,limit) 的裸键。
+    """
+    try:
+        from pangu.memory.layers import current_tenant
+
+        tenant = current_tenant() or ""
+    except Exception:
+        tenant = ""
+    try:
+        from pangu.core.hashing import hex_digest
+
+        # Drawer 没有 updated_at（那是 WikiPage 的字段），用 created_at + 重要度
+        # 作为变更指纹；配合 id 集合即可覆盖"增/删/改"三类变化。
+        ids = "|".join(
+            f"{d.id}:{getattr(d, 'created_at', '') or ''}:{round(float(getattr(d, 'importance', 0) or 0), 3)}"
+            for d in (drawers or [])
+        )
+        return f"{tenant}:{hex_digest(ids)[:16]}:{len(drawers or [])}"
+    except Exception:
+        return f"{tenant}:{len(drawers or [])}"
 
 
 def _fts_recall(
@@ -336,8 +362,9 @@ def hybrid_search(
     Returns:
         排序后的记忆列表
     """
-    # 检查缓存
-    cached = _cache_get(query, limit)
+    # 检查缓存（键含身份作用域：租户 + drawers 指纹）
+    scope = _cache_scope(drawers)
+    cached = _cache_get(query, limit, scope)
     if cached is not None:
         return cached
 
@@ -379,7 +406,7 @@ def hybrid_search(
     # 生成搜索解释
     _explain_results(query, results)
 
-    # 存入缓存
-    _cache_set(query, results, limit)
+    # 存入缓存（带作用域）
+    _cache_set(query, results, limit, scope)
 
     return results

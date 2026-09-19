@@ -146,6 +146,18 @@ class VectorIndex:
                     return
                 self._index = loaded
                 self._ids = list(data["ids"])
+                # 行列一致性校验：ids 与向量行必须等长。
+                # 删除路径曾只过滤 _ids 而不删向量行，使两者错位并落盘；
+                # 错位后 numpy 后端按位置取 id 会返回**错误的记忆**。宁可判定损坏，
+                # 也不要带着错位的索引运行。
+                if self._index.shape[0] != len(self._ids):
+                    logger.warning(
+                        f"忽略行列不一致的索引缓存 {self._index_file}: "
+                        f"向量 {self._index.shape[0]} 行 vs ids {len(self._ids)} 个"
+                    )
+                    self._index = None
+                    self._ids = []
+                    return
                 self._is_built = True
                 self._size = len(self._ids)
                 logger.info(f"Vector index loaded: {self._size} vectors from {self._index_file}")
@@ -269,9 +281,17 @@ class VectorIndex:
             self._use_hnsw = False
 
     def _normalize(self, vec: np.ndarray) -> np.ndarray:
-        """归一化向量"""
-        norm = np.linalg.norm(vec)
-        return vec / norm if norm > 1e-8 else vec
+        """归一化向量。
+
+        ⚠ 必须按**最后一维**归一化：`np.linalg.norm(vec)` 不带 axis 时对
+        `(N, dim)` 求的是整个批次的 Frobenius 范数，`batch / norm` 会用一个
+        标量把每一行都缩小 —— 实测 5 行时行范数 0.447、165 行时 0.078（应恒为 1.0），
+        于是 `hybrid_search` 的 VECTOR_SIM_THRESHOLD=0.2 把整个向量通道过滤成空。
+        `axis=-1, keepdims=True` 对 `(dim,)` 与 `(N, dim)` 都得到逐向量正确结果。
+        """
+        vec = np.asarray(vec, dtype=np.float32)
+        norm = np.linalg.norm(vec, axis=-1, keepdims=True)
+        return np.divide(vec, norm, out=np.zeros_like(vec), where=norm > 1e-8)
 
     def add(self, vector: list[float], item_id: str) -> bool:
         """增量添加单个向量（写入缓冲 + 线程安全）"""
@@ -297,6 +317,14 @@ class VectorIndex:
             return
 
         batch = np.array(self._pending_vectors, dtype=np.float32)
+        # add() 存的是 (1, dim)，np.array 后成 (N, 1, dim)。此前这里不压维，
+        # 新索引会被写成 3-D（重启后被 _load 的 2-D 校验拒绝、vstack 抛错），
+        # 线上实测缓存为 (100, 1, 384)。与 build/add_batch 保持一致：压掉中间维。
+        if batch.ndim == 3 and batch.shape[1] == 1:
+            batch = batch[:, 0, :]
+        if batch.ndim != 2:
+            logger.warning(f"Vector index flush: 意外的向量形状 {batch.shape}，已跳过")
+            return
         batch = self._normalize(batch)
 
         if self._use_hnsw and self._hnsw_index is not None:
@@ -329,6 +357,65 @@ class VectorIndex:
                 self._build_faiss(self._index)
 
         self._save()
+
+    def remove(self, ids: list[str]) -> int:
+        """从索引中删除指定 id 的向量（行与 id 一起删，保持位置映射一致）。
+
+        为什么必须实现：调用方此前只过滤 `_ids` 并 `_size -= 1`，向量矩阵不动，
+        numpy 后端按位置返回 id ⇒ 返回**错误的记忆**（实测删 b 后查询 b 得到 c），
+        且落盘的 vectors/ids 长度不再相等，重启后错位仍然存在。
+
+        hnswlib 支持 mark_deleted（标记后查询会自动跳过），FAISS/numpy 走
+        「保留行 + 重建」路径。返回实际删除条数。
+        """
+        targets = {i for i in ids if i}
+        if not targets:
+            return 0
+        with self._lock:
+            keep_rows: list[int] = []
+            keep_ids: list[str] = []
+            for pos, item_id in enumerate(self._ids):
+                if item_id in targets:
+                    continue
+                keep_rows.append(pos)
+                keep_ids.append(item_id)
+            removed = len(self._ids) - len(keep_ids)
+            if removed == 0:
+                return 0
+
+            if self._use_hnsw and self._hnsw_index is not None:
+                for pos, item_id in enumerate(self._ids):
+                    if item_id in targets:
+                        try:
+                            self._hnsw_index.mark_deleted(pos)
+                        except Exception as e:  # 越界/已删
+                            logger.debug(f"hnsw mark_deleted({pos}) 跳过: {e}")
+            elif self._use_faiss and self._faiss_index is not None:
+                if keep_rows and self._index is not None:
+                    kept = self._index[keep_rows].astype(np.float32)
+                    dim = self._index.shape[1]
+                    import faiss
+
+                    self._faiss_index = faiss.IndexFlatIP(dim)
+                    self._faiss_index.add(kept)
+                    self._index = kept
+                else:
+                    self._faiss_index = None
+                    self._index = None
+                    self._use_faiss = False
+                    self._is_built = False
+            elif self._index is not None:
+                # numpy：必须真正 compact 行，否则位置映射错乱
+                if keep_rows:
+                    self._index = self._index[keep_rows]
+                else:
+                    self._index = None
+                    self._is_built = False
+
+            self._ids = keep_ids
+            self._size = len(keep_ids)
+            self._save()
+            return removed
 
     def _add_to_backend(self, batch: np.ndarray, ids: list[str]) -> None:
         """将批次添加到当前后端索引"""

@@ -1103,8 +1103,16 @@ class TestSubsetMustNotOverwriteSuperset:
         got = next(i for i in after if i["id"] == "tgt2")
         assert got["importance"] == res["new_importance"], "目标记录的重要性未落盘"
 
-    def test_feedback_appends_unknown_id_without_losing_others(self, clean_home):
-        """传入磁盘上不存在的新记录 ⇒ 追加，且不丢原有记录。"""
+    def test_feedback_refuses_unknown_id_without_losing_others(self, clean_home):
+        """传入磁盘上不存在的记录 ⇒ **必须拒绝**，且原有记录一条不少。
+
+        为什么改（2026-09-20）：旧行为是"把调用方传入的记录追加进磁盘"。而调用方
+        传的 drawers 通常是**内存快照**，与磁盘的差异可能来自并发写者、路径错位或
+        子集视图 —— 把"内存里有、磁盘上没有"的记录写进磁盘，正是 P0-0 里
+        v1 被写成 402 字节 `fb_min` 的直接机制（用调用方列表当全量）。
+        importance_feedback 的语义是"调整某条**已存在**记忆的重要性"，目标不在磁盘
+        就不是本函数能处理的事，应显式拒绝而不是悄悄新建。
+        """
         from pangu.memory.layers import Drawer
         from pangu.memory.retrieval import importance_feedback
 
@@ -1112,11 +1120,12 @@ class TestSubsetMustNotOverwriteSuperset:
         _write_drawers(cfg.authoritative_drawers_path, 4, prefix="keep")
 
         new = Drawer(id="brand_new", content="x", wing="w", room="r", importance=0.5)
-        importance_feedback("brand_new", "vote_up", drawers=[new])
+        res = importance_feedback("brand_new", "vote_up", drawers=[new])
+        assert "error" in res and "not found" in res["error"], res
 
         after = PanguConfig.load_drawers_nonempty(cfg.authoritative_drawers_path)
         ids = {i["id"] for i in after}
-        assert "brand_new" in ids, "新记录未被追加"
+        assert "brand_new" not in ids, "磁盘上不存在的 id 不应被静默追加"
         assert len([i for i in ids if i.startswith("keep")]) == 4, "原有 4 条被丢弃"
 
 

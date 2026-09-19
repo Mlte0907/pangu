@@ -663,47 +663,55 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
     # 本身就是错的**。本函数的语义是"调整某条记忆的重要性"，不是"用给定列表
     # 替换整个库"。测试里 `drawers=[drawer]`（仅 1 条）因此会把权威库清成 1 条
     # —— 这正是 P0-0 事故中 v2 被清空的**直接机制**（402 字节的 fb_min）。
-    # 修法：以**磁盘全量**为基底，只把本次内存中改过的 id 合并回去。
+    # 修法（2026-09-20 二次收紧）：以**磁盘全量**为基底，只把**本次真正改过的 id**
+    # 合并回去。此前是"把调用方列表里出现的每个 id 都覆盖"——调用方列表通常是
+    # 搜索前加载的旧快照，会把并发写者（衰减/巩固/另一请求）的改动整体回滚。
+    # 实测：并发把 B 的 importance 改成 5.0 后，本函数用旧快照把它退回 1.0。
     try:
         from pangu.core.config import PanguConfig
+        from pangu.memory.layers import drawers_io_lock
 
         cfg = PanguConfig.load().authoritative_memory_config()
         drawers_file = cfg.authoritative_drawers_path
 
-        # 空写保护：内存里是空列表时绝不覆盖磁盘（同 MemoryStack 的守卫语义）
-        if not drawers and PanguConfig.load_drawers_nonempty(drawers_file):
-            logger.warning(f"importance_feedback({drawer_id}): 内存列表为空但磁盘有记录，已跳过落盘（防止空库误写）")
-            return {"error": "refused to overwrite non-empty store with empty list"}
+        with drawers_io_lock():
+            # 空写保护：内存里是空列表时绝不覆盖磁盘（同 MemoryStack 的守卫语义）
+            if not drawers and PanguConfig.load_drawers_nonempty(drawers_file):
+                logger.warning(f"importance_feedback({drawer_id}): 内存列表为空但磁盘有记录，已跳过落盘（防止空库误写）")
+                return {"error": "refused to overwrite non-empty store with empty list"}
 
-        # 以磁盘全量为基底做「按 id 合并」，绝不用传入列表直接覆盖。
-        disk_items = PanguConfig.load_drawers_nonempty(drawers_file)
-        incoming = {d.id: d.to_dict() for d in drawers}
-        merged: list = []
-        seen: set = set()
-        for item in disk_items:
-            _id = item.get("id")
-            seen.add(_id)
-            merged.append(incoming.get(_id, item))
-        # 传入列表里磁盘上没有的（新增记录）追加，避免丢数据
-        for _id, item in incoming.items():
-            if _id not in seen:
-                merged.append(item)
+            disk_items = PanguConfig.load_drawers_nonempty(drawers_file)
+            if not disk_items:
+                logger.warning(f"importance_feedback({drawer_id}): 磁盘为空，已跳过落盘（防止清库）")
+                return {"error": "refused to write empty store"}
 
-        if not merged:
-            logger.warning(f"importance_feedback({drawer_id}): 合并结果为空，已跳过落盘（防止清库）")
-            return {"error": "refused to write empty store"}
+            # 只对目标 id 做替换，其余记录一律保留磁盘现值
+            touched = {d.id: d.to_dict() for d in drawers}
+            merged: list = []
+            replaced = False
+            for item in disk_items:
+                _id = item.get("id")
+                if _id in touched:
+                    merged.append(touched[_id])
+                    replaced = True
+                else:
+                    merged.append(item)
+            if not replaced:
+                logger.warning(f"importance_feedback({drawer_id}): 磁盘上未找到该 id，已跳过落盘")
+                return {"error": "target id not found on disk", "id": drawer_id}
 
-        drawers_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp_file = drawers_file.with_suffix(".json.tmp")
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(merged, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_file, drawers_file)
+            tmp_file = drawers_file.with_suffix(".json.tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, drawers_file)
     except Exception as e:
         # 不再静默吞掉：落盘失败必须让调用方看见（此前 `pass` 掩盖了污染与失败）
         logger.error(f"importance_feedback({drawer_id}): 保存失败: {e}")
         return {"error": f"save failed: {e}", "id": drawer_id, "signal": signal}
+
+    clear_recall_cache()
 
     return {
         "id": drawer_id,
@@ -711,6 +719,77 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
         "old_importance": round(old_imp, 3),
         "new_importance": round(target.importance, 3),
     }
+
+
+def record_recall_hits(hit_ids: list[str], drawers: list[Drawer] | None = None) -> dict:
+    """批量记录「召回命中」= recall_success 验证信号（2026-09-20 新增）。
+
+    为什么需要：毕业准入门 Q4 的验证信号（last_feedback=recall_success/verified）
+    此前只有 MCP 工具 pangu_importance_feedback 一个入口 —— MCP 客户端下线后反馈
+    永远无法产生，pending_review 只进不出（实测积压 76 条无人毕业）。搜索命中本身
+    就是「成功召回」，由盘古自己记录，不再依赖调用方上报。
+
+    落盘语义与 importance_feedback 一致：以磁盘全量为基础，**只回写命中的 id**；
+    绝不用调用方传入的旧快照覆盖其它记录（那会把并发写者的改动整体回滚，
+    实测把并发改成的 importance=5.0 退回 1.0）。
+    """
+    if not hit_ids:
+        return {"recorded": 0}
+
+    hit_set = set(hit_ids)
+    now = datetime.now().isoformat()
+
+    # 磁盘全量为基底：命中项从磁盘现值上改，未命中的记录一律不动。
+    from pangu.core.config import PanguConfig
+    from pangu.memory.layers import drawers_io_lock
+
+    cfg = PanguConfig.load().authoritative_memory_config()
+    drawers_file = cfg.authoritative_drawers_path
+
+    with drawers_io_lock():
+        disk_items = PanguConfig.load_drawers_nonempty(drawers_file)
+        if not disk_items:
+            return {"recorded": 0, "error": "refused to write empty store"}
+
+        recorded = 0
+        merged: list = []
+        for item in disk_items:
+            _id = item.get("id")
+            if _id not in hit_set:
+                merged.append(item)
+                continue
+            target = Drawer.from_dict(item)
+            target.metadata = dict(target.metadata or {})
+            recorded += 1
+            target.importance = max(0.5, min(5.0, target.importance * 1.08))
+            target.metadata["last_feedback"] = "recall_success"
+            target.metadata["feedback_at"] = now
+            # 毕业通路闭合：与 importance_feedback 相同的复判逻辑
+            if target.metadata.get("admission") == "pending_review":
+                has_source = bool(target.source_file) or bool(target.metadata.get("source_session"))
+                if has_source:
+                    target.metadata["admission"] = "graduated"
+                    if target.metadata.get("visibility", "private") != "public":
+                        target.metadata["visibility"] = "public"
+                        target.metadata["graduated_at"] = now
+            merged.append(target.to_dict())
+
+        if not recorded:
+            return {"recorded": 0}
+
+        try:
+            tmp_file = drawers_file.with_suffix(".json.tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, drawers_file)
+        except Exception as e:
+            logger.error(f"record_recall_hits: 保存失败: {e}")
+            return {"recorded": recorded, "error": f"save failed: {e}"}
+
+    clear_recall_cache()
+    return {"recorded": recorded}
 
 
 def clear_recall_cache():

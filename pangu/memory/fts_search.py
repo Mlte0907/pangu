@@ -171,7 +171,18 @@ class FTS5SearchEngine:
         return total_tokens
 
     def _get_index_path(self) -> Path:
-        return Path.home() / ".pangu" / "fts_index.json"
+        """FTS 索引文件路径。
+
+        ⚠ 必须走 `config.base_dir`，不能硬编码 `~/.pangu`：此前写死 home 目录，
+        `PANGU_BASE_DIR` 隔离对它无效 —— 后台 pytest 因此把**真实**的
+        `~/.pangu/fts_index.json` 覆盖成 doc_count=5000（实际库仅 183 条），
+        条数收缩保护又把正确重建拦在门外，搜索长期命中脏索引。
+        """
+        try:
+            base = Path(getattr(self.config, "base_dir", "") or (Path.home() / ".pangu"))
+        except Exception:
+            base = Path.home() / ".pangu"
+        return base / "fts_index.json"
 
     def _save_index_to_disk(self):
         """保存索引到磁盘
@@ -188,14 +199,25 @@ class FTS5SearchEngine:
             if not self._indexed_count:
                 logger.info("FTS index empty, skip saving to disk")
                 return
-            # B7-c 条数收缩守卫：防止子集调用方覆盖全量索引
+            # B7-c 条数收缩守卫：防止子集调用方覆盖全量索引。
+            # ⚠ 但若磁盘索引明显**大于**当前真实库（历史污染，实测 5000 vs 183），
+            # 守卫会把每一次正确的重建都拦下，搜索永远命中脏索引。故当磁盘条数
+            # 反而大于新索引时，判定磁盘为陈旧污染，放行重建。
             path = self._get_index_path()
             if path.exists():
                 try:
                     with open(path, encoding="utf-8") as f:
                         old_data = json.load(f)
                     old_count = old_data.get("doc_count", 0)
-                    if old_count > 0 and self._indexed_count < old_count * 0.5:
+                    # ⚠ 必须先判「磁盘比真实库更大」：污染索引（实测 5000 vs 183）
+                    # 也满足收缩条件（new < old*0.5），若先走收缩守卫就会被永久保留。
+                    if old_count > self._indexed_count:
+                        logger.warning(
+                            f"FTS index on disk is larger than the live store "
+                            f"(disk={old_count} > new={self._indexed_count}); "
+                            f"treating disk as stale and rebuilding"
+                        )
+                    elif old_count > 0 and self._indexed_count < old_count * 0.5:
                         logger.warning(
                             f"FTS index shrinkage blocked: new={self._indexed_count} "
                             f"< 50% of disk={old_count}, keeping disk version"
@@ -214,6 +236,9 @@ class FTS5SearchEngine:
                         "tokens": index_data,
                         "doc_count": self._indexed_count,
                         "built_at": datetime.now().isoformat(),
+                        # 与 tokens 一同落盘：只有 token→ids 的话，重启后
+                        # `_fallback_keyword_search` 无内容可查（见 _load_index_from_disk）。
+                        "content_map": self._fts_content_map,
                     },
                     f,
                 )
@@ -246,8 +271,16 @@ class FTS5SearchEngine:
                 logger.info("FTS index stale, rebuilding")
                 return False
             self._fts_index = {token: set(ids) for token, ids in data["tokens"].items()}
+            # ⚠ 必须一并恢复 id→内容映射：兜底搜索 `_fallback_keyword_search` 依赖它，
+            # 此前只恢复 token→ids，从磁盘加载后兜底路径遍历空 map 恒返回空 ——
+            # 表现为「索引明明加载成功，分词没命中时却搜不到任何东西」。
+            raw_map = data.get("content_map") or {}
+            self._fts_content_map = {k: str(v) for k, v in raw_map.items()}
             self._indexed = True
-            logger.info(f"FTS index loaded from disk: {len(self._fts_index)} tokens")
+            logger.info(
+                f"FTS index loaded from disk: {len(self._fts_index)} tokens, "
+                f"{len(self._fts_content_map)} docs"
+            )
             return True
         except Exception as e:
             logger.warning(f"Failed to load FTS index: {e}")

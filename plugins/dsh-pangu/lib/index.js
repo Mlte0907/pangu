@@ -1,9 +1,13 @@
 /**
- * pangu-dashboard 宿主插件 v4。
+ * pangu-dashboard 宿主插件 v5。
  * 提供:
  *  1. panguDashboard Typert Remote — 面板数据/深度健康/备份/实时事件/快速添加记忆
  *  2. panguKG Typert Remote — 知识图谱节点与关系
  *  3. panguConfig Typert Remote — 记忆系统配置读写
+ *  4. panguAdminKeys Typert Remote — 钥匙/房间管理
+ *  5. panguPlatforms Typert Remote — 平台Token管理
+ *  6. panguKnowledge Typert Remote — 知识库浏览
+ * v5: 架构 v2.1 重构——新增平台Token管理、知识库浏览、记忆快照、来源分布。
  * v4: 新增 /ws 实时事件监听(断线指数退避重连)供客户端事件驱动刷新;
  *     新增 pangu_add_memory 快速添加;图谱拉取放宽到 limit=400。
  */
@@ -169,6 +173,16 @@ async function apply(ctx) {
       ? Number(byClass['2'] || 0) + Number(byClass['3'] || 0)
       : 0
 
+    // 活跃平台数（2026-09-20 补）：侧边栏「平台接入」此前错用 bySource 的键数
+    // （记忆来源类型），与真实注册平台数对不上。
+    let platformsCount = null
+    try {
+      const pl = await adminFetch(`${PANGU_BASE}/api/v2/platforms`)
+      platformsCount = Array.isArray(pl?.platforms)
+        ? pl.platforms.filter((p) => p.status === 'active').length
+        : null
+    } catch (_) {}
+
     // 7 日记忆脉搏：按 created_at 聚合最近 7 天的创建数（供前端 sparkline）
     let dailyCounts = []
     try {
@@ -202,7 +216,20 @@ async function apply(ctx) {
       }
     } catch (_) {}
 
-    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, pipeline, highClass, health, healthScore, version, uptimeSeconds, dailyCounts, dailyRecalls, ts: Date.now() }
+    // 知识库和快照统计（从 dashboard/stats 获取）
+    let knowledge = { total: 0, categories: {} }
+    let snapshots = { total: 0 }
+    let bySource = {}
+    try {
+      const dashStats = await adminFetch(`${PANGU_BASE}/api/v2/dashboard/stats`)
+      if (dashStats && !dashStats.error) {
+        knowledge = dashStats.knowledge || knowledge
+        snapshots = dashStats.snapshots || snapshots
+        bySource = dashStats.memories?.by_source || {}
+      }
+    } catch (_) {}
+
+    return { ok: true, total, wings, rooms, kgEntities, kgRelations, byWing, byClass, pipeline, highClass, health, healthScore, version, uptimeSeconds, dailyCounts, dailyRecalls, knowledge, snapshots, bySource, platformsCount, ts: Date.now() }
   }
 
   async function fetchKG() {
@@ -683,8 +710,49 @@ async function apply(ctx) {
     async listRooms() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms') },
     async rekeyRoom(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms/' + encodeURIComponent(args.room) + '/rekey', { method: 'POST' }) },
     async listPublicMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/public-memories') },
+    async listRecentMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/recent-memories?limit=20') },
   }
   ctx.provide('panguAdminKeys', bindRemote(adminKeyService, 'panguAdminKeys'))
+
+  // ── 平台管理服务 ──
+  const platformService = {
+    async listPlatforms() { return adminFetch('http://127.0.0.1:19529/api/v2/platforms') },
+    async listPending() { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/pending') },
+    async approve(args) { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/approve', { method: 'POST', body: JSON.stringify(args) }) },
+    // 2026-09-20 修：后端只有 `POST /platforms/reject`（body 传 token_id）与
+    // `DELETE /platforms/{token_id}`；此前写的是 `POST /platforms/{id}/reject|revoke`，
+    // 实际 404，而前端 `catch(_){}` 把错误吞掉 ⇒ 点击「拒绝/撤销」没有任何反应。
+    async reject(args) { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/reject', { method: 'POST', body: JSON.stringify({ token_id: args && args.token_id }) }) },
+    async revoke(args) { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/' + encodeURIComponent(args.token_id), { method: 'DELETE' }) },
+  }
+  ctx.provide('panguPlatforms', bindRemote(platformService, 'panguPlatforms'))
+
+  // ── 知识库服务 ──
+  const knowledgeService = {
+    async list(args) {
+      const q = args && args.category ? '?category=' + encodeURIComponent(args.category) : ''
+      return adminFetch('http://127.0.0.1:19529/api/v2/dashboard/knowledge' + q)
+    },
+    async search(args) {
+      const q = args && args.query ? '?query=' + encodeURIComponent(args.query) : ''
+      return adminFetch('http://127.0.0.1:19529/api/v2/dashboard/knowledge/search' + q)
+    },
+    async get(args) {
+      // 知识条目详情：通过 list + filter 实现（后端无单条 API）
+      const all = await adminFetch('http://127.0.0.1:19529/api/v2/dashboard/knowledge')
+      const entries = all?.knowledge || []
+      const entry = entries.find(e => e.id === args.id)
+      return entry || null
+    },
+    async stats() {
+      const stats = await adminFetch('http://127.0.0.1:19529/api/v2/dashboard/stats')
+      return {
+        total: stats?.knowledge?.total || 0,
+        categories: stats?.knowledge?.categories || {},
+      }
+    },
+  }
+  ctx.provide('panguKnowledge', bindRemote(knowledgeService, 'panguKnowledge'))
 
   // 实时事件通道(随插件卸载关闭,断线自动重连)
   startEvents()

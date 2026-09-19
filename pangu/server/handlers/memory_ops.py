@@ -99,6 +99,59 @@ async def handle_add_memory(server, drawers, arguments):
         if identity.get("key_id"):
             drawer.metadata.setdefault("owner_key_id", identity["key_id"])
         # P1-3：remember() 不落盘（只创建 Drawer 对象），handler 的 add_drawer 才是唯一落盘点
+
+        # ── 记忆进化（2026-09-20 修）：必须在 add_drawer **之前**完成，
+        # 因为 add_drawer 是唯一落盘点 —— 落在它之后设的 source/quality 不写盘。
+        # 且旧记忆替换必须作用在**真实 Drawer 对象**上并 update_drawer 落盘，
+        # 此前 related 来自 d.to_dict() 副本，改副本等于空转（实测：快照生成了、
+        # 但旧记忆的 version/quality 全未变化）。
+        try:
+            from ...memory.evolution import get_memory_evolution
+
+            evolution = get_memory_evolution()
+
+            # 来源平台：优先身份里的 platform，其次 room，最后 mcp
+            drawer.source = identity.get("platform", "") or identity.get("room", "") or "mcp"
+
+            new_quality = evolution.evaluate_memory_quality(drawer.to_dict())
+
+            all_drawers = server.memory._drawers if hasattr(server.memory, "_drawers") else []
+            related_payload = [d.to_dict() for d in all_drawers]
+            related = evolution.find_related_memories(drawer.to_dict(), related_payload)
+
+            by_id = {d.id: d for d in all_drawers}
+            replaced_count = 0
+            for old_mem in related:
+                old_quality = evolution.evaluate_memory_quality(old_mem)
+                # 每次写入最多替换 1 条，避免一次写入触发最多 5 条快照（无界增长）
+                if replaced_count >= 1:
+                    break
+                if not evolution.should_replace(new_quality, old_quality):
+                    continue
+                old_id = old_mem.get("id", "")
+                target = by_id.get(old_id)
+                if target is None:
+                    continue
+                evolution.save_snapshot(
+                    old_mem,
+                    replaced_by=drawer.id,
+                    reason=f"新记忆质量({new_quality:.2f})优于旧记忆({old_quality:.2f})",
+                )
+                # 真实对象：版本 +1、记录质量分与替换者，然后落盘
+                target.metadata = dict(target.metadata or {})
+                target.metadata["version"] = int(target.metadata.get("version", 1)) + 1
+                target.metadata["quality_score"] = round(new_quality, 4)
+                target.metadata["replaced_by"] = drawer.id
+                server.memory.update_drawer(target)
+                replaced_count += 1
+                logger.info(f"记忆进化: {old_id} v{target.metadata['version']} 由 {drawer.id} 续写")
+
+            drawer.metadata["quality_score"] = round(new_quality, 4)
+            drawer.metadata["version"] = 1
+            drawer.metadata["snapshot_count"] = evolution.get_snapshot_count(drawer.id)
+        except Exception as e:
+            logger.debug(f"记忆进化失败（不影响写入）: {e}")
+
         server.memory.add_drawer(drawer)
 
     try:

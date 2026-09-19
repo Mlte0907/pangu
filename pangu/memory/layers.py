@@ -725,6 +725,35 @@ class MemoryStack:
         """手动刷新缓存"""
         self._cache.invalidate()
 
+    def _invalidate_search_caches(self) -> None:
+        """统一失效所有派生搜索缓存（hybrid SearchCache + FTS 内存索引 + recall LRU）。
+
+        为什么集中一处：写路径此前只失效 MemoryStack LRU，hybrid/搜索缓存与 FTS
+        token 索引都不动 —— 删除/新增后 60~300 秒内仍能搜到已删记忆、搜不到新记忆。
+        update_drawer/update_drawers_bulk 各自清了 SearchCache，add/remove 却没清，
+        是历史不一致而非有意设计，这里统一。
+        """
+        try:
+            from pangu.memory.search_cache import get_search_cache
+
+            get_search_cache().clear()
+        except Exception as e:
+            logger.debug(f"search_cache 失效跳过: {e}")
+        try:
+            from pangu.memory.fts_search import _get_fts_engine
+
+            engine = _get_fts_engine()
+            engine._indexed = False
+            engine._indexed_count = None
+        except Exception as e:
+            logger.debug(f"fts 索引失效跳过: {e}")
+        try:
+            from pangu.memory.retrieval import clear_recall_cache
+
+            clear_recall_cache()
+        except Exception as e:
+            logger.debug(f"recall 缓存失效跳过: {e}")
+
     def close(self) -> None:
         """关闭存储后端"""
         if self._storage:
@@ -746,6 +775,7 @@ class MemoryStack:
         self._drawers.append(drawer)
         self._primary_ids.add(drawer.id)
         self._save_drawers()
+        self._invalidate_search_caches()
 
     def add_drawers(self, drawers: list[Drawer]) -> None:
         """批量添加记忆抽屉"""
@@ -757,6 +787,7 @@ class MemoryStack:
                 self._primary_ids.add(drawer.id)
             self._save_drawers()
             self._cache.invalidate()
+            self._invalidate_search_caches()
 
     def update_drawer(self, drawer: Drawer) -> bool:
         """按 id 替换抽屉内容（P0-1：supersede 等场景的落盘）
@@ -905,18 +936,21 @@ class MemoryStack:
         return str(backup_path)
 
     def _remove_from_vector_index(self, drawer_ids: list[str]) -> None:
-        """从向量索引中删除指定记忆"""
+        """从向量索引中删除指定记忆。
+
+        ⚠ 必须调用 VectorIndex.remove()：此前这里只过滤 `idx._ids` 并 `_size -= 1`，
+        向量矩阵不动 ⇒ numpy 后端按位置返回**错误的记忆**（实测删 b 后查询 b 得到 c），
+        且落盘 vectors/ids 长度不等，重启后错位依旧。
+        """
         try:
             from pangu.memory.vector_index import get_vector_index
 
             idx = get_vector_index()
-            for did in drawer_ids:
-                if did in idx._ids:
-                    idx._ids.remove(did)
-                    idx._size -= 1
-            idx._save()
-        except Exception:
-            pass
+            removed = idx.remove(list(drawer_ids))
+            if removed:
+                logger.debug(f"向量索引已删除 {removed} 条（请求 {len(drawer_ids)} 条）")
+        except Exception as e:
+            logger.debug(f"Vector index cleanup skipped: {e}")
 
     def remove_drawer(self, drawer_id: str) -> bool:
         """删除指定抽屉（自动备份 + 向量索引同步）
@@ -938,6 +972,7 @@ class MemoryStack:
                 if saved:
                     self._remove_from_vector_index([drawer_id])
                     self._cache.invalidate()
+                    self._invalidate_search_caches()
                 else:
                     # 不再静默（2026-09-19 修 BUG：此前落盘失败仍 return True）：
                     # 落盘被拦时内存与磁盘已不一致，回滚内存到磁盘状态并返回 False
@@ -975,6 +1010,7 @@ class MemoryStack:
                 if saved:
                     self._remove_from_vector_index(drawer_ids)
                     self._cache.invalidate()
+                    self._invalidate_search_caches()
                 else:
                     # 2026-09-19 修 BUG：此前落盘失败仍返回 removed（调用方以为
                     # 删成功了）。回滚内存到磁盘状态并返回 0。
@@ -1015,12 +1051,7 @@ class MemoryStack:
                 except Exception as e:
                     logger.warning(f"replace_all: 向量索引清理跳过（{e}）")
                 self._cache.invalidate()
-                try:
-                    from pangu.memory.search_cache import get_search_cache
-
-                    get_search_cache().clear()
-                except Exception:
-                    pass
+                self._invalidate_search_caches()
             else:
                 logger.warning("replace_all: 内存已替换但**未落盘**（被空写保护拦截）")
             return saved

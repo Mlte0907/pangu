@@ -88,7 +88,9 @@ def collect_stats(server, drawers: list | None = None) -> dict:
     # 加密错取了高密级数），实测把 57 条待审、62 条已加密全藏了起来，还把"巩固从未运行"
     # 当装饰文案展示。口径与隔离轴共用同一份 scoped 集合 → 租户/管理视角各自自洽。
     pending = sum(1 for d in scoped if (d.metadata or {}).get("admission") == "pending_review")
-    encrypted = sum(1 for d in scoped if str(d.content or "").startswith("gAAAAA"))
+    # 2026-09-20：写入加密已按 PANGU_ENCRYPTION=off 关闭、存量已迁移明文，
+    # 「加密存储」格失去意义，换成「记忆毕业」数（管线语义：待审 → 毕业）。
+    graduated = sum(1 for d in scoped if (d.metadata or {}).get("admission") == "graduated")
     decays = [
         float((d.metadata or {}).get("decay_score") or 0.0)
         for d in scoped
@@ -96,7 +98,7 @@ def collect_stats(server, drawers: list | None = None) -> dict:
     ]
     stats["pipeline"] = {
         "pending_review": pending,
-        "encrypted": encrypted,
+        "graduated": graduated,
         "decay_average": round(sum(decays) / len(decays), 3) if decays else 0.0,
         "consolidation": consolidation_state(server),
     }
@@ -220,8 +222,18 @@ async def handle_config_get(server, drawers, arguments):
     """获取当前配置"""
     key = arguments.get("key")
     cfg = server.config
+    # 密钥类字段（2026-09-20 修）：全量分支早就用 exclude 排掉了，单 key 分支没有，
+    # 于是 `pangu_config_get(key="llm_api_key")` 会**明文返回** LLM Key / API Key /
+    # JWT 密钥（实测）。而这些值在默认 28 工具里、且非写类，readonly 平台也能读走。
+    # 平台通过审核＝本人，但 CodeBuddy/Zcode 是第三方软件，把「记忆访问权」和
+    # 「你的 LLM 密钥」交给它不是一个等级的事 —— 一律脱敏为 ****。
+    # 密钥的真实消费方（如 AMD 动态模型发现 autonomous._llm_endpoint）是**服务端
+    # 直接读 ~/.pangu/.llm_api_key 文件**，不经过本接口，因此脱敏不影响该链路。
+    _secret_keys = {"api_key", "llm_api_key", "siliconflow_key", "jwt_secret", "jwt_default_password"}
     if key:
         val = getattr(cfg, key, None)
+        if key in _secret_keys:
+            return json.dumps({key: "****" if val else None}, ensure_ascii=False)
         return json.dumps({key: str(val) if val is not None else None}, ensure_ascii=False)
     # 返回所有非敏感配置
     # 排除密钥类（jwt_secret 此前会明文返回 —— 拿到它可伪造 JWT 提权）

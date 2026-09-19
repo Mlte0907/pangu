@@ -333,17 +333,30 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
     principal = get_principal(request)
     if principal.method == "anonymous":
         return ApiResponse.error(401, "Authentication required")
+    # 平台 Token 的 clearance 固定为 0（auth.py 平台分支），而默认密级是 1（internal），
+    # 两个默认值叠加 = 平台首次写入必被 classification_based 策略 403。盘古是单人系统，
+    # 平台通过审核即视为本人，不应被迫理解密级：未显式指定时按平台可用的密级 0 落库，
+    # 显式传了就尊重调用方。
+    classification = req.classification
+    if principal.method == "platform_token" and "classification" not in req.model_fields_set:
+        classification = 0
     resource = AbacResource(
         type="memories",
         id="",
         owner_id=principal.user_id,
         tenant_id=tid,
-        classification=req.classification,
+        classification=classification,
         visibility=req.visibility,
     )
     decision, subject = _abac_evaluate_subject(request, "write", resource)
     if not decision.allowed:
-        return ApiResponse.error(403, f"ABAC deny: {decision.reason}")
+        return ApiResponse.error(
+            403,
+            f"ABAC deny: {decision.reason}"
+            f"（主体 clearance={getattr(subject, 'clearance', '?')}，"
+            f"资源 classification={resource.classification}；"
+            f"平台身份可不传或传 classification=0 重试）",
+        )
 
     item_id, drawer = remember(
         raw_text=req.text,
@@ -361,8 +374,12 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
             {
                 "owner_id": principal.user_id,
                 "tenant_id": subject.tenant_id,
-                "classification": req.classification,
+                "classification": classification,
                 "visibility": req.visibility,
+                # 来源指针（准入门 Q3）：MCP 写入会自动带 key@room，REST 写入此前
+                # 什么都不留 → 平台写的记忆永远过不了来源问、无法毕业。以写入凭据
+                # 作为来源，与 MCP 的 key@room 同等力度。
+                "source_session": f"rest:{principal.user_id}",
             }
         )
         try:
@@ -436,6 +453,17 @@ async def search_memories(
                     "search_score": round(score, 4),
                 }
             )
+
+        # 自动召回反馈（2026-09-20）：搜索命中即「成功召回」，由盘古自己记录
+        # recall_success 验证信号。毕业门 Q4 此前只有 MCP 工具一个上报入口，
+        # MCP 客户端下线后反馈永远无法产生，pending_review 只进不出（实测积压
+        # 76 条无人毕业）。反馈失败不影响搜索本身。
+        try:
+            from pangu.memory.retrieval import record_recall_hits
+
+            record_recall_hits([r["id"] for r in results], drawers=all_drawers)
+        except Exception as exc:
+            logger.warning(f"自动召回反馈失败: {exc}")
         return results
 
     try:
@@ -681,3 +709,34 @@ async def export_memories(
         )
     except Exception as e:
         return ApiResponse.error(500, str(e))
+
+
+# ── 路由顺序修正（2026-09-20）────────────────────────────────────────────
+# FastAPI/Starlette **按注册顺序**匹配路径，`/memories/{memory_id}` 会吞掉
+# `/memories/context`、`/memories/export` 这类字面段。实测：
+#     GET /api/v2/memories/context → {"code":404,"message":"Memory not found: context"}
+#     GET /api/v2/memories/export  → {"code":404,"message":"Memory not found: export"}
+# 而 pangu/client.py:120 真的在调 /memories/context，拿到 404 后再取 ["data"]["context"]
+# 会抛 AttributeError。修法：把动态段路由挪到所有字面路径之后。
+_LITERAL_MEMORY_PATHS = {
+    "/memories",
+    "/memories/search",
+    "/memories/stats",
+    "/memories/context",
+    "/memories/decay",
+    "/memories/purge",
+    "/memories/export",
+    "/memories/import",
+}
+
+
+def _reorder_dynamic_memory_routes() -> None:
+    """把 `/memories/{memory_id}` 系列移到字面路径之后（幂等，import 时执行）。"""
+    dynamic = [r for r in router.routes if getattr(r, "path", "") == "/memories/{memory_id}"]
+    if not dynamic:
+        return
+    others = [r for r in router.routes if getattr(r, "path", "") != "/memories/{memory_id}"]
+    router.routes[:] = others + dynamic
+
+
+_reorder_dynamic_memory_routes()

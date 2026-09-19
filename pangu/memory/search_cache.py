@@ -24,13 +24,20 @@ class SearchCache:
         self._cache: OrderedDict = OrderedDict()
         self._stats = {"hits": 0, "misses": 0}
 
-    def _make_key(self, query: str, modalities: list = None, limit: int = 10) -> str:
-        raw = f"{query}|{sorted(modalities or [])}|{limit}"
+    def _make_key(self, query: str, modalities: list = None, limit: int = 10, scope: str = "") -> str:
+        """缓存键必须包含**身份作用域**。
+
+        为什么：调用方（hybrid_search.handle_hybrid_search）在调用前会按租户/
+        平台身份裁剪 drawers，但缓存此前只按 (query, limit) 取键 —— 同一查询在
+        A 身份下算出的结果会被原样返回给 B 身份（内容级泄漏），且记忆增删后
+        300 秒内仍是旧结果。scope 由调用方传入（tenant/agent 指纹 + 库版本）。
+        """
+        raw = f"{query}|{sorted(modalities or [])}|{limit}|{scope}"
         return hashlib.md5(raw.encode()).hexdigest()
 
-    def get(self, query: str, modalities: list = None, limit: int = 10) -> dict | None:
+    def get(self, query: str, modalities: list = None, limit: int = 10, scope: str = "") -> dict | None:
         """获取缓存"""
-        key = self._make_key(query, modalities, limit)
+        key = self._make_key(query, modalities, limit, scope)
         if key in self._cache:
             entry = self._cache[key]
             if time.time() - entry["time"] < self._ttl:
@@ -42,9 +49,9 @@ class SearchCache:
         self._stats["misses"] += 1
         return None
 
-    def set(self, query: str, data: dict, modalities: list = None, limit: int = 10):
+    def set(self, query: str, data: dict, modalities: list = None, limit: int = 10, scope: str = ""):
         """设置缓存"""
-        key = self._make_key(query, modalities, limit)
+        key = self._make_key(query, modalities, limit, scope)
         self._cache[key] = {"data": data, "time": time.time()}
         self._cache.move_to_end(key)
         while len(self._cache) > self._max_size:

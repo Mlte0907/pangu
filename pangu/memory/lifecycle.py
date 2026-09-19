@@ -681,6 +681,10 @@ class LifecycleManager:
             d.content = consolidator.compress_memory(d)
             d.metadata["compressed"] = True
             d.metadata["original_length"] = len(old_content)
+            # ⚠ 必须留原文：compress_memory 是**有损**的（关键句提取 + 截断），
+            # 此前只存长度不存内容 ⇒ 一旦压缩就永久丢失。与 run_llm_compress
+            # 的 original_content 口径保持一致，便于事后恢复/审计。
+            d.metadata.setdefault("original_content", old_content)
             d.metadata["compressed_at"] = datetime.now().isoformat()
             compressed += 1
 

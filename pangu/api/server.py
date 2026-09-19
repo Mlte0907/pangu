@@ -510,8 +510,8 @@ def create_app() -> FastAPI:
             "/openapi.json",
             "/redoc",
         }
-        _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh"}
-        _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/admin", "/mcp")
+        _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh", "/api/v2/platforms/request"}
+        _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/admin", "/api/v2/platforms", "/api/v2/dashboard", "/mcp")
 
         def __init__(self, app: ASGIApp):
             self.app = app
@@ -543,14 +543,6 @@ def create_app() -> FastAPI:
 
             if _exempt:
                 # 豁免路径不拦截请求，但仍**尽力解析**凭据并注入身份。
-                #
-                # 原因：仍在豁免名单里、又需要身份的路径（如 /api/v2/admin/*，
-                # 自保护用 X-Admin-Key；以及探针类）可能读取本中间件注入的
-                # `scope["state"]["auth"]`——若豁免时直接放行、不解析，这类
-                # 路由永远只能看到 anonymous。
-                #
-                # 分层意图：中间件负责粗粒度网关，路由负责细粒度授权。
-                # 因此这里静默解析、失败不拦截，把授权决定权留给路由。
                 try:
                     _res = verify_credentials(
                         headers=headers,
@@ -558,6 +550,7 @@ def create_app() -> FastAPI:
                         secret=self.secret,
                         algorithm=self.algorithm,
                         user_store=self.user_store,
+                        require_auth=bool(getattr(config, "mcp_require_auth", False)),
                     )
                     if _res.ok and _res.method == "jwt" and _res.claims:
                         scope["state"] = scope.get("state", {})
@@ -579,6 +572,16 @@ def create_app() -> FastAPI:
                             "key_id": _res.key_id,
                             "clearance": _res.clearance,
                         }
+                    elif _res.ok and _res.method == "platform_token":
+                        # 平台接入 Token：把平台信息一起注入
+                        scope["state"] = scope.get("state", {})
+                        scope["state"]["auth"] = {
+                            "method": _res.method,
+                            "user_id": _res.user_id,
+                            "tenant": _res.tenant,
+                            "key_id": _res.key_id,
+                            "clearance": _res.clearance,
+                        }
                 except Exception:
                     pass
                 await self.app(scope, receive, send)
@@ -590,6 +593,7 @@ def create_app() -> FastAPI:
                 secret=self.secret,
                 algorithm=self.algorithm,
                 user_store=self.user_store,
+                require_auth=bool(getattr(config, "mcp_require_auth", False)),
             )
 
             if not result.ok:
@@ -614,6 +618,15 @@ def create_app() -> FastAPI:
                 scope["state"] = scope.get("state", {})
                 scope["state"]["auth"] = {"method": result.method, "user_id": "api_key_user"}
             elif result.method == "pangu_key":
+                scope["state"] = scope.get("state", {})
+                scope["state"]["auth"] = {
+                    "method": result.method,
+                    "user_id": result.user_id,
+                    "tenant": result.tenant,
+                    "key_id": result.key_id,
+                    "clearance": result.clearance,
+                }
+            elif result.method == "platform_token":
                 scope["state"] = scope.get("state", {})
                 scope["state"]["auth"] = {
                     "method": result.method,
@@ -720,6 +733,16 @@ def create_app() -> FastAPI:
     from pangu.api.routes_keys import router as keys_router
 
     app.include_router(keys_router, prefix="/api/v2")
+
+    # 平台接入审核（新机制）
+    from pangu.api.routes_platforms import router as platforms_router
+
+    app.include_router(platforms_router, prefix="/api/v2")
+
+    # 仪表盘（统计、管理、展示）
+    from pangu.api.routes_dashboard import router as dashboard_router
+
+    app.include_router(dashboard_router, prefix="/api/v2")
 
     # 批量工具调用（直接注册到 app 避免被 {tool_name} 截获）
     from pangu.api.routes_tools import BatchToolCallRequest
@@ -1149,6 +1172,13 @@ def create_app() -> FastAPI:
     # ── 知识图谱 API ──
     @app.get("/api/v2/graph")
     async def graph_data(entity_type: str = None, limit: int = 100):
+        """知识图谱数据。
+
+        2026-09-20：加鉴权。此前该路由在 `_EXEMPT_PREFIXES` 里（`/api/v2/graph`），
+        且自身不校验 —— 实测**无凭据**即可 GET 到全部实体与关系。在用户
+        「审核门是唯一边界」的模型下，这是唯一一个不进门就能拿数据的入口。
+        已从豁免前缀中移除，网关鉴权（盘古钥匙/平台 Token/API Key/JWT）即生效。
+        """
         try:
             from pangu.core.config import PanguConfig as _Cfg
             from pangu.memory.knowledge_graph import KnowledgeGraph

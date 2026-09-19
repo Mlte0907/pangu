@@ -420,8 +420,13 @@ def verify_credentials(
     secret: str = "",
     algorithm: str = "HS256",
     user_store: UserStore | None = None,
+    require_auth: bool = False,
 ) -> AuthResult:
     """统一鉴权：先看 X-API-Key（或 Authorization: Bearer <key>），再看 JWT。
+
+    require_auth：`mcp_require_auth=true` 时为真。必须与"是否配置了密钥"解耦 ——
+    此前「无 api_key 且无 JWT 密钥 ⇒ 一律 anonymous 放行」，一旦 JWT 因哨兵修复
+    被停用，REST 数据面会静默裸奔。单人部署开着 require_auth 时，少带凭据应 401。
 
     Args:
         headers: 小写化的 header 字典
@@ -462,7 +467,33 @@ def verify_credentials(
         # 否则"无效凭据"与"没带凭据"就分不出来了。
         return AuthResult(ok=False, method="pangu_key", reason="无效的盘古钥匙")
 
+    # ── 0.5) 平台接入 Token（pgp_*）──
+    # 新机制：平台接入 Token，替代房间/钥匙系统
+    platform_candidate = api_key_provided or (bearer if bearer.startswith("pgp_") else "")
+    if platform_candidate.startswith("pgp_"):
+        try:
+            from pangu.api.platform_tokens import get_platform_token_manager
+
+            ident = get_platform_token_manager().verify(platform_candidate)
+        except Exception as e:
+            logger.debug(f"平台接入 Token 校验异常: {e}")
+            ident = None
+        if ident:
+            return AuthResult(
+                ok=True,
+                method="platform_token",
+                user_id=ident.get("token_id", ""),
+                tenant=ident.get("platform", ""),
+                key_id=ident.get("token_id", ""),
+                clearance=0,  # 平台 Token 默认公开权限
+            )
+        return AuthResult(ok=False, method="platform_token", reason="无效的平台接入 Token")
+
     if not api_key and not secret:
+        # require_auth（mcp_require_auth=true）时不得把"没配密钥"当成"不需要鉴权"：
+        # 没有任何可用凭据就应当拒绝，由网关返回 401，而不是静默放行整个数据面。
+        if require_auth and not api_key_provided and not bearer:
+            return AuthResult(ok=False, reason="Missing or invalid credentials")
         return AuthResult(ok=True, method="anonymous")
 
     # ── 1) API Key 路径 ──
