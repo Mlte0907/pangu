@@ -401,7 +401,9 @@ class TestGlobalSingleton:
         assert hasattr(cfg, "onnx_max_length")
         assert hasattr(cfg, "onnx_mirror_base")
         assert cfg.onnx_enabled is True
-        assert cfg.onnx_model_id == "Xenova/all-MiniLM-L6-v2"
+        # 2026-09-19 换多语模型（原 all-MiniLM-L6-v2 是纯英文，中文分词全变 UNK），
+        # 见 pangu/core/config.py 的 onnx_model_id 注释。
+        assert cfg.onnx_model_id == "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
         assert cfg.onnx_mirror_base == "https://hf-mirror.com"
 
     def test_config_env_override(self, monkeypatch):
