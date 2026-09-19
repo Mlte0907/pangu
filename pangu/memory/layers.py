@@ -792,6 +792,13 @@ class MemoryStack:
                     pass
             else:
                 logger.warning(f"update_drawer({drawer.id[:8]}): 内存已替换但落盘被拦截")
+                # 状态回滚 + 诚实返回（2026-09-19 修 BUG：此前落盘失败仍 return True，
+                # 调用方以为更新成功、磁盘其实没变）。注意必须先失效 MemoryStack 层
+                # 缓存：上面的替换是**原地改缓存列表**，直接 _load_drawers 会命中脏缓存、
+                # 回滚成空操作（测试实证）。
+                self._cache.invalidate()
+                self._drawers = self._load_drawers()
+                return False
             return found
 
     def update_drawers_bulk(self, updates: list[Drawer]) -> int:
@@ -834,6 +841,9 @@ class MemoryStack:
                     pass
                 return saved
             logger.warning(f"update_drawers_bulk: {saved} 条已改内存但**未落盘**（被拦截）")
+            # 同 update_drawer：原地改过缓存列表，回滚前必须失效缓存
+            self._cache.invalidate()
+            self._drawers = self._load_drawers()
             return 0
 
     def _visible(self, drawers: list[Drawer]) -> list[Drawer]:
@@ -929,10 +939,13 @@ class MemoryStack:
                     self._remove_from_vector_index([drawer_id])
                     self._cache.invalidate()
                 else:
-                    # 不再静默：落盘被拦时内存与磁盘已不一致，必须让调用方知道
+                    # 不再静默（2026-09-19 修 BUG：此前落盘失败仍 return True）：
+                    # 落盘被拦时内存与磁盘已不一致，回滚内存到磁盘状态并返回 False
                     logger.warning(
                         f"remove_drawer({drawer_id}): 删除已应用到内存但**未落盘**（被空写保护拦截），磁盘仍含该记录"
                     )
+                    self._drawers = self._load_drawers()
+                    return False
                 return True
             return False
 
@@ -959,12 +972,17 @@ class MemoryStack:
             if removed > 0:
                 self._backup_drawers()
                 saved = self._save_drawers()
-                self._remove_from_vector_index(drawer_ids)
-                self._cache.invalidate()
-                if not saved:
+                if saved:
+                    self._remove_from_vector_index(drawer_ids)
+                    self._cache.invalidate()
+                else:
+                    # 2026-09-19 修 BUG：此前落盘失败仍返回 removed（调用方以为
+                    # 删成功了）。回滚内存到磁盘状态并返回 0。
                     logger.warning(
                         f"remove_drawers: 已从内存删除 {removed} 条但**未落盘**（被空写保护拦截），磁盘未同步"
                     )
+                    self._drawers = self._load_drawers()
+                    return 0
             return removed
 
     def replace_all(self, drawers: list[Drawer]) -> bool:
