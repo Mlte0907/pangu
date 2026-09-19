@@ -188,7 +188,11 @@ class PanguConfig(BaseSettings):
 
     # ── ONNX 本地加速配置 ──
     onnx_enabled: bool = True
-    onnx_model_id: str = "Xenova/all-MiniLM-L6-v2"
+    # 多语模型（2026-09-19）：原默认 all-MiniLM-L6-v2 是纯英文模型，中文分词几乎
+    # 全变 [UNK]，所有中文文本的向量趋同（任意两中文串 cos 0.9+）→ 语义搜索对
+    # 中文从未真正工作过（"万金油结果"的根因）。paraphrase-multilingual 同为
+    # 384 维（索引维度不用改）、覆盖中文、无需 query 前缀。
+    onnx_model_id: str = "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
     onnx_quantized: bool = True
     onnx_max_length: int = 128
     onnx_cache_dir: str = ""

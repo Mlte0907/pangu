@@ -50,20 +50,32 @@ class SemanticSearch:
 
         # 尝试向量搜索
         if use_embeddings and self.embedder:
-            items = [
-                {
-                    "id": d.id,
-                    "content": d.content,
-                    "wing": d.wing,
-                    "room": d.room,
-                    "hall": d.hall,
-                    "importance": d.importance,
-                    "source_file": d.source_file,
-                    "tags": d.tags,
-                    "created_at": d.created_at,
-                }
-                for d in filtered
-            ]
+            items = []
+            for d in filtered:
+                content = d.content
+                # 密文在嵌入前解密（2026-09-19）：这是第 4 条同类泄露路径——
+                # search/recall/hybrid 之后这条也漏了。密文既不能当文本嵌入
+                # （无语义），也不能原样返回给用户（gAAAAAB… 乱码）。
+                if isinstance(content, str) and content.startswith("gAAAAA"):
+                    try:
+                        from ..memory.encryption import decrypt
+
+                        content = decrypt(content)
+                    except Exception:
+                        pass
+                items.append(
+                    {
+                        "id": d.id,
+                        "content": content,
+                        "wing": d.wing,
+                        "room": d.room,
+                        "hall": d.hall,
+                        "importance": d.importance,
+                        "source_file": d.source_file,
+                        "tags": d.tags,
+                        "created_at": d.created_at,
+                    }
+                )
             try:
                 results = self.embedder.search(query, items, top_k=n_results)
                 return results
@@ -90,10 +102,18 @@ class SemanticSearch:
 
         results = []
         for score, drawer in scored[:n_results]:
+            content = drawer.content
+            if isinstance(content, str) and content.startswith("gAAAAA"):
+                try:
+                    from ..memory.encryption import decrypt
+
+                    content = decrypt(content)
+                except Exception:
+                    pass
             results.append(
                 {
                     "id": drawer.id,
-                    "content": drawer.content,
+                    "content": content,
                     "wing": drawer.wing,
                     "room": drawer.room,
                     "hall": drawer.hall,

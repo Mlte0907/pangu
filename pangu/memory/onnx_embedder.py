@@ -325,7 +325,11 @@ class ONNXEmbedder:
         for i, e in enumerate(encodings):
             ids = e.ids[:max_len]
             input_ids[i, : len(ids)] = ids
-            attention_mask[i, : len(ids)] = 1
+            # ★ mask 必须用 tokenizer 给的（2026-09-19）：tokenizer 开了固定长度
+            # padding（全部补到 max_length），len(ids) 恒等于 max_length——按长度
+            # 手工造 mask 会把 ~120 个 [PAD] 全标成 1，平均池化后所有向量都被
+            # PAD 主导（实测任意两文本 cos 0.98+，语义搜索等于失效）。
+            attention_mask[i, : len(ids)] = e.attention_mask[:max_len]
 
         # token_type_ids（部分模型需要，全 0 即可）
         token_type_ids = np.zeros_like(input_ids)
