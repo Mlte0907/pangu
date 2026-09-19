@@ -182,8 +182,19 @@ class Layer2:
             label = f"wing={wing} room={room}" if wing or room else "全部"
             return f"## L2 — {label} 下暂无记忆"
 
-        # 按重要性排序（防御非数值 importance）
-        filtered.sort(key=lambda d: d.importance if isinstance(d.importance, (int, float)) else 0.0, reverse=True)
+        # 排序（2026-09-19 并入衰减分）：此前只按静态 importance 排，完全无视
+        # metadata.decay_score —— 结果 101/165 条已在遗忘线下（中位数 0.21）的
+        # 陈旧记忆照样霸占召回前排，污染插件注入的上下文。改用与 retrieval.py
+        # 一致的合成口径：(importance/5)*0.4 + decay*0.6，全仓一个排序约定。
+        # 缺 decay 数据按 1.0（视同新鲜，不惩罚老数据）。
+        def _rank(d):
+            imp = d.importance if isinstance(d.importance, (int, float)) else 0.0
+            decay = (d.metadata or {}).get("decay_score", 1.0)
+            if not isinstance(decay, (int, float)):
+                decay = 1.0
+            return (imp / 5.0) * 0.4 + decay * 0.6
+
+        filtered.sort(key=_rank, reverse=True)
 
         lines = []
         header = f"## L2 — 按需检索 ({min(n_results, len(filtered))}/{len(filtered)} 条, budget={budget}t)"
