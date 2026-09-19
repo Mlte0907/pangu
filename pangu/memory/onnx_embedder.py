@@ -383,7 +383,7 @@ class ONNXEmbedder:
 
 
 # ── 全局单例 ──
-_onnx_embedder: ONNXEmbedder | None = None
+_onnx_embedders: dict[tuple, ONNXEmbedder] = {}
 _onnx_lock = threading.Lock()
 
 
@@ -395,11 +395,18 @@ def get_onnx_embedder(
     mirror_base: str = "https://hf-mirror.com",
     embedding_dim: int = 384,
 ) -> ONNXEmbedder:
-    """获取全局 ONNX 嵌入器（按参数缓存）"""
-    global _onnx_embedder
+    """获取全局 ONNX 嵌入器（**按参数**缓存）。
+
+    2026-09-19 修正：旧实现只保留一个全局实例、无视传入参数——谁先加载谁赢，
+    之后任何用不同 model_id 的调用（配置热更新 / 测试对照 / 多租户不同模型）
+    都会**静默拿到别人的模型**，输出错向量且无任何线索（实测：换模型对照实验
+    里两"不同"实例输出逐位相同）。现按参数元组缓存多实例。
+    """
+    key = (model_id, quantized, max_length, cache_dir, mirror_base, embedding_dim)
     with _onnx_lock:
-        if _onnx_embedder is None:
-            _onnx_embedder = ONNXEmbedder(
+        inst = _onnx_embedders.get(key)
+        if inst is None:
+            inst = ONNXEmbedder(
                 model_id=model_id,
                 quantized=quantized,
                 max_length=max_length,
@@ -407,11 +414,11 @@ def get_onnx_embedder(
                 mirror_base=mirror_base,
                 embedding_dim=embedding_dim,
             )
-        return _onnx_embedder
+            _onnx_embedders[key] = inst
+        return inst
 
 
 def reset_onnx_embedder():
     """重置全局实例（用于配置更新）"""
-    global _onnx_embedder
     with _onnx_lock:
-        _onnx_embedder = None
+        _onnx_embedders.clear()
