@@ -85,7 +85,7 @@ def _assert_safe_write_path(path: Path) -> None:
     """
     s = str(Path(path).resolve())
     real_home = str(Path.home().resolve())
-    is_tmp = any(s.startswith(p) for p in ("/tmp/", "/var/folders/", "/private/var/"))
+    is_tmp = any(s.startswith(p) for p in ("/tmp/", "/var/tmp/", "/var/folders/", "/private/var/"))
     if not is_tmp:
         raise AssertionError(
             f"拒绝写盘：目标 {s} 不在临时目录下。"
