@@ -112,15 +112,27 @@ def _dedup_and_fuse(
     wing: str,
     room: str,
     existing_drawers: list[Drawer],
-) -> tuple[Drawer | None, str | None]:
-    """去重和融合检查，返回 (重复drawer, 融合id) 或 (None, None)"""
-    # 精确匹配
+) -> tuple[Drawer | None, str | None, str | None]:
+    """去重与相似度检测。
+
+    返回三元组 (dup_drawer, fused_id, supersede_id)：
+      - dup_drawer: 完全重复的旧 drawer → remember() 拒绝写入、给旧的加一把分
+      - fused_id: 旧 drawer 被融合改写过（历史行为，现已弃用，保留兼容）
+      - supersede_id: 语义相似但新内容更丰富 → remember() 正常写入新记忆，
+                       旧 drawer 应标记为"已被替代"（不修改旧内容）
+
+    2026-09-20 重写语义相似分支：旧版"融合"会直接把旧记忆内容覆盖掉，
+    导致用户丢失原始记录（例如：旧记忆是猜测、新记忆拿证据纠正，融合后
+    猜测的内容就没了）。新逻辑：新内容更丰富则放行写入并建立替代关系，
+    旧记忆原文不被改动，通过 metadata.superseded_by 保留完整历史。
+    """
+    # 1) 精确内容重复 → 拒绝写入
     for d in existing_drawers:
         if d.content == raw_text and d.wing == wing:
             logger.debug(f"Exact duplicate found: {d.id[:8]}")
-            return d, None
+            return d, None, None
 
-    # 语义相似度去重
+    # 2) 语义相似度检测
     embed_svc = get_embedding_service()
     query_vec = embed_svc.embed(raw_text)
     if query_vec is not None:
@@ -139,11 +151,43 @@ def _dedup_and_fuse(
                     best_drawer = d
             except Exception:
                 continue
-        if best_drawer:
-            logger.info(f"Semantic duplicate found: score={best_score:.3f}")
-            return best_drawer, None
 
-    # 文本相似度降级去重
+        if best_drawer is not None:
+            # 精确内容重复
+            if best_drawer.content == raw_text:
+                logger.debug(f"Exact duplicate found: {best_drawer.id[:8]}")
+                return best_drawer, None, None
+
+            # 语义相似 → 判断谁更丰富
+            # 不再融合（不改写旧内容）。新内容明显更丰富时放行写入，旧的标记为
+            # "已被替代"；否则视为重复，拒绝写入。
+            #
+            # 丰富度计算：信息量 = 内容长度 × (1 + 0.5 × 新增关键词比例)。
+            # 例如：旧记忆是猜测（50字），新记忆拿证据纠正（120字 + 30%新词）
+            # → 旧=50，新≈120×1.15=138 → 新是旧的 2.76 倍 → 放行。
+            old_words = set(best_drawer.content.lower().split()) if best_drawer.content else set()
+            new_words = set(raw_text.lower().split()) if raw_text else set()
+            new_ratio = len(new_words - old_words) / max(len(old_words), 1) if old_words else 1.0
+            informativeness_new = len(raw_text) * (1 + 0.5 * new_ratio)
+            informativeness_old = len(best_drawer.content) if best_drawer.content else 1
+
+            if informativeness_new > informativeness_old * 1.3:
+                # 新内容明显更丰富 → 放行写入 + 标记旧的为"已替代"
+                # 不返回 dup/fused，走正常创建流程；调用方在创建后建立 supersede 关系
+                logger.info(
+                    f"Memory supersede candidate: score={best_score:.3f}, "
+                    f"old={best_drawer.id[:8]} new is {informativeness_new/informativeness_old:.1f}x richer"
+                )
+                return None, None, best_drawer.id
+            else:
+                # 内容差不多 → 重复，拒绝写入
+                logger.info(
+                    f"Memory duplicate rejected: score={best_score:.3f}, "
+                    f"not significantly richer (new={informativeness_new:.0f} vs old={informativeness_old:.0f})"
+                )
+                return best_drawer, None, None
+
+    # 3) 文本相似度降级去重
     if len(raw_text) >= MIN_TEXT_LENGTH_FOR_DEDUP:
         for d in existing_drawers:
             if d.wing != wing or len(d.content) < MIN_CONTENT_LENGTH:
@@ -153,39 +197,9 @@ def _dedup_and_fuse(
             overlap = sum(1 for a, b in zip(raw_text, d.content, strict=False) if a == b)
             len_norm = max(len(raw_text), len(d.content))
             if overlap / len_norm > TEXT_OVERLAP_THRESHOLD:
-                return d, None
+                return d, None, None
 
-    # 融合检查
-    if query_vec is not None:
-        best_score = 0.0
-        best_drawer = None
-        for d in existing_drawers:
-            if d.wing != wing:
-                continue
-            stored_vec = d.metadata.get("embedding")
-            if not stored_vec:
-                continue
-            try:
-                score = _cosine_similarity(query_vec, stored_vec)
-                if score > SIMILARITY_THRESHOLD and score > best_score:
-                    best_score = score
-                    best_drawer = d
-            except Exception:
-                continue
-        if best_drawer is not None:
-            # 融合：保留更长的内容，更新置信度
-            if len(raw_text) > len(best_drawer.content):
-                best_drawer.content = raw_text
-            old_confidence = best_drawer.metadata.get("confidence", 1.0)
-            best_drawer.metadata["confidence"] = min(1.0, old_confidence + CONFIDENCE_INCREMENT)
-            best_drawer.metadata["fused_count"] = best_drawer.metadata.get("fused_count", 0) + 1
-            best_drawer.metadata["fused_at"] = datetime.now().isoformat()
-            _fusion_stats["count"] += 1
-            _fusion_stats["by_drawer"][wing] = _fusion_stats["by_drawer"].get(wing, 0) + 1
-            logger.info(f"Memory fused: {best_drawer.id[:8]} (score={best_score:.3f})")
-            return None, best_drawer.id
-
-    return None, None
+    return None, None, None
 
 
 def _create_drawer(
@@ -557,9 +571,9 @@ def remember(
     # 加密处理（可选）
     stored_text = _encrypt_text(raw_text)
 
-    # 去重和融合检查
+    # 去重和相似度检测
     if existing_drawers:
-        duplicate, fused_id = _dedup_and_fuse(raw_text, wing, room, existing_drawers)
+        duplicate, fused_id, supersede_id = _dedup_and_fuse(raw_text, wing, room, existing_drawers)
         if duplicate:
             _boost_existing(duplicate)
             return duplicate.id, duplicate
@@ -567,6 +581,9 @@ def remember(
             for d in existing_drawers:
                 if d.id == fused_id:
                     return fused_id, d
+        # supersede_id: 新记忆更丰富，正常写入；这里只记录，创建后标记旧的为"已替代"
+    else:
+        supersede_id = None
 
     # 创建新记忆
     item_id = str(uuid.uuid4())
@@ -607,6 +624,37 @@ def remember(
     # 写入后触发向量索引更新
     if not _skip_index_update:
         _index_vector(drawer, item_id)
+
+    # 语义相似 → 旧记忆标记为"已替代"（不改写旧内容）
+    if supersede_id and existing_drawers:
+        try:
+            for d in existing_drawers:
+                if d.id == supersede_id:
+                    superseded_by = d.metadata.get("superseded_by", []) if d.metadata else []
+                    if not isinstance(superseded_by, list):
+                        superseded_by = []
+                    if item_id not in superseded_by:
+                        superseded_by.append(item_id)
+                    if d.metadata is None:
+                        d.metadata = {}
+                    d.metadata["superseded_by"] = superseded_by
+                    d.metadata["superseded_at"] = now
+                    d.metadata["memory_status"] = "superseded"
+                    try:
+                        _persist_supersede_update(
+                            _get_default_storage(), supersede_id, d
+                        )
+                    except Exception as e:
+                        logger.warning(f"supersede update failed for {supersede_id[:8]}: {e}")
+                    if drawer.metadata is None:
+                        drawer.metadata = {}
+                    drawer.metadata["supersedes"] = [supersede_id]
+                    logger.info(
+                        f"Memory superseded: {supersede_id[:8]} by {item_id[:8]}"
+                    )
+                    break
+        except Exception as e:
+            logger.debug(f"Supersede marking skipped: {e}")
 
     # 神经记忆编码（海马体-新皮层双系统）
     _neural_encode(drawer, item_id)
