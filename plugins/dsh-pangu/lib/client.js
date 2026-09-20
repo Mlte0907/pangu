@@ -1412,7 +1412,7 @@ window.__ModuleLoader__.load({
             h('pre', {
               style: { background: css.bg3, borderRadius: 6, padding: '10px 12px', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10.5, lineHeight: 1.65, margin: '0 0 8px 0', overflowX: 'auto', whiteSpace: 'pre-wrap', userSelect: 'all', color: css.t2 },
             },
-              '请接入盘古记忆系统：\n1) 执行 curl -X POST http://127.0.0.1:19529/api/v2/platforms/request -H "Content-Type: application/json" -d \'{"platform":"<你的平台ID>","platform_name":"<显示名>"}\'\n2) 保存返回的 token（pgp_ 开头，只显示一次），等管理员在后台审核通过\n3) 通过后用它调 REST API：写记忆 POST http://127.0.0.1:19529/api/v2/memories（头 Authorization: Bearer <token>，body 的 text 必填，wing/room/importance/tags 可选）；搜索 GET http://127.0.0.1:19529/api/v2/memories/search?q=<关键词>'),
+              `请接入盘古记忆系统：\n1) 执行 curl -X POST ${config?.pangu_base_url || 'http://127.0.0.1:19529'}/api/v2/platforms/request -H "Content-Type: application/json" -d '{"platform":"<你的平台ID>","platform_name":"<显示名>"}'\n2) 保存返回的 token（pgp_ 开头，只显示一次），等管理员在后台审核通过\n3) 通过后用它调 REST API：写记忆 POST ${config?.pangu_base_url || 'http://127.0.0.1:19529'}/api/v2/memories（头 Authorization: Bearer <token>，body 的 text 必填，wing/room/importance/tags 可选）；搜索 GET ${config?.pangu_base_url || 'http://127.0.0.1:19529'}/api/v2/memories/search?q=<关键词>`),
             h('div', { style: { fontSize: 10.5, color: css.t3 } },
               '审核前平台没有任何权限（pending 连鉴权都不通过）；点「通过」后即为全权（读/写/改/删/搜）。token 丢失就撤销后重新申请。'),
           ),
@@ -1682,6 +1682,8 @@ window.__ModuleLoader__.load({
           setDraft({
             ce: cfg.consolidation_enabled !== false,
             ci: Number(cfg.consolidation_interval_hours) || 24,
+            pb: cfg.pangu_base_url || '',
+            ad: '',
             provider: cfg.llm_provider || 'openai',
             model: cfg.llm_model || '',
             baseUrl: cfg.llm_base_url || '',
@@ -1715,6 +1717,7 @@ window.__ModuleLoader__.load({
         setSaveState({ s: 'saving', msg: '' })
         try {
           const patch = {
+            pangu_base_url: draft.pb,
             consolidation_enabled: draft.ce,
             consolidation_interval_hours: draft.ci,
             llm_provider: draft.provider,
@@ -1724,6 +1727,7 @@ window.__ModuleLoader__.load({
             whisper_model: draft.whisperModel,
           }
           if (keyDirty && draft.apiKey) patch.llm_api_key = draft.apiKey
+          if (draft.ad) patch.admin_secret = draft.ad
           const value = unwrap(await callRemote('panguConfig', 'save', patch))
           if (!value?.ok) throw new Error(value?.error || '写入失败')
           const rl = value.reload
@@ -1794,6 +1798,37 @@ window.__ModuleLoader__.load({
             keySet ? 'LLM 已配置 · ' + (draft.provider || '—') : 'LLM 未配置'),
         ),
         draft ? [
+          h('div', { key: 's0-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '14px 0 7px', borderBottom: `1px solid ${css.borderSoft}`, marginTop: 12 } },
+            h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '00'),
+            h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '盘古服务地址'),
+            h('span', { style: { fontSize: 10.5, color: css.t3 } }, '本机或云端部署都从这里配'),
+          ),
+          h('div', { key: 's0', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
+              h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '盘古 MCP / API 地址'),
+              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '本机部署填 http://IP:19529 · 云端填 https://域名'),
+            ),
+            h('input', {
+              className: 'pangu-input', value: draft.pb, placeholder: 'https://你的域名',
+              onChange: (e) => setDraft((prev) => ({ ...prev, pb: e.target.value })),
+              style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
+            }),
+            h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
+              '保存即对插件的 REST/WS 生效；DSH 的 MCP 客户端共用此地址，重启 DSH 后重新挂载。仅允许 http/https，留空回退默认本地。'),
+          ),
+          h('div', { key: 's0-admin', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
+              h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '管理密钥'),
+              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '云端部署时必填 · 本地部署留空自动读本机文件'),
+            ),
+            h('input', {
+              className: 'pangu-input', type: 'password', value: draft.ad, placeholder: config?.admin_secret_set ? '已配置，留空保持不变' : '粘贴安装时打印的管理密钥',
+              onChange: (e) => setDraft((prev) => ({ ...prev, ad: e.target.value })),
+              style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
+            }),
+            h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
+              '安装盘古时命令行会打印此密钥（只显示一次）。本地部署留空，自动读本机 ~/.pangu/.admin_secret。'),
+          ),
           h('div', { key: 's1-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '14px 0 7px', borderBottom: `1px solid ${css.borderSoft}`, marginTop: 12 } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '01'),
             h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, 'LLM 配置'),
@@ -1908,7 +1943,8 @@ window.__ModuleLoader__.load({
             h(InfoRow, { label: '可用模型', value: (config?.llm_fallback_models || []).join(', ') || '(由端点动态发现)' }),
             h(InfoRow, { label: '嵌入模型', value: config?.embedding_model }),
             h(InfoRow, { label: '记忆库', value: config?.palace_path }),
-            h(InfoRow, { label: 'MCP 服务', value: '127.0.0.1:19529' }),
+            h(InfoRow, { label: '盘古服务地址', value: config?.pangu_base_url || '默认本地 127.0.0.1:19529' }),
+            h(InfoRow, { label: '管理凭据', value: config?.admin_secret_set ? '已配置' : '未配置' }),
           ),
           // ── 04 平台接入与审核 ──
           h('div', { key: 's4-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },

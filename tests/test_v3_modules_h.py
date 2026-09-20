@@ -758,12 +758,6 @@ class TestWorkingMemory:
         wm = WorkingMemory(capacity=3)
         assert wm.focus is None
 
-    def test_usage(self):
-        wm = WorkingMemory(capacity=5)
-        assert wm.usage() == 0.0
-        wm.push(WMItem(id="a", content="a"))
-        assert wm.usage() == 0.2
-
     def test_decay_tick(self):
         wm = WorkingMemory(capacity=3)
         wm.push(WMItem(id="a", content="a", activation=1.0))

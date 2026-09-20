@@ -97,12 +97,6 @@ class WorkingMemory:
     def current_tokens(self) -> int:
         return self._total_tokens
 
-    def usage(self) -> float:
-        """使用率 0.0 ~ 1.0"""
-        if self.capacity == 0:
-            return 0.0
-        return len(self._buffer) / self.capacity
-
     def _evict_to_token_budget(self) -> WMItem | None:
         """Token 预算驱逐，返回第一个被驱逐的项"""
         first_evicted = None
@@ -235,15 +229,6 @@ class WorkingMemory:
             self._total_tokens = 0
 
     @property
-    def context(self) -> str:
-        """获取当前上下文摘要"""
-        parts = []
-        for item in list(self._buffer.values())[-3:]:
-            prefix = "[焦点]" if item is self.focus else ""
-            parts.append(f"{prefix} {item.content[:50]}")
-        return "\n".join(parts)
-
-    @property
     def token_usage(self) -> float:
         if self.token_budget == 0:
             return 0.0
@@ -364,12 +349,6 @@ class WorkingMemory:
         self._checkpoint_thread = threading.Thread(target=self._auto_checkpoint_loop, daemon=True, name="wm-checkpoint")
         self._checkpoint_thread.start()
         logger.info(f"WM auto-checkpoint started (interval={WM_CHECKPOINT_INTERVAL}s)")
-
-    def stop_auto_checkpoint(self):
-        """停止 Checkpoint 线程"""
-        self._checkpoint_stop.set()
-        if self._checkpoint_thread:
-            self._checkpoint_thread.join(timeout=5)
 
     def _auto_checkpoint_loop(self):
         while not self._checkpoint_stop.wait(timeout=WM_CHECKPOINT_INTERVAL):

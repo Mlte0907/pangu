@@ -1285,7 +1285,10 @@ def create_app() -> FastAPI:
             from pangu.core.config import PanguConfig as _Cfg
             from pangu.memory.knowledge_graph import KnowledgeGraph
 
-            cfg = _Cfg.load()
+            # 2026-09-21：用权威配置 —— KnowledgeGraph 读 palace_path 下的
+            # knowledge_graph.db，而权威 KG 在 v2 目录；普通 load() 的 palace_path
+            # 指向 v1（云端实测：stats 报 19 实体、graph 返回 0）。
+            cfg = _Cfg.load().authoritative_memory_config()
             kg = KnowledgeGraph(cfg)
             entities = kg.list_entities(entity_type)[:limit]
             edges = []

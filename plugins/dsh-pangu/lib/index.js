@@ -28,13 +28,41 @@ const { filterSensitive } = require('./proactive/sensitive-filter')
 const { createInjectionPipeline } = require('./proactive/injection-pipeline')
 const { createConsolidationWriter } = require('./proactive/consolidation-writer')
 
-const PANGU_BASE = 'http://127.0.0.1:19529'
 const PLUGIN_VERSION = require('../package.json').version
 const CONFIG_PATH = path.join(os.homedir(), '.pangu', 'config.json')
 // 密钥不落 config.json（PanguConfig.save() 用 exclude 排除），而是独立存这个文件（0600）。
 // 所以判断「Key 是否已配置」必须看这个文件，光读 config.json 会永远显示未配置。
 const SECRET_FILE = path.join(os.homedir(), '.pangu', '.llm_api_key')
 const HTTP_TIMEOUT_MS = 8000
+
+// ── 目标地址解析（2026-09-21 盘古多部署形态）──
+// 解析优先级：~/.pangu/config.json 的 pangu_base_url > 环境变量 PANGU_BASE_URL
+// > 默认本地 http://127.0.0.1:19529（盘古标准本机部署）。部署在云端/局域网的
+// 用户在设置页填自己的地址即可。仅允许 http/https；host 不做公网限制 ——
+// 本机/局域网部署是合法形态（单人系统，无 SSRF 威胁模型）。
+const DEFAULT_PANGU_BASE = 'http://127.0.0.1:19529'
+
+function resolvePanguBase() {
+  let candidate = ''
+  try {
+    const raw = JSON.parse(require('fs').readFileSync(CONFIG_PATH, 'utf8'))
+    candidate = String((raw && raw.pangu_base_url) || '').trim()
+  } catch (_) {}
+  if (!candidate) candidate = String(process.env.PANGU_BASE_URL || '').trim()
+  if (!candidate) candidate = DEFAULT_PANGU_BASE
+  try {
+    const u = new URL(candidate)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('仅允许 http/https')
+    return candidate.replace(/\/+$/, '')
+  } catch (e) {
+    console.error(`[dsh-pangu] pangu_base_url 非法（${candidate}）：${e.message}，回退默认 ${DEFAULT_PANGU_BASE}`)
+    return DEFAULT_PANGU_BASE
+  }
+}
+
+// let 而非 const：设置页保存 pangu_base_url 后热切换（resolvePanguBase 重读），
+// 全部调用点用模板字符串引用，取值时才求值，无需重启即对 REST/WS 生效。
+let PANGU_BASE = resolvePanguBase()
 // OpenCode Go 网关要求每个请求携带稳定的会话标识，缺失会直接 400。
 // 与 pangu/core/llm.py 的 httpx 默认头保持一致（同样可用 PANGU_LLM_SESSION_ID 固定），
 // 否则「测试连接」会比真实调用更容易失败/更容易成功，失去验证意义。
@@ -488,7 +516,7 @@ async function apply(ctx) {
   // ── Config Remote ──
   // 敏感字段：读取时脱敏，避免明文 API Key 经过 Typert Remote 流入前端
   // (前端一旦拿到明文就会出现在 React state / devtools / 可能的日志里)。
-  const SECRET_KEYS = ['llm_api_key', 'api_key']
+  const SECRET_KEYS = ['llm_api_key', 'api_key', 'admin_secret']
 
   /** 把配置里的密钥替换为「是否已设置」提示，永不返回明文 */
   function redactConfig(cfg) {
@@ -605,10 +633,31 @@ async function apply(ctx) {
           clean[k] = v
         }
       }
+      // pangu_base_url（插件目标地址，2026-09-21）：写盘前校验（仅 http/https），
+      // 保存成功后热切换 PANGU_BASE —— 设置页改地址即生效，无需重启。
+      // 此键是插件本地设置（MCP 客户端 cordis.patch.yml 也读它），不推给盘古服务。
+      if (clean.pangu_base_url !== undefined) {
+        const candidate = String(clean.pangu_base_url || '').trim()
+        let bad = null
+        if (candidate === '') {
+          clean.pangu_base_url = '' // 留空 = 回退默认本地
+        } else {
+          try {
+            const u = new URL(candidate)
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') bad = '仅允许 http/https'
+          } catch (_) { bad = '不是合法 URL' }
+          if (bad) return { ok: false, error: `盘古服务地址无效：${bad}` }
+        }
+      }
       const res = await saveConfig(clean)
-      // saveConfig 直接改 ~/.pangu/config.json，但**运行中的服务不会自动感知**；
-      // 必须经 pangu_config_set 让服务端重读并失效旧组件缓存。
-      if (res.ok) res.reload = await pushToServer(clean)
+      if (res.ok) {
+        if (clean.pangu_base_url !== undefined) PANGU_BASE = resolvePanguBase()
+        const serverPatch = { ...clean }
+        delete serverPatch.pangu_base_url
+        // saveConfig 直接改 ~/.pangu/config.json，但**运行中的服务不会自动感知**；
+        // 必须经 pangu_config_set 让服务端重读并失效旧组件缓存。
+        res.reload = await pushToServer(serverPatch)
+      }
       return res
     },
     async testLlm() {
@@ -689,9 +738,13 @@ async function apply(ctx) {
   ctx.provide('panguConfig', bindRemote(configService, 'panguConfig'))
 
   // ── 阶段 5：Admin Key Service（钥匙/房间管理）──
-  // admin secret 由插件后端读 ~/.pangu/.admin_secret（0600），前端 JS 永不接触
+  // admin secret 优先从设置页读（config.json），空则回退读本机文件
   const ADMIN_SECRET_PATH = path.join(os.homedir(), '.pangu', '.admin_secret')
   async function readAdminSecret() {
+    // 1. 优先从设置页配置读（云端部署时用）
+    const cfg = await readConfig()
+    if (cfg.admin_secret) return cfg.admin_secret
+    // 2. 回退读本机文件（本地部署时用）
     try { return (await fsp.readFile(ADMIN_SECRET_PATH, 'utf8')).trim() } catch (_) { return '' }
   }
   async function adminFetch(url, options = {}) {
@@ -704,26 +757,26 @@ async function apply(ctx) {
     return res.json()
   }
   const adminKeyService = {
-    async listKeys() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys') },
-    async createKey(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys', { method: 'POST', body: JSON.stringify(args) }) },
-    async revokeKey(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/keys/revoke', { method: 'POST', body: JSON.stringify(args) }) },
-    async listRooms() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms') },
-    async rekeyRoom(args) { return adminFetch('http://127.0.0.1:19529/api/v2/admin/rooms/' + encodeURIComponent(args.room) + '/rekey', { method: 'POST' }) },
-    async listPublicMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/public-memories') },
-    async listRecentMemories() { return adminFetch('http://127.0.0.1:19529/api/v2/admin/recent-memories?limit=20') },
+    async listKeys() { return adminFetch(`${PANGU_BASE}/api/v2/admin/keys`) },
+    async createKey(args) { return adminFetch(`${PANGU_BASE}/api/v2/admin/keys`, { method: 'POST', body: JSON.stringify(args) }) },
+    async revokeKey(args) { return adminFetch(`${PANGU_BASE}/api/v2/admin/keys/revoke`, { method: 'POST', body: JSON.stringify(args) }) },
+    async listRooms() { return adminFetch(`${PANGU_BASE}/api/v2/admin/rooms`) },
+    async rekeyRoom(args) { return adminFetch(`${PANGU_BASE}/api/v2/admin/rooms/` + encodeURIComponent(args.room) + '/rekey', { method: 'POST' }) },
+    async listPublicMemories() { return adminFetch(`${PANGU_BASE}/api/v2/admin/public-memories`) },
+    async listRecentMemories() { return adminFetch(`${PANGU_BASE}/api/v2/admin/recent-memories?limit=20`) },
   }
   ctx.provide('panguAdminKeys', bindRemote(adminKeyService, 'panguAdminKeys'))
 
   // ── 平台管理服务 ──
   const platformService = {
-    async listPlatforms() { return adminFetch('http://127.0.0.1:19529/api/v2/platforms') },
-    async listPending() { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/pending') },
-    async approve(args) { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/approve', { method: 'POST', body: JSON.stringify(args) }) },
+    async listPlatforms() { return adminFetch(`${PANGU_BASE}/api/v2/platforms`) },
+    async listPending() { return adminFetch(`${PANGU_BASE}/api/v2/platforms/pending`) },
+    async approve(args) { return adminFetch(`${PANGU_BASE}/api/v2/platforms/approve`, { method: 'POST', body: JSON.stringify(args) }) },
     // 2026-09-20 修：后端只有 `POST /platforms/reject`（body 传 token_id）与
     // `DELETE /platforms/{token_id}`；此前写的是 `POST /platforms/{id}/reject|revoke`，
     // 实际 404，而前端 `catch(_){}` 把错误吞掉 ⇒ 点击「拒绝/撤销」没有任何反应。
-    async reject(args) { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/reject', { method: 'POST', body: JSON.stringify({ token_id: args && args.token_id }) }) },
-    async revoke(args) { return adminFetch('http://127.0.0.1:19529/api/v2/platforms/' + encodeURIComponent(args.token_id), { method: 'DELETE' }) },
+    async reject(args) { return adminFetch(`${PANGU_BASE}/api/v2/platforms/reject`, { method: 'POST', body: JSON.stringify({ token_id: args && args.token_id }) }) },
+    async revoke(args) { return adminFetch(`${PANGU_BASE}/api/v2/platforms/` + encodeURIComponent(args.token_id), { method: 'DELETE' }) },
   }
   ctx.provide('panguPlatforms', bindRemote(platformService, 'panguPlatforms'))
 
@@ -731,21 +784,21 @@ async function apply(ctx) {
   const knowledgeService = {
     async list(args) {
       const q = args && args.category ? '?category=' + encodeURIComponent(args.category) : ''
-      return adminFetch('http://127.0.0.1:19529/api/v2/dashboard/knowledge' + q)
+      return adminFetch(`${PANGU_BASE}/api/v2/dashboard/knowledge` + q)
     },
     async search(args) {
       const q = args && args.query ? '?query=' + encodeURIComponent(args.query) : ''
-      return adminFetch('http://127.0.0.1:19529/api/v2/dashboard/knowledge/search' + q)
+      return adminFetch(`${PANGU_BASE}/api/v2/dashboard/knowledge/search` + q)
     },
     async get(args) {
       // 知识条目详情：通过 list + filter 实现（后端无单条 API）
-      const all = await adminFetch('http://127.0.0.1:19529/api/v2/dashboard/knowledge')
+      const all = await adminFetch(`${PANGU_BASE}/api/v2/dashboard/knowledge`)
       const entries = all?.knowledge || []
       const entry = entries.find(e => e.id === args.id)
       return entry || null
     },
     async stats() {
-      const stats = await adminFetch('http://127.0.0.1:19529/api/v2/dashboard/stats')
+      const stats = await adminFetch(`${PANGU_BASE}/api/v2/dashboard/stats`)
       return {
         total: stats?.knowledge?.total || 0,
         categories: stats?.knowledge?.categories || {},
@@ -765,7 +818,7 @@ async function apply(ctx) {
   const statsCollector = createStatsCollector({ logger: ctx.logger, sensitiveFilter: filterSensitive })
   const circuitBreaker = createCircuitBreaker({ onTrip: (sid) => statsCollector.recordCircuitBreak(sid) })
   const dedupTracker = createDedupTracker(currentConfig.injection.dedup_scope)
-  const mcpClient = createPanguMcpClient({ apiKey: currentConfig.apiKey, logger: ctx.logger })
+  const mcpClient = createPanguMcpClient({ apiKey: currentConfig.apiKey, baseUrl: currentConfig.baseUrl, logger: ctx.logger })
   const getConfig = () => currentConfig
 
   async function extractAssistantText(payload) {

@@ -78,7 +78,8 @@ function validate(raw, logger) {
   }
 
   const apiKey = typeof raw.api_key === 'string' ? raw.api_key : ''
-  return { injection: cfg, apiKey }
+  const baseUrl = typeof raw.pangu_base_url === 'string' ? raw.pangu_base_url.trim() : ''
+  return { injection: cfg, apiKey, baseUrl }
 }
 
 async function loadInjectionConfig(logger) {

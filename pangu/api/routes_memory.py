@@ -283,6 +283,10 @@ async def list_memories(
         # tenant 隔离
         tid = _resolve_tenant_id(request)
         principal = get_principal(request)
+        # 2026-09-21：关闭匿名列表（同 search）—— 匿名租户恰与数据租户重合，
+        # 平台端口公网暴露时等于全库免密可读。
+        if principal.method == "anonymous":
+            return ApiResponse.error(401, "Authentication required")
         subject = AbacSubject.from_principal(principal, tenant_id=tid)
         # 同上：subject.tenant_id 只用 _resolve_tenant_id 的裁决结果
         if not subject.is_admin:
@@ -404,12 +408,19 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
 
 @router.get("/memories/search")
 async def search_memories(
+    request: Request,
     q: str = Query(..., description="搜索关键词"),
     wing: str = Query(default=None, description="限定 Wing"),
     limit: int = Query(default=10, ge=1, le=50),
     search_type: str = Query(default="fts", description="搜索类型: fts/hybrid/vector"),
 ):
     """搜索记忆"""
+
+    # 2026-09-21：关闭匿名搜索 —— 搜索/列表此前对匿名放行，平台端口公网暴露时
+    # 匿名租户恰好能读到 default 租户的全部记忆（与「未通过 = 零权限」相悖）。
+    # 平台/钥匙凭据照常可用，仅拦未带凭据的请求。
+    if get_principal(request).method == "anonymous":
+        return ApiResponse.error(401, "Authentication required")
 
     def _do_search():
         # P0-0 修复：读**权威路径** v2（此前读 v1 → 恒返回空）。

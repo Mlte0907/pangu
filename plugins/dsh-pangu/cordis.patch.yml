@@ -5,7 +5,11 @@
       config:
         serverName: pangu
         transport: streamable-http
-        url: http://127.0.0.1:19529/mcp
+        # ── MCP 地址 ──────────────────────────────────────────────
+        # 与插件设置页「盘古服务地址」共用一个配置源：~/.pangu/config.json 的
+        # pangu_base_url（设置页改完重启 DSH，MCP 客户端随之重新挂载）。
+        # 未配置时回退默认本地。值必须是 http/https 地址。
+        url: !!js (function(){ try { const c = JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.pangu','config.json'),'utf8')); return String(c.pangu_base_url || 'http://127.0.0.1:19529').replace(/\/+$/, '') + '/mcp' } catch(e) { return 'http://127.0.0.1:19529/mcp' } })()
         toolCallTimeoutMs: 60000
         # ── MCP 认证凭据 ──────────────────────────────────────────
         # X-API-Key 从 ~/.pangu/.mcp_key (0600) 读取（!!js IIFE 在 Loader 挂载时求值）。

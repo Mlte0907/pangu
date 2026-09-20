@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pangu.core.config import PanguConfig
 from pangu.core.llm import PROVIDER_ENV_KEYS, PROVIDER_URLS, LLMEngine, LLMResponse
-from pangu.core.palace import HALL_TYPES, Drawer, Palace, WikiPage
+from pangu.core.palace import Drawer, Palace, WikiPage
 from pangu.memory.analytics import MemoryAnalytics, MemoryAnalyzer
 from pangu.memory.clustering import MemoryCluster, MemoryClusterer
 from pangu.memory.conflict import ConflictDetector, ConflictSeverity, MemoryConflict
@@ -415,20 +415,6 @@ class TestMiners:
         drawers = miner.parse_jsonl_session(str(convo_file), wing="test")
 
         assert len(drawers) == 2
-
-
-class TestHallTypes:
-    """殿堂类型测试"""
-
-    def test_hall_types(self):
-        assert "hall_facts" in HALL_TYPES
-        assert "hall_events" in HALL_TYPES
-        assert "hall_discoveries" in HALL_TYPES
-        assert "hall_preferences" in HALL_TYPES
-        assert "hall_advice" in HALL_TYPES
-        assert "hall_concepts" in HALL_TYPES
-        assert "hall_relations" in HALL_TYPES
-        assert len(HALL_TYPES) == 7
 
 
 class TestForgettingCurve:
@@ -852,9 +838,6 @@ class TestMultimodal:
         data = mm.to_dict()
         assert data["modality"] == "image"
         assert data["image_width"] == 800
-
-        restored = MultimodalMemory.from_dict(data)
-        assert restored.file_name == "test.png"
 
     def test_extract_from_text_file(self, tmp_path):
         test_file = tmp_path / "test.txt"

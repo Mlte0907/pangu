@@ -71,10 +71,6 @@ class MultimodalMemory:
             "created_at": self.created_at,
         }
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "MultimodalMemory":
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
-
 
 # MIME 类型映射
 MIME_MAP = {

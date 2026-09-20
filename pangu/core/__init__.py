@@ -2,6 +2,6 @@
 
 from .config import PanguConfig
 from .llm import LLMEngine, LLMResponse
-from .palace import HALL_TYPES, Drawer, Palace, WikiPage
+from .palace import Drawer, Palace, WikiPage
 
-__all__ = ["PanguConfig", "Palace", "Drawer", "WikiPage", "HALL_TYPES", "LLMEngine", "LLMResponse"]
+__all__ = ["PanguConfig", "Palace", "Drawer", "WikiPage", "LLMEngine", "LLMResponse"]

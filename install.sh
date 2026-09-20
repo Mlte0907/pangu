@@ -31,6 +31,20 @@
 
 set -euo pipefail
 
+# ── 自举：curl|bash 时本文件不在仓库里，先 clone 再执行自己 ──
+if [ ! -f "${BASH_SOURCE[0]}" ] || [ ! -f "$(dirname "${BASH_SOURCE[0]}")/pangu/api/server.py" ]; then
+  INSTALL_ROOT="${PANGU_INSTALL_DIR:-$HOME/pangu}"
+  command -v git >/dev/null 2>&1 || { echo "错误: 需要 git，请先安装（apt install git）" >&2; exit 1; }
+  if [ -d "$INSTALL_ROOT/.git" ]; then
+    echo "已有仓库 $INSTALL_ROOT，拉取最新..."
+    git -C "$INSTALL_ROOT" pull --ff-only 2>/dev/null || echo "拉取失败，用现有代码继续"
+  else
+    echo "克隆盘古到 $INSTALL_ROOT..."
+    git clone --depth 1 https://github.com/Mlte0907/pangu "$INSTALL_ROOT"
+  fi
+  exec bash "$INSTALL_ROOT/install.sh" "$@"
+fi
+
 # ── 配置 ──
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$REPO_DIR/.venv"
@@ -334,6 +348,52 @@ fi
 fi  # MODEL_ONLY
 
 # ════════════════════════════════════════════════════════════
+# 4b. 生成凭据 + DSH 填写卡
+# ════════════════════════════════════════════════════════════
+if [ "$MODEL_ONLY" = 0 ]; then
+step "4b/5 生成凭据"
+
+VPY="${VPY:-$VENV_DIR/bin/python}"
+
+# REST 主密钥（鉴权中间件开关，没了等于裸奔）
+API_KEY_FILE="$PANGU_HOME/.api_key"
+if [ -s "$API_KEY_FILE" ]; then
+  ok ".api_key 已存在，跳过生成"
+else
+  API_KEY=$("$VPY" -c "import secrets; print(secrets.token_urlsafe(32))")
+  printf '%s' "$API_KEY" > "$API_KEY_FILE"
+  chmod 600 "$API_KEY_FILE"
+  ok ".api_key 已生成（权限 600）"
+fi
+
+# admin 管理密钥（管理面板用）
+ADMIN_SECRET_FILE="$PANGU_HOME/.admin_secret"
+if [ -s "$ADMIN_SECRET_FILE" ]; then
+  ok ".admin_secret 已存在，跳过生成"
+else
+  ADMIN_SECRET=$("$VPY" -c "import secrets; print(secrets.token_urlsafe(32))")
+  printf '%s' "$ADMIN_SECRET" > "$ADMIN_SECRET_FILE"
+  chmod 600 "$ADMIN_SECRET_FILE"
+  ok ".admin_secret 已生成（权限 600）"
+fi
+
+# 生成 pangu.env 给 systemd EnvironmentFile 用
+PANGU_ENV="$PANGU_HOME/pangu.env"
+if [ -f "$PANGU_ENV" ]; then
+  ok "pangu.env 已存在，跳过"
+else
+  {
+    echo "PANGU_API_KEY=$(cat "$API_KEY_FILE")"
+    if [ "$PANGU_HOME" != "$HOME/.pangu" ]; then
+      echo "PANGU_BASE_DIR=$PANGU_HOME"
+    fi
+  } > "$PANGU_ENV"
+  chmod 600 "$PANGU_ENV"
+  ok "pangu.env 已生成（权限 600）"
+fi
+fi  # MODEL_ONLY
+
+# ════════════════════════════════════════════════════════════
 # 5. systemd 用户服务
 # ════════════════════════════════════════════════════════════
 if [ "$INSTALL_SERVICE" = 1 ] && [ "$MODEL_ONLY" = 0 ]; then
@@ -387,6 +447,7 @@ WorkingDirectory=$REPO_DIR
 Environment=PANGU_HOST=$HOST
 Environment=PANGU_PORT=$PORT
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=$PANGU_HOME/pangu.env
 ExecStart=$VPY -c "import sys; sys.path.insert(0, '$REPO_DIR'); import uvicorn; from pangu.api.server import create_app; uvicorn.run(create_app(), host='$HOST', port=$PORT, log_level='info')"
 Restart=on-failure
 RestartSec=5
@@ -532,4 +593,12 @@ $(c_yellow '【配置】')
   数据目录: $PANGU_HOME        （config.json 权限 600）
   LLM 密钥: $PANGU_HOME/.llm_api_key  （不写入 config.json，重启不丢）
   环境变量: PANGU_HOST / PANGU_PORT / PANGU_LOG_LEVEL / PANGU_ONNX_CACHE_DIR
+
+$(c_cyan '──────────── DSH 插件填写卡（复制下面 3 行到 DSH 设置页）────────────')
+$(c_green "盘古服务地址   : http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo '<本机IP>'):$PORT")
+$(c_green "API Key        : $(cat "$PANGU_HOME/.api_key" 2>/dev/null || echo '<未生成>')")
+$(c_green "管理密钥       : $(cat "$PANGU_HOME/.admin_secret" 2>/dev/null || echo '<未生成>')")
+$(c_cyan '──────────────────────────────────────────────────────────────────')
+$(c_yellow 'LLM 三项（模型/端点/Key）在 DSH 设置页「01 LLM 配置」里填')
+$(c_yellow '↑ 以上密钥只显示一次，请立即保存。云端部署时地址填 https://域名')
 EOF

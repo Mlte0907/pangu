@@ -24,13 +24,25 @@
 
 ## 快速开始
 
-### 一键安装（推荐）
+### 云端一键部署（推荐）
+
+在裸 Linux 云主机上执行一条命令，盘古全自动部署：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Mlte0907/pangu/master/install.sh | bash -s -- --host 0.0.0.0
+```
+
+脚本结束会打印 **DSH 插件填写卡**（服务地址 / API Key / 管理密钥），只显示一次，请立即保存。
+
+> ⚠ 云端部署地址填 `https://你的域名`，需在 nginx/TLS 反向代理之后（参考 `DEPLOY.md`）。
+
+### 本地一键安装
 
 ```sh
 git clone https://github.com/Mlte0907/pangu.git
 cd pangu
 ./install.sh                 # 装依赖 + 预下载模型 + 注册 systemd 服务
-./install.sh --dsh-plugin    # 需要 DSH 集成时追加
+./install.sh --dsh-plugin    # 盘古与 DSH 同机时追加
 ```
 
 脚本会做完整的环境自检，并在 **ONNX 模型下载失败时明确报错中止**

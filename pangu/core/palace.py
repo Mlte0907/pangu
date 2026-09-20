@@ -131,18 +131,6 @@ class WikiPage:
         )
 
 
-# 殿堂分类体系
-HALL_TYPES = {
-    "hall_facts": "事实与决策 — 已做出的决定和锁定的选择",
-    "hall_events": "事件与里程碑 — 会话、调试过程、重要节点",
-    "hall_discoveries": "发现与洞察 — 突破性发现、新认知",
-    "hall_preferences": "偏好与习惯 — 个人喜好、工作习惯、观点",
-    "hall_advice": "建议与方案 — 推荐方案和解决思路",
-    "hall_concepts": "概念与理论 — 核心概念、理论框架",
-    "hall_relations": "关系与网络 — 人物关系、项目关联",
-}
-
-
 class Palace:
     """宫殿 — 记忆系统的核心容器"""
 
