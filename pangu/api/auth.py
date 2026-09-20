@@ -440,7 +440,15 @@ def verify_credentials(
     if auth_header.lower().startswith("bearer "):
         bearer = auth_header[7:].strip()
 
-    # ── 0) 盘古钥匙（pgk_*）──
+    # ── 0) 静态 API Key 优先校验 ──
+    # api_key 可能恰好以 pgk_ 开头（单人部署常见），若不先校验，会被下方
+    # 盘古钥匙分支拦截并返回"无效的盘古钥匙"——永远走不到 api_key 比较路径。
+    # 先用 hmac.compare_digest 防时序攻击，匹配则直接放行。
+    candidate_raw = api_key_provided or (bearer if not _looks_like_jwt(bearer) else "")
+    if api_key and candidate_raw and hmac.compare_digest(candidate_raw, api_key):
+        return AuthResult(ok=True, method="api_key", user_id="api_key_user")
+
+    # ── 0.1) 盘古钥匙（pgk_*）──
     # 必须排在下面那条"未配置鉴权则一律匿名"的短路**之前**：生产常常没配静态
     # api_key/JWT（两者都为空），若先短路，携带盘古钥匙的请求永远只能解析成
     # anonymous —— REST 侧的租户收口就落不了地（实测：加上分支后仍是 anonymous）。

@@ -133,7 +133,17 @@ def create_app() -> FastAPI:
     #   2) 更实际的后果：运维把 API Key 从「环境变量」切换为只更新环境变量时，
     #      config.json 里的旧 Key 会继续生效，形成"改了没生效/旧 Key 仍可用"。
     # 与 `PanguConfig.save()` 的 exclude 一致：密钥不落 config.json，也就不该从它读。
+    #
+    # ⚠ 但环境变量里的密钥仍需生效：PanguConfig.load() 已经把环境变量值
+    # 加载进 _loaded，跳过 _SECRET_FIELDS 会连环境变量的值也丢掉。
+    # 解法：跳过文件值，但**保留环境变量值**。
     _SECRET_FIELDS = {"api_key", "llm_api_key", "siliconflow_key", "jwt_secret"}
+    _SENSITIVE_ENV_MAP = {
+        "api_key": "PANGU_API_KEY",
+        "llm_api_key": "PANGU_LLM_API_KEY",
+        "siliconflow_key": "PANGU_SILICONFLOW_KEY",
+        "jwt_secret": "PANGU_JWT_SECRET",
+    }
     _env_pinned: set[str] = set()
     for _name in _ENV_OVERRIDABLE_PATHS:
         if os.environ.get(f"PANGU_{_name.upper()}"):
@@ -163,6 +173,13 @@ def create_app() -> FastAPI:
             setattr(_orig_cfg, _field, getattr(_loaded, _field))
         except Exception:
             pass
+    # 环境变量中的密钥：跳过文件值，但保留环境变量值
+    for _field, _env in _SENSITIVE_ENV_MAP.items():
+        if os.environ.get(_env):
+            try:
+                setattr(_orig_cfg, _field, getattr(_loaded, _field))
+            except Exception:
+                pass
     config = _orig_cfg
 
     @asynccontextmanager
@@ -598,11 +615,13 @@ def create_app() -> FastAPI:
 
         def __init__(self, app: ASGIApp):
             self.app = app
-            self.api_key = config.api_key or ""
+            # api_key 不在 __init__ 时缓存——PanguConfig.load() 可能在中间件
+            # 构造后才从环境变量/密钥文件加载完成，缓存会拿到空字符串。
+            # 改为每次请求时动态读取 config.api_key（开销可忽略）。
             self.secret = jwt_secret
             self.algorithm = config.jwt_algorithm
             self.user_store = user_store
-            self.enabled = bool(self.api_key or self.secret or getattr(config, "mcp_require_auth", False))
+            self.enabled = bool(config.api_key or self.secret or getattr(config, "mcp_require_auth", False))
 
         async def __call__(self, scope: Scope, receive: Receive, send: Send):
             if scope["type"] != "http" or not self.enabled:
@@ -629,7 +648,7 @@ def create_app() -> FastAPI:
                 try:
                     _res = verify_credentials(
                         headers=headers,
-                        api_key=self.api_key,
+                        api_key=config.api_key,
                         secret=self.secret,
                         algorithm=self.algorithm,
                         user_store=self.user_store,
@@ -672,7 +691,7 @@ def create_app() -> FastAPI:
 
             result = verify_credentials(
                 headers=headers,
-                api_key=self.api_key,
+                api_key=config.api_key,
                 secret=self.secret,
                 algorithm=self.algorithm,
                 user_store=self.user_store,

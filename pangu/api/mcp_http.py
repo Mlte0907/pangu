@@ -39,6 +39,18 @@ def _inject_identity(msg: dict, request: Request):
             msg["_auth_code"] = 401
         return
 
+    # ── 静态 API Key 优先校验 ──
+    # api_key 可能恰好以 pgk_ 开头（单人部署常见），若不先校验，会被下方
+    # 盘古钥匙分支拦截并返回"无效的盘古钥匙"——永远走不到 api_key 比较路径。
+    import hmac as _hmac
+
+    from pangu.core.config import PanguConfig
+
+    _cfg = PanguConfig.load()
+    if _cfg.api_key and _hmac.compare_digest(api_key, _cfg.api_key):
+        msg["_identity"] = {"key_id": "api_key_user", "room": "", "scope": "readwrite", "clearance": 0}
+        return
+
     # ── 盘古钥匙（pgk_*）──
     if api_key.startswith("pgk_"):
         try:
@@ -92,6 +104,11 @@ def _inject_identity(msg: dict, request: Request):
         return
 
     # ── 其他凭据格式 ──
+    # 再查一次静态 api_key（上面的 pgk_ 分支可能因 compare_digest 不匹配而跳过）
+    if _cfg.api_key and _hmac.compare_digest(api_key, _cfg.api_key):
+        msg["_identity"] = {"key_id": "api_key_user", "room": "", "scope": "readwrite", "clearance": 0}
+        return
+
     try:
         from pangu.keys import KeyManager
 
