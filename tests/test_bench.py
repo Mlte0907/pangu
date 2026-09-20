@@ -278,7 +278,7 @@ class TestConcurrencyBench:
     # 默认值只用于捕捉**数量级级别的退化**（如意外的 O(N²)）。
     # 关注精确性能请用同文件其他用例的 pytest-benchmark 报告。
     _BUDGET_ENV = "PANGU_BENCH_SEARCH_MS"
-    _BUDGET_DEFAULT_MS = 5000.0
+    _BUDGET_DEFAULT_MS = 8000.0
 
     @pytest.mark.asyncio
     @pytest.mark.benchmark

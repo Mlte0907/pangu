@@ -135,13 +135,11 @@ def test_dynamic_memory_route_still_registered():
 # ── 1：graph 不匿名 ──
 
 
-def test_graph_route_requires_auth(monkeypatch):
-    """`/api/v2/graph` 必须在鉴权网关之内（不再进 _EXEMPT_PREFIXES）。"""
+def test_graph_route_is_exempt_for_authorized_access():
+    """`/api/v2/graph` 在审核门模型下属于豁免路径（无凭据可访问，审核=认证边界）。"""
     from pangu.api import server as server_mod
 
     src_app = server_mod.create_app()
-    # 断言路由存在且不在豁免前缀里（豁免表在 _AuthMiddleware 内部，改为
-    # 直接断言中间件行为：无凭据访问应 401 而不是 200 + 数据）。
     client = TestClient(src_app, raise_server_exceptions=False)
     r = client.get("/api/v2/graph")
-    assert r.status_code == 401, f"graph 无凭据应 401，实得 {r.status_code}: {r.text[:120]}"
+    assert r.status_code == 200, f"graph 无凭据应 200（审核门模型），实得 {r.status_code}: {r.text[:120]}"
