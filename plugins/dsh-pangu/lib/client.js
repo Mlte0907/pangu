@@ -1810,8 +1810,8 @@ window.__ModuleLoader__.load({
           ),
           h(TextField, {
             key: 'model', label: '模型', value: draft.model,
-            desc: '提供商默认模型可改写',
-            placeholder: provider.model || 'gpt-4o',
+            desc: '可选：不填则自动从端点发现最佳模型（结晶/蒸馏时用）',
+            placeholder: '(不填则自动选择最佳可用模型)',
             onChange: (v) => setDraft((p) => ({ ...p, model: v })), mono: true,
           }),
           h(TextField, {
@@ -1902,8 +1902,10 @@ window.__ModuleLoader__.load({
             h('span', { style: { fontSize: 10.5, color: css.t3 } }, '运行时快照 · 不可编辑'),
           ),
           h('div', { key: 's3-body', style: { paddingTop: 2 } },
-            h(InfoRow, { label: 'LLM', value: config ? [config.llm_provider, config.llm_model].filter(Boolean).join(' / ') : null }),
+            h(InfoRow, { label: '端点', value: config?.llm_base_url || '(未配置)' }),
             h(InfoRow, { label: 'API Key', value: keySet ? (keyHint || '已配置') : '未配置' }),
+            h(InfoRow, { label: '指定模型', value: config?.llm_model || '(自动选择)' }),
+            h(InfoRow, { label: '可用模型', value: (config?.llm_fallback_models || []).join(', ') || '(由端点动态发现)' }),
             h(InfoRow, { label: '嵌入模型', value: config?.embedding_model }),
             h(InfoRow, { label: '记忆库', value: config?.palace_path }),
             h(InfoRow, { label: 'MCP 服务', value: '127.0.0.1:19529' }),
