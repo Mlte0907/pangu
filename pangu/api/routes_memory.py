@@ -358,6 +358,7 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
             f"平台身份可不传或传 classification=0 重试）",
         )
 
+    stack = _memory_stack(request)
     item_id, drawer = remember(
         raw_text=req.text,
         wing=req.wing,
@@ -367,6 +368,7 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
         source=req.source,
         author=req.author,
         created_by=req.created_by,
+        existing_drawers=stack.get_drawers(),
     )
     if drawer is not None:
         drawer.metadata = dict(drawer.metadata or {})
