@@ -677,7 +677,9 @@ def importance_feedback(drawer_id: str, signal: str, drawers: list[Drawer] | Non
         with drawers_io_lock():
             # 空写保护：内存里是空列表时绝不覆盖磁盘（同 MemoryStack 的守卫语义）
             if not drawers and PanguConfig.load_drawers_nonempty(drawers_file):
-                logger.warning(f"importance_feedback({drawer_id}): 内存列表为空但磁盘有记录，已跳过落盘（防止空库误写）")
+                logger.warning(
+                    f"importance_feedback({drawer_id}): 内存列表为空但磁盘有记录，已跳过落盘（防止空库误写）"
+                )
                 return {"error": "refused to overwrite non-empty store with empty list"}
 
             disk_items = PanguConfig.load_drawers_nonempty(drawers_file)

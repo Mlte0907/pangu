@@ -25,8 +25,8 @@ async def get_stats(request: Request):
 
     from pangu.core.config import PanguConfig
     from pangu.memory.drawer_storage import JsonDrawerStorage
-    from pangu.memory.knowledge import get_knowledge_engine
     from pangu.memory.evolution import get_memory_evolution
+    from pangu.memory.knowledge import get_knowledge_engine
 
     cfg = PanguConfig.load().authoritative_memory_config()
     drawers = JsonDrawerStorage(str(cfg.authoritative_drawers_path)).load()

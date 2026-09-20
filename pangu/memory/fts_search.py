@@ -150,8 +150,7 @@ class FTS5SearchEngine:
         current = "jieba" if _get_jieba() else "regex"
         if self._tokenizer and current != self._tokenizer:
             logger.warning(
-                f"FTS 分词器与索引构建者不一致（index={self._tokenizer}, query={current}），"
-                f"本次改走子串兜底"
+                f"FTS 分词器与索引构建者不一致（index={self._tokenizer}, query={current}），本次改走子串兜底"
             )
             return []
         return self._tokenize(text)
@@ -306,10 +305,7 @@ class FTS5SearchEngine:
             raw_map = data.get("content_map") or {}
             self._fts_content_map = {k: str(v) for k, v in raw_map.items()}
             self._indexed = True
-            logger.info(
-                f"FTS index loaded from disk: {len(self._fts_index)} tokens, "
-                f"{len(self._fts_content_map)} docs"
-            )
+            logger.info(f"FTS index loaded from disk: {len(self._fts_index)} tokens, {len(self._fts_content_map)} docs")
             return True
         except Exception as e:
             logger.warning(f"Failed to load FTS index: {e}")

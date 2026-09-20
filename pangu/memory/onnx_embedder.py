@@ -89,7 +89,7 @@ class ONNXEmbedder:
 
         # 缓存
         self._cache: dict[str, list[float]] = {}
-        self._cache_max = 1024
+        self._cache_max = 512  # 从 1024 减少到 512，节省内存
 
         # 统计（_stats["model_loaded"] 在 _do_load 成功后才设为 True，
         # get_stats() 每次实时检查 self._session，防止返回过期缓存数据）

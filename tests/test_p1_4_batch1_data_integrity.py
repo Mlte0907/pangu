@@ -22,7 +22,6 @@ import pytest
 
 from pangu.core.palace import Drawer
 
-
 # ── 1/2/3/4：向量索引 ──
 
 

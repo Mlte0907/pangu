@@ -550,6 +550,32 @@ async function loadSettings() {
             <div class="setting-group">
                 <div class="setting-row">
                     <div class="setting-info">
+                        <div class="setting-name">语音转写 (Whisper)</div>
+                        <div class="setting-desc">启用后可将音频文件转为文字记忆。关闭可节省约 140-800MB 内存</div>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle"><input type="checkbox" id="set-whisper" ${c.whisper_enabled !== false ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <div class="setting-name">Whisper 模型</div>
+                        <div class="setting-desc">模型越大精度越高，内存占用也越大 (tiny:~75MB, base:~140MB, small:~460MB)</div>
+                    </div>
+                    <div class="setting-control">
+                        <select id="set-whisper-model" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+                            <option value="tiny" ${c.whisper_model === 'tiny' ? 'selected' : ''}>Tiny (75MB)</option>
+                            <option value="base" ${c.whisper_model === 'base' || !c.whisper_model ? 'selected' : ''}>Base (140MB)</option>
+                            <option value="small" ${c.whisper_model === 'small' ? 'selected' : ''}>Small (460MB)</option>
+                            <option value="medium" ${c.whisper_model === 'medium' ? 'selected' : ''}>Medium (1.5GB)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div class="setting-info">
                         <div class="setting-name">自动备份</div>
                         <div class="setting-desc">每日自动备份记忆数据库</div>
                     </div>
@@ -569,6 +595,10 @@ async function loadSettings() {
             </div>
 
             <p style="color:var(--text-muted);font-size:12px;margin-top:16px">完整配置请编辑 ~/.pangu/config.json</p>
+            
+            <div style="margin-top:20px;text-align:right">
+                <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+            </div>
         `;
 
         // Range slider live update
@@ -576,6 +606,32 @@ async function loadSettings() {
         document.getElementById('set-interval')?.addEventListener('input', e => { document.getElementById('set-interval-val').textContent = e.target.value + 'h'; });
         document.getElementById('set-maxlen')?.addEventListener('input', e => { document.getElementById('set-maxlen-val').textContent = (e.target.value/1000).toFixed(1) + 'k'; });
     } catch(e) { console.error('加载设置失败:', e); }
+}
+
+async function saveSettings() {
+    try {
+        const settings = {
+            whisper_enabled: document.getElementById('set-whisper')?.checked ?? true,
+            whisper_model: document.getElementById('set-whisper-model')?.value || 'base',
+        };
+        
+        await API.post('/api/config', settings);
+        
+        // 显示成功提示
+        const btn = document.querySelector('.setting-group + .setting-group + .setting-group + div button');
+        if (btn) {
+            const originalText = btn.textContent;
+            btn.textContent = '已保存!';
+            btn.disabled = true;
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }, 2000);
+        }
+    } catch(e) {
+        console.error('保存设置失败:', e);
+        alert('保存失败: ' + e.message);
+    }
 }
 
 // ── 模态框 ──

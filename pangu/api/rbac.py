@@ -178,6 +178,13 @@ def get_principal(request: Request) -> Principal:
         # API Key / 盘古钥匙默认赋予 service 角色权限
         role = ROLE_SERVICE
         scopes = set(ROLE_PRESETS.get(ROLE_SERVICE, []))
+    elif method == "platform_token":
+        # 平台 Token = 已通过审核的本人客户端（单人系统，接入审核门是唯一安全边界）。
+        # 「通过即全权」：与 admin 同视角。否则按 tenant 过滤的端点（如 GET /memories，
+        # 平台 tenant=平台名而记忆 tenant_id=default）对平台一律返回空列表，形成
+        # 「列表空但搜索能搜到」的半权限体验（2026-09-20 实测）。
+        role = ROLE_ADMIN
+        scopes = {"*"}
 
     # admin 用户总是拥有 *
     if role == ROLE_ADMIN and "*" not in scopes:

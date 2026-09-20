@@ -160,10 +160,33 @@ class Rule:
 # 进一步可拿到 `os` 模块并执行任意代码。ABAC 条件是安全控制的一部分，不应依赖
 # 这种伪沙箱。这里改为 AST 白名单求值：只允许比较/布尔/成员/字面量/属性访问/下标。
 _ALLOWED_NODES = (
-    "Expression", "BoolOp", "And", "Or", "UnaryOp", "Not", "USub",
-    "Compare", "Eq", "NotEq", "Lt", "LtE", "Gt", "GtE", "In", "NotIn", "Is", "IsNot",
-    "Name", "Load", "Attribute", "Constant", "List", "Tuple", "Set",
-    "Subscript", "Index",
+    "Expression",
+    "BoolOp",
+    "And",
+    "Or",
+    "UnaryOp",
+    "Not",
+    "USub",
+    "Compare",
+    "Eq",
+    "NotEq",
+    "Lt",
+    "LtE",
+    "Gt",
+    "GtE",
+    "In",
+    "NotIn",
+    "Is",
+    "IsNot",
+    "Name",
+    "Load",
+    "Attribute",
+    "Constant",
+    "List",
+    "Tuple",
+    "Set",
+    "Subscript",
+    "Index",
 )
 
 

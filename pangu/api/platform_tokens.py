@@ -43,6 +43,7 @@ class PlatformTokenManager:
         if tokens_path is None:
             try:
                 from pangu.core.config import PanguConfig
+
                 self.tokens_path = Path(PanguConfig.load().base_dir) / "platform_tokens.json"
             except Exception:
                 self.tokens_path = Path.home() / ".pangu" / "platform_tokens.json"
@@ -146,7 +147,7 @@ class PlatformTokenManager:
                     return True
         return False
 
-    def verify(self, token: str) -> Optional[dict]:
+    def verify(self, token: str) -> dict | None:
         """验证 Token，返回平台信息或 None。
 
         2026-09-20：`last_used_at` 改为**节流更新**（默认 60s 内不重复落盘）。
@@ -186,18 +187,20 @@ class PlatformTokenManager:
                 continue
             if not include_pending and t["status"] == "pending":
                 continue
-            result.append({
-                "token_id": t["token_id"],
-                "platform": t["platform"],
-                "platform_name": t["platform_name"],
-                "permissions": t["permissions"],
-                "status": t["status"],
-                "created_at": t["created_at"],
-                "last_used_at": t.get("last_used_at"),
-                "approved_at": t.get("approved_at"),
-                "revoked_at": t.get("revoked_at"),
-                "request_ip": t.get("request_ip"),
-            })
+            result.append(
+                {
+                    "token_id": t["token_id"],
+                    "platform": t["platform"],
+                    "platform_name": t["platform_name"],
+                    "permissions": t["permissions"],
+                    "status": t["status"],
+                    "created_at": t["created_at"],
+                    "last_used_at": t.get("last_used_at"),
+                    "approved_at": t.get("approved_at"),
+                    "revoked_at": t.get("revoked_at"),
+                    "request_ip": t.get("request_ip"),
+                }
+            )
         return result
 
     def get_pending(self) -> list[dict]:
@@ -206,20 +209,22 @@ class PlatformTokenManager:
         result = []
         for t in tokens:
             if t["status"] == "pending" and not t.get("revoked_at"):
-                result.append({
-                    "token_id": t["token_id"],
-                    "platform": t["platform"],
-                    "platform_name": t["platform_name"],
-                    "permissions": t["permissions"],
-                    "status": t["status"],
-                    "created_at": t["created_at"],
-                    "request_ip": t.get("request_ip"),
-                })
+                result.append(
+                    {
+                        "token_id": t["token_id"],
+                        "platform": t["platform"],
+                        "platform_name": t["platform_name"],
+                        "permissions": t["permissions"],
+                        "status": t["status"],
+                        "created_at": t["created_at"],
+                        "request_ip": t.get("request_ip"),
+                    }
+                )
         return result
 
 
 # 全局实例
-_platform_token_manager: Optional[PlatformTokenManager] = None
+_platform_token_manager: PlatformTokenManager | None = None
 
 
 def get_platform_token_manager() -> PlatformTokenManager:

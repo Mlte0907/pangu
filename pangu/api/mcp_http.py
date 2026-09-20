@@ -18,8 +18,9 @@ def _inject_identity(msg: dict, request: Request):
     """P1-3 阶段 1.4 + 阶段 3：从 X-API-Key 解析身份，注入 MCP 请求上下文
 
     凭据可来自 X-API-Key，或 Authorization: Bearer <key>（兼容其他 MCP 客户端）。
+    支持盘古钥匙（pgk_*）和平台接入 Token（pgp_*）。
 
-    - 有凭据 → 查钥匙表 → {key_id, room, scope} 注入 msg["_identity"]
+    - 有凭据 → 查钥匙表/平台Token表 → {key_id, room, scope} 注入 msg["_identity"]
     - 无凭据 → 放行（mcp_require_auth=false 时）或 401（true 时）
     """
     api_key = (request.headers.get("X-API-Key") or "").strip()
@@ -38,6 +39,59 @@ def _inject_identity(msg: dict, request: Request):
             msg["_auth_code"] = 401
         return
 
+    # ── 盘古钥匙（pgk_*）──
+    if api_key.startswith("pgk_"):
+        try:
+            from pangu.keys import KeyManager
+
+            km = KeyManager()
+            identity = km.verify(api_key)
+            if identity:
+                msg["_identity"] = identity
+                logger.debug(f"MCP identity: {identity['key_id']} room={identity['room']}")
+            else:
+                from pangu.core.config import PanguConfig
+
+                config = PanguConfig.load()
+                if config.mcp_require_auth:
+                    msg["_auth_error"] = "无效的盘古钥匙"
+                    msg["_auth_code"] = 401
+                else:
+                    logger.warning("MCP: invalid pangu key, proceeding as anonymous")
+        except Exception as e:
+            logger.debug(f"MCP identity parse failed: {e}")
+        return
+
+    # ── 平台接入 Token（pgp_*）──
+    if api_key.startswith("pgp_"):
+        try:
+            from pangu.api.platform_tokens import get_platform_token_manager
+
+            ptm = get_platform_token_manager()
+            ident = ptm.verify(api_key)
+            if ident:
+                # 平台 Token → 统一身份格式，platform 作为 room
+                msg["_identity"] = {
+                    "key_id": ident.get("token_id", ""),
+                    "room": ident.get("platform", ""),
+                    "scope": "readwrite",
+                    "clearance": 0,
+                }
+                logger.debug(f"MCP platform identity: {ident['token_id']} platform={ident['platform']}")
+            else:
+                from pangu.core.config import PanguConfig
+
+                config = PanguConfig.load()
+                if config.mcp_require_auth:
+                    msg["_auth_error"] = "无效的平台接入 Token"
+                    msg["_auth_code"] = 401
+                else:
+                    logger.warning("MCP: invalid platform token, proceeding as anonymous")
+        except Exception as e:
+            logger.debug(f"MCP platform token parse failed: {e}")
+        return
+
+    # ── 其他凭据格式 ──
     try:
         from pangu.keys import KeyManager
 
@@ -47,7 +101,6 @@ def _inject_identity(msg: dict, request: Request):
             msg["_identity"] = identity
             logger.debug(f"MCP identity: {identity['key_id']} room={identity['room']}")
         else:
-            # 无效钥匙：mcp_require_auth=true 时 401，否则 warning 后放行
             from pangu.core.config import PanguConfig
 
             config = PanguConfig.load()

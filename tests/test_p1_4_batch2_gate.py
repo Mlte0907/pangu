@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 
 from pangu.api.auth import verify_credentials
 
-
 # ── 2：require_auth 不再被"未配置密钥"短路 ──
 
 

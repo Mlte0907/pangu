@@ -19,6 +19,7 @@ router = APIRouter(tags=["platforms"])
 
 class PlatformRequest(BaseModel):
     """平台接入请求"""
+
     platform: str = Field(..., description="平台标识（如 dsh, mcp, api）")
     platform_name: str = Field(..., description="平台名称（如 DeepSeek Harness）")
     permissions: list[str] = Field(default=["read", "write", "search"], description="请求的权限")
@@ -26,19 +27,21 @@ class PlatformRequest(BaseModel):
 
 class PlatformApproveRequest(BaseModel):
     """审核通过请求"""
+
     token_id: str = Field(..., description="Token ID")
-    permissions: Optional[list[str]] = Field(default=None, description="授权的权限（可选，不传则使用原请求权限）")
+    permissions: list[str] | None = Field(default=None, description="授权的权限（可选，不传则使用原请求权限）")
 
 
 class PlatformRejectRequest(BaseModel):
     """审核拒绝请求"""
+
     token_id: str = Field(..., description="Token ID")
 
 
 class PlatformRevokeRequest(BaseModel):
     """撤销接入请求"""
-    token_id: str = Field(..., description="Token ID")
 
+    token_id: str = Field(..., description="Token ID")
 
 
 @router.post("/platforms/request")

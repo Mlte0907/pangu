@@ -274,9 +274,7 @@ class MemoryDeduplicator:
         merged_author = next((d.author for d in group_drawers if d.author), primary.author)
         merged_emotional = max((d.emotional_weight or 0.0) for d in group_drawers)
         merged_source = next((d.source for d in group_drawers if d.source), primary.source)
-        merged_source_file = next(
-            (d.source_file for d in group_drawers if d.source_file), primary.source_file
-        )
+        merged_source_file = next((d.source_file for d in group_drawers if d.source_file), primary.source_file)
 
         # 只统计：确保 created_at 为空时不会 min() 空序列抛错（dedup.py 旧版即抛）
         created_values = [d.created_at for d in group_drawers if d.created_at]

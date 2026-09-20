@@ -198,6 +198,12 @@ class PanguConfig(BaseSettings):
     onnx_cache_dir: str = ""
     onnx_mirror_base: str = "https://hf-mirror.com"
 
+    # ── Whisper 语音转写配置 ──
+    whisper_enabled: bool = True  # 是否启用 Whisper 语音转写功能
+    whisper_model: str = "base"  # 模型大小: tiny, base, small, medium, large
+    # 内存占用参考: tiny(~75MB), base(~140MB), small(~460MB), medium(~1.5GB), large(~3GB)
+    # 推荐: base 平衡精度与资源; tiny 最省资源但精度较低
+
     # ── 降级策略 ──
     # ONNX 不可用时，`_local_embed` 会返回**基于字符 trigram 的 hash 向量**。
     # 它是合法的 384 维向量、不抛异常，服务照常启动、检索照常返回结果——

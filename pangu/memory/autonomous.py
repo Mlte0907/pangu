@@ -438,7 +438,9 @@ class AutonomousMemoryEngine:
         hour = datetime.now().hour
         if not (3 <= hour < 5):
             return TaskResult(
-                name="consolidation", status="skipped", duration_ms=(time.time() - start) * 1000,
+                name="consolidation",
+                status="skipped",
+                duration_ms=(time.time() - start) * 1000,
                 details={"reason": f"outside 03:00-05:00 window (hour={hour})"},
             )
         try:
@@ -447,13 +449,17 @@ class AutonomousMemoryEngine:
             mgr = LifecycleManager(self.config)
             if not mgr.needs_consolidation():
                 return TaskResult(
-                    name="consolidation", status="skipped", duration_ms=(time.time() - start) * 1000,
+                    name="consolidation",
+                    status="skipped",
+                    duration_ms=(time.time() - start) * 1000,
                     details={"reason": "not due"},
                 )
             result = mgr.run_consolidation()
             drawers[:] = self._load_drawers()  # 重载，防本周期末尾回写旧副本
             return TaskResult(
-                name="consolidation", status="success", duration_ms=(time.time() - start) * 1000,
+                name="consolidation",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
                 details={"result": result},
             )
         except Exception as e:
@@ -481,7 +487,9 @@ class AutonomousMemoryEngine:
                 if isinstance(d.metadata, dict) and d.metadata.get("admission") == "graduated":
                     graduated += 1
             return TaskResult(
-                name="readmission", status="success", duration_ms=(time.time() - start) * 1000,
+                name="readmission",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
                 details={"rechecked": rechecked, "graduated": graduated},
             )
         except Exception as e:
@@ -509,7 +517,9 @@ class AutonomousMemoryEngine:
         last = float((self._state.get("last_run") or {}).get("crystallize") or 0)
         if not (4 <= hour < 6) or (time.time() - last) < 20 * 3600:
             return TaskResult(
-                name="crystallize", status="skipped", duration_ms=(time.time() - start) * 1000,
+                name="crystallize",
+                status="skipped",
+                duration_ms=(time.time() - start) * 1000,
                 details={"reason": f"outside 04:00-06:00 window or not due (hour={hour})"},
             )
         try:
@@ -531,13 +541,17 @@ class AutonomousMemoryEngine:
         pool = []
         for d in drawers:
             md = d.metadata if isinstance(d.metadata, dict) else {}
-            if (md.get("admission") == "graduated"
-                    or md.get("last_feedback") in ("recall_success", "verified")
-                    or (d.importance or 0) >= 1.5):
+            if (
+                md.get("admission") == "graduated"
+                or md.get("last_feedback") in ("recall_success", "verified")
+                or (d.importance or 0) >= 1.5
+            ):
                 pool.append(d)
         if len(pool) < 2:
             return TaskResult(
-                name="crystallize", status="skipped", duration_ms=(time.time() - start) * 1000,
+                name="crystallize",
+                status="skipped",
+                duration_ms=(time.time() - start) * 1000,
                 details={"reason": f"verified pool too small ({len(pool)})"},
             )
 
@@ -591,13 +605,16 @@ class AutonomousMemoryEngine:
             title = content = None
             category = None
             model_used = None
-            mem_text = "\n\n".join(
-                f"- [{d.wing}] {str(d.content or '')[:200]}" for d in group[:8]
-            )
+            mem_text = "\n\n".join(f"- [{d.wing}] {str(d.content or '')[:200]}" for d in group[:8])
             for model in models:
                 try:
-                    raw = self._llm_chat(llm[0], llm[1], model, system_prompt,
-                                         f"把以下 {min(len(group), 8)} 条记忆结晶为一条可复用知识：\n\n{mem_text}")
+                    raw = self._llm_chat(
+                        llm[0],
+                        llm[1],
+                        model,
+                        system_prompt,
+                        f"把以下 {min(len(group), 8)} 条记忆结晶为一条可复用知识：\n\n{mem_text}",
+                    )
                     obj = self._extract_json(raw)
                     if not obj or not str(obj.get("title", "")).strip() or not str(obj.get("content", "")).strip():
                         continue
@@ -626,13 +643,22 @@ class AutonomousMemoryEngine:
                 metadata={"model": model_used or "rule-based", "generated_at": datetime.now().isoformat()},
             )
             used_ids.update(ids)
-            model_used_count[entry.metadata.get("model", "?")] = model_used_count.get(entry.metadata.get("model", "?"), 0) + 1
+            model_used_count[entry.metadata.get("model", "?")] = (
+                model_used_count.get(entry.metadata.get("model", "?"), 0) + 1
+            )
             created.append(entry.id)
 
         return TaskResult(
-            name="crystallize", status="success", duration_ms=(time.time() - start) * 1000,
-            details={"pool": len(pool), "created": len(created),
-                     "models_available": len(models), "by_model": model_used_count, "ids": created},
+            name="crystallize",
+            status="success",
+            duration_ms=(time.time() - start) * 1000,
+            details={
+                "pool": len(pool),
+                "created": len(created),
+                "models_available": len(models),
+                "by_model": model_used_count,
+                "ids": created,
+            },
         )
 
     # ── LLM 知识结晶辅助（2026-09-20）──
@@ -689,18 +715,22 @@ class AutonomousMemoryEngine:
         """单次对话补全（同步，调度线程内直跑）。失败抛异常由调用方降级。"""
         import urllib.request
 
-        body = json.dumps({
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "max_tokens": 800,
-            "temperature": 0.3,
-        }).encode()
+        body = json.dumps(
+            {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "max_tokens": 800,
+                "temperature": 0.3,
+            }
+        ).encode()
         req = urllib.request.Request(
-            f"{base}/chat/completions", data=body,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            f"{base}/chat/completions",
+            data=body,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        )
         with urllib.request.urlopen(req, timeout=self._LLM_TIMEOUT) as resp:
             data = json.loads(resp.read().decode())
         return str((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "")
@@ -717,7 +747,7 @@ class AutonomousMemoryEngine:
         if start == -1 or end <= start:
             return None
         try:
-            obj = json.loads(text[start:end + 1])
+            obj = json.loads(text[start : end + 1])
             return obj if isinstance(obj, dict) else None
         except Exception:
             return None

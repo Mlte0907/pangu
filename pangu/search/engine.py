@@ -30,6 +30,7 @@ class SemanticSearch:
         wing: str = None,
         room: str = None,
         hall: str = None,
+        source: str = None,  # 新增：按来源平台过滤
         n_results: int = 10,
         use_embeddings: bool = True,
     ) -> list[dict]:
@@ -42,6 +43,8 @@ class SemanticSearch:
             if room and d.room != room:
                 continue
             if hall and d.hall != hall:
+                continue
+            if source and d.source != source:
                 continue
             filtered.append(d)
 
@@ -71,6 +74,7 @@ class SemanticSearch:
                         "room": d.room,
                         "hall": d.hall,
                         "importance": d.importance,
+                        "source": d.source,
                         "source_file": d.source_file,
                         "tags": d.tags,
                         "created_at": d.created_at,

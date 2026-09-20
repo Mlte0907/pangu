@@ -25,10 +25,14 @@ class AudioMemoryEngine:
     def __init__(self, config: PanguConfig = None):
         self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._whisper_model = None
-        self._whisper_name = "base"
+        self._whisper_name = self.config.whisper_model if self.config.whisper_enabled else None
 
     @property
     def whisper(self):
+        # 如果 whisper 被禁用，直接返回 None
+        if not self.config.whisper_enabled:
+            return None
+
         if self._whisper_model is None:
             try:
                 import whisper
@@ -39,6 +43,15 @@ class AudioMemoryEngine:
                 logger.debug(f"Whisper unavailable: {e}")
                 self._whisper_model = False
         return self._whisper_model if self._whisper_model is not False else None
+
+    def reload_config(self):
+        """重新加载配置（用于热更新 whisper 设置）"""
+        self.config = PanguConfig.load().authoritative_memory_config()
+        self._whisper_name = self.config.whisper_model if self.config.whisper_enabled else None
+        # 如果禁用了 whisper，释放已加载的模型
+        if not self.config.whisper_enabled and self._whisper_model is not None:
+            logger.info("Whisper disabled, releasing model from memory")
+            self._whisper_model = None
 
     def get_metadata(self, audio_path: str) -> dict:
         """提取音频元数据"""

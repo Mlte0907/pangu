@@ -16,7 +16,6 @@ import pytest
 
 from pangu.core.palace import Drawer
 
-
 # ── 1：自适应遗忘真正生效 ──
 
 
@@ -54,11 +53,11 @@ def test_auto_forget_modifies_in_place_for_caller():
 
 def test_decay_tracks_strengthened(monkeypatch):
     import pangu.memory.decay as decay_mod
-    from pangu.core.palace import Drawer as D
+    from pangu.core.palace import Drawer
 
     # 强制 new_score(0.9) > old_score(0.5)：必须计入 strengthened 而不是 decayed
     monkeypatch.setattr(decay_mod, "_calculate_decay_v2", lambda *a, **k: (0.9, "strengthen"))
-    d = D(id="x", content="hi", importance=3.0)
+    d = Drawer(id="x", content="hi", importance=3.0)
     d.metadata["decay_score"] = 0.5
     stats = decay_mod.decay_batch([d])
 
@@ -68,10 +67,10 @@ def test_decay_tracks_strengthened(monkeypatch):
 
 def test_decay_tracks_decayed(monkeypatch):
     import pangu.memory.decay as decay_mod
-    from pangu.core.palace import Drawer as D
+    from pangu.core.palace import Drawer
 
     monkeypatch.setattr(decay_mod, "_calculate_decay_v2", lambda *a, **k: (0.2, "decay"))
-    d = D(id="y", content="hi", importance=3.0)
+    d = Drawer(id="y", content="hi", importance=3.0)
     d.metadata["decay_score"] = 0.8
     stats = decay_mod.decay_batch([d])
     assert stats["decayed"] == 1
@@ -120,8 +119,12 @@ def test_merge_duplicates_preserves_metadata_and_identity():
     b = Drawer(id="b", content="b short")
 
     group = DuplicateGroup(
-        id="g", memory_ids=["a", "b"], primary_id="a", duplicate_ids=["b"],
-        similarity_matrix={}, avg_similarity=1.0,
+        id="g",
+        memory_ids=["a", "b"],
+        primary_id="a",
+        duplicate_ids=["b"],
+        similarity_matrix={},
+        avg_similarity=1.0,
     )
     merged = dd.merge_duplicates(group, [a, b])
 
@@ -143,8 +146,12 @@ def test_merge_duplicates_handles_empty_created_at():
     a.created_at = ""
     b.created_at = ""
     group = DuplicateGroup(
-        id="g", memory_ids=["a", "b"], primary_id="a", duplicate_ids=["b"],
-        similarity_matrix={}, avg_similarity=1.0,
+        id="g",
+        memory_ids=["a", "b"],
+        primary_id="a",
+        duplicate_ids=["b"],
+        similarity_matrix={},
+        avg_similarity=1.0,
     )
     assert dd.merge_duplicates(group, [a, b]) is not None
 
@@ -153,8 +160,8 @@ def test_merge_duplicates_handles_empty_created_at():
 
 
 def test_needs_index_rebuild_uses_threshold():
-    from pangu.memory.lifecycle import LifecycleManager
     from pangu.core.config import PanguConfig
+    from pangu.memory.lifecycle import LifecycleManager
 
     mgr = LifecycleManager(PanguConfig.load())
     mgr._last_index_rebuild = 9e18  # 时间判断永不触发

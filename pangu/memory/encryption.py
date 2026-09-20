@@ -15,6 +15,10 @@
   （逗号、分号或换行分隔）。第一个用于加密，全部用于解密
   （MultiFernet 语义）。轮换步骤：新密钥放最前、旧密钥留在后面 →
   新数据用新密钥写、旧数据仍可读；确认旧密文重写完后删除旧密钥。
+
+开关：PANGU_ENCRYPTION=off（或 0/false/no）**只关闭写入加密**，新内容以明文落库；
+解密路径保持可用，历史密文仍能正常读取（关开关 ≠ fernet 不初始化，否则旧密文
+会原样吐回成 gAAAA 乱码）。适用场景：单人本地部署，不需要落盘加密。
 """
 
 import logging
@@ -39,6 +43,11 @@ _FERNET_PREFIX = "gAAAAA"
 # 旧实现就是这么干的，上层会把密文当明文用 —— 用户看到 gAAAAAB… 乱码
 # 却没有任何线索（2026-09-19 实测：换密钥后 decrypt 原样吐回密文）。
 _DECRYPT_FAILED_PLACEHOLDER = "[[解密失败：密钥不匹配或数据损坏]]"
+
+
+def _write_disabled_by_config() -> bool:
+    """PANGU_ENCRYPTION=off/0/false/no 时关闭写入加密（解密不受影响）"""
+    return os.environ.get("PANGU_ENCRYPTION", "").strip().lower() in ("off", "0", "false", "no")
 
 
 def _get_fernet():
@@ -111,6 +120,12 @@ def encrypt(plaintext: str) -> str:
     避免"以为在加密、其实在存明文"（旧实现只有 debug 级日志，等于静默）。
     """
     global _encrypt_disabled_warned
+    if _write_disabled_by_config():
+        # 配置性关闭是有意为之，留痕一次 INFO 即可，不套用依赖缺失的 WARNING
+        if not _encrypt_disabled_warned:
+            logger.info("PANGU_ENCRYPTION=off：写入加密已按配置关闭，内容以明文落库（历史密文仍可解密）")
+            _encrypt_disabled_warned = True
+        return plaintext
     f = _get_fernet()
     if f is None:
         if not _encrypt_disabled_warned:
@@ -162,7 +177,13 @@ def self_check(sample_ciphertext: str | None = None) -> dict:
     说明密钥已变（换机器/重装/迁移时丢了 .encryption_key），旧密文全部不可解，
     需要立刻告警而不是等用户看到乱码。
     """
-    result = {"enabled": False, "keys": _key_count, "sample_ok": None, "error": None}
+    result = {
+        "enabled": False,
+        "keys": _key_count,
+        "sample_ok": None,
+        "error": None,
+        "write_disabled_by_config": _write_disabled_by_config(),
+    }
     f = _get_fernet()
     result["enabled"] = _enabled
     result["keys"] = _key_count

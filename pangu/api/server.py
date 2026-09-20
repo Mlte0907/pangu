@@ -586,7 +586,15 @@ def create_app() -> FastAPI:
             "/redoc",
         }
         _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh", "/api/v2/platforms/request"}
-        _EXEMPT_PREFIXES = ("/docs", "/redoc", "/api/v2/admin", "/api/v2/platforms", "/api/v2/dashboard", "/api/v2/graph", "/mcp")
+        _EXEMPT_PREFIXES = (
+            "/docs",
+            "/redoc",
+            "/api/v2/admin",
+            "/api/v2/platforms",
+            "/api/v2/dashboard",
+            "/api/v2/graph",
+            "/mcp",
+        )
 
         def __init__(self, app: ASGIApp):
             self.app = app

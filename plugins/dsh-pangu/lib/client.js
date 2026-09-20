@@ -1,9 +1,11 @@
 /**
- * pangu-dashboard DSH 客户端 v4.3。
+ * pangu-dashboard DSH 客户端 v5.0。
  * 注册:
  *  - sidebar.footer.action:  侧边栏指标卡 + 快捷记忆(宽/窄双形态,独占一行)
- *  - conversation.view:      顶部标签页(概览 / 3D 星系图谱 / 知识卡片)
+ *  - conversation.view:      顶部标签页(概览 / 3D 星系图谱 / 知识卡片 / 知识库 / 管理)
  *  - settings.section:       设置页(真实读写 ~/.pangu/config.json)
+ * v5.0: 架构 v2.1 重构——平台Token管理、知识库浏览、记忆快照、来源分布。
+ *       管理页拆分为 体检/平台/钥匙/快照 四个子区。
  * v4.3: 星系图 Obsidian 式搜索 dim 高亮(过滤不再移除节点);侧边栏「快速记一条」
  *       直接入库;事件驱动刷新(/ws 事件缓冲,有变化才拉全量)。
  * v4.2: 知识图谱改 3D 星系视图——Canvas2D 手写透视投影(盘面分布/自转/拖拽视角/
@@ -53,10 +55,21 @@ window.__ModuleLoader__.load({
         { id: 'dsh-pangu#panguAdminKeys/listKeys', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listKeys', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyList', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/listRooms', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listRooms', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RoomList', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/listPublicMemories', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listPublicMemories', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#PublicMemories', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguAdminKeys/listRecentMemories', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listRecentMemories', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RecentMemories', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/createKey', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'createKey', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreateArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyCreate', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/revokeKey', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'revokeKey', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevokeArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KeyRevoke', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguAdminKeys/rekeyRoom', service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'rekeyRoom', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RekeyResult', create: () => okEnvelope } },
         { id: 'dsh-pangu#panguDashboard/checkUpdate', service: 'panguDashboard', namespace: 'panguDashboard', method: 'checkUpdate', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#CheckUpdateResult', create: () => okEnvelope } },
+        // ── 平台管理 ──
+        { id: 'dsh-pangu#panguPlatforms/listPlatforms', service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'listPlatforms', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#PlatformList', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguPlatforms/listPending', service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'listPending', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#PendingList', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguPlatforms/approve', service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'approve', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#ApproveArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#ApproveResult', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguPlatforms/reject', service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'reject', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RejectArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RejectResult', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguPlatforms/revoke', service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'revoke', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RevokePlatformArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#RevokePlatformResult', create: () => okEnvelope } },
+        // ── 知识库 ──
+        { id: 'dsh-pangu#panguKnowledge/list', service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'list', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeListArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeList', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguKnowledge/search', service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'search', invocation: { kind: 'direct' }, parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeSearchArgs', create: () => patchCodec } }], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeList', create: () => okEnvelope } },
+        { id: 'dsh-pangu#panguKnowledge/stats', service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'stats', invocation: { kind: 'direct' }, parameters: [], result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeStats', create: () => okEnvelope } },
       ],
     }
 
@@ -138,7 +151,8 @@ window.__ModuleLoader__.load({
       person: '#58a6ff', org: '#3fb950', tech: '#d29922', concept: '#bc8cff',
       event: '#f85149', location: '#79c0ff', memory: '#56d364', room: '#f0883e',
     }
-    const TYPE_LABELS = { person: '人物', org: '组织', tech: '技术', concept: '概念', event: '事件', location: '地点', memory: '记忆', room: '房间' }
+    // 2026-09-20：房间（room）概念已取消，从类型标签里移除
+    const TYPE_LABELS = { person: '人物', org: '组织', tech: '技术', concept: '概念', event: '事件', location: '地点', memory: '记忆' }
     const WING_LABELS = {
       default: '通用', tech: '技术', daily: '日常', preferences: '偏好',
       self_improvement: '自我提升', system: '系统', project: '项目', work: '工作',
@@ -158,6 +172,11 @@ window.__ModuleLoader__.load({
         const [h, s, l] = inner.split(/\s+/)
         const a = parseInt(hexSuffix, 16) / 255
         return `hsla(${h},${s},${l},${a.toFixed(2)})`
+      }
+      // CSS 变量（var(...)）无法在 JS 侧拆解，用 color-mix 在浏览器端混合透明度
+      if (color.startsWith('var(')) {
+        const a = (parseInt(hexSuffix, 16) / 255 * 100).toFixed(0)
+        return `color-mix(in srgb, ${color} ${a}%, transparent)`
       }
       return color
     }
@@ -444,17 +463,21 @@ window.__ModuleLoader__.load({
               ),
               h(Sparkline7, { key: 'pulse', created: s?.dailyCounts, recalled: s?.dailyRecalls, height: 30 }),
               h('div', { key: 'mini', style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', marginTop: 8, borderTop: `1px solid ${css.borderSoft}`, borderBottom: `1px solid ${css.borderSoft}` } },
+                // 2026-09-20：knowledge/platformsCount 挂在 wire 的 stats 下（网关把
+                // host 扁平返回包一层 stats），顶层读不到 → 双路径兜底
                 [['实体', s?.kgEntities != null ? fmtNum(s.kgEntities) : '—'],
-                 ['关系', s?.kgRelations != null ? fmtNum(s.kgRelations) : '—'],
-                 ['高密级', s?.highClass != null ? fmtNum(s.highClass) : '—']].map(([l, v]) =>
+                 ['知识', (state.data?.knowledge ?? s?.knowledge)?.total != null ? fmtNum((state.data?.knowledge ?? s?.knowledge).total) : '—'],
+                 ['来源', Object.keys(state.data?.bySource || s?.bySource || {}).length || '—']].map(([l, v]) =>
                   h('div', { key: l, className: 'pangu-vital', style: { padding: '7px 2px 6px', textAlign: 'center' } },
                     h('div', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 14, fontWeight: 600, color: css.t1, lineHeight: 1.15 } }, v),
                     h('div', { style: { fontSize: 9, color: css.t3, letterSpacing: '.05em', marginTop: 1 } }, l),
                   )),
               ),
               h('div', { key: 'pipe', style: { marginTop: 7, paddingTop: 7, borderTop: `1px dashed ${css.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 2 } },
-                pipeRow(css.warn, '准入验证 · 高密级护栏', s?.pipeline ? fmtNum(s.pipeline.pending_review) + ' 条待验证' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'overview' } }))),
-                pipeRow(css.ok, '知识结晶', s?.kgEntities != null ? fmtNum(s.kgEntities) + ' 实体' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'crystal' } }))),
+                pipeRow(css.ok, '知识库', (state.data?.knowledge ?? s?.knowledge)?.total != null ? fmtNum((state.data?.knowledge ?? s?.knowledge).total) + ' 条' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'knowledge' } }))),
+                // 2026-09-20 修复：平台接入数此前错用 bySource 键数（记忆来源类型）；
+                // 且 platformsCount 与 knowledge 一样挂在 wire 的 stats 下，需双路径兜底。
+                pipeRow(css.info, '平台接入', (state.data?.platformsCount ?? s?.platformsCount) != null ? (state.data?.platformsCount ?? s?.platformsCount) + ' 个' : '—', () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'admin' } }))),
               ),
             ],
         h('div', { key: 'quickadd', style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 9 } },
@@ -532,8 +555,9 @@ window.__ModuleLoader__.load({
             enc && h('span', { className: 'pangu-stampline' }, '已加密'),
           ),
           h('div', { style: { fontSize: 11.5, color: (enc && !m.summary) ? css.t3 : css.t1, marginTop: 3, lineHeight: 1.55, fontStyle: (enc && !m.summary) ? 'italic' : 'normal', display: '-webkit-box', WebkitLineClamp: open ? 'unset' : 2, WebkitBoxOrient: 'vertical', overflow: open ? 'visible' : 'hidden' } },
-            // 摘要优先（后端已解密/取 facts）；拿不到才退回占位文案
-            m.summary || (enc ? '（加密内容 · 摘要不可用）' : (m.content || '').slice(0, 120))),
+            // 2026-09-20 修复：展开时显示全文 —— 原来无条件 slice(0,120)，
+            // 行截断已由 line-clamp 承担，slice 导致展开后也只有 120 字。
+            m.summary || (enc ? '（加密内容 · 摘要不可用）' : (open ? (m.content || '') : (m.content || '').slice(0, 120)))),
           open && h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 3 } }, '点击收起'),
         ),
         h('div', { style: { flexShrink: 0, textAlign: 'right' } },
@@ -615,7 +639,7 @@ window.__ModuleLoader__.load({
       const [pubMems, setPubMems] = React.useState([])
       React.useEffect(() => {
         let alive = true
-        callRemote('panguAdminKeys', 'listPublicMemories')
+        callRemote('panguAdminKeys', 'listRecentMemories')
           .then(unwrap)
           .then((v) => { if (alive) setPubMems(v?.memories || []) })
           .catch(() => {})
@@ -653,8 +677,8 @@ window.__ModuleLoader__.load({
         h('div', { style: { display: 'flex', borderTop: `1px solid ${css.borderSoft}`, borderBottom: `1px solid ${css.borderSoft}` } },
           h(Vital, { v: fmtNum(s?.total || 0), l: '记忆总量', d: h('span', null, '健康 ', h('b', { style: { color: degraded ? css.warn : css.t2 } }, s ? (s.health || '—') : '—')) }),
           h(Vital, { v: s?.wings != null ? fmtNum(s.wings) : '—', l: '知识翼', d: '宫殿结构' }),
-          h(Vital, { v: s?.kgEntities != null ? fmtNum(s.kgEntities) : '—', l: '图谱实体', d: '知识结晶' }),
-          h(Vital, { v: s?.highClass != null ? fmtNum(s.highClass) : '—', l: '高密级', d: h('b', { style: { color: css.t2 } }, '机密 + 绝密'), danger: (s?.highClass || 0) > 0 }),
+          h(Vital, { v: (dash?.knowledge ?? s?.knowledge)?.total != null ? fmtNum((dash?.knowledge ?? s?.knowledge).total) : (s?.kgEntities != null ? fmtNum(s.kgEntities) : '—'), l: '知识库', d: (dash?.knowledge ?? s?.knowledge)?.total != null ? Object.keys(((dash?.knowledge ?? s?.knowledge).categories) || {}).length + ' 类' : '知识结晶' }),
+          h(Vital, { v: dash?.snapshots?.total != null ? fmtNum(dash.snapshots.total) : '—', l: '进化快照', d: '记忆替换记录' }),
         ),
         // ② 7日记忆脉搏
         h('div', { style: { marginTop: 4 } },
@@ -665,7 +689,7 @@ window.__ModuleLoader__.load({
         ),
         // ③ 记忆管线
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '03', title: '记忆管线', hint: '脱敏 → 加密 → 去重 → 审核 → 巩固' }),
+          h(SecHead, { num: '03', title: '记忆管线', hint: '去重 → 审核准入 → 毕业 → 夜间巩固' }),
           h('div', { style: { display: 'flex', border: `1px solid ${css.borderSoft}`, borderRadius: 10, overflow: 'hidden', marginTop: 9, background: css.bg1 } },
             h(PipelineBox, {
               st: '准入验证',
@@ -677,7 +701,9 @@ window.__ModuleLoader__.load({
               warn: !!(pipe && pipe.pending_review > 0),
               arrow: true,
             }),
-            h(PipelineBox, { st: '加密存储', v: pipe ? fmtNum(pipe.encrypted) : '—', small: '已加密', d: 'Fernet · 读取时自动解密', arrow: true }),
+            // 2026-09-20：写入加密已按 PANGU_ENCRYPTION=off 关闭（单人系统无需落盘加密），
+            // 原「加密存储」格换成「记忆毕业」—— 与管线语义一致（待审 → 毕业）。
+            h(PipelineBox, { st: '记忆毕业', v: pipe ? fmtNum(pipe.graduated) : '—', small: '已毕业', d: '准入通过 · 进公共只读区', arrow: true }),
             h(PipelineBox, {
               st: '夜间巩固',
               v: consLabel,
@@ -711,12 +737,36 @@ window.__ModuleLoader__.load({
             )
           })(),
         ),
-        // ⑤ 最近入库
+        // ④ 来源分布
         h('div', { style: { marginTop: 4 } },
-          h(SecHead, { num: '05', title: '最近入库', hint: '公共区最新 ' + Math.min(5, pubMems.length) + ' 条 · 加密盖印章 · 点击条目展开全文' }),
+          h(SecHead, { num: '05', title: '来源分布', hint: '记忆来源平台 · 悬停看计数' }),
+          (() => {
+            // 从后端 stats 获取来源分布（by_source 字段）
+            const bySource = dash?.bySource || s?.bySource || {}
+            const entries = Object.entries(bySource).sort((a, b) => b[1] - a[1]).slice(0, 8)
+            const total = entries.reduce((a, e) => a + e[1], 0) || 1
+            const palette = [ACCENT, css.info, css.ok, css.warn, css.err, '#bc8cff', '#79c0ff', css.t3]
+            return h('div', { style: { marginTop: 9 } },
+              h('div', { style: { display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', border: `1px solid ${css.borderSoft}` } },
+                entries.length ? entries.map(([src, n], i) => h('div', {
+                  key: src, title: src + ' · ' + n + ' 条',
+                  style: { width: (n / total * 100) + '%', background: palette[i % palette.length], minWidth: 3 },
+                })) : h('div', { style: { padding: '4px 10px', fontSize: 10.5, color: css.t3 } }, '暂无来源数据'),
+              ),
+              h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '5px 14px', marginTop: 7, fontSize: 10.5, color: css.t3 } },
+                entries.map(([src, n], i) => h('span', { key: src },
+                  h('span', { style: { display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: palette[i % palette.length], marginRight: 4, verticalAlign: '-1px' } }),
+                  src, h('b', { style: { color: css.t2, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, marginLeft: 3 } }, n))),
+              ),
+            )
+          })(),
+        ),
+        // ⑥ 最近入库
+        h('div', { style: { marginTop: 4 } },
+          h(SecHead, { num: '06', title: '最近入库', hint: '全库最新 ' + Math.min(5, pubMems.length) + ' 条 · 点击条目展开全文' }),
           pubMems.length
             ? h('div', { style: { marginTop: 4 } }, pubMems.slice(0, 5).map((m) => h(MemRow, { key: m.id, m })))
-            : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无公共区记忆'),
+            : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无记忆'),
         ),
         ),
       )
@@ -1149,27 +1199,142 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /* ── 管理页 AdminPane：备份 / 深度体检 / 房间与钥匙（原 5A 数据面整体迁入） ── */
-    function AdminPane() {
-      const [deep, setDeep] = React.useState(null)
-      const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
-      const [keys, setKeys] = React.useState([])
-      const [rooms, setRooms] = React.useState([])
-      const [createState, setCreateState] = React.useState({ room: '', scope: 'readwrite', result: null })
-      const [rekeyResult, setRekeyResult] = React.useState(null)
+    /* ── 知识库页 KnowledgePane：知识浏览 / 搜索 / 分类 ── */
+    function KnowledgePane() {
+      const [entries, setEntries] = React.useState([])
+      const [stats, setStats] = React.useState(null)
+      const [category, setCategory] = React.useState('')
+      const [query, setQuery] = React.useState('')
       const [loading, setLoading] = React.useState(true)
+      const [selected, setSelected] = React.useState(null)
 
       const load = React.useCallback(async () => {
         setLoading(true)
         try {
-          const [dh, kl, rl] = await Promise.allSettled([
+          const [kl, ks] = await Promise.allSettled([
+            // 2026-09-20 修复：list 声明了 1 个参数，无分类也要传 {} —— 原来传
+            // undefined 会被 callRemote 展开成零参调用，网关按声明参数个数严格校验
+            // 直接拒绝（错误被 allSettled 吞掉 → 知识列表永远为空）。
+            callRemote('panguKnowledge', 'list', { category }).then(unwrap),
+            callRemote('panguKnowledge', 'stats').then(unwrap),
+          ])
+          if (kl.status === 'fulfilled') setEntries(kl.value?.knowledge || [])
+          if (ks.status === 'fulfilled') setStats(ks.value)
+        } catch (_) {}
+        setLoading(false)
+      }, [category])
+      // 2026-09-20 修复：依赖必须是 [load]（随 category 变化重建）—— 原来是 []，
+      // 点分类按钮只改了 state 从不重新拉取，切换分类永远不出现对应列表。
+      React.useEffect(() => { load() }, [load])
+
+      const doSearch = async () => {
+        if (!query.trim()) { load(); return }
+        setLoading(true)
+        try {
+          const r = unwrap(await callRemote('panguKnowledge', 'search', { query: query.trim() }))
+          setEntries(r?.knowledge || [])
+        } catch (_) {}
+        setLoading(false)
+      }
+
+      const CAT_LABELS = { best_practice: '最佳实践', solution: '解决方案', guide: '使用指南', insight: '洞察发现', other: '其他' }
+      const CAT_COLORS = { best_practice: css.ok, solution: css.info, guide: ACCENT, insight: css.warn, other: css.t3 }
+      const categories = stats?.categories || {}
+      const catEntries = Object.entries(categories).sort((a, b) => b[1] - a[1])
+
+      return h('div', { style: { overflow: 'auto', height: '100%', boxSizing: 'border-box', padding: '14px 16px 20px', animation: 'panguFade .25s ease' } },
+        // 2026-09-20：去掉 maxWidth 900 —— 与结晶页一致自适应宽度（此前知识页
+        // 居中缩窄、两侧留白，结晶页却是全宽，两个标签视觉不一致）
+        h('div', null,
+          // 搜索栏
+          h('div', { style: { display: 'flex', gap: 8, marginBottom: 14 } },
+            h('input', {
+              className: 'pangu-input', value: query,
+              onChange: (e) => setQuery(e.target.value),
+              onKeyDown: (e) => { if (e.key === 'Enter') doSearch() },
+              placeholder: '搜索知识库…',
+              style: { flex: 1, padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12.5, outline: 'none' },
+            }),
+            h('button', { onClick: doSearch, style: { padding: '7px 16px', borderRadius: 8, border: 'none', background: ACCENT, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 } },
+              h(Icon, { name: 'search', size: 13, color: '#fff' }), '搜索'),
+          ),
+          // 分类筛选
+          h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 } },
+            h('button', {
+              onClick: () => { setCategory(''); setSelected(null) },
+              style: { padding: '4px 12px', borderRadius: 999, border: `1px solid ${!category ? ACCENT : css.borderSoft}`, background: !category ? withAlpha(ACCENT, '0d') : 'transparent', color: !category ? ACCENT : css.t2, fontSize: 11, cursor: 'pointer', fontWeight: !category ? 600 : 400 },
+            }, '全部 (' + (stats?.total || 0) + ')'),
+            catEntries.map(([cat, count]) => h('button', {
+              key: cat, onClick: () => { setCategory(category === cat ? '' : cat); setSelected(null) },
+              style: { padding: '4px 12px', borderRadius: 999, border: `1px solid ${category === cat ? (CAT_COLORS[cat] || ACCENT) : css.borderSoft}`, background: category === cat ? withAlpha(CAT_COLORS[cat] || ACCENT, '0d') : 'transparent', color: category === cat ? (CAT_COLORS[cat] || ACCENT) : css.t2, fontSize: 11, cursor: 'pointer', fontWeight: category === cat ? 600 : 400 },
+            }, (CAT_LABELS[cat] || cat) + ' (' + count + ')')),
+          ),
+          // 知识列表
+          loading
+            ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 } }, [0, 1, 2, 3].map((i) => h(Skeleton, { key: i, w: '100%', h: 100, r: 10 })))
+            : entries.length > 0
+              ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 } },
+                  entries.map((e) => {
+                    const catColor = CAT_COLORS[e.category] || css.t3
+                    return h('div', {
+                      key: e.id, className: 'pangu-card',
+                      onClick: () => setSelected(selected === e.id ? null : e.id),
+                      style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: 12, cursor: 'pointer', position: 'relative', overflow: 'hidden' },
+                    },
+                      h('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${catColor}, ${withAlpha(catColor, '44')})` } }),
+                      h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 } },
+                        h('span', { style: { fontSize: 11, padding: '1px 7px', borderRadius: 999, background: withAlpha(catColor, '15'), color: catColor, fontWeight: 600 } }, CAT_LABELS[e.category] || e.category),
+                        h('span', { style: { marginLeft: 'auto', fontSize: 10, color: css.t3 } }, '置信 ' + Number(e.confidence || 0).toFixed(0) + '%'),
+                      ),
+                      h('div', { style: { fontSize: 12.5, fontWeight: 600, color: css.t1, marginBottom: 4, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: selected === e.id ? 'unset' : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } }, e.title),
+                      h('div', { style: { fontSize: 11, color: css.t2, lineHeight: 1.55, display: '-webkit-box', WebkitLineClamp: selected === e.id ? 'unset' : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' } }, e.content),
+                      h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 } },
+                        (e.tags || []).slice(0, 3).map((t) => h('span', { key: t, style: { fontSize: 9.5, padding: '1px 6px', borderRadius: 4, border: `1px solid ${css.borderSoft}`, color: css.t3 } }, t)),
+                      ),
+                      h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 5, display: 'flex', justifyContent: 'space-between' } },
+                        h('span', null, '来源 ' + (e.source_memories || []).length + ' 条记忆'),
+                        h('span', null, '使用 ' + (e.usage_count || 0) + ' 次'),
+                      ),
+                    )
+                  }),
+                )
+              : h('div', { style: { padding: '30px 0', textAlign: 'center', color: css.t3, fontSize: 12 } },
+                  h(Icon, { name: 'grid', size: 28, color: css.t3, style: { opacity: 0.4, marginBottom: 8 } }),
+                  h('div', null, '知识库暂无内容'),
+                  h('div', { style: { fontSize: 11, marginTop: 4 } }, '盘古会从记忆中自动提取知识'),
+                ),
+        ),
+      )
+    }
+
+    /* ── 管理页 AdminPane：备份 / 深度体检 / 平台管理 / 快照 ── */
+    function AdminPane({ initialSection }) {
+      const [deep, setDeep] = React.useState(null)
+      const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
+      const [platforms, setPlatforms] = React.useState([])
+      const [pending, setPending] = React.useState([])
+      const [snapshots, setSnapshots] = React.useState([])
+      const [loading, setLoading] = React.useState(true)
+      const [activeSection, setActiveSection] = React.useState(initialSection || 'health') // health | platforms | snapshots
+
+      // 当 initialSection 变化时更新
+      React.useEffect(() => {
+        if (initialSection) setActiveSection(initialSection)
+      }, [initialSection])
+
+      const load = React.useCallback(async () => {
+        setLoading(true)
+        try {
+          const [dh, pl, pend, sn] = await Promise.allSettled([
             callRemote('panguDashboard', 'deepHealth').then(unwrap),
-            callRemote('panguAdminKeys', 'listKeys').then(unwrap),
-            callRemote('panguAdminKeys', 'listRooms').then(unwrap),
+            callRemote('panguPlatforms', 'listPlatforms').then(unwrap),
+            callRemote('panguPlatforms', 'listPending').then(unwrap),
+            callRemote('panguDashboard', 'stats').then(unwrap),
           ])
           if (dh.status === 'fulfilled') setDeep(dh.value)
-          if (kl.status === 'fulfilled' && kl.value) setKeys(kl.value.keys || [])
-          if (rl.status === 'fulfilled' && rl.value) setRooms(rl.value.rooms || [])
+          if (pl.status === 'fulfilled' && pl.value) setPlatforms(pl.value.platforms || [])
+          if (pend.status === 'fulfilled' && pend.value) setPending(pend.value.platforms || [])
+          if (sn.status === 'fulfilled' && sn.value) setSnapshots(sn.value?.snapshots || [])
         } catch (_) {}
         setLoading(false)
       }, [])
@@ -1184,98 +1349,135 @@ window.__ModuleLoader__.load({
           setTimeout(() => setBk({ s: 'idle', msg: '' }), 4000)
         } catch (e) { setBk({ s: 'error', msg: String(e.message || e) }) }
       }
-      const doCreate = async () => {
-        if (!createState.room) return
-        setCreateState((p) => ({ ...p, result: null }))
-        try {
-          const r = unwrap(await callRemote('panguAdminKeys', 'createKey', { room: createState.room, scope: createState.scope }))
-          if (r.error) { setCreateState((p) => ({ ...p, result: { ok: false, msg: r.error } })); return }
-          if (!r.key) { setCreateState((p) => ({ ...p, result: { ok: false, msg: '服务端未返回明文密钥（响应字段缺失：' + JSON.stringify(Object.keys(r || {})) + '）。请吊销该钥匙并用 CLI 重发。' } })); return }
-          setCreateState((p) => ({ ...p, result: { ok: true, key: r.key, key_id: r.key_id }, room: '' }))
-          load()
-        } catch (e) { setCreateState((p) => ({ ...p, result: { ok: false, msg: String(e) } })) }
+
+      // 平台管理操作
+      const doApprove = async (tokenId) => {
+        if (!window.confirm('审核通过该平台接入？')) return
+        try { await callRemote('panguPlatforms', 'approve', { token_id: tokenId }); load() } catch (_) {}
       }
-      const doRevoke = async (key_id) => {
-        if (!window.confirm('确认吊销 ' + key_id + '？')) return
-        try { await callRemote('panguAdminKeys', 'revokeKey', { key_id }); load() } catch (_) {}
+      const doReject = async (tokenId) => {
+        if (!window.confirm('拒绝该平台接入？')) return
+        try { await callRemote('panguPlatforms', 'reject', { token_id: tokenId }); load() } catch (_) {}
       }
-      const doRekey = async (room) => {
-        if (!window.confirm('重发房间「' + room + '」的钥匙？旧钥匙将被吊销。')) return
-        setRekeyResult(null)
-        try {
-          const r = unwrap(await callRemote('panguAdminKeys', 'rekeyRoom', { room }))
-          if (r.error) { setRekeyResult({ ok: false, msg: r.error }); return }
-          if (!r.key) { setRekeyResult({ ok: false, msg: '服务端未返回明文密钥（响应字段缺失：' + JSON.stringify(Object.keys(r || {})) + '）。该房间的新钥匙无法得知，请立即吊销并用 CLI 重发。' }); return }
-          setRekeyResult({ ok: true, room, key: r.key, revoked: r.revoked || [] })
-          load()
-        } catch (e) { setRekeyResult({ ok: false, msg: String(e) }) }
+      const doRevokePlatform = async (tokenId) => {
+        if (!window.confirm('撤销该平台接入？')) return
+        try { await callRemote('panguPlatforms', 'revoke', { token_id: tokenId }); load() } catch (_) {}
       }
 
       const checkRow = (name, label) => {
         const c = deep?.checks?.find((x) => x.name === name)
         return h(InfoRow, { key: name, label, value: c ? h(StatusPill, { status: c.status }) : deep ? '—' : '…' })
       }
-      const totalChars = rooms.reduce((s, r) => s + (r.chars || 0), 0)
+
+      const sectionBtn = (key, icon, text) => h('button', {
+        onClick: () => setActiveSection(key),
+        style: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 6, border: activeSection === key ? `1px solid ${ACCENT}` : `1px solid ${css.borderSoft}`, background: activeSection === key ? withAlpha(ACCENT, '0d') : 'transparent', color: activeSection === key ? ACCENT : css.t2, fontSize: 11, fontWeight: activeSection === key ? 600 : 400, cursor: 'pointer', transition: 'all .15s' },
+      }, h(Icon, { name: icon, size: 12 }), text)
 
       return h('div', { style: { overflow: 'auto', height: '100%', boxSizing: 'border-box', padding: '14px 16px 20px', animation: 'panguFade .25s ease' } },
-        h(SecHead, { num: '01', title: '深度体检', hint: deep ? ('状态 ' + (deep.status || '?')) : '…' }),
-        h('div', { style: { border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '10px 14px', marginTop: 9, background: css.bg1 } },
-          checkRow('structure', '结构检查'),
-          checkRow('memory', '记忆检查'),
-          checkRow('embedding', '嵌入检查'),
+        // 分区导航
+        h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 } },
+          sectionBtn('health', 'pulse', '体检'),
+          sectionBtn('platforms', 'box', '平台 (' + (platforms.length + pending.length) + ')'),
+          sectionBtn('snapshots', 'clock', '快照'),
         ),
-        h(SecHead, { num: '02', title: '备份快照', hint: '全量记忆 + 宫殿结构 + FTS 索引' }),
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 9, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '11px 14px', background: css.bg1 } },
-          h('div', { style: { flex: 1, fontSize: 11, color: css.t2, lineHeight: 1.55 } },
-            bk.s === 'done' ? h('span', { style: { color: css.ok } }, '✓ ' + bk.msg) : bk.s === 'error' ? h('span', { style: { color: css.err } }, bk.msg) : '创建当前记忆库的手动快照。'),
-          h('button', { className: 'pangu-btn', onClick: doBackup, disabled: bk.s === 'saving', style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '6px 14px', borderRadius: 7, border: 'none', background: ACCENT, color: '#fff', fontWeight: 600, cursor: bk.s === 'saving' ? 'default' : 'pointer', flexShrink: 0 } },
-            h(Icon, { name: bk.s === 'done' ? 'check' : 'database', size: 12, color: '#fff' }),
-            bk.s === 'saving' ? '备份中…' : '立即备份'),
+
+        // ── 健康检查 ──
+        activeSection === 'health' && h(React.Fragment, null,
+          h(SecHead, { num: '01', title: '深度体检', hint: deep ? ('状态 ' + (deep.status || '?')) : '…' }),
+          h('div', { style: { border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '10px 14px', marginTop: 9, background: css.bg1 } },
+            checkRow('structure', '结构检查'),
+            checkRow('memory', '记忆检查'),
+            checkRow('embedding', '嵌入检查'),
+          ),
+          h(SecHead, { num: '02', title: '备份快照', hint: '全量记忆 + 宫殿结构 + FTS 索引' }),
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 9, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '11px 14px', background: css.bg1 } },
+            h('div', { style: { flex: 1, fontSize: 11, color: css.t2, lineHeight: 1.55 } },
+              bk.s === 'done' ? h('span', { style: { color: css.ok } }, '✓ ' + bk.msg) : bk.s === 'error' ? h('span', { style: { color: css.err } }, bk.msg) : '创建当前记忆库的手动快照。'),
+            h('button', { className: 'pangu-btn', onClick: doBackup, disabled: bk.s === 'saving', style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '6px 14px', borderRadius: 7, border: 'none', background: ACCENT, color: '#fff', fontWeight: 600, cursor: bk.s === 'saving' ? 'default' : 'pointer', flexShrink: 0 } },
+              h(Icon, { name: bk.s === 'done' ? 'check' : 'database', size: 12, color: '#fff' }),
+              bk.s === 'saving' ? '备份中…' : '立即备份'),
+          ),
         ),
-        h(SecHead, { num: '03', title: '房间与钥匙', hint: rooms.length + ' 房间 · ' + keys.length + ' 钥匙' }),
-        loading
-          ? h(Skeleton, { w: '100%', h: 60, r: 8, style: { marginTop: 9 } })
-          : h('div', { style: { marginTop: 9 } },
-              h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
-                h('input', { placeholder: '房间名', value: createState.room, onChange: (e) => setCreateState((p) => ({ ...p, room: e.target.value })), style: { padding: '6px 9px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, flex: 1, outline: 'none' } }),
-                h('select', { value: createState.scope, onChange: (e) => setCreateState((p) => ({ ...p, scope: e.target.value })), style: { padding: '6px 8px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12 } },
-                  h('option', { value: 'readwrite' }, '读写删'),
-                  h('option', { value: 'readonly' }, '只读'),
+
+        // ── 平台管理 ──
+        activeSection === 'platforms' && h(React.Fragment, null,
+          // 接入指南卡片（2026-09-20 重写：四步 MCP 教程 → 一段可复制的任务描述。
+          // 使用流程 = 用户把这段话发给目标平台的 Agent，Agent 自行申请，用户只管点「通过」）
+          h('div', { style: { background: css.bg2, border: `1px solid ${css.borderSoft}`, borderRadius: 10, padding: '12px 14px', marginBottom: 14 } },
+            h('div', { style: { fontSize: 12.5, fontWeight: 600, color: css.t1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 } },
+              h(Icon, { name: 'info', size: 13, color: css.info }), '平台接入 · 一段话搞定'),
+            h('div', { style: { fontSize: 11, color: css.t2, lineHeight: 1.7, marginBottom: 8 } },
+              '把下面这段话原样发给目标平台的 Agent，等它执行完，你在这里点「通过」就接通了：'),
+            h('pre', {
+              style: { background: css.bg3, borderRadius: 6, padding: '10px 12px', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10.5, lineHeight: 1.65, margin: '0 0 8px 0', overflowX: 'auto', whiteSpace: 'pre-wrap', userSelect: 'all', color: css.t2 },
+            },
+              '请接入盘古记忆系统：\n1) 执行 curl -X POST http://127.0.0.1:19529/api/v2/platforms/request -H "Content-Type: application/json" -d \'{"platform":"<你的平台ID>","platform_name":"<显示名>"}\'\n2) 保存返回的 token（pgp_ 开头，只显示一次），等管理员在后台审核通过\n3) 通过后用它调 REST API：写记忆 POST http://127.0.0.1:19529/api/v2/memories（头 Authorization: Bearer <token>，body 的 text 必填，wing/room/importance/tags 可选）；搜索 GET http://127.0.0.1:19529/api/v2/memories/search?q=<关键词>'),
+            h('div', { style: { fontSize: 10.5, color: css.t3 } },
+              '审核前平台没有任何权限（pending 连鉴权都不通过）；点「通过」后即为全权（读/写/改/删/搜）。token 丢失就撤销后重新申请。'),
+          ),
+
+          h(SecHead, { num: '01', title: '已接入平台', hint: platforms.length + ' 个' }),
+          loading
+            ? h(Skeleton, { w: '100%', h: 60, r: 8, style: { marginTop: 9 } })
+            : h('div', { style: { marginTop: 9 } },
+                platforms.length > 0
+                  ? h('table', { style: { width: '100%', fontSize: 11.5, borderCollapse: 'collapse' } },
+                      h('thead', null, h('tr', null,
+                        ['平台', '名称', '权限', '状态', '最后使用', ''].map((th, i) => h('th', { key: i, style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}`, color: css.t3, fontWeight: 500, fontSize: 10.5 } }, th)))),
+                      h('tbody', null, platforms.map((p) => h('tr', { key: p.token_id },
+                        h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10.5 } }, p.platform),
+                        h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, p.platform_name || '—'),
+                        h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, fontSize: 10 } }, (p.permissions || []).join(', ')),
+                        h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}` } },
+                          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: p.status === 'active' ? css.ok : p.status === 'revoked' ? css.err : css.t3 } },
+                            h('span', { style: { width: 6, height: 6, borderRadius: '50%', background: p.status === 'active' ? css.ok : p.status === 'revoked' ? css.err : css.t3 } }),
+                            p.status === 'active' ? '活跃' : p.status === 'revoked' ? '已撤销' : p.status)),
+                        h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, fontSize: 10.5, color: css.t3 } }, p.last_used_at ? fmtAgo(Date.parse(p.last_used_at)) : '未使用'),
+                        h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, textAlign: 'right' } },
+                          p.status === 'active' && h('button', { onClick: () => doRevokePlatform(p.token_id), style: { fontSize: 11, color: css.err, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, '撤销')),
+                      ))),
+                    )
+                  : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无已接入平台'),
+              ),
+          pending.length > 0 && h(React.Fragment, null,
+            h(SecHead, { num: '02', title: '待审核平台', hint: pending.length + ' 个', style: { marginTop: 16 } }),
+            h('div', { style: { marginTop: 9 } },
+              pending.map((p) => h('div', { key: p.token_id, style: { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: `1px solid ${css.borderSoft}`, borderRadius: 8, marginBottom: 6, background: css.bg1 } },
+                h('div', { style: { flex: 1, minWidth: 0 } },
+                  h('div', { style: { fontSize: 12, fontWeight: 600, color: css.t1 } }, p.platform_name || p.platform),
+                  h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 2 } },
+                    h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' } }, p.platform),
+                    ' · ', (p.permissions || []).join(', '),
+                    p.request_ip && h('span', null, ' · IP: ' + p.request_ip))),
+                h('div', { style: { display: 'flex', gap: 6, flexShrink: 0 } },
+                  h('button', { onClick: () => doApprove(p.token_id), style: { padding: '4px 12px', borderRadius: 6, border: 'none', background: css.ok, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' } }, '通过'),
+                  h('button', { onClick: () => doReject(p.token_id), style: { padding: '4px 12px', borderRadius: 6, border: `1px solid ${css.err}`, background: 'transparent', color: css.err, fontSize: 11, cursor: 'pointer' } }, '拒绝'),
                 ),
-                h('button', { onClick: doCreate, style: { padding: '6px 13px', borderRadius: 7, border: 'none', background: ACCENT, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' } }, '创建'),
-              ),
-              createState.result && h('div', { style: { fontSize: 11, color: createState.result.ok ? css.ok : css.err, margin: '7px 0' } },
-                createState.result.ok
-                  ? h('span', null, '✓ 明文密钥：', h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 11 } }, createState.result.key), ' （仅显示一次，请保存到环境变量）')
-                  : createState.result.msg),
-              rekeyResult && h('div', { style: { fontSize: 11, color: rekeyResult.ok ? css.ok : css.err, margin: '7px 0' } },
-                rekeyResult.ok
-                  ? h('span', null, '✓ 房间「', rekeyResult.room, '」已重发，吊销 ', rekeyResult.revoked.length, ' 把旧钥匙。新密钥：', h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 11 } }, rekeyResult.key), ' （仅显示一次）')
-                  : rekeyResult.msg),
-              keys.length > 0 && h('table', { style: { width: '100%', fontSize: 11.5, borderCollapse: 'collapse', marginTop: 8 } },
-                h('thead', null, h('tr', null,
-                  ['房间', '钥匙 ID', '权限', '状态', ''].map((th, i) => h('th', { key: i, style: { textAlign: 'left', padding: '4px 6px', borderBottom: `1px solid ${css.borderSoft}`, color: css.t3, fontWeight: 500, fontSize: 10.5 } }, th)))),
-                h('tbody', null, keys.map((k) => h('tr', { key: k.key_id },
-                  h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.room),
-                  h('td', { title: k.key_id + (k.created_at ? '（创建于 ' + k.created_at + '）' : ''), style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10.5, color: css.t2, whiteSpace: 'nowrap' } }, String(k.key_id || '').replace(/^key_/, '')),
-                  h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}` } }, k.scope),
-                  h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, color: css.t3 } }, k.last_used_at ? '已使用' : '未使用'),
-                  h('td', { style: { padding: '5px 6px', borderBottom: `1px solid ${css.borderSoft}`, textAlign: 'right' } },
-                    h('button', { onClick: () => doRevoke(k.key_id), style: { fontSize: 11, color: css.err, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, '吊销')),
-                ))),
-              ),
-              rooms.length > 0 && h('div', { style: { marginTop: 10 } },
-                h('div', { style: { fontWeight: 600, marginBottom: 4, color: css.t2, fontSize: 11 } }, '房间概览'),
-                rooms.map((r) => {
-                  const pct = totalChars > 0 ? Math.round((r.chars || 0) / totalChars * 100) : 0
-                  return h('div', { key: r.room, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${css.borderSoft}`, fontSize: 11.5 } },
-                    h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 11 } }, r.room),
-                    h('span', { style: { color: css.t3, fontSize: 10.5, flex: 1, textAlign: 'right', marginRight: 8 } }, r.memory_count + ' 条 · ' + fmtSize(r.chars) + ' · ' + pct + '%'),
-                    h('button', { onClick: () => doRekey(r.room), style: { fontSize: 10.5, color: css.warn, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, '重发'),
-                  )
-                }),
-              ),
+              )),
             ),
+          ),
+        ),
+
+        // ── 快照管理 ──
+        activeSection === 'snapshots' && h(React.Fragment, null,
+          h(SecHead, { num: '01', title: '记忆快照', hint: snapshots.length + ' 个' }),
+          loading
+            ? h(Skeleton, { w: '100%', h: 60, r: 8, style: { marginTop: 9 } })
+            : h('div', { style: { marginTop: 9 } },
+                snapshots.length > 0
+                  ? snapshots.slice(0, 20).map((s) => h('div', { key: s.id, style: { display: 'flex', gap: 10, padding: '8px 2px', borderBottom: `1px solid ${css.borderSoft}`, alignItems: 'flex-start' } },
+                      h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, color: css.t3, width: 60, flexShrink: 0 } }, (s.created_at || '').slice(5, 10)),
+                      h('div', { style: { flex: 1, minWidth: 0 } },
+                        h('div', { style: { fontSize: 11.5, color: css.t1, lineHeight: 1.5 } }, s.reason || '快照'),
+                        h('div', { style: { fontSize: 10, color: css.t3, marginTop: 2 } },
+                          '替换: ', h('code', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 9.5 } }, (s.replaced_by || '').slice(0, 8)), '…',
+                          s.quality_score && h('span', null, ' · 质量 ' + Number(s.quality_score).toFixed(2))),
+                      ),
+                    ))
+                  : h('div', { style: { padding: '10px 0', fontSize: 11, color: css.t3 } }, '暂无记忆快照（记忆进化时自动生成）'),
+              ),
+        ),
       )
     }
 
@@ -1287,37 +1489,29 @@ window.__ModuleLoader__.load({
       const [dash, setDash] = React.useState(null)
       const [kg, setKg] = React.useState(null)
       const [config, setConfig] = React.useState(null)
-      const [roomNodes, setRoomNodes] = React.useState([])
+      // 2026-09-20：房间（palace room）概念已取消，不再把 listRooms 的房间合成进图谱
+      // 节点 —— 此前星系/结晶视图里因此残留「房间」卡片。
       const [dashErr, setDashErr] = React.useState(null)
       const [kgErr, setKgErr] = React.useState(null)
       const [loading, setLoading] = React.useState(true)
       const [refreshing, setRefreshing] = React.useState(false)
       const [search, setSearch] = React.useState('')
       const [typeFilter, setTypeFilter] = React.useState('')
+      const [adminSection, setAdminSection] = React.useState('health')
 
       const load = React.useCallback(async (silent) => {
         if (!silent) setLoading(true)
         setRefreshing(true)
-        const [d, g, c, r] = await Promise.allSettled([
+        const [d, g, c] = await Promise.allSettled([
           callRemote('panguDashboard', 'data').then(unwrap),
           callRemote('panguKG', 'graph').then(unwrap),
           callRemote('panguConfig', 'get').then(unwrap),
-          callRemote('panguAdminKeys', 'listRooms').then(unwrap),
         ])
         if (d.status === 'fulfilled') { setDash(d.value); setDashErr(null) } else setDashErr(String(d.reason?.message || d.reason))
         if (g.status === 'fulfilled') {
           if (g.value?.ok) { setKg(g.value); setKgErr(null) } else setKgErr(String(g.value?.error || '图谱数据为空'))
         } else setKgErr(String(g.reason?.message || g.reason))
         if (c.status === 'fulfilled') setConfig(c.value?.config || null)
-        if (r.status === 'fulfilled' && r.value?.rooms) {
-          setRoomNodes(r.value.rooms.map((rm) => ({
-            id: '__room__' + rm.room,
-            name: rm.room,
-            type: 'room',
-            memory_count: rm.memory_count || 0,
-            description: (rm.memory_count || 0) + ' 条记忆 · ' + (rm.key_count || 0) + ' 钥匙',
-          })))
-        }
         setLoading(false)
         setRefreshing(false)
       }, [])
@@ -1326,12 +1520,18 @@ window.__ModuleLoader__.load({
         load()
         const id = setInterval(() => { if (!document.hidden) load(true) }, 60000)
         const offReset = ctx && ctx.on ? ctx.on('connection/reset', () => load(true)) : null
-        const onGoto = (e) => { setTab(e.detail?.tab || 'overview') }
+        const onGoto = (e) => {
+          setTab(e.detail?.tab || 'overview')
+          // 传递 section 参数给 AdminPane
+          if (e.detail?.tab === 'admin' && e.detail?.section) {
+            setAdminSection(e.detail.section)
+          }
+        }
         window.addEventListener('pangu:goto', onGoto)
         return () => { clearInterval(id); if (offReset) offReset(); window.removeEventListener('pangu:goto', onGoto) }
       }, [])
 
-      const allNodes = React.useMemo(() => [...(kg?.nodes || []), ...roomNodes], [kg, roomNodes])
+      const allNodes = React.useMemo(() => kg?.nodes || [], [kg])
       const graphEdges = React.useMemo(() => kg?.edges || [], [kg])
       const matched = React.useMemo(() => {
         if (!search && !typeFilter) return null
@@ -1361,6 +1561,7 @@ window.__ModuleLoader__.load({
           tabBtn('overview', 'overview', '概览'),
           tabBtn('graph', 'orbit', '星系'),
           tabBtn('crystal', 'grid', '结晶'),
+          tabBtn('knowledge', 'layers', '知识'),
           tabBtn('admin', 'cpu', '管理'),
           h('div', { style: { flex: 1 } }),
           (tab === 'graph' || tab === 'crystal') && h('input', { className: 'pangu-input', value: search, onChange: (e) => setSearch(e.target.value), placeholder: '搜索实体…', style: { ...inputStyle, width: 150 } }),
@@ -1379,7 +1580,9 @@ window.__ModuleLoader__.load({
             ? h(GraphPane, { nodes: allNodes, edges: graphEdges, matchSet: matched, kgErr, loading, onRetry: () => load() })
             : tab === 'crystal'
               ? h(CrystalPane, { nodes: graphNodes, edges: graphEdges, kgErr, loading, onRetry: () => load() })
-              : h(AdminPane, null),
+              : tab === 'knowledge'
+                ? h(KnowledgePane, null)
+                : h(AdminPane, { initialSection: adminSection }),
       )
     }
     function Toggle({ checked, onChange }) {
@@ -1483,6 +1686,8 @@ window.__ModuleLoader__.load({
             model: cfg.llm_model || '',
             baseUrl: cfg.llm_base_url || '',
             apiKey: '',
+            whisperEnabled: cfg.whisper_enabled !== false,
+            whisperModel: cfg.whisper_model || 'base',
           })
           setKeyDirty(false)
           setLoadErr(null)
@@ -1515,6 +1720,8 @@ window.__ModuleLoader__.load({
             llm_provider: draft.provider,
             llm_model: draft.model,
             llm_base_url: draft.baseUrl,
+            whisper_enabled: draft.whisperEnabled,
+            whisper_model: draft.whisperModel,
           }
           if (keyDirty && draft.apiKey) patch.llm_api_key = draft.apiKey
           const value = unwrap(await callRemote('panguConfig', 'save', patch))
@@ -1660,6 +1867,35 @@ window.__ModuleLoader__.load({
               ),
             ),
           ),
+          // ── 语音转写 (Whisper) ──
+          h('div', { key: 'whisper-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '02B'),
+            h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '语音转写'),
+            h('span', { style: { fontSize: 10.5, color: css.t3 } }, 'Whisper 模型 · 关闭可节省 140-800MB 内存'),
+          ),
+          h(SettingRow, { key: 'whisper-toggle', label: '启用 Whisper', desc: '启用后可将音频文件转为文字记忆' },
+            h(Toggle, { checked: draft.whisperEnabled, onChange: () => setDraft((p) => ({ ...p, whisperEnabled: !p.whisperEnabled })) }),
+          ),
+          draft.whisperEnabled && h('div', { key: 'whisper-model', style: { padding: '11px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 } },
+              h('div', { style: { flex: 1, minWidth: 0 } },
+                h('div', { style: { fontSize: 12.5, fontWeight: 500, color: css.t1 } }, '模型大小'),
+                h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 2 } }, '越大精度越高，内存占用也越大'),
+              ),
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
+                h('select', {
+                  value: draft.whisperModel,
+                  onChange: (e) => setDraft((p) => ({ ...p, whisperModel: e.target.value })),
+                  style: { padding: '6px 12px', borderRadius: 6, border: `1px solid ${css.borderSoft}`, background: css.bg1, color: css.t1, fontSize: 12 }
+                },
+                  h('option', { value: 'tiny' }, 'Tiny (75MB)'),
+                  h('option', { value: 'base' }, 'Base (140MB)'),
+                  h('option', { value: 'small' }, 'Small (460MB)'),
+                  h('option', { value: 'medium' }, 'Medium (1.5GB)'),
+                ),
+              ),
+            ),
+          ),
           h('div', { key: 's3-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '03'),
             h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '只读信息'),
@@ -1672,18 +1908,27 @@ window.__ModuleLoader__.load({
             h(InfoRow, { label: '记忆库', value: config?.palace_path }),
             h(InfoRow, { label: 'MCP 服务', value: '127.0.0.1:19529' }),
           ),
+          // ── 04 平台接入与审核 ──
           h('div', { key: 's4-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '04'),
-            h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '房间与钥匙'),
-            h('span', { style: { fontSize: 10.5, color: css.t3 } }, '完整管理在「盘古」标签页 · 管理'),
+            h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '平台接入'),
+            h('span', { style: { fontSize: 10.5, color: css.t3 } }, 'pgp_* Token · 审核管理'),
           ),
-          h('div', { key: 's4-body', style: { marginTop: 6 } },
-            rooms.length > 0 ? rooms.map((r) => h('div', { key: r.room, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${css.borderSoft}`, fontSize: 11.5 } },
-              h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 11 } }, r.room),
-              h('span', { style: { color: css.t3, fontSize: 10.5, flex: 1, textAlign: 'right', marginRight: 8 } }, (r.memory_count || 0) + ' 条 · ' + (r.key_count || 0) + ' 钥匙'),
-              h('button', { onClick: () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'admin' } })), style: { fontSize: 10.5, color: css.warn, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, '管理'),
-            )) : h('div', { style: { padding: '6px 0', fontSize: 11, color: css.t3 } }, '暂无房间'),
-            h('div', { style: { fontSize: 10, color: css.t3, marginTop: 6, lineHeight: 1.5 } }, '钥匙创建 / 吊销 / 轮换完整操作面在「盘古」标签页 · 管理。'),),
+          h('div', { key: 's4-body', style: { marginTop: 6, lineHeight: 1.7 } },
+            h('div', { style: { fontSize: 11.5, color: css.t2 } },
+              h('b', null, '接入流程'),
+              h('ol', { style: { margin: '6px 0 0 16px', padding: 0, fontSize: 11, color: css.t2 } },
+                h('li', null, '新平台调用 ', h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 10.5 } }, 'POST /api/v2/platforms/request'), '，提供平台名和名称'),
+                h('li', null, '平台获得临时 Token（状态 pending）'),
+                h('li', null, '管理员在', h('b', null, '「盘古」标签页 → 管理 → 平台'), ' 中审核'),
+                h('li', null, '审核通过后平台获得正式 Token（pgp_* 前缀，状态 active）'),
+              ),
+            ),
+            h('div', { style: { display: 'flex', gap: 8, marginTop: 10 } },
+              h('button', { onClick: () => window.dispatchEvent(new CustomEvent('pangu:goto', { detail: { tab: 'admin', section: 'platforms' } })), style: { padding: '6px 14px', borderRadius: 7, border: 'none', background: ACCENT, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 } },
+                h(Icon, { name: 'box', size: 12, color: '#fff' }), '前往管理平台'),
+            ),
+          ),
           // ── 05 关于与更新 ──
           h('div', { key: 's5-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '05'),
@@ -1698,6 +1943,8 @@ window.__ModuleLoader__.load({
                   h('span', { style: { fontSize: 10.5, fontWeight: 400, color: css.t3, marginLeft: 8 } },
                     '盘古服务 v' + (versions?.server || '未识别')),
                 ),
+                h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 3 } },
+                  '架构 v2.1 · 平台Token · 记忆进化 · 知识生成'),
                 h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 3 } },
                   updateInfo
                     ? updateInfo.ok

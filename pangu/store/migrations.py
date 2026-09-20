@@ -255,9 +255,7 @@ def _load_meta() -> dict:
             # 与全仓其它"读 JSON"路径一致：损坏不致命，但要留痕
             import logging
 
-            logging.getLogger("pangu.store.migrations").warning(
-                f"palace_meta.json 读取失败（回退初始结构）: {e}"
-            )
+            logging.getLogger("pangu.store.migrations").warning(f"palace_meta.json 读取失败（回退初始结构）: {e}")
     # 初始结构
     return {
         "name": "盘古记忆宫殿",

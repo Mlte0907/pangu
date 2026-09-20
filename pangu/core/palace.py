@@ -19,6 +19,7 @@ class Drawer:
     importance: float = 3.0
     emotional_weight: float = 0.0
     source_file: str = ""
+    source: str = ""  # 新增：记忆来源平台（dsh/mcp/api等）
     tags: list = field(default_factory=list)
     author: str = ""  # 新增：记录写入者 agent_id
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -38,6 +39,7 @@ class Drawer:
             "importance": self.importance,
             "emotional_weight": self.emotional_weight,
             "source_file": self.source_file,
+            "source": self.source,
             "tags": self.tags,
             "author": self.author,
             "created_at": self.created_at,
@@ -70,6 +72,7 @@ class Drawer:
             importance=cls._coerce_float(data.get("importance"), 3.0),
             emotional_weight=cls._coerce_float(data.get("emotional_weight"), 0.0),
             source_file=data.get("source_file", ""),
+            source=data.get("source", ""),
             tags=data.get("tags", []),
             author=data.get("author", ""),
             created_at=data.get("created_at", datetime.now().isoformat()),

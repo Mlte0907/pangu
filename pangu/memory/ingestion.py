@@ -177,7 +177,7 @@ def _dedup_and_fuse(
                 # 不返回 dup/fused，走正常创建流程；调用方在创建后建立 supersede 关系
                 logger.info(
                     f"Memory supersede candidate: score={best_score:.3f}, "
-                    f"old={best_drawer.id[:8]} new is {informativeness_new/informativeness_old:.1f}x richer"
+                    f"old={best_drawer.id[:8]} new is {informativeness_new / informativeness_old:.1f}x richer"
                 )
                 return None, None, best_drawer.id
             else:
@@ -642,17 +642,13 @@ def remember(
                     d.metadata["superseded_at"] = now
                     d.metadata["memory_status"] = "superseded"
                     try:
-                        _persist_supersede_update(
-                            _get_default_storage(), supersede_id, d
-                        )
+                        _persist_supersede_update(_get_default_storage(), supersede_id, d)
                     except Exception as e:
                         logger.warning(f"supersede update failed for {supersede_id[:8]}: {e}")
                     if drawer.metadata is None:
                         drawer.metadata = {}
                     drawer.metadata["supersedes"] = [supersede_id]
-                    logger.info(
-                        f"Memory superseded: {supersede_id[:8]} by {item_id[:8]}"
-                    )
+                    logger.info(f"Memory superseded: {supersede_id[:8]} by {item_id[:8]}")
                     break
         except Exception as e:
             logger.debug(f"Supersede marking skipped: {e}")
