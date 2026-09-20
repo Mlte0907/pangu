@@ -124,6 +124,16 @@ def create_app() -> FastAPI:
         "backup_dir",
         "domain_knowledge_db_path",
     )
+    # 密钥类字段同理不得被文件覆盖（2026-09-20 修）：
+    # config.json 里通常**显式写着 `api_key`**（本机就是如此）。而密钥的权威来源
+    # 按安全性应是「环境变量 / 进程内显式设置」——它们绝不该被一个磁盘文件里的
+    # 旧值盖掉。此前不排除它们，导致：
+    #   1) 测试里 monkeypatch 的 api_key 被 config.json 的真值覆盖 → 带测试钥匙的
+    #      请求 401（tests/test_auth.py::TestHTTPAuth::test_api_key_passes 长期红）；
+    #   2) 更实际的后果：运维把 API Key 从「环境变量」切换为只更新环境变量时，
+    #      config.json 里的旧 Key 会继续生效，形成"改了没生效/旧 Key 仍可用"。
+    # 与 `PanguConfig.save()` 的 exclude 一致：密钥不落 config.json，也就不该从它读。
+    _SECRET_FIELDS = {"api_key", "llm_api_key", "siliconflow_key", "jwt_secret"}
     _env_pinned: set[str] = set()
     for _name in _ENV_OVERRIDABLE_PATHS:
         if os.environ.get(f"PANGU_{_name.upper()}"):
@@ -145,6 +155,9 @@ def create_app() -> FastAPI:
             continue
         if _field in _env_pinned:
             # 环境变量显式指定了该路径字段，跳过文件覆盖
+            continue
+        if _field in _SECRET_FIELDS:
+            # 密钥字段：进程内现值（环境变量/显式设置/密钥文件）优先于 config.json
             continue
         try:
             setattr(_orig_cfg, _field, getattr(_loaded, _field))

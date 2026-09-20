@@ -197,9 +197,20 @@ MIGRATIONS.append(
 
 
 def _get_palace_meta_path() -> Path:
-    """获取宫殿元数据文件路径"""
-    base = Path(os.path.expanduser("~/.pangu/palace"))
-    return base / "palace_meta.json"
+    """获取宫殿元数据文件路径。
+
+    2026-09-20 修：此前硬编码 `~/.pangu/palace`，无视 `base_dir`/`palace_path` ——
+    换部署目录或做测试隔离（PANGU_BASE_DIR）时，迁移版本写到了真实 home 目录，
+    导致「隔离环境里迁移状态被串改」。现在从 config 派生。
+    """
+    try:
+        from pangu.core.config import PanguConfig
+
+        cfg = PanguConfig.load()
+        palace = Path(cfg.palace_path or (Path(cfg.base_dir) / "palace"))
+    except Exception:
+        palace = Path.home() / ".pangu" / "palace"
+    return palace / "palace_meta.json"
 
 
 def _current_version() -> str | None:
@@ -216,20 +227,37 @@ def _current_version() -> str | None:
 
 
 def _record_version(meta: dict, version: str) -> None:
-    """记录迁移版本"""
+    """记录迁移版本（原子写：tmp + fsync + os.replace）。
+
+    2026-09-20 修：此前直接 `open(path,"w")` 写目标文件，写到一半崩溃/断电会留下
+    截断的 palace_meta.json；而 `_load_meta` 无保护，损坏文件会让 run_migrations /
+    init_db 直接抛异常，等于迁移状态与启动双双挂掉。
+    """
     meta["schema_version"] = version
     meta_path = _get_palace_meta_path()
     meta_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(meta_path, "w", encoding="utf-8") as f:
+    tmp_path = meta_path.with_suffix(".json.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, meta_path)
 
 
 def _load_meta() -> dict:
-    """加载宫殿元数据"""
+    """加载宫殿元数据（损坏时回退初始结构，不让启动挂掉）。"""
     meta_path = _get_palace_meta_path()
     if meta_path.exists():
-        with open(meta_path, encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            # 与全仓其它"读 JSON"路径一致：损坏不致命，但要留痕
+            import logging
+
+            logging.getLogger("pangu.store.migrations").warning(
+                f"palace_meta.json 读取失败（回退初始结构）: {e}"
+            )
     # 初始结构
     return {
         "name": "盘古记忆宫殿",

@@ -43,6 +43,23 @@ class DrawerStorage:
         """加载所有抽屉"""
         raise NotImplementedError
 
+    @staticmethod
+    def _created_ts(drawer) -> float:
+        """从 drawer.created_at（ISO 串）解析真实创建时间戳。
+
+        2026-09-20 修：此前 save()/save_incremental() 把 `created_timestamp` 一律写成
+        `time.time()` —— 每次全量重写都把所有记忆的"创建时间戳"刷成当下，
+        原始创建时间不可逆丢失（该列虽未回读，但 `get_last_modified`/面板按它取数，
+        且一旦将来回读就是错数据）。改为解析 created_at，解析失败才退回当前时间。
+        """
+        import datetime as _dt
+
+        raw = getattr(drawer, "created_at", "") or ""
+        try:
+            return _dt.datetime.fromisoformat(str(raw)).timestamp()
+        except (ValueError, TypeError):
+            return time.time()
+
     def save(self, drawers: list[Drawer]) -> None:
         """保存所有抽屉"""
         raise NotImplementedError
@@ -280,7 +297,7 @@ class SqliteDrawerStorage(DrawerStorage):
                                 drawer.created_at,
                                 json.dumps(drawer.metadata, ensure_ascii=False),
                                 current_time,  # updated_at
-                                current_time,  # created_timestamp
+                                self._created_ts(drawer),  # created_timestamp（真实创建时间）
                             )
                         )
 
@@ -334,8 +351,8 @@ class SqliteDrawerStorage(DrawerStorage):
                                     drawer.author,
                                     drawer.created_at,
                                     json.dumps(drawer.metadata, ensure_ascii=False),
-                                    current_time,
-                                    current_time,
+                                    current_time,  # updated_at
+                                    self._created_ts(drawer),  # created_timestamp（真实创建时间）
                                 )
                             )
 

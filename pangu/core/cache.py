@@ -63,8 +63,10 @@ class PersistentCache:
         self.max_disk_bytes = int(max_disk_mb * 1024 * 1024) if max_disk_mb > 0 else 0
         self.write_throttle = max(1, write_throttle)
 
-        # 写入节流计数器
+        # 写入节流计数器：记录窗口内**每个**命中的 key（此前只记总数，
+        # 导致只有触发节流的那一个 key 被 +1，其余命中被丢弃）。
         self._pending_writes = 0
+        self._pending_keys: list[str] = []
         self._lock = threading.RLock()
 
         # 线程级连接池：每个线程持有自己的连接，避免频繁创建/销毁
@@ -201,10 +203,13 @@ class PersistentCache:
 
         # 异步更新访问时间 + 命中数（不阻塞读）
         with self._lock:
-            self._pending_writes += 1
-            if self._pending_writes >= self.write_throttle:
-                self._pending_writes = 0
-                self._flush_access_update(key)
+            self._pending_keys.append(key)
+            if len(self._pending_keys) >= self.write_throttle:
+                pending, self._pending_keys = self._pending_keys, []
+            else:
+                pending = None
+        if pending:
+            self._flush_access_update(pending)
 
         # 构造返回对象
         request = json.loads(row[3])
@@ -227,15 +232,27 @@ class PersistentCache:
             hit_count=row[11] + 1,  # 本次即将 +1
         )
 
-    def _flush_access_update(self, key: str) -> None:
-        """异步刷新访问更新（节流后批量）"""
+    def _flush_access_update(self, keys: "list[str]") -> None:
+        """批量刷新访问更新（节流后一次性写回）。
+
+        2026-09-20 修：此前只对"触发节流的**那一个** key"加 1，然后重置全局计数 ——
+        该窗口内其它 N-1 次命中被永久丢弃，`hit_count` 系统性少记，
+        依赖它做排序/淘汰判断的逻辑（LRU、热点统计）随之失真。
+        现在把窗口内**所有**命中的 key 一起递增（按 key 聚合次数）。
+        """
+        if not keys:
+            return
         try:
+            from collections import Counter
+
+            counts = Counter(keys)
+            now = time.time()
             conn = self._get_conn()
-            conn.execute(
+            conn.executemany(
                 """UPDATE llm_cache
-                   SET last_accessed = ?, hit_count = hit_count + 1
+                   SET last_accessed = ?, hit_count = hit_count + ?
                    WHERE key = ?""",
-                (time.time(), key),
+                [(now, n, k) for k, n in counts.items()],
             )
         except Exception:
             pass
@@ -362,7 +379,7 @@ class PersistentCache:
                 "p95_ms": round(_percentile(put_lats, 95) * 1000, 3) if put_lats else 0,
                 "p99_ms": round(_percentile(put_lats, 99) * 1000, 3) if put_lats else 0,
             },
-            "pending_writes": self._pending_writes,
+            "pending_writes": len(self._pending_keys),
             "write_throttle": self.write_throttle,
         }
 

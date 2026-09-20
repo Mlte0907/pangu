@@ -17,6 +17,7 @@
 """
 
 import logging
+import threading
 import time
 from collections import OrderedDict
 
@@ -75,6 +76,10 @@ class EmbeddingCache:
         self._cache_file = cache_file
         self._fingerprint = fingerprint
         self._dirty = 0
+        # 并发保护：get/set/save 会被搜索线程与后台任务并发调用；无锁时
+        # save() 遍历 _cache 期间若发生 set/popitem，会抛
+        # "OrderedDict mutated during iteration"，而异常被上层吞掉 → 缓存写入丢失。
+        self._lock = threading.RLock()
         if cache_file is not None:
             self._load()
 
@@ -117,6 +122,17 @@ class EmbeddingCache:
         if not force and self._dirty < 100:
             return False
 
+        with self._lock:
+            return self._save_locked()
+
+    def _save_locked(self) -> bool:
+        """save() 的加锁实现体（调用方须持有 self._lock）。"""
+        import json
+        import os
+        import tempfile
+
+        if self._cache_file is None:
+            return False
         try:
             os.makedirs(os.path.dirname(self._cache_file), exist_ok=True)
             blob = {
@@ -145,35 +161,40 @@ class EmbeddingCache:
     # ── 读写 ────────────────────────────────────────────────
 
     def get(self, key: str) -> np.ndarray | None:
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            self._hits += 1
-            return self._cache[key]
-        self._misses += 1
-        return None
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                self._hits += 1
+                return self._cache[key]
+            self._misses += 1
+            return None
 
     def set(self, key: str, value: np.ndarray):
-        if key in self._cache:
-            self._cache.move_to_end(key)
-        else:
-            if len(self._cache) >= self.max_size:
-                self._cache.popitem(last=False)
-            self._dirty += 1
-        self._cache[key] = value
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            else:
+                if len(self._cache) >= self.max_size:
+                    self._cache.popitem(last=False)
+                self._dirty += 1
+            self._cache[key] = value
 
     def clear(self):
-        self._cache.clear()
-        self._hits = 0
-        self._misses = 0
-        self._dirty = 0
+        with self._lock:
+            self._cache.clear()
+            self._hits = 0
+            self._misses = 0
+            self._dirty = 0
 
     @property
     def hit_rate(self) -> float:
-        total = self._hits + self._misses
-        return self._hits / total if total > 0 else 0.0
+        with self._lock:
+            total = self._hits + self._misses
+            return self._hits / total if total > 0 else 0.0
 
     def __len__(self):
-        return len(self._cache)
+        with self._lock:
+            return len(self._cache)
 
 
 class VectorEmbedder:

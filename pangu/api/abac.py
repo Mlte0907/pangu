@@ -148,11 +148,39 @@ class Rule:
         if not self.condition:
             return True
         try:
-            # 安全评估：仅暴露 ctx 属性
             ns = {"ctx": ctx, "s": ctx.subject, "r": ctx.resource, "e": ctx.environment, "act": ctx.action}
-            return bool(eval(self.condition, {"__builtins__": {}}, ns))
+            return bool(_safe_eval_condition(self.condition, ns))
         except Exception:  # noqa: BLE001
             return False
+
+
+# ── 条件表达式安全求值（2026-09-20）────────────────────────────────
+# 此前用 `eval(cond, {"__builtins__": {}}, ns)`。`__builtins__={}` **不是**沙箱：
+# 走属性链即可逃逸，实测 `().__class__.__bases__[0].__subclasses__()` 求值为 True，
+# 进一步可拿到 `os` 模块并执行任意代码。ABAC 条件是安全控制的一部分，不应依赖
+# 这种伪沙箱。这里改为 AST 白名单求值：只允许比较/布尔/成员/字面量/属性访问/下标。
+_ALLOWED_NODES = (
+    "Expression", "BoolOp", "And", "Or", "UnaryOp", "Not", "USub",
+    "Compare", "Eq", "NotEq", "Lt", "LtE", "Gt", "GtE", "In", "NotIn", "Is", "IsNot",
+    "Name", "Load", "Attribute", "Constant", "List", "Tuple", "Set",
+    "Subscript", "Index",
+)
+
+
+def _safe_eval_condition(expr: str, namespaces: dict):
+    """用 AST 白名单求值条件表达式；非法节点/名字一律拒绝。"""
+    import ast
+
+    tree = ast.parse(expr, mode="eval")
+    for node in ast.walk(tree):
+        node_name = type(node).__name__
+        if node_name not in _ALLOWED_NODES:
+            raise ValueError(f"ABAC 条件含不允许的语法: {node_name}")
+        if node_name == "Name" and node.id not in namespaces:
+            raise ValueError(f"ABAC 条件引用了未授权的名字: {node.id}")
+        if node_name == "Attribute" and node.attr.startswith("__"):
+            raise ValueError("ABAC 条件不允许访问 dunder 属性")
+    return eval(compile(tree, "<abac-condition>", "eval"), {"__builtins__": {}}, namespaces)
 
 
 @dataclass

@@ -99,6 +99,7 @@ class FTS5SearchEngine:
         self._embedder = None
         self._fts_index: dict[str, set[str]] = {}  # token -> drawer_ids
         self._fts_content_map: dict[str, str] = {}  # drawer_id -> content
+        self._tokenizer: str = ""  # 构建索引时用的分词器（"jieba"/"regex"）
         self._indexed: bool = False
         # ⚠ B7-b：这里**必须**用 `None` 表示"尚未得知目标文档数"，不能用 0。
         # 此前初始值是 0，而磁盘索引 `doc_count` 也可能是 0，于是
@@ -122,6 +123,39 @@ class FTS5SearchEngine:
                 self._embedder = None
         return self._embedder
 
+        self._tokenizer = "jieba" if jieba else "regex"
+
+    def _tokenize(self, text: str) -> list[str]:
+        """统一的索引/查询分词器。
+
+        2026-09-20 修：此前索引走 `re.findall(r"[\\u4e00-\\u9fff]{1,}|[a-zA-Z]{2,}")`
+        （整段中文连成一个 token），查询走 `safe_query.split()`（按空白切）。
+        无空格的中文查询永远切不出与索引相等的 token ⇒ 中文召回直接失效，
+        且同一句话在不同进程里（有无 jieba）表现还不一样。
+        索引与查询必须走**同一个**函数，并用 `_tokenizer` 记录构建者，
+        避免"用 jieba 建的索引被 regex 查询"。
+        """
+        jieba = _get_jieba()
+        if jieba:
+            return [w.strip() for w in jieba.cut(text) if w.strip()]
+        return re.findall(r"[\u4e00-\u9fff]{1,}|[a-zA-Z]{2,}", text)
+
+    def _tokenize_for_query(self, text: str) -> list[str]:
+        """查询分词：与构建索引时的分词器保持一致。
+
+        若磁盘索引是用不同分词器构建的（`_tokenizer` 记录），宁可走子串兜底
+        （`_fallback_keyword_search`），也不要用错分词器产生"看似命中率正常、
+        实则全空"的结果。
+        """
+        current = "jieba" if _get_jieba() else "regex"
+        if self._tokenizer and current != self._tokenizer:
+            logger.warning(
+                f"FTS 分词器与索引构建者不一致（index={self._tokenizer}, query={current}），"
+                f"本次改走子串兜底"
+            )
+            return []
+        return self._tokenize(text)
+
     def build_index(self, drawers: list[Drawer]) -> int:
         """构建 FTS 内存索引（支持中文分词）+ 磁盘持久化"""
         # 如果索引已构建且文档数量相同，跳过重建
@@ -136,20 +170,15 @@ class FTS5SearchEngine:
         self._fts_content_map = {}
         self._indexed_count = len(drawers)
         jieba = _get_jieba()
+        self._tokenizer = "jieba" if jieba else "regex"
 
         for d in drawers:
             content_lower = d.content.lower()
             self._fts_content_map[d.id] = content_lower
 
-            tokens = set()
-            if jieba:
-                words = jieba.cut(content_lower)
-                for w in words:
-                    w = w.strip()
-                    if len(w) >= 1:
-                        tokens.add(w)
-            else:
-                tokens = set(re.findall(r"[\u4e00-\u9fff]{1,}|[a-zA-Z]{2,}", content_lower))
+            # 与查询共用同一个分词器（见 _tokenize）：此前索引/查询各用一套
+            # 正则，无空格中文查询永远切不出命中 token。
+            tokens = set(self._tokenize(content_lower))
 
             for tag in d.tags:
                 tokens.add(tag.lower())
@@ -290,12 +319,8 @@ class FTS5SearchEngine:
         """FTS 全文搜索，返回 {drawer_id: score}"""
         safe_query = _sanitize_fts_query(query).lower()
 
-        # 中文分词
-        jieba = _get_jieba()
-        if jieba:
-            keywords = [w.strip() for w in jieba.cut(safe_query) if w.strip()]
-        else:
-            keywords = safe_query.split()
+        # 中文分词：与构建索引共用同一函数（见 _tokenize / _tokenize_for_query）
+        keywords = self._tokenize_for_query(safe_query)
 
         if not keywords:
             return {}
