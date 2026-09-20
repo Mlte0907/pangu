@@ -21,7 +21,8 @@ logger = logging.getLogger("pangu.memory.ingestion")
 
 # Constants
 IMPORTANCE_SCALE = 5.0  # 盘古 importance 使用 0-5 范围
-SIMILARITY_THRESHOLD = 0.92  # 语义相似度阈值
+SIMILARITY_THRESHOLD = 0.92  # 语义相似度阈值（精确重复）
+SUPERSEDE_THRESHOLD = 0.65  # 替代阈值：同一主题但新内容更丰富时放行（旧的标记替代）
 BOOST_INCREMENT = 0.25  # 重复记忆重要性提升值
 MAX_IMPORTANCE = 5.0  # 最大重要性值
 CONFIDENCE_INCREMENT = 0.1  # 融合时置信度增量
@@ -146,7 +147,7 @@ def _dedup_and_fuse(
                 continue
             try:
                 score = _cosine_similarity(query_vec, stored_vec)
-                if score > SIMILARITY_THRESHOLD and score > best_score:
+                if score > SUPERSEDE_THRESHOLD and score > best_score:
                     best_score = score
                     best_drawer = d
             except Exception:
