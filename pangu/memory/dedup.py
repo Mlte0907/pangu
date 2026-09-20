@@ -261,6 +261,26 @@ class MemoryDeduplicator:
         # 合并重要性
         merged_importance = max(d.importance for d in group_drawers)
 
+        # 合并元数据（2026-09-20 修）：此前只 copy 了 8 个字段，metadata / author /
+        # emotional_weight / source 全部丢失 —— 合并后 tenant_id、visibility、
+        # admission、embedding 等关键属性被清空，等于把一条正常记忆降级成"裸记忆"
+        # （隔离轴与准入信息都没了）。
+        merged_metadata: dict = {}
+        for d in group_drawers:
+            for k, v in (d.metadata or {}).items():
+                if k not in merged_metadata:
+                    merged_metadata[k] = v
+
+        merged_author = next((d.author for d in group_drawers if d.author), primary.author)
+        merged_emotional = max((d.emotional_weight or 0.0) for d in group_drawers)
+        merged_source = next((d.source for d in group_drawers if d.source), primary.source)
+        merged_source_file = next(
+            (d.source_file for d in group_drawers if d.source_file), primary.source_file
+        )
+
+        # 只统计：确保 created_at 为空时不会 min() 空序列抛错（dedup.py 旧版即抛）
+        created_values = [d.created_at for d in group_drawers if d.created_at]
+
         return Drawer(
             id=primary.id,
             content=merged_content,
@@ -268,9 +288,13 @@ class MemoryDeduplicator:
             room=primary.room,
             hall=primary.hall,
             importance=merged_importance,
+            emotional_weight=merged_emotional,
+            source_file=merged_source_file,
+            source=merged_source,
             tags=all_tags,
-            source_file=primary.source_file,
-            created_at=min(d.created_at for d in group_drawers if d.created_at),
+            author=merged_author,
+            created_at=min(created_values) if created_values else primary.created_at,
+            metadata=merged_metadata,
         )
 
     def dedup_stats(self, groups: list[DuplicateGroup]) -> dict:

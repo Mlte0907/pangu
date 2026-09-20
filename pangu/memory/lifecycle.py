@@ -67,16 +67,24 @@ class LifecycleManager:
         return (now - self._last_consolidation) > interval
 
     def needs_index_rebuild(self, threshold: int = 10) -> bool:
-        """检查是否需要重建向量索引
+        """检查是否需要重建向量索引。
+
+        ⚠ 此前 `threshold` 参数被完全忽略、只按"距上次重建 > 1 小时"判断，
+        参数是死参（名为阈值却不生效）。现在：新增记忆数达到阈值即需重建，
+        否则退回时间兜底（默认 1 小时），两者取或。
 
         Args:
             threshold: 新增记忆数量阈值
         """
         now = time.time()
-        # 每小时最多重建一次，或新增超过阈值
-        if (now - self._last_index_rebuild) > 3600:
-            return True
-        return False
+        # 新增超过阈值
+        try:
+            if self._count_new_memories() >= threshold:
+                return True
+        except Exception as e:
+            logger.debug(f"needs_index_rebuild 计数失败，退回时间判断: {e}")
+        # 时间兜底：每小时最多重建一次
+        return (now - self._last_index_rebuild) > 3600
 
     def run_consolidation(self) -> dict:
         """执行记忆巩固。

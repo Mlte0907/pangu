@@ -153,8 +153,11 @@ async def handle_merge_duplicates(server, drawers, arguments):
     if merged:
         # 删除重复的
         server.memory.remove_drawers(group.duplicate_ids)
-        # 更新主记忆
-        server.memory.add_drawer(merged)
+        # 更新主记忆：必须用 update_drawer（按 id 替换）而不是 add_drawer。
+        # add_drawer 是**追加**语义，会再插入一条同 id 记录 —— 磁盘上出现重复 id，
+        # 而 _load_drawers 按 id 去重时保留先出现的旧条，导致合并结果从未被采用
+        # （2026-09-20 实测：merge 返回成功但内容没变）。
+        server.memory.update_drawer(merged)
         return json.dumps(
             {"status": "merged", "merged_id": merged.id, "removed": group.duplicate_ids}, ensure_ascii=False
         )

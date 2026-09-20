@@ -190,14 +190,26 @@ class AdaptiveForgetting:
         )
 
     def auto_forget(self, drawers: list, access_log: dict = None) -> dict:
-        """自动执行遗忘"""
+        """自动执行遗忘。
+
+        2026-09-20 修：此前 archive/forget 两个分支**只往自己内存里的归档表 append
+        一个摘要、把 id 记进计数**，既不从 drawers 移除、也不标记，于是返回
+        `archived=N, forgotten=N, tokens_freed=M` 而记忆全部仍可正常检索/召回。
+        对调用方（autonomous._task_forget → 周期末尾统一落盘 drawers）来说，
+        正确做法是**原地修改传入的 drawers 列表**：归档条目移出正常集合
+        （归档表已保留摘要），彻底遗忘条目同样移出。这样周期回写才会真正生效。
+
+        Returns:
+            统计字典（含被移出的 id 列表，便于审计/回滚）。
+        """
         report = self.evaluate_all(drawers, access_log)
 
         archived = []
         forgotten = []
+        decisions = {dec.memory_id: dec for dec in report.decisions}
 
-        for d in drawers:
-            decision = next((dec for dec in report.decisions if dec.memory_id == d.id), None)
+        for d in list(drawers):
+            decision = decisions.get(d.id)
             if not decision:
                 continue
 
@@ -205,7 +217,7 @@ class AdaptiveForgetting:
                 self._archive.append(
                     {
                         "id": d.id,
-                        "content": d.content[:200],
+                        "content": d.content,
                         "wing": d.wing,
                         "room": getattr(d, "room", "general"),
                         "importance": d.importance,
@@ -216,6 +228,11 @@ class AdaptiveForgetting:
 
             elif decision.action == "forget":
                 forgotten.append(d.id)
+
+        # 真正生效：把归档与遗忘的条目从活动集合中移出（do nothing 的老行为已修）
+        removed_ids = set(archived) | set(forgotten)
+        if removed_ids:
+            drawers[:] = [d for d in drawers if d.id not in removed_ids]
 
         self._forgetting_history.append(
             {
@@ -235,6 +252,7 @@ class AdaptiveForgetting:
             "compressed": report.compress_count,
             "forgotten": len(forgotten),
             "tokens_freed": report.estimated_tokens_freed,
+            "removed_ids": {"archived": archived, "forgotten": forgotten},
         }
 
     def archive_memory(self, drawer) -> dict:

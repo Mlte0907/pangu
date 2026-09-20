@@ -1,45 +1,23 @@
 """盘古 REST API 路由 — /api/v2/admin/keys（钥匙管理）
 
 红线：管理能力绝不暴露为 MCP 工具。
-鉴权：admin secret（~/.pangu/.admin_secret, 0600）+ X-Admin-Key header。
+鉴权：admin secret（`<base_dir>/.admin_secret`, 0600）+ X-Admin-Key header。
+路径与校验统一由 api/admin_auth.py 提供（跟随 base_dir，可用 PANGU_BASE_DIR 隔离）。
 房间钥匙无管理权限（双重隔离）。
 """
 
-import hashlib
 import logging
-import secrets
-from pathlib import Path
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+# admin secret 校验统一实现（路径跟随 base_dir，见 api/admin_auth.py）。
+# 此前这里是三份重复实现之一，且硬编码 ~/.pangu（不吃 PANGU_BASE_DIR）。
+from pangu.api.admin_auth import verify_admin as _verify_admin
+
 logger = logging.getLogger("pangu.api.routes_keys")
 
 router = APIRouter(tags=["admin-keys"])
-
-# admin secret 路径
-_ADMIN_SECRET_PATH = Path.home() / ".pangu" / ".admin_secret"
-
-
-def _ensure_admin_secret() -> str:
-    """确保 admin secret 存在（首次自动生成）"""
-    if _ADMIN_SECRET_PATH.exists():
-        return _ADMIN_SECRET_PATH.read_text().strip()
-    secret = secrets.token_urlsafe(32)
-    _ADMIN_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _ADMIN_SECRET_PATH.write_text(secret)
-    _ADMIN_SECRET_PATH.chmod(0o600)
-    logger.info(f"admin secret 已生成: {_ADMIN_SECRET_PATH}")
-    return secret
-
-
-def _verify_admin(request: Request) -> bool:
-    """验证 X-Admin-Key header（常量时间比较）"""
-    admin_key = request.headers.get("X-Admin-Key", "")
-    if not admin_key:
-        return False
-    secret = _ensure_admin_secret()
-    return secrets.compare_digest(admin_key, secret)
 
 
 class KeyCreateRequest(BaseModel):
@@ -263,3 +241,45 @@ async def list_public_memories(request: Request):
     # 按 graduated_at 降序
     public.sort(key=lambda x: x.get("graduated_at") or x.get("created_at") or "", reverse=True)
     return {"memories": public, "count": len(public)}
+
+
+@router.get("/admin/recent-memories")
+async def list_recent_memories(request: Request, limit: int = 20):
+    """最近入库（面板「最近入库」数据源）：全库最新记忆，不限毕业状态。
+
+    为什么需要（2026-09-20）：面板原先只显示公共区（已毕业）记忆，新写入的记忆
+    要等毕业才出现，用户看到的永远是旧数据。此端点按 created_at 降序返回全库最新。
+    """
+    if not _verify_admin(request):
+        return {"error": "需要 admin 凭据", "code": 401}
+
+    from pangu.core.config import PanguConfig
+    from pangu.memory.drawer_storage import JsonDrawerStorage
+    from pangu.memory.encryption import decrypt
+
+    cfg = PanguConfig.load().authoritative_memory_config()
+    drawers = JsonDrawerStorage(str(cfg.authoritative_drawers_path)).load()
+    drawers.sort(key=lambda d: str(getattr(d, "created_at", "") or ""), reverse=True)
+
+    items = []
+    for d in drawers[: max(1, min(limit, 100))]:
+        md = d.metadata if isinstance(d.metadata, dict) else {}
+        body = d.content or ""
+        if body.startswith("gAAAAA"):  # 历史密文兜底（迁移后正常为明文）
+            try:
+                body = decrypt(body)
+            except Exception:
+                pass
+        items.append(
+            {
+                "id": d.id,
+                "content": body,
+                "wing": d.wing,
+                "room": d.room,
+                "tags": d.tags or [],
+                "importance": getattr(d, "importance", None),
+                "created_at": d.created_at,
+                "admission": md.get("admission"),
+            }
+        )
+    return {"memories": items, "count": len(items)}

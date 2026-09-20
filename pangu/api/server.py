@@ -436,11 +436,73 @@ def create_app() -> FastAPI:
 
     app.add_middleware(_MetricsMiddleware)
 
+    # ── 错误码校正中间件（2026-09-20）────────────────────────────────
+    # 全仓大量路由用 `return {"error": ..., "code": 401}` / `ApiResponse.error(403, ...)`
+    # 表达失败，但 FastAPI 会把普通 dict 序列化成 **HTTP 200** —— 于是鉴权失败、
+    # 资源不存在在传输层都"成功"。前端（dsh `adminFetch`）只看 res.json() 不看
+    # status，错误被 `catch(_){}` 静默吞掉，表现为"点了没反应"。全局异常处理器
+    # 也管不到这些**正常返回**的错误体。
+    # 这里做一层收口：响应体是 {"code": <4xx/5xx>, ...} 形态且 HTTP 仍是 200 时，
+    # 把状态码校正为对应值（仅 4xx/5xx 语义的 code，其它业务码不动）。
+    _CODE_TO_HTTP = {401, 403, 404, 405, 409, 422, 429, 500, 502, 503}
+
+    class _ErrorStatusMiddleware:
+        """把 `{"code": 4xx/5xx}` 的错误响应体校正为真实 HTTP 状态码。"""
+
+        def __init__(self, app: ASGIApp):
+            self.app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            start_message: dict | None = None
+            body_chunks: list[bytes] = []
+
+            async def send_wrapper(message):
+                nonlocal start_message
+                if message["type"] == "http.response.start":
+                    start_message = message
+                    return  # 先缓存，等 body 攒齐再决定状态码
+                if message["type"] == "http.response.body":
+                    body_chunks.append(message.get("body", b""))
+                    if message.get("more_body"):
+                        return
+                    body = b"".join(body_chunks)
+                    new_status = None
+                    try:
+                        if start_message and start_message.get("status", 200) == 200 and body:
+                            import json as _json
+
+                            parsed = _json.loads(body.decode("utf-8", "ignore"))
+                            if isinstance(parsed, dict):
+                                code = parsed.get("code")
+                                if isinstance(code, int) and code in _CODE_TO_HTTP and code >= 400:
+                                    new_status = code
+                    except Exception:
+                        new_status = None
+                    if new_status is not None and start_message is not None:
+                        start_message = dict(start_message)
+                        start_message["status"] = new_status
+                    if start_message is not None:
+                        await send(start_message)
+                    await send({"type": "http.response.body", "body": body, "more_body": False})
+                    return
+                await send(message)
+
+            await self.app(scope, receive, send_wrapper)
+
+    app.add_middleware(_ErrorStatusMiddleware)
+
     # ── 双鉴权初始化（API Key + JWT） ──
     jwt_secret: str = config.jwt_secret
-    # 只有当用户显式配置（jwt_users 非空 或 jwt_default_password 非默认值）时才生成密钥
-    # 这样默认部署（不配 PANGU_API_KEY 也无 JWT 配置）下不强制鉴权，保持向后兼容
-    jwt_explicitly_enabled = bool(config.jwt_users) or config.jwt_default_password != "pangu-admin"
+    # JWT 只在**用户显式配置**时才启用：显式给了 jwt_users，或显式设了
+    # jwt_default_password。默认密码是空串（config.py:130），此前这里却拿
+    # `!= "pangu-admin"` 当"非默认"判据 —— 空串 != "pangu-admin" 恒为真，
+    # 于是全新部署也会自动生成 JWT 密钥，而 UserStore 又因密码为空不建 admin 用户，
+    # 结果是「鉴权开着但谁也登不进来」的 REST 锁死。判据必须与真实默认值一致。
+    jwt_explicitly_enabled = bool(config.jwt_users) or bool(config.jwt_default_password)
     if not jwt_secret and jwt_explicitly_enabled:
         try:
             jwt_secret = load_or_create_secret(config.jwt_secret_file)

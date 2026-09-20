@@ -134,11 +134,104 @@ const _rekeyResult = () => (_rekeyResult$v ??= z.object({
 let _publicMemories$v
 const _publicMemories = () => (_publicMemories$v ??= z.object({
   memories: z.array(z.object({
-    id: z.string(), content: z.string(), tags: z.array(z.string()),
-    source_room: z.string(), graduated_at: z.string().optional(),
-    created_at: z.string().optional(), chars: z.number(),
+    id: z.string(), content: z.string(),
+    // 历史脏数据：个别记录 tags 被写成逗号串（非数组）。codec 是"边界校验"，
+    // 不应因历史数据的类型漂移让整个列表空白 —— 统一归一化为数组。
+    tags: z.union([z.array(z.string()), z.string()]).nullish().transform((v) =>
+      Array.isArray(v) ? v : (typeof v === 'string' && v.trim() ? v.split(',').map(s => s.trim()).filter(Boolean) : [])),
+    source_room: z.string().optional(), graduated_at: z.string().nullish(),
+    created_at: z.string().optional(), chars: z.number().optional(),
+    summary: z.string().nullish(),
+    encrypted: z.boolean().nullish(),
+    wing: z.string().nullish(),
+    importance: z.number().nullish(),
+    admission: z.string().nullish(),
+  }).passthrough()).optional(),
+  count: z.number(),
+}))
+
+let _recentMemories$v
+const _recentMemories = () => (_recentMemories$v ??= z.object({
+  memories: z.array(z.object({
+    id: z.string(), content: z.string(), wing: z.string().optional(),
+    room: z.string().optional(), tags: z.array(z.string()).optional(),
+    importance: z.number().nullable().optional(), created_at: z.string().optional(),
+    admission: z.string().nullable().optional(),
   })).optional(),
   count: z.number(),
+}))
+
+// ── 平台管理相关类型 ──
+// 后端 list_tokens/get_pending 对未发生的时间字段返回 null 而非省略，
+// Zod 的 .optional() 不接受 null，strict 验证会整体失败，故统一用 .nullish()。
+let _platformList$v
+const _platformList = () => (_platformList$v ??= z.object({
+  platforms: z.array(z.object({
+    token_id: z.string(), platform: z.string(), platform_name: z.string(),
+    permissions: z.array(z.string()), status: z.string(),
+    created_at: z.string(), last_used_at: z.string().nullish(),
+    approved_at: z.string().nullish(), revoked_at: z.string().nullish(),
+    request_ip: z.string().nullish(),
+  })).optional(),
+  count: z.number(),
+}))
+
+let _pendingList$v
+const _pendingList = () => (_pendingList$v ??= z.object({
+  platforms: z.array(z.object({
+    token_id: z.string(), platform: z.string(), platform_name: z.string(),
+    permissions: z.array(z.string()), status: z.string(),
+    created_at: z.string(), request_ip: z.string().nullish(),
+    last_used_at: z.string().nullish(),
+    approved_at: z.string().nullish(),
+    revoked_at: z.string().nullish(),
+  })).optional(),
+  count: z.number(),
+}))
+
+let _approveResult$v
+const _approveResult = () => (_approveResult$v ??= z.object({
+  ok: z.boolean(), token_id: z.string(), status: z.string(),
+}))
+
+let _rejectResult$v
+const _rejectResult = () => (_rejectResult$v ??= z.object({
+  ok: z.boolean(), token_id: z.string(), status: z.string(),
+}))
+
+let _revokePlatformResult$v
+const _revokePlatformResult = () => (_revokePlatformResult$v ??= z.object({
+  ok: z.boolean(), token_id: z.string(), status: z.string(),
+}))
+
+// ── 知识库相关类型 ──
+let _knowledgeList$v
+const _knowledgeList = () => (_knowledgeList$v ??= z.object({
+  knowledge: z.array(z.object({
+    id: z.string(), title: z.string(), content: z.string(),
+    category: z.string(), tags: z.array(z.string()),
+    confidence: z.number(), created_at: z.string(),
+    updated_at: z.string(), usage_count: z.number(),
+    source_memories: z.array(z.any()).optional(),
+    related_knowledge: z.array(z.any()).optional(),
+  })).optional(),
+  count: z.number(),
+}))
+
+let _knowledgeEntry$v
+const _knowledgeEntry = () => (_knowledgeEntry$v ??= z.object({
+  id: z.string(), title: z.string(), content: z.string(),
+  category: z.string(), tags: z.array(z.string()),
+  confidence: z.number(), created_at: z.string(),
+  updated_at: z.string(), usage_count: z.number(),
+  source_memories: z.array(z.string()),
+  related_knowledge: z.array(z.string()),
+}))
+
+let _knowledgeStats$v
+const _knowledgeStats = () => (_knowledgeStats$v ??= z.object({
+  total: z.number(),
+  categories: z.record(z.number()),
 }))
 
 const TYPERT = {
@@ -257,6 +350,74 @@ const TYPERT = {
       invocation: { kind: 'direct' }, parameters: [],
       result: { mode: 'strict', typeSymbol: 'dsh-pangu#PublicMemories', create: _publicMemories },
     },
+    {
+      id: 'dsh-pangu#panguAdminKeys/listRecentMemories',
+      service: 'panguAdminKeys', namespace: 'panguAdminKeys', method: 'listRecentMemories',
+      invocation: { kind: 'direct' }, parameters: [],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#RecentMemories', create: _recentMemories },
+    },
+    // ── 平台管理调用 ──
+    {
+      id: 'dsh-pangu#panguPlatforms/listPlatforms',
+      service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'listPlatforms',
+      invocation: { kind: 'direct' }, parameters: [],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#PlatformList', create: _platformList },
+    },
+    {
+      id: 'dsh-pangu#panguPlatforms/listPending',
+      service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'listPending',
+      invocation: { kind: 'direct' }, parameters: [],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#PendingList', create: _pendingList },
+    },
+    {
+      id: 'dsh-pangu#panguPlatforms/approve',
+      service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'approve',
+      invocation: { kind: 'direct' },
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#ApproveArgs', create: _patchCodec } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#ApproveResult', create: _approveResult },
+    },
+    {
+      id: 'dsh-pangu#panguPlatforms/reject',
+      service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'reject',
+      invocation: { kind: 'direct' },
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RejectArgs', create: _patchCodec } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#RejectResult', create: _rejectResult },
+    },
+    {
+      id: 'dsh-pangu#panguPlatforms/revoke',
+      service: 'panguPlatforms', namespace: 'panguPlatforms', method: 'revoke',
+      invocation: { kind: 'direct' },
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#RevokePlatformArgs', create: _patchCodec } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#RevokePlatformResult', create: _revokePlatformResult },
+    },
+    // ── 知识库调用 ──
+    {
+      id: 'dsh-pangu#panguKnowledge/list',
+      service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'list',
+      invocation: { kind: 'direct' },
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeListArgs', create: _patchCodec } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeList', create: _knowledgeList },
+    },
+    {
+      id: 'dsh-pangu#panguKnowledge/search',
+      service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'search',
+      invocation: { kind: 'direct' },
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeSearchArgs', create: _patchCodec } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeList', create: _knowledgeList },
+    },
+    {
+      id: 'dsh-pangu#panguKnowledge/get',
+      service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'get',
+      invocation: { kind: 'direct' },
+      parameters: [{ name: 'args', wire: 'args', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeGetArgs', create: _patchCodec } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeEntry', create: _knowledgeEntry },
+    },
+    {
+      id: 'dsh-pangu#panguKnowledge/stats',
+      service: 'panguKnowledge', namespace: 'panguKnowledge', method: 'stats',
+      invocation: { kind: 'direct' }, parameters: [],
+      result: { mode: 'strict', typeSymbol: 'dsh-pangu#KnowledgeStats', create: _knowledgeStats },
+    },
   ],
   model: {
     services: [
@@ -298,6 +459,30 @@ const TYPERT = {
           { kind: 'method', name: 'listRooms', signature: 'listRooms(): RoomList', summary: '房间总览：按 tenant_id 聚合记忆条数、字符体积、钥匙数。' },
           { kind: 'method', name: 'rekeyRoom', signature: 'rekeyRoom(room): RekeyResult', summary: '重发钥匙：吊销旧钥+创建新钥。' },
           { kind: 'method', name: 'listPublicMemories', signature: 'listPublicMemories(): PublicMemories', summary: '公共区知识卡片：visibility=public 的记忆，只读。' },
+          { kind: 'method', name: 'listRecentMemories', signature: 'listRecentMemories(): RecentMemories', summary: '最近入库：全库最新记忆，不限毕业状态。' },
+        ],
+        types: [],
+      },
+      // ── 平台管理服务 ──
+      {
+        key: 'panguPlatforms', exportName: 'PanguPlatformsService', tags: [],
+        members: [
+          { kind: 'method', name: 'listPlatforms', signature: 'listPlatforms(): PlatformList', summary: '列出已接入平台。' },
+          { kind: 'method', name: 'listPending', signature: 'listPending(): PendingList', summary: '获取待审核平台列表。' },
+          { kind: 'method', name: 'approve', signature: 'approve(token_id): ApproveResult', summary: '审核通过平台接入。' },
+          { kind: 'method', name: 'reject', signature: 'reject(token_id): RejectResult', summary: '拒绝平台接入。' },
+          { kind: 'method', name: 'revoke', signature: 'revoke(token_id): RevokeResult', summary: '撤销平台接入。' },
+        ],
+        types: [],
+      },
+      // ── 知识库服务 ──
+      {
+        key: 'panguKnowledge', exportName: 'PanguKnowledgeService', tags: [],
+        members: [
+          { kind: 'method', name: 'list', signature: 'list(category): KnowledgeList', summary: '列出知识库条目。' },
+          { kind: 'method', name: 'search', signature: 'search(query): KnowledgeList', summary: '搜索知识库。' },
+          { kind: 'method', name: 'get', signature: 'get(id): KnowledgeEntry', summary: '获取知识条目详情。' },
+          { kind: 'method', name: 'stats', signature: 'stats(): KnowledgeStats', summary: '获取知识库统计。' },
         ],
         types: [],
       },

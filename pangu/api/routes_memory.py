@@ -661,15 +661,28 @@ async def get_context(
         return ApiResponse.error(500, str(e))
 
 
+def _authoritative_drawers() -> list["Drawer"]:
+    """读取权威存储的 drawers 列表。
+
+    2026-09-20 修：`/memories/decay`、`/memories/purge`、`/memories/export` 此前调用
+    `recall()` 而**不传 drawers** —— 而 `retrieval.recall()` 的契约是
+    「drawers 为 None 直接 return []」（见 retrieval.py:266）。于是三个端点恒返回
+    空结果（decayed=0 / purged=0 / items=[]），是**静默空转**而非真实功能。
+    这里统一从权威路径读全量，并显式传入。
+    """
+    cfg = _authoritative_cfg()
+    raw = PanguConfig.load_drawers_nonempty(cfg.authoritative_drawers_path)
+    return [Drawer.from_dict(d) for d in raw]
+
+
 @router.post("/memories/decay")
 async def trigger_decay():
     """触发记忆衰减"""
     try:
         from pangu.memory.decay import decay_batch
 
-        all_drawers = recall()
-        if all_drawers:
-            drawers = [Drawer.from_dict(d) for d in all_drawers]
+        drawers = _authoritative_drawers()
+        if drawers:
             result = decay_batch(drawers)
             return ApiResponse.ok(result)
         return ApiResponse.ok({"decayed": 0, "message": "no memories to decay"})
@@ -681,9 +694,8 @@ async def trigger_decay():
 async def purge_low_memories(threshold: float = Query(default=0.15, ge=0.0, le=1.0)):
     """清除低于阈值的记忆"""
     try:
-        all_drawers = recall()
-        if all_drawers:
-            drawers = [Drawer.from_dict(d) for d in all_drawers]
+        drawers = _authoritative_drawers()
+        if drawers:
             result = purge_below_floor(drawers, threshold)
             return ApiResponse.ok(result)
         return ApiResponse.ok({"purged": 0})
@@ -698,12 +710,14 @@ async def export_memories(
 ):
     """导出记忆数据"""
     try:
-        results = recall(wing=wing)
+        drawers = _authoritative_drawers()
+        if wing:
+            drawers = [d for d in drawers if d.wing == wing]
         return ApiResponse.ok(
             {
                 "format": format,
-                "items": results,
-                "total": len(results) if results else 0,
+                "items": [d.to_dict() for d in drawers],
+                "total": len(drawers),
                 "exported_at": datetime.now().isoformat(),
             }
         )

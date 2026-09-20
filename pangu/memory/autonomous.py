@@ -99,6 +99,26 @@ SCHEDULE_RULES = {
     "kg_enrichment": {
         "interval_hours": 6,
     },
+    # 夜间巩固（2026-09-20 接线）：巩固的完整实现此前只有 mcp_server 一个宿主，
+    # API 服务没有等价循环 —— MCP 客户端全部下线后巩固随之停摆（面板停在"1 天前"）。
+    # 挂进引擎统一调度；任务内部自查 03:00–05:00 窗口与到期，与 mcp 循环语义一致。
+    # 注意：此任务**不走** _should_run 的 24h 门（否则在窗口外被标记 done 后，
+    # 下一次尝试已是 24h 后，会永远错过窗口），注册处为无条件执行 + 任务内自检。
+    "consolidation": {
+        "interval_hours": 24,
+    },
+    # 准入复检（2026-09-20 接线）：毕业门只在记忆写入时判一次，之后哪怕被成功召回
+    # 也没人重新过门，pending_review 只增不减（实测积压 76 条）。定期重跑
+    # _admission_gate，来源/反馈信号齐了的记忆自动毕业。
+    "readmission": {
+        "interval_hours": 6,
+    },
+    # 知识结晶（2026-09-20 接线）：记忆→知识的蒸馏此前只有 MCP 工具/CLI 入口，
+    # 服务内从未自动运行（实测 180 条记忆仅 9 条手动建的知识）。定期把「已验证」
+    # 的记忆（毕业 / 有正向召回反馈 / 高重要度）按主题聚合成知识条目。
+    "crystallize": {
+        "interval_hours": 12,
+    },
 }
 
 
@@ -218,19 +238,59 @@ class AutonomousMemoryEngine:
     # ── 各子任务 ──
 
     def _task_fusion(self, drawers: list[Drawer]) -> TaskResult:
-        """自动融合：同主题>=3条时融合"""
+        """自动融合：同主题 >=3 条时融合成知识条目。
+
+        2026-09-20 修两处：
+        1. 调用签名错误：`engine.fuse_topic(topic, group, drawers)` 把第三个位置参数
+           当成了 `min_similarity`（float），实际传入一个 list，比较时抛 TypeError
+           并被 fuse_topic 内部的 except 吞掉 —— 相似度融合通道等于从未生效。
+        2. 结果无处可去：`fused` 只自增计数，融合出的知识从未落盘（进程退出即丢）。
+           现在写入 KnowledgeEngine（与知识结晶同一存储），并带上来源记忆，便于前端
+           「知识」标签页展示与去重（source_memories 已覆盖则跳过）。
+        """
         start = time.time()
         try:
             from .fusion import FusionEngine
 
             engine = FusionEngine(self.config)
             topic_groups = engine._group_by_keywords(drawers)
+
+            covered: set[str] = set()
+            try:
+                from .knowledge import get_knowledge_engine
+
+                knowledge_engine = get_knowledge_engine()
+                for entry in knowledge_engine.list_knowledge():
+                    covered.update(entry.source_memories or [])
+            except Exception as e:
+                logger.debug(f"融合：读取已知知识失败（按无覆盖处理）: {e}")
+                knowledge_engine = None
+
             fused = 0
             for topic, group in topic_groups.items():
-                if len(group) >= 3:
-                    result = engine.fuse_topic(topic, group, drawers)
-                    if result:
-                        fused += 1
+                if len(group) < 3:
+                    continue
+                result = engine.fuse_topic(topic, group)  # 只传 topic + group，用默认阈值
+                if not result:
+                    continue
+                ids = set(result.source_memories or [])
+                if not ids or ids <= covered:
+                    continue  # 这组记忆已被某条知识覆盖，避免重复结晶
+                if knowledge_engine is None:
+                    fused += 1  # 无知识库可用时至少如实计数
+                    continue
+                knowledge_engine.create_knowledge(
+                    title=f"【{topic}】{len(group)} 条记忆的融合",
+                    content=result.summary,
+                    category="insight",
+                    source_memories=sorted(ids),
+                    tags=[topic],
+                    confidence=result.confidence,
+                    metadata={"generated_by": "fusion", "at": result.created_at},
+                )
+                covered.update(ids)
+                fused += 1
+
             return TaskResult(
                 name="fusion",
                 status="success",
@@ -360,6 +420,307 @@ class AutonomousMemoryEngine:
             )
         except Exception as e:
             return TaskResult(name="kg_enrichment", status="failed", details={"error": str(e)})
+
+    def _task_consolidation(self, drawers: list[Drawer]) -> TaskResult:
+        """夜间巩固：03:00–05:00 窗口内且到期时执行 LifecycleManager.run_consolidation。
+
+        为什么在引擎里做（2026-09-20）：巩固此前只有 mcp_server 一个宿主，API 服务
+        没有等价循环，MCP 客户端下线后巩固随之停摆。挂进引擎由统一调度驱动；
+        窗口外/未到期返回 skipped，不产生副作用。
+
+        注意：run_consolidation 会自己读写权威存储，结束后必须从磁盘**重载** drawers
+        （原地替换列表内容），否则本周期末尾的 _save_drawers 会用旧的内存副本
+        把巩固结果覆盖回去。
+        """
+        from datetime import datetime
+
+        start = time.time()
+        hour = datetime.now().hour
+        if not (3 <= hour < 5):
+            return TaskResult(
+                name="consolidation", status="skipped", duration_ms=(time.time() - start) * 1000,
+                details={"reason": f"outside 03:00-05:00 window (hour={hour})"},
+            )
+        try:
+            from .lifecycle import LifecycleManager
+
+            mgr = LifecycleManager(self.config)
+            if not mgr.needs_consolidation():
+                return TaskResult(
+                    name="consolidation", status="skipped", duration_ms=(time.time() - start) * 1000,
+                    details={"reason": "not due"},
+                )
+            result = mgr.run_consolidation()
+            drawers[:] = self._load_drawers()  # 重载，防本周期末尾回写旧副本
+            return TaskResult(
+                name="consolidation", status="success", duration_ms=(time.time() - start) * 1000,
+                details={"result": result},
+            )
+        except Exception as e:
+            return TaskResult(name="consolidation", status="failed", details={"error": str(e)})
+
+    def _task_readmission(self, drawers: list[Drawer]) -> TaskResult:
+        """准入复检：对 pending_review 的记忆重跑四问准入门，信号齐了自动毕业。
+
+        毕业（admission=graduated + visibility=public）要求「有来源指针 + 有正向反馈」，
+        而门此前只在写入时判一次 —— 之后哪怕被反复成功召回也无人重判，pending 只增
+        不减。此任务定期把积压的 pending 记忆重新过门（复用 ingestion._admission_gate
+        单点判定），有信号毕业、没信号保持 pending 等使用信号。
+        """
+        start = time.time()
+        try:
+            from .ingestion import _admission_gate
+
+            rechecked = graduated = 0
+            for d in drawers:
+                md = d.metadata if isinstance(d.metadata, dict) else {}
+                if md.get("admission") != "pending_review":
+                    continue
+                rechecked += 1
+                _admission_gate(d, None, getattr(d, "id", ""))
+                if isinstance(d.metadata, dict) and d.metadata.get("admission") == "graduated":
+                    graduated += 1
+            return TaskResult(
+                name="readmission", status="success", duration_ms=(time.time() - start) * 1000,
+                details={"rechecked": rechecked, "graduated": graduated},
+            )
+        except Exception as e:
+            return TaskResult(name="readmission", status="failed", details={"error": str(e)})
+
+    def _task_crystallize(self, drawers: list[Drawer]) -> TaskResult:
+        """知识结晶（LLM 精炼版，2026-09-20）：把「已验证」的记忆聚合成知识库条目。
+
+        执行条件：04:00–06:00 低繁忙窗口内、距上次 ≥20h（窗口/到期自检，与
+        consolidation 同理不走 _should_run，否则会永远错过窗口）。
+
+        模型策略：执行时动态 GET /models 发现列表（平台列表会更新，不写死），
+        按家族偏好序排序（deepseek 优先、minicpm 兜底），排除 mineru（文档解析
+        模型）；单模型失败（繁忙/超时/输出不可解析）自动降下一个；全部 LLM
+        不可用时回退规则式提取，结晶永远有产出。
+
+        护栏：提示词限定「只综合给定记忆，不得补充」；分类受限于 4 枚举（LLM
+        越枚举时改用规则分类）；tags 直接继承来源记忆；条目 metadata 记录生成
+        模型与时间。知识写走 KnowledgeEngine 自己的存储，不经过 _save_drawers。
+        """
+        from datetime import datetime
+
+        start = time.time()
+        hour = datetime.now().hour
+        last = float((self._state.get("last_run") or {}).get("crystallize") or 0)
+        if not (4 <= hour < 6) or (time.time() - last) < 20 * 3600:
+            return TaskResult(
+                name="crystallize", status="skipped", duration_ms=(time.time() - start) * 1000,
+                details={"reason": f"outside 04:00-06:00 window or not due (hour={hour})"},
+            )
+        try:
+            return self._crystallize_impl(drawers, start)
+        except Exception as e:
+            return TaskResult(name="crystallize", status="failed", details={"error": str(e)})
+
+    def _crystallize_impl(self, drawers: list[Drawer], start: float) -> TaskResult:
+        from datetime import datetime
+
+        from .knowledge import get_knowledge_engine
+
+        engine = get_knowledge_engine()
+        existing = engine.list_knowledge()
+        covered: set[str] = set()
+        for e in existing:
+            covered.update(e.source_memories or [])
+
+        pool = []
+        for d in drawers:
+            md = d.metadata if isinstance(d.metadata, dict) else {}
+            if (md.get("admission") == "graduated"
+                    or md.get("last_feedback") in ("recall_success", "verified")
+                    or (d.importance or 0) >= 1.5):
+                pool.append(d)
+        if len(pool) < 2:
+            return TaskResult(
+                name="crystallize", status="skipped", duration_ms=(time.time() - start) * 1000,
+                details={"reason": f"verified pool too small ({len(pool)})"},
+            )
+
+        tag_groups: dict[str, list] = {}
+        for d in pool:
+            for tag in (d.tags or [])[:5]:
+                tag_groups.setdefault(tag, []).append(d)
+
+        def _rule_category(blob: str) -> str:
+            if any(k in blob for k in ("修复", "排查", "问题", "bug", "失败", "错误")):
+                return "solution"
+            if any(k in blob for k in ("教训", "踩坑", "坑", "警告", "注意")):
+                return "insight"
+            if any(k in blob for k in ("指南", "教程", "用法", "接入", "配置")):
+                return "guide"
+            # 2026-09-20：不再硬塞 best_practice —— 关键词不匹配时归「其他」
+            return "other"
+
+        # LLM 端点与动态模型发现（列表随平台更新；不可用 → 规则式兜底）
+        llm = self._llm_endpoint()
+        models = self._llm_discover_models(*llm) if llm else []
+        system_prompt = (
+            "你是盘古记忆系统的知识结晶引擎。只允许综合给定的记忆内容，"
+            "不得补充外部信息或推测。输出 JSON："
+            '{"title": "简洁标题", "content": "250字内的综合知识", '
+            '"category": "best_practice|solution|guide|insight 四选一，'
+            '内容不属于任何一类时选 other"}'
+        )
+
+        created = []
+        model_used_count: dict[str, int] = {}
+        used_ids: set[str] = set()
+        for tag, group in sorted(tag_groups.items(), key=lambda x: -len(x[1])):
+            if len(created) >= 10:
+                break
+            group = [d for d in group if d.id not in used_ids]
+            if len(group) < 2:
+                continue
+            ids = {d.id for d in group}
+            if ids <= covered:
+                continue
+            texts = []
+            for d in group[:3]:
+                first = str(d.content or "").strip().split("\n")[0][:60]
+                if first:
+                    texts.append(first)
+            if len(texts) < 2:
+                continue
+
+            # ── LLM 精炼：按偏好序尝试，单模型失败自动降级 ──
+            title = content = None
+            category = None
+            model_used = None
+            mem_text = "\n\n".join(
+                f"- [{d.wing}] {str(d.content or '')[:200]}" for d in group[:8]
+            )
+            for model in models:
+                try:
+                    raw = self._llm_chat(llm[0], llm[1], model, system_prompt,
+                                         f"把以下 {min(len(group), 8)} 条记忆结晶为一条可复用知识：\n\n{mem_text}")
+                    obj = self._extract_json(raw)
+                    if not obj or not str(obj.get("title", "")).strip() or not str(obj.get("content", "")).strip():
+                        continue
+                    title = str(obj["title"]).strip()[:80]
+                    content = str(obj["content"]).strip()[:600]
+                    category = str(obj.get("category", "")).strip().lower()
+                    model_used = model
+                    break
+                except Exception:
+                    continue  # 繁忙/超时/输出不可解析 → 降下一个模型
+
+            if not title:
+                # 规则式兜底（LLM 全败或未配置）
+                title = f"【{tag}】{len(group)} 条经验的结晶"
+                content = "；".join(texts)
+            if category not in self._LLM_CATEGORIES:
+                category = _rule_category(" ".join(texts) + " " + tag)
+
+            entry = engine.create_knowledge(
+                title=title,
+                content=content,
+                category=category,
+                source_memories=sorted(ids),
+                tags=sorted({tag, *[t for d in group[:3] for t in (d.tags or []) if t != tag]})[:5],
+                confidence=min(0.95, 0.5 + len(group) * 0.08),
+                metadata={"model": model_used or "rule-based", "generated_at": datetime.now().isoformat()},
+            )
+            used_ids.update(ids)
+            model_used_count[entry.metadata.get("model", "?")] = model_used_count.get(entry.metadata.get("model", "?"), 0) + 1
+            created.append(entry.id)
+
+        return TaskResult(
+            name="crystallize", status="success", duration_ms=(time.time() - start) * 1000,
+            details={"pool": len(pool), "created": len(created),
+                     "models_available": len(models), "by_model": model_used_count, "ids": created},
+        )
+
+    # ── LLM 知识结晶辅助（2026-09-20）──
+    # 家族偏好序：deepseek 质量优先，minicpm 作最稳兜底；mineru 是文档解析模型排除。
+    # 未识别的家族不盲用 —— 平台列表新增模型时在此加一行家族名即可。
+    _LLM_PREFERENCE = ("deepseek", "minicpm")
+    _LLM_EXCLUDE = ("mineru",)
+    # 4 个预设类 + other 兜底（2026-09-20：内容不属于任何预设类时归「其他」，不硬塞）
+    _LLM_CATEGORIES = ("best_practice", "solution", "guide", "insight", "other")
+    _LLM_TIMEOUT = 60  # 单次调用超时（秒）
+
+    def _llm_endpoint(self):
+        """读 LLM 端点配置（base_url + key）。未配置返回 None。"""
+        try:
+            cfg = PanguConfig.load()
+            base = str(cfg.llm_base_url or "").rstrip("/")
+            if not base:
+                return None
+            key = str(getattr(cfg, "llm_api_key", "") or "")
+            if not key:
+                from pathlib import Path as _Path
+
+                kf = _Path(str(cfg.llm_api_key_file or ""))
+                if kf.exists():
+                    key = kf.read_text().strip()
+            return (base, key) if key else None
+        except Exception:
+            return None
+
+    def _llm_discover_models(self, base: str, key: str) -> list[str]:
+        """动态发现可用对话模型（GET /models，列表随平台更新，不写死）。
+
+        排序：按 _LLM_PREFERENCE 家族序（同家族保持平台返回顺序，新版本在前）；
+        排除 _LLM_EXCLUDE；未识别家族不盲用。
+        """
+        import urllib.request
+
+        req = urllib.request.Request(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+        items = data.get("data") or data.get("models") or []
+        names = [m.get("id") if isinstance(m, dict) else str(m) for m in items]
+        names = [n for n in names if n]
+
+        ranked: list[str] = []
+        for family in self._LLM_PREFERENCE:
+            for n in names:
+                low = n.lower()
+                if family in low and not any(x in low for x in self._LLM_EXCLUDE) and n not in ranked:
+                    ranked.append(n)
+        return ranked
+
+    def _llm_chat(self, base: str, key: str, model: str, system: str, user: str) -> str:
+        """单次对话补全（同步，调度线程内直跑）。失败抛异常由调用方降级。"""
+        import urllib.request
+
+        body = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": 800,
+            "temperature": 0.3,
+        }).encode()
+        req = urllib.request.Request(
+            f"{base}/chat/completions", data=body,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=self._LLM_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode())
+        return str((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "")
+
+    @staticmethod
+    def _extract_json(content: str) -> dict | None:
+        """从 LLM 输出提取 JSON（剥 <think> 思考泄漏与代码围栏；失败返回 None）。"""
+        import re as _re
+
+        text = _re.sub(r"<think>.*?</think>", "", content, flags=_re.S)
+        text = _re.sub(r"```(?:json)?", "", text)
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            obj = json.loads(text[start:end + 1])
+            return obj if isinstance(obj, dict) else None
+        except Exception:
+            return None
 
     def _task_vector_rebuild(self, drawers: list[Drawer]) -> TaskResult:
         """重建向量索引"""
@@ -622,6 +983,20 @@ class AutonomousMemoryEngine:
         # KG 实体抽取（2026-09-19 接线：此前挂在从未被调用的 LifecycleManager 钩子上）
         if force or self._should_run("kg_enrichment"):
             tasks.append(("kg_enrichment", self._task_kg_enrichment, True))
+
+        # 夜间巩固（2026-09-20 接线）：每轮无条件尝试，窗口/到期由任务内部自查。
+        # 不能走 _should_run 的 24h 门 —— 否则在窗口外被标记 done 后，下次尝试
+        # 已是 24h 后，会永远错过 03:00–05:00 窗口。
+        tasks.append(("consolidation", self._task_consolidation, False))
+
+        # 准入复检（2026-09-20 接线）：pending_review 积压定期重过四问门
+        if force or self._should_run("readmission"):
+            tasks.append(("readmission", self._task_readmission, False))
+
+        # 知识结晶（2026-09-20 升级 LLM 精炼）：每轮无条件尝试，窗口（04:00–06:00）
+        # 与 20h 到期由任务内部自检 —— 不走 _should_run，否则在窗口外被标记 done
+        # 后会永远错过窗口（同 consolidation 的教训）
+        tasks.append(("crystallize", self._task_crystallize, False))
 
         trigger = f"new={new_count},old={old_count},force={force}"
         success = 0

@@ -4,6 +4,8 @@
 不包含 Agent 执行功能（问答、对话、任务执行等）。
 上层 Agent 框架应通过 MCP 接口调用记忆检索结果后自行实现推理。"""
 
+import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -473,6 +475,66 @@ def create_app(config: PanguConfig = None) -> FastAPI:
     async def set_identity(text: str = Form(...)):
         memory.l0.set_identity(text)
         return {"status": "identity set"}
+
+    # ── 配置 API ──
+    @app.get("/api/config")
+    async def get_config():
+        """获取当前配置（排除敏感字段）"""
+        config_dict = config.model_dump(exclude={"jwt_secret", "jwt_secret_file", "llm_api_key", "llm_api_key_file"})
+        return {"config": config_dict}
+
+    @app.post("/api/config")
+    async def update_config(data: dict):
+        """更新配置（落盘 + 就地刷新运行中的 config 对象）。
+
+        ⚠ 此前用 `global config; config = PanguConfig.load()`：`global` 改的是
+        **模块全局**，而本闭包内的 `config` 是 create_app 的局部变量 —— 两者不是
+        同一个名字，重新赋值对闭包无效（连模块全局其实也不存在该名字，因为
+        create_app 的参数遮蔽了它）。结果是"保存成功"但运行中的配置毫无变化。
+        修法：就地更新现有 config 对象的字段，闭包与其它持有者都看得见。
+        """
+        from ..core.config import PanguConfig
+
+        # 更新配置文件
+        config_path = Path(os.path.expanduser("~/.pangu/config.json"))
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 读取现有配置
+        existing = {}
+        if config_path.exists():
+            with open(config_path) as f:
+                existing = json.load(f)
+
+        _secret_keys = {"jwt_secret", "jwt_secret_file", "llm_api_key", "llm_api_key_file"}
+        for key, value in data.items():
+            if key not in _secret_keys:
+                existing[key] = value
+
+        # 保存
+        with open(config_path, "w") as f:
+            json.dump(existing, f, indent=2, ensure_ascii=False)
+
+        # 就地刷新运行中的 config（不要 global 重绑定，那对闭包无效）
+        fresh = PanguConfig.load()
+        applied = []
+        for field_name in data:
+            if field_name in _secret_keys:
+                continue
+            if hasattr(config, field_name):
+                try:
+                    setattr(config, field_name, getattr(fresh, field_name))
+                    applied.append(field_name)
+                except Exception:
+                    pass
+
+        # 如果修改了 whisper 设置，通知 audio_engine 重新加载
+        if "whisper_enabled" in data or "whisper_model" in data:
+            from ..memory.audio_engine import get_audio_engine
+
+            audio_engine = get_audio_engine()
+            audio_engine.reload_config()
+
+        return {"status": "ok", "message": "配置已更新", "applied": applied}
 
     @app.on_event("shutdown")
     async def shutdown():

@@ -66,6 +66,14 @@ class NeuralMemory:
     last_access: float = field(default_factory=time.time)
     access_count: int = 0
     created_at: float = field(default_factory=time.time)
+    # 衰减计时基准（与 created_at 解耦）：
+    #   `created_at` 是**真实创建时间**，用于审计/展示，巩固时不改动；
+    #   `decay_basis_at` 是**上一次巩固/刷新衰减的时刻**，衰减曲线从它起算。
+    # 背景：曾用「巩固时重置 created_at」避免刚巩固就被遗忘，但那会永久抹掉
+    # 真实创建时间；而若完全不重置，巩固完的记忆带着几天前的 created_at，
+    # 下一次 `apply_decay()` 立即跌破阈值被遗忘（实测 sleep() 后
+    # activate_spreading 返回空）。拆成两个字段即可两者兼得。
+    decay_basis_at: float = field(default_factory=time.time)
     source_drawer_id: str = ""  # 关联的 Drawer ID
     related_ids: list[str] = field(default_factory=list)  # 语义关联的记忆 ID
     tags: list[str] = field(default_factory=list)
@@ -111,7 +119,7 @@ class PersonalizedDecay:
         if current_time is None:
             current_time = time.time()
 
-        elapsed_hours = (current_time - memory.created_at) / 3600.0
+        elapsed_hours = (current_time - getattr(memory, "decay_basis_at", memory.created_at)) / 3600.0
         if elapsed_hours <= 0:
             return 1.0
 
@@ -197,6 +205,9 @@ class Hippocampus:
             source_drawer_id=drawer.id,
             tags=list(drawer.tags),
             created_at=created_ts,
+            # 编码时两者一致：刚进入网络，衰减从真实创建时间起算。
+            # 之后只有**巩固**会推进 decay_basis_at（见 SleepConsolidation）。
+            decay_basis_at=created_ts,
         )
 
         # 容量检查：超出时触发竞争抑制
@@ -474,18 +485,20 @@ class Neocortex:
         forgotten = []
         current_time = time.time()
 
-        for memory in list(self._memories.values()):
-            retention = self.decay.retention(memory, current_time)
-            memory.strength = retention
+        for memory in list(self._memories.keys()):
+            mem = self._memories.get(memory)
+            if mem is None:
+                continue
+            retention = self.decay.retention(mem, current_time)
+            mem.strength = retention
 
             if retention < self.config.min_importance_threshold:
-                memory.state = MemoryState.FORGOTTEN
-                forgotten.append(memory)
-                del self._memories[memory.id]
-                self._association_graph.pop(memory.id, None)
-                # 清理指向该记忆的关联
-                for node in self._association_graph.values():
-                    node.pop(memory.id, None)
+                mem.state = MemoryState.FORGOTTEN
+                forgotten.append(mem)
+                self._association_graph.pop(mem.id, None)
+                for node in list(self._association_graph.values()):
+                    node.pop(mem.id, None)
+                del self._memories[mem.id]
 
         return forgotten
 
@@ -594,11 +607,15 @@ class SleepConsolidation:
             candidates = [m for m in candidates if m.id not in suppressed]
             stats["forgotten"] += len(suppressed)
 
-        # 5. 转移至新皮层（重置时间戳，避免立即衰减）
+        # 5. 转移至新皮层（刷新**衰减基准**，不重置真实创建时间）
+        #    此前是 `mem.created_at = time.time()`：会永久抹掉真实创建时间；
+        #    而完全不刷新又会让刚巩固的记忆带着几天前的 created_at，下一次
+        #    apply_decay() 立即把 state=CONSOLIDATED 的记忆判为遗忘
+        #    （实测 sleep() 后 activate_spreading 恒返回空）。
         for mem in candidates:
             mem.consolidation_count += 1
             mem.state = MemoryState.CONSOLIDATED
-            mem.created_at = time.time()  # 巩固时重置为当前时间
+            mem.decay_basis_at = time.time()
             self.neocortex.store(mem)
 
         stats["consolidated"] = len(candidates)

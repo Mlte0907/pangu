@@ -68,10 +68,15 @@ def decay_batch(
             purge_candidates += 1
 
         if abs(new_score - d.metadata.get("decay_score", 1.0)) > 0.001:
+            # ⚠ 必须先取旧值再写：此前先写 `decay_score = new_score`，随后
+            # `if new_score > d.metadata.get("decay_score", 1.0)` 变成"新值 > 自身"
+            # 恒为 False，strengthened 永远是 0、所有变化都算 decayed（实测
+            # monkeypatch 让 new=0.9 > old=0.5 仍得到 strengthened=0）。
+            old_score = d.metadata.get("decay_score", 1.0)
             if not dry_run:
                 d.metadata["decay_score"] = new_score
                 d.metadata["decay_updated_at"] = now.isoformat()
-            if new_score > d.metadata.get("decay_score", 1.0):
+            if new_score > old_score:
                 strengthened += 1
             else:
                 decayed += 1
