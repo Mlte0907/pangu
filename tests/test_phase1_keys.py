@@ -128,6 +128,9 @@ def test_inject_identity_invalid_key(monkeypatch):
 
     class _Cfg:
         mcp_require_auth = False
+        # _inject_identity 自「pgk_* api_key 优先校验」起会读 _cfg.api_key，
+        # 假配置类缺该属性会 AttributeError 而不是走到断言（2026-09-21 修）。
+        api_key = ""
 
     monkeypatch.setattr(PanguConfig, "load", classmethod(lambda cls, *a, **k: _Cfg()))
     msg = {}

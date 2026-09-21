@@ -518,6 +518,30 @@ class TestStatsEndpointParity:
         from pangu.api.routes_memory import router
 
         app = FastAPI()
+
+        # 注入与真实 AuthMiddleware 等价的「已认证」身份。
+        #
+        # 为什么必须：cf131d7 起 `/memories/search` 与 `/memories/list` 对**匿名**
+        # 请求返回 401（安全加固 —— 公网暴露时匿名租户恰好等于数据租户，等于
+        # 全库免密可读）。而这里的 FastAPI 只挂了 router、没有 AuthMiddleware，
+        # 于是 `get_principal()` 永远拿到 anonymous → 响应体变成
+        # `{"code":401,"data":null}`，测试里 `body.get("data", body)` 取到 None
+        # 后在 None 上继续 .get() 直接炸掉（2026-09-21 修）。
+        #
+        # 这两个用例考的是「路由读的是权威 v2 库」，不是鉴权，所以给个身份即可。
+        class _FakeAuthMiddleware:
+            def __init__(self, app):
+                self.app = app
+
+            async def __call__(self, scope, receive, send):
+                if scope["type"] == "http":
+                    scope.setdefault("state", {})["auth"] = {
+                        "user_id": "test-client",
+                        "method": "platform_token",
+                    }
+                await self.app(scope, receive, send)
+
+        app.add_middleware(_FakeAuthMiddleware)
         # 前缀必须与 pangu/api/server.py 的挂载方式一致
         # （`app.include_router(mem_router, prefix="/api/v2")`），
         # 否则测试打的是 404，会把"路由不存在"误判成"读不到数据"。
@@ -575,7 +599,7 @@ class TestStatsEndpointParity:
         assert health_count > 0
 
     def test_search_route_reads_authoritative_store(self, clean_home):
-        """`GET /memories/search`（无鉴权、匿名可打）必须能搜到 v2 内容。"""
+        """`GET /memories/search`（需凭据，cf131d7 起匿名 401）必须能搜到 v2 内容。"""
         cfg = PanguConfig.load()
         _write_drawers(cfg.legacy_drawers_path(), 0)
         _write_drawers(cfg.authoritative_drawers_path, 3)

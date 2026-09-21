@@ -53,8 +53,11 @@ def test_readme_no_outdated_version():
     """README.md 不应包含比当前版本更旧的版本号（作为标题/徽章）。"""
     version = _get_version_from_init()
     readme = _read_file("README.md")
-    # 找出所有版本号（vX.Y.Z 格式）
-    found_versions = set(re.findall(r"v?(\d+\.\d+\.\d+)", readme))
+    # 找出所有版本号（vX.Y.Z 格式）。
+    # 负向环视用于排除 IP 之类的"四点串"：`--host 0.0.0.0` 里的 `0.0.0`
+    # 会被裸正则当成版本号 v0.0.0，进而把含 ** 的说明行误判成"过期版本标题"
+    # （README 加了 --host 0.0.0.0 示例后该断言即误报，2026-09-21 修）。
+    found_versions = set(re.findall(r"(?<![\d.])v?(\d+\.\d+\.\d+)(?![\d.])", readme))
     for v in found_versions:
         # 允许引用历史版本（如 "v0.1.0 起..."），但不允许作为主版本号
         # 检查是否在标题行（# 或 ** 包裹）
@@ -137,6 +140,11 @@ def test_doc_tool_names_exist():
                 continue
             # 跳过目录/文件名
             if re.match(r"pangu_(copy|data|db|dir|home|log|path|tmp|venv|work|backend|server)", tool):
+                continue
+            # 跳过配置键：`pangu_base_url` 是插件写入 config.json 的**地址键**，
+            # 不是 MCP 工具。文档把它作为配置项写进代码块/表格时会被误判为工具
+            # （2026-09-21：交接文档里的配置示例触发了这个误报）。
+            if tool == "pangu_base_url":
                 continue
             # 跳过拼写错误（pangu_pangu_xxx 等）
             if "pangu_pangu" in tool:
