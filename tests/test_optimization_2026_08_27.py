@@ -805,7 +805,6 @@ class TestMultimodalSwitch:
     def test_audio_transcription_is_wired(self, tmp_path, monkeypatch):
         """音频必须真的调用 whisper 转写 —— 此前只写元数据，内容从未进记忆。"""
         import pangu.memory.audio_engine as audio_engine
-
         from pangu.memory.multimodal_pipeline import MultimodalPipeline
 
         class _FakeEngine:
@@ -824,7 +823,6 @@ class TestMultimodalSwitch:
     def test_audio_unavailable_reason_is_surfaced(self, tmp_path, monkeypatch):
         """whisper 未开启/未安装时不静默：原因进 transcription_error，正文保持干净。"""
         import pangu.memory.audio_engine as audio_engine
-
         from pangu.memory.multimodal_pipeline import MultimodalPipeline
 
         class _FakeEngine:
