@@ -78,4 +78,7 @@ benchmarks/
 
 # mkdocs 构建产物
 site/
+
+# 内部交接文档（含部署拓扑 / 主机 IP / 密钥文件位置，不入公开仓库）
 HANDOFF-MCP-SECURITY-FIX.md
+docs/HANDOFF-ONECMD-DEPLOY.md
