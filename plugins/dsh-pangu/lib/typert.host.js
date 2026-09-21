@@ -161,11 +161,26 @@ const _recentMemories = () => (_recentMemories$v ??= z.object({
   count: z.number(),
 }))
 
+/**
+ * 放行「错误信封」。
+ *
+ * index.js 的 adminFetch 在「未配置管理密钥」/服务端报错时返回
+ * `{ok:false, error}`（不是抛异常）。而下面这些管理结果是 strict 校验：
+ * 若把 count / token_id / status 设成必填，该信封会在网关就被整体拒掉 ——
+ * 前端只收到一条 zod 报错，index.js 里的友好提示传不到界面，
+ * 表现为「平台区静默空白，用户看不出要填管理密钥」（2026-09-21 修）。
+ */
+const withErrorEnvelope = (shape) => ({
+  ok: z.boolean().optional(),
+  error: z.string().optional(),
+  ...shape,
+})
+
 // ── 平台管理相关类型 ──
 // 后端 list_tokens/get_pending 对未发生的时间字段返回 null 而非省略，
 // Zod 的 .optional() 不接受 null，strict 验证会整体失败，故统一用 .nullish()。
 let _platformList$v
-const _platformList = () => (_platformList$v ??= z.object({
+const _platformList = () => (_platformList$v ??= z.object(withErrorEnvelope({
   platforms: z.array(z.object({
     token_id: z.string(), platform: z.string(), platform_name: z.string(),
     permissions: z.array(z.string()), status: z.string(),
@@ -173,11 +188,11 @@ const _platformList = () => (_platformList$v ??= z.object({
     approved_at: z.string().nullish(), revoked_at: z.string().nullish(),
     request_ip: z.string().nullish(),
   })).optional(),
-  count: z.number(),
-}))
+  count: z.number().optional(),
+})))
 
 let _pendingList$v
-const _pendingList = () => (_pendingList$v ??= z.object({
+const _pendingList = () => (_pendingList$v ??= z.object(withErrorEnvelope({
   platforms: z.array(z.object({
     token_id: z.string(), platform: z.string(), platform_name: z.string(),
     permissions: z.array(z.string()), status: z.string(),
@@ -186,23 +201,23 @@ const _pendingList = () => (_pendingList$v ??= z.object({
     approved_at: z.string().nullish(),
     revoked_at: z.string().nullish(),
   })).optional(),
-  count: z.number(),
-}))
+  count: z.number().optional(),
+})))
 
 let _approveResult$v
-const _approveResult = () => (_approveResult$v ??= z.object({
-  ok: z.boolean(), token_id: z.string(), status: z.string(),
-}))
+const _approveResult = () => (_approveResult$v ??= z.object(withErrorEnvelope({
+  token_id: z.string().optional(), status: z.string().optional(),
+})))
 
 let _rejectResult$v
-const _rejectResult = () => (_rejectResult$v ??= z.object({
-  ok: z.boolean(), token_id: z.string(), status: z.string(),
-}))
+const _rejectResult = () => (_rejectResult$v ??= z.object(withErrorEnvelope({
+  token_id: z.string().optional(), status: z.string().optional(),
+})))
 
 let _revokePlatformResult$v
-const _revokePlatformResult = () => (_revokePlatformResult$v ??= z.object({
-  ok: z.boolean(), token_id: z.string(), status: z.string(),
-}))
+const _revokePlatformResult = () => (_revokePlatformResult$v ??= z.object(withErrorEnvelope({
+  token_id: z.string().optional(), status: z.string().optional(),
+})))
 
 // ── 知识库相关类型 ──
 let _knowledgeList$v

@@ -1315,6 +1315,7 @@ window.__ModuleLoader__.load({
       const [pending, setPending] = React.useState([])
       const [snapshots, setSnapshots] = React.useState([])
       const [loading, setLoading] = React.useState(true)
+      const [adminErr, setAdminErr] = React.useState('')
       const [activeSection, setActiveSection] = React.useState(initialSection || 'health') // health | platforms | snapshots
 
       // 当 initialSection 变化时更新
@@ -1335,7 +1336,14 @@ window.__ModuleLoader__.load({
           if (pl.status === 'fulfilled' && pl.value) setPlatforms(pl.value.platforms || [])
           if (pend.status === 'fulfilled' && pend.value) setPending(pend.value.platforms || [])
           if (sn.status === 'fulfilled' && sn.value) setSnapshots(sn.value?.snapshots || [])
-        } catch (_) {}
+          // 管理类接口（平台/钥匙）走 X-Admin-Key：未配置或填错「管理密钥」时
+          // 它们会整体失败。此前失败被 allSettled 静默吞掉，界面只是"空"，
+          // 用户完全看不出要填管理密钥（2026-09-21 修）。
+          const failed = [pl, pend].find((r) => r.status === 'rejected')
+          setAdminErr(failed ? String(failed.reason?.message || failed.reason || '管理接口调用失败') : '')
+        } catch (e) {
+          setAdminErr(String(e?.message || e || '管理接口调用失败'))
+        }
         setLoading(false)
       }, [])
       React.useEffect(() => { load() }, [])
@@ -1380,6 +1388,14 @@ window.__ModuleLoader__.load({
           sectionBtn('health', 'pulse', '体检'),
           sectionBtn('platforms', 'box', '平台 (' + (platforms.length + pending.length) + ')'),
           sectionBtn('snapshots', 'clock', '快照'),
+        ),
+
+        // 管理接口不可用时的显式提示（否则平台/钥匙区只会是一片空白）
+        adminErr && h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, border: `1px solid ${css.warn}`, borderRadius: 8, padding: '9px 12px', marginBottom: 12, background: withAlpha(css.warn, '0d') } },
+          h(Icon, { name: 'alert', size: 13, color: css.warn, style: { marginTop: 2 } }),
+          h('div', { style: { flex: 1, minWidth: 0, fontSize: 11.5, color: css.t2, lineHeight: 1.6 } },
+            '管理接口不可用：', adminErr),
+          h('button', { onClick: load, style: { flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 11, cursor: 'pointer' } }, '重试'),
         ),
 
         // ── 健康检查 ──

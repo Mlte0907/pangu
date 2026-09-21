@@ -749,7 +749,15 @@ async function apply(ctx) {
   }
   async function adminFetch(url, options = {}) {
     const secret = await readAdminSecret()
-    if (!secret) return { ok: false, error: '未配置管理凭据（请先在 CLI 执行 pangu keys create）' }
+    if (!secret) {
+      return {
+        ok: false,
+        error:
+          '未配置管理密钥：请在 DSH 设置 →「盘古记忆系统」→「管理密钥」填入'
+          + '安装时命令行打印的那串（安装横幅的「DSH 填写卡」里有；'
+          + '本地部署即 ~/.pangu/.admin_secret 的内容）。',
+      }
+    }
     const res = await fetch(url, {
       ...options,
       headers: { 'X-Admin-Key': secret, 'content-type': 'application/json', ...(options.headers || {}) },
