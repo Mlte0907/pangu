@@ -151,13 +151,31 @@ chk('含 provider / model', patchA?.llm_provider === 'deepseek' && patchA?.llm_m
 
 console.log()
 console.log('═══ 场景 B：填入新 Key ═══')
-const pw = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')
+// 注意：不能取「第一个 password 输入框」—— 设置页在 LLM 区之前还有
+// 「盘古凭据」「管理密钥」两个密码框，取第一个会命中它们（2026-09-21 修）。
+// 以 Base URL 输入框为锚点，取它之后的第一个密码框，才是 LLM API Key。
+const allInputs = [...container.querySelectorAll('input')]
+const baseIdx = allInputs.findIndex((i) => i.value.startsWith('https://api.deepseek.com'))
+const pw = allInputs.slice(baseIdx + 1).find((i) => i.getAttribute('type') === 'password')
 await act(async () => { setVal(pw, 'sk-brand-new-key-abcdef') })
 await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
 await click(saveBtn())
 const patchB = lastPatch()
 console.log('  提交的 patch:', JSON.stringify(patchB))
 chk('填入新 Key 后 patch 含 llm_api_key', patchB?.llm_api_key === 'sk-brand-new-key-abcdef')
+
+console.log()
+console.log('═══ 场景 C：只填「盘古凭据」，不碰其它字段 ═══')
+// 回归（2026-09-21）：dirty 此前不统计密码框，只填凭据/管理密钥时保存按钮恒灰，
+// 等于「填了也存不下去」。这里断言：填了凭据 → 按钮可点 → patch 写出 api_key。
+const credInput = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')
+await act(async () => { setVal(credInput, 'pgk-LOCAL-ONLY') })
+await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
+chk('填了凭据后保存按钮可点', !saveBtn()?.disabled)
+await click(saveBtn())
+const patchC = lastPatch()
+console.log('  提交的 patch:', JSON.stringify(patchC))
+chk('patch 含 api_key（写入插件凭据）', patchC?.api_key === 'pgk-LOCAL-ONLY')
 
 console.log()
 console.log(fail === 0 ? '★ 保存语义全部正确' : `✗ ${fail} 项失败`)

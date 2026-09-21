@@ -1683,6 +1683,7 @@ window.__ModuleLoader__.load({
             ce: cfg.consolidation_enabled !== false,
             ci: Number(cfg.consolidation_interval_hours) || 24,
             pb: cfg.pangu_base_url || '',
+            pk: '',
             ad: '',
             provider: cfg.llm_provider || 'openai',
             model: cfg.llm_model || '',
@@ -1707,9 +1708,16 @@ window.__ModuleLoader__.load({
       const dirty = config && draft && (
         draft.ce !== (config.consolidation_enabled !== false) ||
         draft.ci !== (Number(config.consolidation_interval_hours) || 24) ||
+        draft.pb !== (config.pangu_base_url || '') ||
         draft.provider !== (config.llm_provider || 'openai') ||
         draft.model !== (config.llm_model || '') ||
         draft.baseUrl !== (config.llm_base_url || '') ||
+        draft.whisperEnabled !== (config.whisper_enabled !== false) ||
+        draft.whisperModel !== (config.whisper_model || 'base') ||
+        // 密码类输入框不回填原值，非空即视为「有改动」——否则只填凭据/管理密钥时
+        // 保存按钮一直是灰的，等于存不下去（2026-09-21 修）。
+        draft.pk !== '' ||
+        draft.ad !== '' ||
         keyDirty
       )
 
@@ -1727,6 +1735,7 @@ window.__ModuleLoader__.load({
             whisper_model: draft.whisperModel,
           }
           if (keyDirty && draft.apiKey) patch.llm_api_key = draft.apiKey
+          if (draft.pk) patch.api_key = draft.pk
           if (draft.ad) patch.admin_secret = draft.ad
           const value = unwrap(await callRemote('panguConfig', 'save', patch))
           if (!value?.ok) throw new Error(value?.error || '写入失败')
@@ -1816,10 +1825,23 @@ window.__ModuleLoader__.load({
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
               '保存即对插件的 REST/WS 生效；DSH 的 MCP 客户端共用此地址，重启 DSH 后重新挂载。仅允许 http/https，留空回退默认本地。'),
           ),
+          h('div', { key: 's0-cred', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
+              h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '盘古凭据'),
+              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '必须填写，不填写无法连接记忆服务'),
+            ),
+            h('input', {
+              className: 'pangu-input', type: 'password', value: draft.pk, placeholder: config?.api_key_set ? '已配置，留空保持不变' : '粘贴安装时打印的盘古凭据',
+              onChange: (e) => setDraft((prev) => ({ ...prev, pk: e.target.value })),
+              style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
+            }),
+            h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
+              '盘古服务端签发的凭据，即上面「盘古服务地址」对应那台机器安装时打印的 API Key。明文不回显，留空保持原值。'),
+          ),
           h('div', { key: 's0-admin', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
               h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '管理密钥'),
-              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '云端部署时必填 · 本地部署留空自动读本机文件'),
+              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '必须填写，不填写无法连接管理功能'),
             ),
             h('input', {
               className: 'pangu-input', type: 'password', value: draft.ad, placeholder: config?.admin_secret_set ? '已配置，留空保持不变' : '粘贴安装时打印的管理密钥',
@@ -1827,7 +1849,7 @@ window.__ModuleLoader__.load({
               style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
             }),
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
-              '安装盘古时命令行会打印此密钥（只显示一次）。本地部署留空，自动读本机 ~/.pangu/.admin_secret。'),
+              '安装盘古时命令行会打印此密钥（只显示一次）。不填写则管理功能不可用。'),
           ),
           h('div', { key: 's1-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '14px 0 7px', borderBottom: `1px solid ${css.borderSoft}`, marginTop: 12 } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '01'),

@@ -314,16 +314,10 @@ async function apply(ctx) {
     if (evState.ws) return
     let token = ''
     try {
+      // 与 MCP headers / fetchJson 同源：只认设置页填写的 config.json.api_key。
+      // 为空则不带 token 握手，服务端会拒绝 —— 这是预期行为，提示用户去设置页
+      // 填「盘古凭据」即可（不再隐式回落 ~/.pangu/.mcp_key，避免地址/凭据错配）。
       token = (await readConfig()).api_key || ''
-      if (!token) {
-        // 回退：与 MCP headers 同源 —— ~/.pangu/.mcp_key（0600，盘古钥匙 pgk_*）。
-        // 不这样做的后果（2026-09-18 实测）：插件配置里的 api_key 为空 → /ws 握手被
-        // 1008 拒绝 → 收不到 memory_recall 事件 → 7 日脉搏的召回序列永远是空的。
-        // /ws 的鉴权本就接受 pgk_ 钥匙（见 pangu/api/server.py 的 websocket_endpoint）。
-        token = require('fs')
-          .readFileSync(require('path').join(require('os').homedir(), '.pangu', '.mcp_key'), 'utf8')
-          .trim()
-      }
     } catch (_) {}
     const url = `${PANGU_BASE.replace('http', 'ws')}/ws` + (token ? `?token=${encodeURIComponent(token)}` : '')
     try {
@@ -611,6 +605,7 @@ async function apply(ctx) {
           if (secret) config.llm_api_key = secret
         } catch (_) { /* 文件不存在 = 未配置 */ }
       }
+      // admin_secret 必须手动填写，不自动读取文件
       const live = await effectiveConfig()
       if (live) {
         for (const key of READONLY_FALLBACK_KEYS) {
@@ -653,7 +648,15 @@ async function apply(ctx) {
       if (res.ok) {
         if (clean.pangu_base_url !== undefined) PANGU_BASE = resolvePanguBase()
         const serverPatch = { ...clean }
+        // 以下三类是「插件本地设置」，不推给盘古服务：
+        //  · pangu_base_url —— 插件的目标地址，服务端根本没有这个键；
+        //  · api_key / admin_secret —— 服务端 handle_config_set 把二者列为受保护
+        //    字段并直接拒绝（"该配置项受保护，禁止远程修改"）。推过去必然让设置页
+        //    弹出一句假的"服务端热加载失败"，看起来像保存没生效。
+        //    它们的用途只是「插件 → 服务端」的认证，留在 config.json 即可。
         delete serverPatch.pangu_base_url
+        delete serverPatch.api_key
+        delete serverPatch.admin_secret
         // saveConfig 直接改 ~/.pangu/config.json，但**运行中的服务不会自动感知**；
         // 必须经 pangu_config_set 让服务端重读并失效旧组件缓存。
         res.reload = await pushToServer(serverPatch)
@@ -738,14 +741,11 @@ async function apply(ctx) {
   ctx.provide('panguConfig', bindRemote(configService, 'panguConfig'))
 
   // ── 阶段 5：Admin Key Service（钥匙/房间管理）──
-  // admin secret 优先从设置页读（config.json），空则回退读本机文件
+  // admin secret 必须从设置页手动填写，不自动回退读本地文件
   const ADMIN_SECRET_PATH = path.join(os.homedir(), '.pangu', '.admin_secret')
   async function readAdminSecret() {
-    // 1. 优先从设置页配置读（云端部署时用）
     const cfg = await readConfig()
-    if (cfg.admin_secret) return cfg.admin_secret
-    // 2. 回退读本机文件（本地部署时用）
-    try { return (await fsp.readFile(ADMIN_SECRET_PATH, 'utf8')).trim() } catch (_) { return '' }
+    return cfg.admin_secret || ''
   }
   async function adminFetch(url, options = {}) {
     const secret = await readAdminSecret()

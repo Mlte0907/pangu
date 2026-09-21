@@ -3,7 +3,7 @@
 # ==========================================
 # 解决两个坑：
 #   1. 插件的 node_modules 被 .gitignore 忽略，克隆后不存在；而
-#      lib/typert.host.mjs 会被宿主 typert-loader 自动 import，
+#      lib/typert.host.js 会被宿主 typert-loader 自动 import，
 #      缺少 zod 会导致 DSH 启动失败（ERR_MODULE_NOT_FOUND: zod）。
 #   2. 仅装依赖还不够，必须让插件进入 profile 的 dependencies 与
 #      dsh.profile.bundles，宿主才会加载它。
@@ -55,9 +55,9 @@ echo "    ✓ zod 可解析"
 
 # 验证 typert 清单可加载（宿主启动时会自动 import 它）
 if ! ( cd "$PLUGIN_DIR" && node --input-type=module \
-        -e "import('./lib/typert.host.mjs').then(()=>process.exit(0)).catch(()=>process.exit(1))" \
+        -e "import('./lib/typert.host.js').then(()=>process.exit(0)).catch(()=>process.exit(1))" \
         2>/dev/null ); then
-  echo "错误: lib/typert.host.mjs 无法加载，DSH 启动会失败" >&2
+  echo "错误: lib/typert.host.js 无法加载，DSH 启动会失败" >&2
   exit 1
 fi
 echo "    ✓ typert 清单可加载"

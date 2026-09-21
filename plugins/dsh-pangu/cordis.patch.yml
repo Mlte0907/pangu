@@ -12,11 +12,12 @@
         url: !!js (function(){ try { const c = JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.pangu','config.json'),'utf8')); return String(c.pangu_base_url || 'http://127.0.0.1:19529').replace(/\/+$/, '') + '/mcp' } catch(e) { return 'http://127.0.0.1:19529/mcp' } })()
         toolCallTimeoutMs: 60000
         # ── MCP 认证凭据 ──────────────────────────────────────────
-        # X-API-Key 从 ~/.pangu/.mcp_key (0600) 读取（!!js IIFE 在 Loader 挂载时求值）。
-        # 优先级链：~/.pangu/.mcp_key 文件 > PANGU_API_KEY 环境变量 > 空串
-        # 不依赖 /etc/dsh-harness.env（不需要 sudo 写系统文件）
+        # X-API-Key 与上面的 url 共用**同一个来源**：~/.pangu/config.json 的 api_key，
+        # 即插件设置页「盘古凭据」字段（!!js IIFE 在 Loader 挂载时求值）。
+        # 不再回落 ~/.pangu/.mcp_key / PANGU_API_KEY —— 否则会出现"设置页填的是本地、
+        # 实际却拿云端令牌去连"的错配（表现为每个请求 401）。
         headers:
-          X-API-Key: !!js (function(){ try { return require('fs').readFileSync(require('path').join(require('os').homedir(),'.pangu','.mcp_key'),'utf8').trim() } catch(e) { return process.env.PANGU_API_KEY || '' } })()
+          X-API-Key: !!js (function(){ try { const c = JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.pangu','config.json'),'utf8')); return String(c.api_key || '').trim() } catch(e) { return '' } })()
         # ── 关于工具白名单 ──────────────────────────────────────────
         # 早期版本此处配置了 `tools.allow` 白名单（11 个工具）。
         # 但 `@deepseek-ai/dsh-mcp-client` 的 Config schema 并不包含

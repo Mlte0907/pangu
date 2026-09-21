@@ -6,32 +6,26 @@ const os = require('os')
 const path = require('path')
 
 const CONFIG_PATH = path.join(os.homedir(), '.pangu', 'config.json')
-// MCP 身份凭据（KeyManager 的 pgk_* 钥匙）不落 config.json —— 那是 0644 且会被
-// 设置页整份取走（redactConfig 只对 SECRET_KEYS 脱敏）。凭据只放 0600 独立文件，
-// 与 .llm_api_key 同一套约定。
-const MCP_KEY_FILE = path.join(os.homedir(), '.pangu', '.mcp_key')
 
 /**
- * 解析 MCP 身份凭据（同步版，供 fetchJson 这类没有 await 的调用点复用）。
+ * 解析盘古身份凭据（同步版，供 fetchJson 这类没有 await 的调用点复用）。
  *
- * 优先级与 LLM Key 的既有约定一致：
- *   PANGU_API_KEY 环境变量 > config.json 的 api_key > ~/.pangu/.mcp_key(0600)
+ * 唯一来源：config.json 的 api_key —— 即插件设置页「盘古凭据」字段。
+ *
+ * 明确**不做**环境变量 / `~/.pangu/.mcp_key` 文件回落（2026-09-21）：
+ * 插件视作客户端，设置页填什么就用什么。隐式回落会让"设置页显示指向 A、
+ * 实际却用了 B 的凭据"这类问题无从解释（曾表现为地址已改本地、凭据仍是
+ * 云端 pgp_ 令牌 → 每个请求 401）。
  *
  * @param {object} [parsedRaw] 已解析的 config.json，避免重复读盘
  * @returns {string} 凭据原文，未配置时为空串
- */
+*/
 function readStoredApiKey(parsedRaw) {
-  const envKey = typeof process.env.PANGU_API_KEY === 'string' ? process.env.PANGU_API_KEY.trim() : ''
-  if (envKey) return envKey
   try {
     const raw = parsedRaw ?? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
-    if (typeof raw?.api_key === 'string' && raw.api_key) return raw.api_key
-  } catch (_) { /* config.json 缺失或损坏 → 继续回落 */ }
-  try {
-    return fs.readFileSync(MCP_KEY_FILE, 'utf8').trim()
-  } catch (_) {
-    return ''
-  }
+    if (typeof raw?.api_key === 'string') return raw.api_key.trim()
+  } catch (_) { /* config.json 缺失或损坏 = 未配置 */ }
+  return ''
 }
 
 const DEFAULTS = {
@@ -91,9 +85,9 @@ async function loadInjectionConfig(logger) {
     raw = {}
   }
   const result = validate(raw, logger)
-  // 三级回落：环境变量 > config.json 的 api_key > 0600 凭据文件
+  // 唯一来源：config.json 的 api_key（设置页填写的盘古凭据）
   result.apiKey = readStoredApiKey(raw)
   return result
 }
 
-module.exports = { loadInjectionConfig, readStoredApiKey, validateInjectionConfig: validate, DEFAULTS, CONFIG_PATH, MCP_KEY_FILE }
+module.exports = { loadInjectionConfig, readStoredApiKey, validateInjectionConfig: validate, DEFAULTS, CONFIG_PATH }

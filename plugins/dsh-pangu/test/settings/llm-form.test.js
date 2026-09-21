@@ -126,6 +126,19 @@ const FAKE_CFG = {
   palace_path: '/home/xiaoxin/.pangu/palace',
 }
 
+/**
+ * 定位「LLM API Key」密码框。
+ *
+ * 不能取第一个 password 输入框 —— 设置页在 LLM 区之前还有「盘古凭据」
+ * 「管理密钥」两个密码框，取第一个会命中它们（2026-09-21 修）。
+ * 这里以 Base URL 输入框为锚点，取它之后的第一个密码框。
+ */
+function llmKeyInput(container) {
+  const inputs = [...container.querySelectorAll('input')]
+  const baseIdx = inputs.findIndex((i) => i.value.startsWith('https://api.deepseek.com'))
+  return inputs.slice(baseIdx + 1).find((i) => i.getAttribute('type') === 'password')
+}
+
 async function render(env) {
   const { win, React, act, reactDomClient, exportsObj, ctx, captured } = env
   await exportsObj.apply(ctx)
@@ -162,9 +175,11 @@ test('LLM 表单四个字段与两个按钮都渲染', { skip }, async () => {
 test('提供商选项齐全且与 llm.py 的 PROVIDER_URLS 对齐', { skip }, async () => {
   const env = mountSettings(FAKE_CFG)
   const { container } = await render(env)
-  const options = [...container.querySelectorAll('option')].map((o) => o.textContent.trim())
+  // 提供商已从 <select> 改为卡片式（ProvCard）渲染，这里断言标签出现在页面文本中
+  // （原断言查找 <option>，UI 改版后永远为空 —— 2026-09-21 修）。
+  const text = container.textContent
   for (const label of ['OpenAI', 'DeepSeek', '智谱 GLM', '通义千问', 'OpenRouter', 'Ollama (本地)']) {
-    assert.ok(options.includes(label), `缺少提供商选项: ${label}`)
+    assert.ok(text.includes(label), `缺少提供商选项: ${label}`)
   }
 })
 
@@ -173,7 +188,7 @@ test('API Key 框 value 恒为空，明文绝不下发到前端', { skip }, asyn
   const env = mountSettings({ ...FAKE_CFG, llm_api_key: 'sk-leaked-plaintext-key' })
   const { container } = await render(env)
 
-  const pw = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')
+  const pw = llmKeyInput(container)
   assert.equal(pw.value, '', 'Key 输入框 value 不为空，存在回显明文的风险')
   assert.ok(!container.textContent.includes('sk-leaked-plaintext-key'), '页面文本中出现了明文 Key')
 })
@@ -227,7 +242,7 @@ test('填入新 Key 时保存的 patch 含 llm_api_key', { skip }, async () => {
     setter.call(el, v)
     el.dispatchEvent(new env.win.Event('input', { bubbles: true }))
   }
-  const pw = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')
+  const pw = llmKeyInput(container)
   await env.act(async () => { setVal(pw, 'sk-brand-new-key-abcdef') })
   await env.act(async () => { await new Promise((r) => setTimeout(r, 50)) })
 

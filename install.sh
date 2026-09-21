@@ -289,7 +289,11 @@ PY
     c_red " 模型下载失败 —— 安装中止"
     c_red "════════════════════════════════════════════════════════"
     echo "$DL_OUT" | sed 's/^/   /'
-    cat <<'EOF'
+    # 动态取当前 ONNX 模型 ID 生成提示，避免 URL / 目录名随模型更换而漂移。
+    # （曾硬编码旧模型 Xenova/all-MiniLM-L6-v2，2026-09-19 换多语模型后提示全错）
+    MODEL_ID=$("$VPY" -c "from pangu.core.config import PanguConfig; print(PanguConfig.load().onnx_model_id)" 2>/dev/null || echo "Xenova/paraphrase-multilingual-MiniLM-L12-v2")
+    MODEL_CACHE_NAME=$(echo "$MODEL_ID" | sed 's|/|__|g')
+    cat <<EOF
 
    为什么中止而不是继续：
      缺少该模型时，盘古**不会报错**，而是静默降级到 hash 向量。
@@ -302,12 +306,12 @@ PY
           PANGU_ONNX_MIRROR_BASE=https://hf-mirror.com ./install.sh
      2) 手动下载后从本地安装：
           下载这两个文件（约 23MB）：
-            https://hf-mirror.com/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx
-            https://hf-mirror.com/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer.json
+            https://hf-mirror.com/${MODEL_ID}/resolve/main/onnx/model_quantized.onnx
+            https://hf-mirror.com/${MODEL_ID}/resolve/main/tokenizer.json
           然后：
             ./install.sh --offline-model /路径/model_quantized.onnx,/路径/tokenizer.json
      3) 已经手工放好模型：把模型放到
-            ~/.cache/pangu/onnx/Xenova__all-MiniLM-L6-v2/
+            ~/.cache/pangu/onnx/${MODEL_CACHE_NAME}/
           （需含 model_quantized.onnx 与 tokenizer.json）后重跑本脚本。
 EOF
     exit 1
@@ -472,6 +476,18 @@ EOF
     warn "  journalctl --user -u $SERVICE_NAME -n 30"
     warn "  tail -30 $LOG_DIR/$SERVICE_NAME.log"
   fi
+
+  # 让用户级 systemd 服务在「无登录会话」与「机器重启」后仍能自启。
+  # 云端（尤其 root 用户）通过 SSH 部署时，若未开 linger，机器一重启服务
+  # 就不会自动拉起，表现为"昨天还好好的，今天连不上"（实测踩到）。
+  if command -v loginctl >/dev/null 2>&1; then
+    if loginctl enable-linger "$(id -un)" 2>/dev/null; then
+      ok "已开启 linger（$(id -un)）—— 机器重启后服务自启"
+    else
+      warn "未开启 linger —— 机器重启后服务可能不自启，请手动执行："
+      warn "  loginctl enable-linger $(id -un)"
+    fi
+  fi
 fi
 fi  # INSTALL_SERVICE && !MODEL_ONLY
 
@@ -556,6 +572,38 @@ else
   warn "  手动启动：./start.sh  （监听 $HOST:$PORT）"
 fi
 
+# ── 组装「盘古服务地址」──
+# 关键：**不假定用户绑了域名**。云端新用户很可能只用公网 IP 直连。
+# host=0.0.0.0 时 hostname -I 在公有云上返回的是内网 IP（172.x），填了连不上，
+# 所以依次尝试：SSH 连接到的地址 → 公网 IP 探测 → 本机 IPv4。
+if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ]; then
+  ACCESS_IP=""
+  # ① SSH 登录时连接到的服务端地址（公有云上通常就是公网 IP）
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    ACCESS_IP=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+  fi
+  # ② 探测出口公网 IP（3 秒超时，失败不影响安装）
+  if [ -z "$ACCESS_IP" ] && command -v curl >/dev/null 2>&1; then
+    ACCESS_IP=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null || true)
+  fi
+  # ③ 兜底：本机第一个 IPv4（内网部署时正确）
+  if [ -z "$ACCESS_IP" ]; then
+    ACCESS_IP=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.' || true)
+  fi
+  [ -n "$ACCESS_IP" ] || ACCESS_IP="<服务器公网IP>"
+  ACCESS_ADDR="http://$ACCESS_IP:$PORT"
+  ACCESS_ALT="https://你的域名    # 若已用 nginx+TLS 绑域名，改填这个"
+else
+  ACCESS_ADDR="http://$HOST:$PORT"
+  ACCESS_ALT=""
+fi
+
+# 卡片里的地址块（单变量拼接，避免多出一行空行）
+CARD_ADDR="盘古服务地址   : $ACCESS_ADDR"
+if [ -n "$ACCESS_ALT" ]; then
+  CARD_ADDR="$CARD_ADDR"$'\n'"                 或 $ACCESS_ALT"
+fi
+
 cat <<EOF
 
 $(c_green '════════════════════════════════════════════════════════')
@@ -594,11 +642,11 @@ $(c_yellow '【配置】')
   LLM 密钥: $PANGU_HOME/.llm_api_key  （不写入 config.json，重启不丢）
   环境变量: PANGU_HOST / PANGU_PORT / PANGU_LOG_LEVEL / PANGU_ONNX_CACHE_DIR
 
-$(c_cyan '──────────── DSH 插件填写卡（复制下面 3 行到 DSH 设置页）────────────')
-$(c_green "盘古服务地址   : http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo '<本机IP>'):$PORT")
-$(c_green "API Key        : $(cat "$PANGU_HOME/.api_key" 2>/dev/null || echo '<未生成>')")
+$(c_cyan '──────────── DSH 插件填写卡（复制到 DSH 设置页）────────────')
+$(c_green "$CARD_ADDR")
+$(c_green "盘古凭据       : $(cat "$PANGU_HOME/.api_key" 2>/dev/null || echo '<未生成>')")
 $(c_green "管理密钥       : $(cat "$PANGU_HOME/.admin_secret" 2>/dev/null || echo '<未生成>')")
 $(c_cyan '──────────────────────────────────────────────────────────────────')
 $(c_yellow 'LLM 三项（模型/端点/Key）在 DSH 设置页「01 LLM 配置」里填')
-$(c_yellow '↑ 以上密钥只显示一次，请立即保存。云端部署时地址填 https://域名')
+$(c_yellow '↑ 以上凭据只显示一次，请立即保存')
 EOF
