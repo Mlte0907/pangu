@@ -34,7 +34,10 @@
 #   ./install.sh --offline-model /path/to/model_quantized.onnx,/path/to/tokenizer.json
 #                                   # 从本地文件装模型（内网/弱网）
 #   ./install.sh --server           # 仅启动 API 服务（不安装，需先装好）
-#   ./install.sh --uninstall        # 卸载 systemd 服务
+#   ./install.sh --uninstall        # 卸载 systemd 服务（保留数据目录）
+#   ./install.sh --uninstall --remove-data
+#                                   # 卸载并清空数据目录（**不可逆**：凭据会重新生成）
+#                                   #   想从零重装：再加一句 rm -rf ~/pangu 删掉代码
 #
 #   PANGU_NO_UV=1 ./install.sh      # 不自动安装 uv（改用 pip3，慢很多）
 #                                     默认会在缺少 uv 时自动装一个到 ~/.local/bin
@@ -119,6 +122,7 @@ HOST=""
 INSTALL_SERVICE=1
 INSTALL_DSH_PLUGIN=0
 MODEL_ONLY=0
+REMOVE_DATA=0
 OFFLINE_MODEL=""
 SERVICE_NAME="pangu-api"
 DO_UNINSTALL=0
@@ -180,6 +184,7 @@ while [ $# -gt 0 ]; do
     --model-only)   MODEL_ONLY=1; shift ;;
     --offline-model) OFFLINE_MODEL="${2:?--offline-model 需要参数}"; shift 2 ;;
     --uninstall)    DO_UNINSTALL=1; shift ;;
+    --remove-data)  REMOVE_DATA=1; shift ;;
     --server)       SERVER_ONLY=1; INSTALL_SERVICE=0; shift ;;
     -h|--help)
       # 打印文件头部注释块（从第 2 行到第一处非注释行前）
@@ -260,6 +265,11 @@ cd "$PANGU_DIR"
 # ════════════════════════════════════════════════════════════
 # P1-1: 卸载模式
 # ════════════════════════════════════════════════════════════
+if [ "$REMOVE_DATA" = 1 ] && [ "$DO_UNINSTALL" != 1 ]; then
+  # 否则会静默什么都不做，用户以为数据删了（实际没删）
+  die "--remove-data 需要与 --uninstall 一起用，例如：./install.sh --uninstall --remove-data"
+fi
+
 if [ "$DO_UNINSTALL" = 1 ]; then
   printf '\033[1;31m盘古卸载\033[0m\n'
 
@@ -281,8 +291,24 @@ if [ "$DO_UNINSTALL" = 1 ]; then
   fi
 
   # 删除数据目录
-  if [ -d "$PANGU_HOME" ]; then
-    warn "数据目录 $PANGU_HOME 保留（用 --remove-data 删除）"
+  if [ "${REMOVE_DATA:-0}" = 1 ]; then
+    step "删除数据目录 $PANGU_HOME"
+    # 防呆：这是**不可逆**操作，绝不允许因为变量写错而清掉无关目录。
+    # ① 拒绝明显的危险路径；② 要求目录里确实有盘古的特征文件。
+    case "$PANGU_HOME" in
+      ""|"/"|"$HOME"|"$HOME/"|"/root"|"/home"|"/usr"|"/etc")
+        die "拒绝删除「$PANGU_HOME」：路径看起来不对（别指向家目录或系统目录）" ;;
+    esac
+    if [ -f "$PANGU_HOME/.api_key" ] || [ -f "$PANGU_HOME/config.json" ] || [ -f "$PANGU_HOME/.admin_secret" ]; then
+      rm -rf "$PANGU_HOME"
+      ok "数据目录已删除（凭据 / 配置 / 记忆数据一并清除，重装会生成新凭据）"
+    elif [ -d "$PANGU_HOME" ]; then
+      die "拒绝删除「$PANGU_HOME」：里面没有盘古数据特征文件（.api_key/config.json）"
+    else
+      ok "数据目录本就不存在（$PANGU_HOME）"
+    fi
+  elif [ -d "$PANGU_HOME" ]; then
+    warn "数据目录 $PANGU_HOME 保留（重装会复用其中的凭据；要清空加 --remove-data）"
   fi
 
   ok "卸载完成"
