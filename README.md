@@ -1,10 +1,44 @@
-# 盘古（Pangu）— AI Agent 多模态记忆系统
+# 盘古（Pangu）— 给 AI 助手装上长期记忆
 
-<p align="center"><b>v0.4.1</b> · 分层工具暴露 · MCP Server + REST API · 让 Agent 拥有会遗忘、会联想、会巩固的长期记忆</p>
+<p align="center"><b>v0.4.1</b> · 会遗忘、会联想、会巩固 · MCP + REST + Web UI</p>
 
-盘古以"记忆宫殿"为隐喻，把 Agent 的记忆组织为 **Wing（翼）→ Room（房间）→ Drawer（抽屉）** 三级空间，
-配以 **混合检索（向量 + 全文 + RRF）**、**艾宾浩斯个性化遗忘曲线**、**海马体神经激活扩散** 与
-**睡眠式夜间巩固**，让记忆不是无限堆砌的日志，而是随时间演化、越用越准的知识体系。
+盘古是一个**本地优先**的 AI 记忆服务：把你说过的话、写过的笔记、丢进来的文档，
+变成 AI 随时能查的长期记忆 —— 而且像人一样**遗忘**（不重要的自然淡出）、
+**联想**（相关的被一起唤醒）、**巩固**（碎片随时间整理成知识）。
+
+任何支持 MCP 的客户端（DeepSeek Harness / Claude Code / 自研 Agent）接上它就能记住你。
+**不用 DSH 也完全能用。**
+
+---
+
+## 三步跑起来
+
+**① 一条命令安装**（Linux / macOS · Python ≥ 3.11 · 约 10 分钟）
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Mlte0907/pangu/master/install.sh | bash
+```
+
+装完会打印一张 **「DSH 填写卡」**（服务地址 + 凭据），**只显示一次，先存下来**。
+
+**②（可选）接上你的 AI 客户端**
+
+| 客户端 | 怎么做 |
+| --- | --- |
+| DeepSeek Harness | 装可选插件 [dsh-pangu](https://github.com/Mlte0907/dsh-pangu)，一条命令（见下方「接入 DeepSeek Harness」） |
+| Claude Code / 其它 MCP 客户端 | 见下方「**手动安装**」里的三种接入方式 |
+| 只想先看看界面 | `cd ~/pangu && .venv/bin/pangu serve` → 浏览器打开 `http://127.0.0.1:8866` |
+
+**③ 开始用**
+
+```sh
+cd ~/pangu                                      # 默认安装目录
+.venv/bin/pangu stats                           # 装好没、有多少条记忆
+.venv/bin/pangu search "关键词"                  # 搜一条
+.venv/bin/pangu --help                          # 30+ 子命令
+```
+
+> 安装失败 / 网络问题 / 想要更多细节 → 看下方「**安装（详细）**」。
 
 ## 核心能力
 
@@ -12,7 +46,7 @@
 | --- | --- |
 | 🧠 记忆宫殿 | Wing→Room→Drawer 三级组织，7 种语义殿堂分类（事实/事件/发现/偏好/建议/概念/关系），跨翼 Tunnel 联通 |
 | ✍️ 摄入管道 | 标准脱敏 → 可选 Fernet 加密 → 三级去重（精确 / 语义余弦 0.92 / 文本重叠）→ 重复记忆自动 boost |
-| 🔍 混合检索 | ONNX 本地向量（all-MiniLM-L6-v2 INT8，384 维）+ SQLite FTS5（jieba 中文分词）+ **RRF 倒数排名融合**（k=60）+ 多维重排 |
+| 🔍 混合检索 | ONNX 本地向量（`paraphrase-multilingual-MiniLM-L12-v2` INT8，384 维，中英都行）+ SQLite FTS5（jieba 中文分词）+ **RRF 倒数排名融合**（k=60）+ 多维重排 |
 | 🌊 神经激活扩散 | top-K 命中做 spreading activation（深度 3、衰减 0.6），把关联记忆一并唤醒 |
 | ⏳ 个性化遗忘 | 艾宾浩斯式衰减曲线按记忆类型（情景 0.6 / 语义 0.15 / 程序 0.08 / 情绪 0.3）区分速率；凌晨 3-5 点夜间巩固因子；低于底限自动归档 |
 | 📚 四层记忆栈 | L0 身份层 → L1 概要层 → L2 按需层 → L3 深度搜索，动态 token 预算（1000→3000）随记忆规模伸缩 |
@@ -22,7 +56,7 @@
 | 🖥️ 三形态接入 | MCP stdio / MCP streamable-HTTP + REST/WebSocket / 独立 Web 服务 |
 | 🧩 多模态（**默认关闭**） | PDF 正文（pypdf）、音频转写（whisper，需另开语音转写）、图片尺寸（Pillow，无 OCR）—— 在设置页「多模态内容提取」一键打开 |
 
-## 快速开始
+## 安装（详细）
 
 ### 一键安装（推荐）
 
@@ -159,9 +193,13 @@ pangu serve          # http://127.0.0.1:8866
 docker compose up -d
 ```
 
-## 接入 DeepSeek Harness（dsh-pangu 插件）
+## 接入 DeepSeek Harness（可选插件）
 
-`plugins/dsh-pangu` 让 DSH 会话自动拥有盘古记忆：
+**不装也能用** —— 盘古本体是独立服务（MCP / REST / Web UI 三种接入都有）。
+只有当你想在 **DSH 会话里**直接读写记忆、并想有个面板看记忆状态时，才需要它。
+
+插件已**独立成仓**：[**Mlte0907/dsh-pangu**](https://github.com/Mlte0907/dsh-pangu)。
+装上后它让 DSH 会话自动拥有盘古记忆：
 
 - **记忆注入**：`system-prompt/assemble` waterfall 每轮取会话意图检索相关记忆（top-5，
   每条 200 字符），以 `[盘古记忆系统]` 上下文块注入——异常时静默降级，永不阻塞会话；
@@ -211,28 +249,21 @@ docker compose up -d
   > 未配置 LLM 时记忆的**存入与检索完全正常**（走 ONNX 本地嵌入），
   > 仅「知识结晶 / 记忆蒸馏 / 摘要」等需要语言模型的功能会被跳过。
 
-**安装插件**（`plugins/dsh-pangu` 的 `lib/` 为入库源码，但 `node_modules` 被
-`.gitignore` 忽略，需先装其自身依赖，否则 `lib/typert.host.mjs` 会因缺少 `zod` 而
-导致宿主启动失败）：
+**安装插件**（一条命令，脚本会自举拉取插件仓 → 装依赖 → 接进 DSH profile）：
 
 ```sh
-# 推荐：用仓库自带脚本（幂等，含依赖与配置自检）
-scripts/install_dsh_plugin.sh          # 默认装到 web profile
-scripts/install_dsh_plugin.sh tui      # 指定 profile
+curl -fsSL https://raw.githubusercontent.com/Mlte0907/dsh-pangu/main/install.sh | bash
+./install.sh tui                       # 换 profile：先 clone 插件仓再 ./install.sh <profile>
 ```
 
-或手动两步：
+盘古与 DSH 同机时也可以让盘古的安装脚本顺带拉取安装：
 
 ```sh
-# 1) 先装插件的运行时依赖（必需，否则启动报 ERR_MODULE_NOT_FOUND: zod）
-cd plugins/dsh-pangu && pnpm install --prod && cd -
-
-# 2) 再把插件装进 DSH 的 profile
-dsh plugin --profile web add "$(pwd)/plugins/dsh-pangu"
+cd ~/pangu && ./install.sh --dsh-plugin     # 拉取到 ~/.dsh-pangu 并安装
 ```
 
-第二步会同时把 `dsh-pangu` 写入 profile 的 `dependencies` 与
-`dsh.profile.bundles`（因其 `package.json` 声明了 `dsh.bundle`）。
+装完**重启 DSH**，然后 设置 →「盘古记忆系统」填两个字段：**盘古服务地址** + **盘古凭据**
+（都在盘古安装脚本打印的「DSH 填写卡」里）。
 
 > 注：`cordis.patch.yml` 的 HMR 在 web 实例不生效，改后需重启 DSH。
 
