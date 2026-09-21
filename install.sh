@@ -21,6 +21,11 @@
 #   ./install.sh --no-service       # 不装 systemd 服务（仅装到目录）
 #   ./install.sh --dsh-plugin       # 额外安装 DSH 插件（从独立仓库拉取，可选）
 #   ./install.sh --port 19529       # 指定端口
+#   ./install.sh --host 0.0.0.0     # 监听所有网卡。**DSH 插件装在别的机器上时需要**：
+#                                   #   卡片会自动改印探测到的公网 IP。默认只监听
+#                                   #   127.0.0.1（更安全），那种情况下插件走 SSH 隧道：
+#                                   #     ssh -N -L 19529:127.0.0.1:19529 用户@服务器
+#                                   #   公网暴露务必配 nginx+TLS 或安全组限制来源 IP。
 #   ./install.sh --model-only       # 仅预下载模型（已装好依赖时用）
 #   ./install.sh --offline-model /path/to/model_quantized.onnx,/path/to/tokenizer.json
 #                                   # 从本地文件装模型（内网/弱网）
@@ -753,17 +758,58 @@ if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ]; then
     ACCESS_IP=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.' || true)
   fi
   [ -n "$ACCESS_IP" ] || ACCESS_IP="<服务器公网IP>"
+  # ③ 兜底拿到的可能是内网 IP（VPC / 家庭局域网），公网直连填它没用 —— 明说一句，
+  # 免得用户以为脚本算错了（2026-09-22：本机实测 ipify 不通时正是这种情况）。
+  case "$ACCESS_IP" in
+    10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) PRIVATE_IP=1 ;;
+  esac
   ACCESS_ADDR="http://$ACCESS_IP:$PORT"
   ACCESS_ALT="https://你的域名    # 若已用 nginx+TLS 绑域名，改填这个"
 else
   ACCESS_ADDR="http://$HOST:$PORT"
   ACCESS_ALT=""
+  # 只监听回环、而且这台机器是**远程 SSH 装**的 —— 那 DSH 插件在另一台机器上，
+  # 这个地址根本连不通。不能沉默地印一行 127.0.0.1 让人以为照填就行
+  # （2026-09-22 云端实测踩到：卡片只给 127.0.0.1，用户无从下手）。
+  if [ "$HOST" = "127.0.0.1" ] && [ -n "${SSH_CONNECTION:-}" ]; then
+    REMOTE_HINT=1
+  fi
 fi
 
 # 卡片里的地址块（单变量拼接，避免多出一行空行）
 CARD_ADDR="盘古服务地址   : $ACCESS_ADDR"
 if [ -n "$ACCESS_ALT" ]; then
   CARD_ADDR="$CARD_ADDR"$'\n'"                 或 $ACCESS_ALT"
+fi
+if [ -n "${PRIVATE_IP:-}" ]; then
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                 ⚠ 上面是**内网地址**（探测不到公网 IP）：公网访问请改填这台服务器的公网 IP 或域名")"
+fi
+if [ -n "${REMOTE_HINT:-}" ]; then
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                 ⚠ 只监听本机回环 —— DSH 插件装在别的机器上时，上面这个地址连不通。二选一：")"
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_green  "                 ▸ 推荐（最安全）：在**运行 DSH 的那台电脑**上执行，然后上面地址照填")"
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_green  "                     ssh -N -L $PORT:127.0.0.1:$PORT ${USER:-root}@<这台服务器的公网IP或域名>")"
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                 ▸ 或让插件直连：在这台服务器上重跑 ./install.sh --host 0.0.0.0")"
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                     （会自动探测公网 IP 并改写本卡片；公网暴露务必配 nginx+TLS，")"
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                       并在云安全组放行 $PORT、限制来源 IP）")"
+fi
+
+# 「远程访问」说明块：只要监听回环就给出。与卡片上的提示是同一件事，
+# 但这里不看 SSH_CONNECTION —— 从云厂商的网页控制台装的机器拿不到该变量，
+# 而那种场景（服务器上的插件装在别处）恰恰更需要这段话。
+REMOTE_NOTES=""
+if [ "$HOST" = "127.0.0.1" ]; then
+  REMOTE_NOTES=$'\n'"$(c_yellow "【远程访问】本服务只监听 127.0.0.1（本机回环）")"
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"  若 DSH 插件装在**别的电脑**上，卡片里的 127.0.0.1 指的是这台服务器自己，连不通。二选一："
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"  ▸ 推荐：SSH 隧道（不暴露端口、无需证书）—— 在**运行 DSH 的那台电脑**上执行："
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"$(c_green "      ssh -N -L $PORT:127.0.0.1:$PORT ${USER:-root}@<这台服务器的公网IP或域名>")"
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"    之后 DSH 设置页「盘古服务地址」照填 http://127.0.0.1:$PORT 即可（加 -f 可后台常驻）。"
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"  ▸ 或让插件直连：在这台服务器上重跑  ./install.sh --host 0.0.0.0"
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"    脚本会把卡片地址改成探测到的公网 IP。公网暴露**必须**同时做："
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"      · nginx + TLS 反代（推荐），或用云安全组把 $PORT 只放行你的来源 IP"
+  REMOTE_NOTES="$REMOTE_NOTES"$'\n'"      · 内置 API Key 只防误连，不防针对性攻击"
 fi
 
 # 凭据块：只列**要填到设置页的那一条**。
@@ -791,7 +837,7 @@ $(c_yellow '【重要】盘古有两个不同的服务，别搞混：')
       用途: MCP + REST 接口，DSH 插件连的是这个
       启动: systemctl --user start $SERVICE_NAME   （或 ./start.sh）
       验证: curl $HEALTH_URL
-      MCP:  http://$HOST:$PORT/mcp
+      MCP:  $ACCESS_ADDR/mcp
 
   端口 8866  ← 另一个服务（人类可读的 Web 界面）
       应用: pangu/server/web_server.py
@@ -816,6 +862,8 @@ $(c_yellow '【配置】')
   数据目录: $PANGU_HOME        （config.json 权限 600）
   LLM 密钥: $PANGU_HOME/.llm_api_key  （不写入 config.json，重启不丢）
   环境变量: PANGU_HOST / PANGU_PORT / PANGU_LOG_LEVEL / PANGU_ONNX_CACHE_DIR
+
+$REMOTE_NOTES
 
 $(c_cyan '──────────── DSH 插件填写卡（复制到 DSH 设置页）────────────')
 $(c_green "$CARD_ADDR")
