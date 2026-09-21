@@ -215,9 +215,33 @@ window.__ModuleLoader__.load({
       // typert 网关按声明参数个数严格校验,无参调用必须零参展开
       return args === undefined ? remote[method]() : remote[method](args)
     }
+    /** 把远程错误（字符串 / RemoteFailure 对象）转成可读文案 */
+    function describeRemoteError(err) {
+      if (typeof err === 'string' && err) return err
+      if (err && typeof err.message === 'string' && err.message) return err.message
+      try { return JSON.stringify(err) } catch (_) { return '远程调用失败' }
+    }
+
+    /**
+     * 解开返回值，失败一律抛错（调用方统一用错误态呈现）。
+     *
+     * ⚠ 有两层信封，别只解一层：
+     *  ① 外层是 Typert 协议信封 {ok:true, value} / {ok:false, error}
+     *     （dsh 的 packages/typert/protocol/src/types.ts:68-77：
+     *      "carrier failures into the error branch" —— 失败走 ok:false，不 reject）
+     *  ② 内层是**宿主服务自己的** {ok:false, error}：index.js 的 adminFetch
+     *     在「未配置管理密钥」等情况下就是这么返回的。
+     * 此前只解外层，于是内层错误被当成正常载荷：取 platforms 得到 undefined
+     * → 平台区静默空白，用户完全看不出要填管理密钥（2026-09-21 修）。
+     */
     function unwrap(r) {
-      if (r && r.ok) return r.value
-      throw new Error((r && r.error) || '远程调用失败')
+      if (r === null || r === undefined) throw new Error('远程调用失败：返回为空')
+      if (r.ok === false) throw new Error(describeRemoteError(r.error))
+      const value = r.ok === true && 'value' in r ? r.value : r
+      if (value && typeof value === 'object' && value.ok === false) {
+        throw new Error(describeRemoteError(value.error))
+      }
+      return value
     }
 
     /* ── canvas 用:从 body 读取令牌实际色值,明暗切换时重读 ── */
@@ -1308,7 +1332,7 @@ window.__ModuleLoader__.load({
     }
 
     /* ── 管理页 AdminPane：备份 / 深度体检 / 平台管理 / 快照 ── */
-    function AdminPane({ initialSection }) {
+    function AdminPane({ initialSection, config }) {
       const [deep, setDeep] = React.useState(null)
       const [bk, setBk] = React.useState({ s: 'idle', msg: '' })
       const [platforms, setPlatforms] = React.useState([])
@@ -1598,7 +1622,7 @@ window.__ModuleLoader__.load({
               ? h(CrystalPane, { nodes: graphNodes, edges: graphEdges, kgErr, loading, onRetry: () => load() })
               : tab === 'knowledge'
                 ? h(KnowledgePane, null)
-                : h(AdminPane, { initialSection: adminSection }),
+                : h(AdminPane, { initialSection: adminSection, config }),
       )
     }
     function Toggle({ checked, onChange }) {
