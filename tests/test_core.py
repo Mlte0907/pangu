@@ -50,6 +50,45 @@ class TestConfig:
         loaded = PanguConfig.load(config_path)
         assert loaded.palace_path == config.palace_path
 
+    def test_save_preserves_keys_owned_by_plugin(self, tmp_path, no_derived_path_isolation):
+        """save() 必须保留文件里**盘古不管理**的键（插件设置）。
+
+        回归（2026-09-21）：config.json 是盘古与 dsh 插件共用的设置存储
+        （见 AGENTS.md P27）—— 插件往里写 pangu_base_url / api_key /
+        admin_secret，而 save() 落的是 `model_dump(exclude=secrets)`，
+        整体覆盖会把这三个键全部抹掉。
+        触发路径：设置页保存 → 插件逐字段调 pangu_config_set →
+        handle_config_set 对非密钥字段调用 config.save() → 第 1 个字段就把
+        插件凭据冲掉 → 余下字段因无凭据全部 401。现象就是
+        「已保存，但服务端热加载失败：llm_provider: HTTP 401; …」
+        （特征：恰好只有第一个字段不在失败列表里）。
+        """
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "pangu_base_url": "http://127.0.0.1:19529",
+                    "admin_secret": "plugin-owned-secret",
+                    "api_key": "plugin-owned-credential",
+                    "llm_provider": "deepseek",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        PanguConfig(llm_provider="qwen").save(str(config_path))
+
+        written = json.loads(config_path.read_text(encoding="utf-8"))
+        # 插件侧的键必须原样保留（这三个 save() 既不认识、也被排除在 dump 外）
+        assert written.get("pangu_base_url") == "http://127.0.0.1:19529"
+        assert written.get("admin_secret") == "plugin-owned-secret"
+        assert written.get("api_key") == "plugin-owned-credential"
+        # 盘古自己的键照常落盘，且以 config 对象为准（覆盖文件里的旧值）
+        assert written.get("llm_provider") == "qwen"
+        assert "palace_path" in written
+        assert "decay_base" in written
+
     def test_cli_init_keeps_all_paths_under_given_dir(self, tmp_path, monkeypatch):
         """`pangu cli init --path X` 必须让**所有**派生路径都落在 X 下。
 

@@ -555,6 +555,29 @@ class PanguConfig(BaseSettings):
 
         data = _convert(data)
 
+        # ⚠ 必须**合并写**，不能整体覆盖（2026-09-21 修）。
+        # config.json 是盘古与 dsh 插件**共用**的设置存储（见 AGENTS.md P27）：
+        # 插件会往里写自己的键（pangu_base_url / api_key / admin_secret），
+        # 而 save() 落的是 `model_dump(exclude=secrets)` —— 既不含这些插件键，
+        # 又主动排除了密钥字段。整体覆盖会把它们**全部抹掉**。
+        #
+        # 实测触发路径（用户报"已保存，但服务端热加载失败：llm_provider: HTTP 401; …"）：
+        #   设置页保存 → 插件逐字段调 pangu_config_set
+        #   → handle_config_set 对**非密钥字段**调用 config.save()
+        #   → 第 1 个字段就把插件凭据冲掉 → 余下字段因无凭据全部 401。
+        #   （现象特征：恰好只有第一个字段不在失败列表里。）
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, encoding="utf-8") as f:
+                    existing = json.load(f)
+                if isinstance(existing, dict):
+                    # 只补盘古自己不管理的键：data 已有的以 data 为准
+                    for k, v in existing.items():
+                        data.setdefault(k, v)
+        except (json.JSONDecodeError, OSError):
+            # 旧文件损坏/不可读：按全新写入处理，不影响本次保存
+            pass
+
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
