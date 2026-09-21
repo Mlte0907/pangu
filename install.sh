@@ -359,26 +359,43 @@ step "4b/5 生成凭据"
 
 VPY="${VPY:-$VENV_DIR/bin/python}"
 
-# REST 主密钥（鉴权中间件开关，没了等于裸奔）
+# ── REST 主密钥 与 admin 管理密钥：**共用同一把**（2026-09-21 决定）──
+# 服务端这两把钥匙是两套独立校验：
+#   .api_key      → config.api_key      （X-API-Key：MCP + 数据面）
+#   .admin_secret → admin_auth.verify_admin() 比对（X-Admin-Key：管理面）
+# 对单人部署而言两者隔离的边际价值很低（平台令牌审核通过即全权），却让新用户
+# 在设置页要填两次、多一个出错点。故这里**生成同一个值**写进两个文件：
+# 设置页「盘古凭据」与「管理密钥」填同一串即可；服务端代码与校验逻辑不变。
+# 已存在任一文件时**复用它的值**（升级场景不能改已生效的凭据 —— 服务端 env 里
+# 那把也要跟着变，很容易漏改，会直接把用户踢下线）。
 API_KEY_FILE="$PANGU_HOME/.api_key"
-if [ -s "$API_KEY_FILE" ]; then
-  ok ".api_key 已存在，跳过生成"
-else
-  API_KEY=$("$VPY" -c "import secrets; print(secrets.token_urlsafe(32))")
-  printf '%s' "$API_KEY" > "$API_KEY_FILE"
-  chmod 600 "$API_KEY_FILE"
-  ok ".api_key 已生成（权限 600）"
-fi
-
-# admin 管理密钥（管理面板用）
 ADMIN_SECRET_FILE="$PANGU_HOME/.admin_secret"
-if [ -s "$ADMIN_SECRET_FILE" ]; then
-  ok ".admin_secret 已存在，跳过生成"
+SHARED_SECRET=""
+if [ -s "$API_KEY_FILE" ]; then
+  SHARED_SECRET="$(cat "$API_KEY_FILE")"
+  ok ".api_key 已存在，复用它作为共用凭据"
+elif [ -s "$ADMIN_SECRET_FILE" ]; then
+  SHARED_SECRET="$(cat "$ADMIN_SECRET_FILE")"
+  ok ".admin_secret 已存在，复用它作为共用凭据"
 else
-  ADMIN_SECRET=$("$VPY" -c "import secrets; print(secrets.token_urlsafe(32))")
-  printf '%s' "$ADMIN_SECRET" > "$ADMIN_SECRET_FILE"
-  chmod 600 "$ADMIN_SECRET_FILE"
-  ok ".admin_secret 已生成（权限 600）"
+  SHARED_SECRET=$("$VPY" -c "import secrets; print(secrets.token_urlsafe(32))")
+  ok "已生成共用凭据（REST 主密钥 = 管理密钥）"
+fi
+for _cred_file in "$API_KEY_FILE" "$ADMIN_SECRET_FILE"; do
+  if [ -s "$_cred_file" ]; then
+    continue
+  fi
+  printf '%s' "$SHARED_SECRET" > "$_cred_file"
+  chmod 600 "$_cred_file"
+  ok "$(basename "$_cred_file") 已写入（权限 600）"
+done
+unset SHARED_SECRET
+
+# 两者都已存在但值不同（例如老部署）：**不擅自改动**，只提示怎么统一。
+if [ -s "$API_KEY_FILE" ] && [ -s "$ADMIN_SECRET_FILE" ] \
+  && [ "$(cat "$API_KEY_FILE")" != "$(cat "$ADMIN_SECRET_FILE")" ]; then
+  warn "REST 主密钥与管理密钥当前不是同一把（保留原样，未改动任何文件）"
+  warn "  想把它们统一：在 DSH 设置页把两处填成同一个值即可"
 fi
 
 # 生成 pangu.env 给 systemd EnvironmentFile 用
@@ -604,6 +621,13 @@ if [ -n "$ACCESS_ALT" ]; then
   CARD_ADDR="$CARD_ADDR"$'\n'"                 或 $ACCESS_ALT"
 fi
 
+# 两把凭据是同一把时，在卡片上点明"两处填同一串"（见 4b 的共用凭据说明）
+CARD_ADMIN_LINE="管理密钥       : $(cat "$PANGU_HOME/.admin_secret" 2>/dev/null || echo '<未生成>')"
+if [ -s "$PANGU_HOME/.api_key" ] && [ -s "$PANGU_HOME/.admin_secret" ] \
+  && [ "$(cat "$PANGU_HOME/.api_key")" = "$(cat "$PANGU_HOME/.admin_secret")" ]; then
+  CARD_ADMIN_LINE="$CARD_ADMIN_LINE    （与盘古凭据同一把，两处填同一串）"
+fi
+
 cat <<EOF
 
 $(c_green '════════════════════════════════════════════════════════')
@@ -645,7 +669,7 @@ $(c_yellow '【配置】')
 $(c_cyan '──────────── DSH 插件填写卡（复制到 DSH 设置页）────────────')
 $(c_green "$CARD_ADDR")
 $(c_green "盘古凭据       : $(cat "$PANGU_HOME/.api_key" 2>/dev/null || echo '<未生成>')")
-$(c_green "管理密钥       : $(cat "$PANGU_HOME/.admin_secret" 2>/dev/null || echo '<未生成>')")
+$(c_green "$CARD_ADMIN_LINE")
 $(c_cyan '──────────────────────────────────────────────────────────────────')
 $(c_yellow 'LLM 三项（模型/端点/Key）在 DSH 设置页「01 LLM 配置」里填')
 $(c_yellow '↑ 以上凭据只显示一次，请立即保存')
