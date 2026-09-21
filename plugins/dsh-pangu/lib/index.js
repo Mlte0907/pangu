@@ -512,6 +512,12 @@ async function apply(ctx) {
   // (前端一旦拿到明文就会出现在 React state / devtools / 可能的日志里)。
   const SECRET_KEYS = ['llm_api_key', 'api_key', 'admin_secret']
 
+  /**
+   * 密钥短于这个长度就不给任何掩码 —— 6+4=10 个可见字符对短密钥等于泄漏一半。
+   * 盘古凭据（pgk_ 主密钥 43 位 / pgp_ 平台令牌 65 位）远超此线。
+   */
+  const HINT_MIN_LEN = 20
+
   /** 把配置里的密钥替换为「是否已设置」提示，永不返回明文 */
   function redactConfig(cfg) {
     const out = { ...cfg }
@@ -519,8 +525,12 @@ async function apply(ctx) {
       const raw = out[k]
       out[k] = ''
       out[k + '_set'] = typeof raw === 'string' && raw.length > 0
-      // 仅在已设置时给出尾部 4 位，便于用户辨认自己填的是哪一把 Key
-      out[k + '_hint'] = typeof raw === 'string' && raw.length > 4 ? '****' + raw.slice(-4) : ''
+      // 掩码形如 `pgk_J_*****kXq8`：前缀 6 位 + ***** + 尾 4 位（2026-09-21）。
+      // 原先只有 `****kXq8`（尾 4 位）—— 用户看到"已配置"却认不出是哪一把，
+      // 尤其 pgk_ 主密钥与 pgp_ 平台令牌混用时完全无从分辨；前缀还能看出凭据类型。
+      out[k + '_hint'] = typeof raw === 'string' && raw.length >= HINT_MIN_LEN
+        ? raw.slice(0, 6) + '*****' + raw.slice(-4)
+        : ''
     }
     return out
   }
@@ -742,15 +752,16 @@ async function apply(ctx) {
   ctx.provide('panguConfig', bindRemote(configService, 'panguConfig'))
 
   // ── 阶段 5：Admin Key Service（钥匙/房间管理）──
-  // 管理凭据来源：设置页「管理密钥」→ **留空则回退用「盘古凭据」**。
+  // 管理凭据来源：config.json 的 admin_secret → **缺省则复用「盘古凭据」**。
   //
-  // 为什么可以回退：install.sh 自 2026-09-21 起让 ~/.pangu/.api_key 与
+  // 为什么可以复用：install.sh 自 2026-09-21 起让 ~/.pangu/.api_key 与
   // ~/.pangu/.admin_secret **取同一个值**（服务端仍是两套独立校验 ——
   // 数据面 X-API-Key、管理面 X-Admin-Key，只是安装期的取值策略统一了）。
-  // 于是新装只需在设置页填一处「盘古凭据」，管理面一并可用，少一个出错点。
+  // 于是设置页只需填一处「盘古凭据」，管理面一并可用，少一个出错点。
   //
-  // 老部署两者不同：回退会带上不匹配的 X-Admin-Key → 服务端 401。此时把
-  // 「管理密钥」补上即可；失败会经 adminFetch 显式上报，不再静默空白。
+  // admin_secret 只可能来自**老部署或手工写入 config.json**（设置页已无此字段）。
+  // 这类部署若两把不同，复用会带上不匹配的 X-Admin-Key → 服务端 401；
+  // 失败经 adminFetch 显式上报，并提示"在服务端统一两把"，不再静默空白。
   async function readAdminSecret() {
     const cfg = await readConfig()
     return cfg.admin_secret || cfg.api_key || ''

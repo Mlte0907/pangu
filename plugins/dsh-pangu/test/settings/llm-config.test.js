@@ -24,6 +24,7 @@ const ROOT = path.join(__dirname, '..', '..')
 const indexSrc = fs.readFileSync(path.join(ROOT, 'lib', 'index.js'), 'utf8')
 
 const SECRET_KEYS = ['llm_api_key', 'api_key']
+const HINT_MIN_LEN = 20
 
 function redactConfig(cfg) {
   const out = { ...cfg }
@@ -31,7 +32,9 @@ function redactConfig(cfg) {
     const raw = out[k]
     out[k] = ''
     out[k + '_set'] = typeof raw === 'string' && raw.length > 0
-    out[k + '_hint'] = typeof raw === 'string' && raw.length > 4 ? '****' + raw.slice(-4) : ''
+    out[k + '_hint'] = typeof raw === 'string' && raw.length >= HINT_MIN_LEN
+      ? raw.slice(0, 6) + '*****' + raw.slice(-4)
+      : ''
   }
   return out
 }
@@ -67,16 +70,33 @@ test('lib/index.js 不再调用未暴露的 pangu_config_reload', () => {
 
 // ── 脱敏 ─────────────────────────────────────────────
 test('明文 Key 不出现在脱敏结果中', () => {
-  const secret = 'sk-abcdef1234567890'
+  const secret = 'sk-abcdef1234567890abcd'
   const r = redactConfig({ llm_provider: 'deepseek', llm_api_key: secret })
   assert.equal(r.llm_api_key, '', '脱敏后 llm_api_key 必须为空')
   assert.ok(!JSON.stringify(r).includes(secret), '脱敏结果中残留了明文 Key')
 })
 
-test('脱敏暴露 _set 与 _hint（仅尾 4 位）', () => {
-  const r = redactConfig({ llm_api_key: 'sk-abcdef1234567890' })
+test('脱敏暴露 _set 与 _hint（前缀 6 位 + ***** + 尾 4 位）', () => {
+  const r = redactConfig({ llm_api_key: 'sk-abcdef1234567890abcd' })
   assert.equal(r.llm_api_key_set, true)
-  assert.equal(r.llm_api_key_hint, '****7890')
+  // 前缀 6 位能看出凭据类型（pgk_/pgp_/sk-），尾部 4 位能分辨"是哪一把"
+  assert.equal(r.llm_api_key_hint, 'sk-abc*****abcd')
+})
+
+test('掩码阈值边界：20 位可回显，19 位不回显', () => {
+  // 规则：遮蔽部分不得短于可见部分（可见 6+4=10）⇒ 至少 20 位
+  const at = redactConfig({ llm_api_key: 'x'.repeat(20) })
+  assert.notEqual(at.llm_api_key_hint, '', '20 位应回显掩码')
+  const below = redactConfig({ llm_api_key: 'x'.repeat(19) })
+  assert.equal(below.llm_api_key_hint, '', '19 位不应回显掩码')
+})
+
+test('盘古凭据的 hint 形如 pgk_xx*****尾4', () => {
+  // 真机实际形态：43 位 pgk_ 主密钥
+  const r = redactConfig({ api_key: 'pgk_J_AoUKQq8_MEO45kXq83rRxOhMc9b2PtnX6' })
+  assert.equal(r.api_key_set, true)
+  assert.equal(r.api_key_hint, 'pgk_J_*****tnX6')
+  assert.ok(!r.api_key_hint.includes('MEO45kXq83rRx'), '中段必须被遮蔽')
 })
 
 test('未设置 Key 时 _set 为 false 且无 hint', () => {
@@ -87,10 +107,13 @@ test('未设置 Key 时 _set 为 false 且无 hint', () => {
   }
 })
 
-test('过短的 Key 不给出 hint（避免全量暴露）', () => {
-  const r = redactConfig({ llm_api_key: 'abcd' })
-  assert.equal(r.llm_api_key_set, true)
-  assert.equal(r.llm_api_key_hint, '', '4 位以下的 Key 不应回显')
+test('过短的 Key 不给出 hint（避免暴露一半）', () => {
+  // 阈值 20：短于此长度时 6+4 个可见字符已占一半以上，等于泄漏
+  for (const short of ['abcd', 'sk-abcdef123456789']) {
+    const r = redactConfig({ llm_api_key: short })
+    assert.equal(r.llm_api_key_set, true, `${short} 应标记为已设置`)
+    assert.equal(r.llm_api_key_hint, '', `${short}（${short.length} 位）不应回显掩码`)
+  }
 })
 
 test('非密钥字段不受脱敏影响', () => {

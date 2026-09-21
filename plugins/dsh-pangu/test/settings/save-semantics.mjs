@@ -89,6 +89,7 @@ const svc = {
         llm_provider: 'deepseek', llm_model: 'deepseek-chat',
         llm_base_url: 'https://api.deepseek.com/v1',
         llm_api_key: '', llm_api_key_set: true, llm_api_key_hint: '****4455',
+        api_key: '', api_key_set: true, api_key_hint: 'pgk_J_*****tnX6',
         consolidation_enabled: true, consolidation_interval_hours: 24,
       },
     },
@@ -170,9 +171,13 @@ console.log('═══ 场景 C：只填「盘古凭据」，不碰其它字段 
 // 服务端两个密钥已由 install.sh 取同值，插件管理面复用「盘古凭据」，
 // 再摆一个"可留空的管理密钥"只会让人疑惑到底要不要填。
 chk('不再有第二个凭据字段「管理密钥」', !container.textContent.includes('管理密钥'))
-// 回归（2026-09-21）：dirty 此前不统计密码框，只填凭据/管理密钥时保存按钮恒灰，
-// 等于「填了也存不下去」。这里断言：填了凭据 → 按钮可点 → patch 写出 api_key。
 const credInput = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')
+// 用户反馈（2026-09-21）：填了凭据没有任何反馈，而没填时框里却写着「已配置」。
+// 修法：状态由独立提示行用**脱敏值**说明；输入框占位符只讲"该做什么"。
+chk('已配置时显示脱敏值（可核对生效的是哪一把）', container.textContent.includes('pgk_J_*****tnX6'))
+chk('凭据框占位符不再声称状态', credInput.placeholder === '粘贴安装时打印的盘古凭据')
+// 回归（2026-09-21）：dirty 此前不统计密码框，只填凭据时保存按钮恒灰，
+// 等于「填了也存不下去」。这里断言：填了凭据 → 按钮可点 → patch 写出 api_key。
 await act(async () => { setVal(credInput, 'pgk-LOCAL-ONLY') })
 await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
 chk('填了凭据后保存按钮可点', !saveBtn()?.disabled)

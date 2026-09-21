@@ -1825,6 +1825,8 @@ window.__ModuleLoader__.load({
 
       const keySet = config?.llm_api_key_set
       const keyHint = config?.llm_api_key_hint
+      const credSet = config?.api_key_set
+      const credHint = config?.api_key_hint
       const provider = LLM_PROVIDERS.find((p) => p.id === draft?.provider) || {}
 
       return h('div', { style: { padding: '18px 20px 20px', color: css.t1, maxWidth: 560, animation: 'panguFade .25s ease' } },
@@ -1870,15 +1872,24 @@ window.__ModuleLoader__.load({
           h('div', { key: 's0-cred', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
               h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '盘古凭据'),
-              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '必须填写 · 记忆与「管理」页都用它'),
+              h('div', { style: { fontSize: 10.5, color: css.t3 } },
+                credSet ? '已配置 · 留空保持不变' : '必须填写 · 记忆与「管理」页都用它'),
             ),
             h('input', {
-              className: 'pangu-input', type: 'password', value: draft.pk, placeholder: config?.api_key_set ? '已配置，留空保持不变' : '粘贴安装时打印的盘古凭据',
+              className: 'pangu-input', type: 'password', value: draft.pk,
+              // 占位符只讲"该做什么"，不承担"是否已配置"的状态。
+              // 之前空框里写着「已配置，留空保持不变」—— 用户从没填过却看到已配置，
+              // 只会以为是幻觉（2026-09-21 修）。状态改由下方提示行用**脱敏值**说明，
+              // 用户能核对"现在生效的是哪一把"，这正是"填了没反馈"的解药。
+              placeholder: '粘贴安装时打印的盘古凭据',
               onChange: (e) => setDraft((prev) => ({ ...prev, pk: e.target.value })),
               style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
             }),
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
-              '上面「盘古服务地址」那台机器安装时打印的凭据（安装横幅的「DSH 填写卡」里有）。记忆读写/搜索用它，管理面板也用它。明文不回显，留空保持原值。'),
+              credSet
+                ? `已配置（${credHint || '已设置'}）—— 记忆读写/搜索、管理页都用它。明文不回显，留空保持原值，填入新值则覆盖。`
+                : '尚未配置 —— 上面「盘古服务地址」那台机器安装时打印的凭据（安装横幅的「DSH 填写卡」里有）。记忆读写/搜索、管理页都用它。',
+            ),
           ),
           h('div', { key: 's1-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '14px 0 7px', borderBottom: `1px solid ${css.borderSoft}`, marginTop: 12 } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '01'),
