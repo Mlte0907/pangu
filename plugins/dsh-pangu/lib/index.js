@@ -741,11 +741,18 @@ async function apply(ctx) {
   ctx.provide('panguConfig', bindRemote(configService, 'panguConfig'))
 
   // ── 阶段 5：Admin Key Service（钥匙/房间管理）──
-  // admin secret 必须从设置页手动填写，不自动回退读本地文件
-  const ADMIN_SECRET_PATH = path.join(os.homedir(), '.pangu', '.admin_secret')
+  // 管理凭据来源：设置页「管理密钥」→ **留空则回退用「盘古凭据」**。
+  //
+  // 为什么可以回退：install.sh 自 2026-09-21 起让 ~/.pangu/.api_key 与
+  // ~/.pangu/.admin_secret **取同一个值**（服务端仍是两套独立校验 ——
+  // 数据面 X-API-Key、管理面 X-Admin-Key，只是安装期的取值策略统一了）。
+  // 于是新装只需在设置页填一处「盘古凭据」，管理面一并可用，少一个出错点。
+  //
+  // 老部署两者不同：回退会带上不匹配的 X-Admin-Key → 服务端 401。此时把
+  // 「管理密钥」补上即可；失败会经 adminFetch 显式上报，不再静默空白。
   async function readAdminSecret() {
     const cfg = await readConfig()
-    return cfg.admin_secret || ''
+    return cfg.admin_secret || cfg.api_key || ''
   }
   async function adminFetch(url, options = {}) {
     const secret = await readAdminSecret()
@@ -753,15 +760,25 @@ async function apply(ctx) {
       return {
         ok: false,
         error:
-          '未配置管理密钥：请在 DSH 设置 →「盘古记忆系统」→「管理密钥」填入'
-          + '安装时命令行打印的那串（安装横幅的「DSH 填写卡」里有；'
-          + '本地部署即 ~/.pangu/.admin_secret 的内容）。',
+          '未配置管理凭据：请在 DSH 设置 →「盘古记忆系统」填入「盘古凭据」'
+          + '（安装横幅的「DSH 填写卡」里有；新装默认它与管理密钥是同一把）。',
       }
     }
     const res = await fetch(url, {
       ...options,
       headers: { 'X-Admin-Key': secret, 'content-type': 'application/json', ...(options.headers || {}) },
     })
+    // ⚠ 鉴权失败必须显式上报（2026-09-21 修）：此前不看状态码、一律 res.json()，
+    // 于是 401 的响应体被当成"正常数据" ⇒ 管理区又是一片静默空白。
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        error:
+          `管理接口鉴权失败（HTTP ${res.status}）：当前用的管理凭据不对。`
+          + '新装默认「盘古凭据」与「管理密钥」是同一把，填一处即可；'
+          + '老部署请把「管理密钥」填成服务端 ~/.pangu/.admin_secret 的内容。',
+      }
+    }
     return res.json()
   }
   const adminKeyService = {

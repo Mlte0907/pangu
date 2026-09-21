@@ -62,7 +62,7 @@ function makeRemotes(adminConfigured) {
   const env = (v) => ({ ok: true, value: v })
   const adminErr = {
     ok: false,
-    error: '未配置管理密钥：请在 DSH 设置 →「盘古记忆系统」→「管理密钥」填入安装时命令行打印的那串…',
+    error: '未配置管理凭据：请在 DSH 设置 →「盘古记忆系统」填入「盘古凭据」（新装默认它与管理密钥是同一把）…',
   }
   return {
     panguDashboard: {
@@ -168,7 +168,7 @@ console.log('═══ 场景 A：未配置管理密钥（宿主返回内层错�
 const a = await renderAdminPlatforms(false)
 chk('管理页未崩溃（无 ReferenceError）', !a.errors.some((e) => /ReferenceError/.test(e)), a.errors[0])
 chk('平台区已渲染（不是整体空白）', a.text.includes('平台接入 · 一段话搞定'), a.text.slice(0, 120))
-chk('给出「管理接口不可用」可操作提示', a.text.includes('管理接口不可用') && a.text.includes('未配置管理密钥'), a.text.slice(0, 200))
+chk('给出「管理接口不可用」可操作提示', a.text.includes('管理接口不可用') && a.text.includes('未配置管理凭据'), a.text.slice(0, 200))
 
 console.log()
 console.log('═══ 场景 B：已配置管理密钥（宿主返回平台列表）═══')
