@@ -91,6 +91,10 @@ const svc = {
         llm_api_key: '', llm_api_key_set: true, llm_api_key_hint: '****4455',
         api_key: '', api_key_set: true, api_key_hint: 'pgk_J_*****tnX6',
         consolidation_enabled: true, consolidation_interval_hours: 24,
+        // 多模态开关：服务端默认关闭；暴露面里已启用的其它 optional 模块
+        // 必须被保住（不能因为打开多模态就把它们冲掉）
+        multimodal_enabled: false,
+        exposure: { enabled_optional_modules: ['analytics', 'knowledge'], enabled_experiments: [], enabled_core_modules: [] },
       },
     },
   }),
@@ -186,6 +190,30 @@ await click(saveBtn())
 const patchC = lastPatch()
 console.log('  提交的 patch:', JSON.stringify(patchC))
 chk('patch 含 api_key（写入插件凭据）', patchC?.api_key === 'pgk-LOCAL-ONLY')
+
+console.log()
+console.log('═══ 场景 D：打开「多模态内容提取」═══')
+// 这个开关要同时做两件事：① 行为开关 multimodal_enabled；② 工具暴露面 ——
+// pangu_ingest_file / pangu_audio_ingest 等属 optional 层，默认不在暴露面内，
+// 只改①的话用户打开了开关却没有任何入口能把文件送进记忆（2026-09-21）。
+// 且②必须**基于服务端现值增删**，否则会把已有的 analytics / knowledge 冲掉。
+const boxByText = (text) => {
+  const holders = [...container.querySelectorAll('div')].filter((d) => d.querySelector('input[type=checkbox]'))
+  return holders.filter((d) => d.textContent.includes(text)).pop()?.querySelector('input[type=checkbox]')
+}
+const mmBox = boxByText('启用多模态内容提取')
+chk('找到多模态开关', !!mmBox)
+await click(mmBox)
+chk('开关切到开', mmBox?.checked === true)
+chk('打开开关后保存按钮可点', !saveBtn()?.disabled)
+await click(saveBtn())
+const patchD = lastPatch()
+console.log('  提交的 patch:', JSON.stringify(patchD))
+chk('patch 含 multimodal_enabled=true', patchD?.multimodal_enabled === true)
+const optD = patchD?.exposure?.enabled_optional_modules || []
+chk('exposure 新增 multimodal', optD.includes('multimodal'))
+chk('exposure 保住已有的 analytics / knowledge', optD.includes('analytics') && optD.includes('knowledge'))
+chk('exposure 未丢其它段', Array.isArray(patchD?.exposure?.enabled_experiments) && Array.isArray(patchD?.exposure?.enabled_core_modules))
 
 console.log()
 console.log(fail === 0 ? '★ 保存语义全部正确' : `✗ ${fail} 项失败`)

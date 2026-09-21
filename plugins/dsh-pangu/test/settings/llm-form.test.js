@@ -275,6 +275,45 @@ test('填入新 Key 时保存的 patch 含 llm_api_key', { skip }, async () => {
   assert.equal(call[1].llm_api_key, 'sk-brand-new-key-abcdef')
 })
 
+test('空凭据框不给「显示/隐藏」，输入后才出现且真的切换 type', { skip }, async () => {
+  // 用户反馈（2026-09-21）：点「显示/隐藏」不起作用。
+  // 根因：按钮恒显示，而空框里只有**脱敏占位符**（不是值），点它自然没变化。
+  // 修法：只在框里有内容时才给这个按钮。
+  const env = mountSettings(FAKE_CFG)
+  const { container } = await render(env)
+  const reveals = () => [...container.querySelectorAll('button')]
+    .filter((b) => ['显示', '隐藏'].includes(b.textContent.trim()))
+  assert.equal(reveals().length, 0, '空框不应出现「显示/隐藏」按钮')
+
+  const setVal = (el, v) => {
+    const setter = Object.getOwnPropertyDescriptor(env.win.HTMLInputElement.prototype, 'value').set
+    setter.call(el, v)
+    el.dispatchEvent(new env.win.Event('input', { bubbles: true }))
+  }
+  // 取一次节点就持有（显示后 type 变 text，再按 type=password 查会查不到）
+  const pw = llmKeyInput(container)
+  await env.act(async () => { setVal(pw, 'sk-typed-123456') })
+  await env.act(async () => { await new Promise((r) => setTimeout(r, 50)) })
+
+  const btns = reveals()
+  assert.equal(btns.length, 1, '输入后才应出现「显示」按钮')
+  await env.act(async () => { btns[0].dispatchEvent(new env.win.MouseEvent('click', { bubbles: true })) })
+  await env.act(async () => { await new Promise((r) => setTimeout(r, 50)) })
+  assert.equal(pw.getAttribute('type'), 'text', '点「显示」应把 type 切到 text')
+  assert.equal(pw.value, 'sk-typed-123456', '显示后应能看到刚输入的内容')
+})
+
+test('多模态内容提取开关默认关闭，并提示工具暴露状态', { skip }, async () => {
+  const env = mountSettings(FAKE_CFG)
+  const { container } = await render(env)
+  assert.ok(container.textContent.includes('多模态内容提取'), '缺少多模态分区')
+  assert.ok(container.textContent.includes('启用多模态内容提取'), '缺少开关')
+  assert.ok(container.textContent.includes('默认关闭'), '未标明默认关闭')
+  assert.ok(container.textContent.includes('工具当前未暴露'), '未提示工具暴露状态')
+  // FAKE_CFG 既没写 whisper_enabled 也没写 multimodal_enabled ⇒ 两个都应为关
+  assert.equal([...container.querySelectorAll('select')].length, 0, '默认关闭时不应出现 Whisper 模型下拉')
+})
+
 test('原有记忆维护设置未被破坏', { skip }, async () => {
   const env = mountSettings(FAKE_CFG)
   const { container } = await render(env)

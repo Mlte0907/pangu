@@ -604,7 +604,17 @@ async function apply(ctx) {
   // PanguConfig 的默认值决定）。本地没写就用生效值补全，否则设置页会显示成
   // 与服务端不一致 —— whisper 尤其明显：本地没写 ≠ 开启，服务端默认才作准。
   // 用户显式写入 config.json 的值优先。
-  const READONLY_FALLBACK_KEYS = ['embedding_model', 'palace_path', 'whisper_enabled', 'whisper_model']
+  const READONLY_FALLBACK_KEYS = [
+    'embedding_model',
+    'palace_path',
+    'whisper_enabled',
+    'whisper_model',
+    'multimodal_enabled',
+    // 暴露面：多模态开关要基于**服务端现值**增删 'multimodal'，取不到就不能改 ——
+    // 否则凭空构造一份 exposure 会把服务端已有的 enabled_optional_modules
+    // （analytics / knowledge …）一并冲掉（2026-09-21）。
+    'exposure',
+  ]
 
   const configService = {
     async get() {

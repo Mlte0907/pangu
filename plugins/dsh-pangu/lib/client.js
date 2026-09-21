@@ -1676,7 +1676,11 @@ window.__ModuleLoader__.load({
               fontFamily: mono ? 'ui-monospace,SFMono-Regular,Menlo,monospace' : 'inherit',
             },
           }),
-          password && h('button', {
+          // 只在**有内容可显示**时才给这个按钮（2026-09-21）。
+          // 此前恒显示：输入框为空时框内只有脱敏占位符（如 pgk_J_*****zkQA），
+          // 点「显示」看不出任何变化 —— 用户直接判定"按钮坏了"。它本来的意义
+          // 只是"把你刚输入的内容明文显示出来"，那就只在输过内容时出现。
+          password && String(value || '').length > 0 && h('button', {
             onClick: () => setReveal((v) => !v),
             title: reveal ? '隐藏' : '显示',
             type: 'button',
@@ -1708,6 +1712,9 @@ window.__ModuleLoader__.load({
       const [saveState, setSaveState] = React.useState({ s: 'idle', msg: '' })
       const [testState, setTestState] = React.useState({ s: 'idle', msg: '', ok: false })
       const [keyDirty, setKeyDirty] = React.useState(false)
+      // 「盘古凭据」框的明文显示开关，与 LLM API Key 的规则一致：
+      // 只在**框里有内容**时才出现按钮（空框里只有掩码占位符，点了没变化）
+      const [credReveal, setCredReveal] = React.useState(false)
       const [rooms, setRooms] = React.useState([])
       const [updateInfo, setUpdateInfo] = React.useState(null)
       const [updateLoading, setUpdateLoading] = React.useState(false)
@@ -1731,6 +1738,8 @@ window.__ModuleLoader__.load({
             // 默认关闭：只有显式写了 true 才算开启（与服务端默认值保持一致）
             whisperEnabled: cfg.whisper_enabled === true,
             whisperModel: cfg.whisper_model || 'base',
+            // 多模态内容提取总开关，同样默认关闭
+            multimodal: cfg.multimodal_enabled === true,
           })
           setKeyDirty(false)
           setLoadErr(null)
@@ -1754,6 +1763,7 @@ window.__ModuleLoader__.load({
         draft.baseUrl !== (config.llm_base_url || '') ||
         draft.whisperEnabled !== (config.whisper_enabled === true) ||
         draft.whisperModel !== (config.whisper_model || 'base') ||
+        draft.multimodal !== (config.multimodal_enabled === true) ||
         // 密码类输入框不回填原值，非空即视为「有改动」——否则只填凭据时
         // 保存按钮一直是灰的，等于存不下去（2026-09-21 修）。
         draft.pk !== '' ||
@@ -1773,15 +1783,36 @@ window.__ModuleLoader__.load({
             whisper_enabled: draft.whisperEnabled,
             whisper_model: draft.whisperModel,
           }
+          // ── 多模态开关：行为开关 + 工具暴露面，两者都要动 ──
+          // `pangu_ingest_file` 等属 optional 层，默认不在暴露面内。只改
+          // multimodal_enabled 的话，用户打开了开关却**没有任何入口**能把文件
+          // 送进记忆（默认白名单里的 pangu_collect_file 只采集文本文件）。2026-09-21。
+          const mmChanged = draft.multimodal !== (config?.multimodal_enabled === true)
+          let mmNote = ''
+          if (mmChanged) {
+            patch.multimodal_enabled = draft.multimodal
+            const cur = config?.exposure
+            if (cur && typeof cur === 'object') {
+              const optional = new Set(cur.enabled_optional_modules || [])
+              if (draft.multimodal) optional.add('multimodal')
+              else optional.delete('multimodal')
+              // 基于**服务端现值**整体回写，只动 multimodal 一项 —— 避免把
+              // 已有的 analytics / knowledge 冲掉
+              patch.exposure = { ...cur, enabled_optional_modules: [...optional].sort() }
+            } else if (draft.multimodal) {
+              // 取不到现值就**不动**暴露面：宁可少改，也不能凭空构造一份覆盖上去
+              mmNote = '未读到服务端 exposure，pangu_multimodal_* 工具未启用（请在服务端确认该配置）'
+            }
+          }
           if (keyDirty && draft.apiKey) patch.llm_api_key = draft.apiKey
           if (draft.pk) patch.api_key = draft.pk
           const value = unwrap(await callRemote('panguConfig', 'save', patch))
           if (!value?.ok) throw new Error(value?.error || '写入失败')
           const rl = value.reload
-          setSaveState({
-            s: 'saved',
-            msg: rl && rl.ok === false ? '已保存，但服务端热加载失败：' + (rl.error || '未知原因') : '',
-          })
+          const notes = []
+          if (rl && rl.ok === false) notes.push('服务端热加载失败：' + (rl.error || '未知原因'))
+          if (mmNote) notes.push(mmNote)
+          setSaveState({ s: 'saved', msg: notes.length ? '已保存，但' + notes.join('；') : '' })
           await load()
           setTimeout(() => setSaveState({ s: 'idle', msg: '' }), 3500)
         } catch (e) {
@@ -1828,6 +1859,8 @@ window.__ModuleLoader__.load({
       const keyHint = config?.llm_api_key_hint
       const credSet = config?.api_key_set
       const credHint = config?.api_key_hint
+      // 多模态工具是否已在服务端暴露（决定开关之外要不要动 exposure）
+      const mmToolsExposed = (config?.exposure?.enabled_optional_modules || []).includes('multimodal')
       const provider = LLM_PROVIDERS.find((p) => p.id === draft?.provider) || {}
 
       return h('div', { style: { padding: '18px 20px 20px', color: css.t1, maxWidth: 560, animation: 'panguFade .25s ease' } },
@@ -1876,18 +1909,27 @@ window.__ModuleLoader__.load({
               h('div', { style: { fontSize: 10.5, color: css.t3 } },
                 credSet ? '已配置 · 留空保持不变' : '必须填写 · 记忆与「管理」页都用它'),
             ),
-            h('input', {
-              className: 'pangu-input', type: 'password', value: draft.pk,
-              // 已配置时**框内直接显示脱敏值**（用户要求）：一眼看到"当前生效的是哪一把"，
-              // 而不只是一句无从核对的「已配置」。这正是"填了没反馈"的解药。
-              // 用 placeholder 而非 value：一开始输入就自动消失，保存只读 draft.pk，
-              // 因此不存在"把掩码当凭据存进去"的风险。
-              placeholder: credSet
-                ? (credHint || '已配置（明文不回显）')
-                : '粘贴安装时打印的盘古凭据',
-              onChange: (e) => setDraft((prev) => ({ ...prev, pk: e.target.value })),
-              style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
-            }),
+            h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+              h('input', {
+                className: 'pangu-input', type: credReveal ? 'text' : 'password', value: draft.pk,
+                // 已配置时**框内直接显示脱敏值**（用户要求）：一眼看到"当前生效的是哪一把"，
+                // 而不只是一句无从核对的「已配置」。这正是"填了没反馈"的解药。
+                // 用 placeholder 而非 value：一开始输入就自动消失，保存只读 draft.pk，
+                // 因此不存在"把掩码当凭据存进去"的风险。
+                placeholder: credSet
+                  ? (credHint || '已配置（明文不回显）')
+                  : '粘贴安装时打印的盘古凭据',
+                onChange: (e) => setDraft((prev) => ({ ...prev, pk: e.target.value })),
+                style: { flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
+              }),
+              // 与 LLM API Key 同一规则：**输过内容才有**「显示/隐藏」
+              draft.pk ? h('button', {
+                type: 'button',
+                onClick: () => setCredReveal((v) => !v),
+                title: credReveal ? '隐藏' : '显示',
+                style: { flexShrink: 0, padding: '6px 9px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 11, cursor: 'pointer' },
+              }, credReveal ? '隐藏' : '显示') : null,
+            ),
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
               credSet
                 ? '灰字即当前生效的凭据（掩码，明文不回显）。留空保持原值，填入新值则覆盖 —— 记忆读写/搜索、管理页都用它。'
@@ -1975,7 +2017,7 @@ window.__ModuleLoader__.load({
             h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '语音转写'),
             h('span', { style: { fontSize: 10.5, color: css.t3 } }, 'Whisper 模型 · 关闭可节省 140-800MB 内存'),
           ),
-          h(SettingRow, { key: 'whisper-toggle', label: '启用 Whisper', desc: '默认关闭（可选依赖）；启用后可将音频文件转为文字记忆' },
+          h(SettingRow, { key: 'whisper-toggle', label: '启用 Whisper', desc: '默认关闭（可选依赖）；启用后可将音频转为文字。音频**入库**还需打开下方「多模态内容提取」' },
             h(Toggle, { checked: draft.whisperEnabled, onChange: () => setDraft((p) => ({ ...p, whisperEnabled: !p.whisperEnabled })) }),
           ),
           draft.whisperEnabled && h('div', { key: 'whisper-model', style: { padding: '11px 0', borderBottom: `1px solid ${css.borderSoft}` } },
@@ -1997,6 +2039,26 @@ window.__ModuleLoader__.load({
                 ),
               ),
             ),
+          ),
+          // ── 多模态内容提取（默认关闭）──
+          // 此前这套能力「装了但没真的用过」：图片只取尺寸、音频**根本没调
+          // whisper**、且 pangu_ingest_file 等属 optional 层默认不暴露 ——
+          // 既没有抽内容，也没有入口。这里给一个总开关，默认关闭（2026-09-21）。
+          h('div', { key: 'mm-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '02C'),
+            h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '多模态内容提取'),
+            h('span', { style: { fontSize: 10.5, color: css.t3 } }, '默认关闭 · 开启会一并暴露 pangu_multimodal_* 工具'),
+          ),
+          h(SettingRow, {
+            key: 'mm-toggle', label: '启用多模态内容提取',
+            desc: '默认关闭（可选依赖）。开启后 PDF 正文（pypdf）与音频转写（whisper，需上方开关）才会抽进记忆；图片只记录尺寸，无 OCR。',
+          },
+            h(Toggle, { checked: draft.multimodal, onChange: () => setDraft((p) => ({ ...p, multimodal: !p.multimodal })) }),
+          ),
+          h('div', { key: 'mm-hint', style: { padding: '0 0 11px', fontSize: 10.5, color: css.t3, lineHeight: 1.6 } },
+            mmToolsExposed
+              ? '工具当前已暴露（pangu_ingest_file / pangu_audio_ingest / pangu_image_embed …）。改完需让 DSH 重新挂载 MCP，工具列表才会刷新。'
+              : '工具当前未暴露：默认白名单里的采集工具只处理文本文件。开启上面的开关即会自动打开这一层。',
           ),
           h('div', { key: 's3-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '03'),
