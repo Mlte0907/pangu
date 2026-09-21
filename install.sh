@@ -21,11 +21,15 @@
 #   ./install.sh --no-service       # 不装 systemd 服务（仅装到目录）
 #   ./install.sh --dsh-plugin       # 额外安装 DSH 插件（从独立仓库拉取，可选）
 #   ./install.sh --port 19529       # 指定端口
-#   ./install.sh --host 0.0.0.0     # 监听所有网卡。**DSH 插件装在别的机器上时需要**：
-#                                   #   卡片会自动改印探测到的公网 IP。默认只监听
-#                                   #   127.0.0.1（更安全），那种情况下插件走 SSH 隧道：
-#                                   #     ssh -N -L 19529:127.0.0.1:19529 用户@服务器
-#                                   #   公网暴露务必配 nginx+TLS 或安全组限制来源 IP。
+#   ./install.sh --host 0.0.0.0     # 手动指定监听地址（一般不用给：见下）
+#   ./install.sh --host 127.0.0.1   #
+#
+# 监听地址默认**自动判定**，小白不用选：
+#   · 本机自用（有图形会话、非 SSH 安装）→ 只监听 127.0.0.1，最安全、端口不外露
+#   · 服务器/局域网主机（SSH 安装 / 云主机 metadata / 无图形会话）
+#     → 监听 0.0.0.0，卡片自动给出公网 IP（探测不到则给网卡 IP）
+#   · 想覆盖判定就用 --host：0.0.0.0 对所有网卡 / 127.0.0.1 仅本机
+#   公网暴露务必配 nginx+TLS，并在云安全组限制来源 IP。
 #   ./install.sh --model-only       # 仅预下载模型（已装好依赖时用）
 #   ./install.sh --offline-model /path/to/model_quantized.onnx,/path/to/tokenizer.json
 #                                   # 从本地文件装模型（内网/弱网）
@@ -110,7 +114,8 @@ REPO_DIR="$SELF_DIR"
 VENV_DIR="$REPO_DIR/.venv"
 PANGU_HOME="${PANGU_HOME:-$HOME/.pangu}"
 PORT="19529"
-HOST="127.0.0.1"
+# 空 = **自动判定**（见下面的「自动判定」段）。只有用户显式 --host 才固定。
+HOST=""
 INSTALL_SERVICE=1
 INSTALL_DSH_PLUGIN=0
 MODEL_ONLY=0
@@ -184,6 +189,71 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# ════════════════════════════════════════════════════════════
+# 自动判定：这台机器是「本机自用」还是「给别的机器用」
+# ════════════════════════════════════════════════════════════
+#
+# 为什么不问用户：回环 / 网卡 / 公网这套概念，小白既不懂也不该被迫选
+# （2026-09-22 用户反馈：部署到云端后拿到 http://127.0.0.1:19529，而插件在
+#  另一台机器上根本连不通 —— 脚本只丢一个地址却不说前提，用户无从下手；
+#  反过来"给两个方案让用户选"同样是把问题推回给不懂的人）。
+#
+# 判定为「服务器角色」（插件很可能在别的机器上），命中任一即是：
+#   ① 通过 SSH 装，且连进来的不是本机回环（排除 ssh localhost）
+#   ② 云厂商 metadata 可达（169.254.169.254）—— 用网页控制台装的云主机正是这种
+#   ③ 没有图形会话（台式机/笔记本有；服务器通常没有）
+# 三条都不命中 ⇒ 单机自用 ⇒ 只监听回环（端口不外露，最安全）。
+#
+# 想覆盖判定：--host 0.0.0.0（强制对所有网卡）/ --host 127.0.0.1（强制仅本机）。
+has_graphical_session() {
+  [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && return 0
+  # 有没有**真实**的图形会话 —— 用 loginctl 的 Type 判定。
+  # 注意：不能用 `systemctl is-active graphical.target` —— 无头机器只要默认
+  # target 是 graphical 它就报 active，实测本机（无 X 进程）正是如此，会把
+  # 无头服务器误判成桌面（2026-09-22 测试台抓到）。
+  if command -v loginctl >/dev/null 2>&1; then
+    for _s in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
+      case "$(loginctl show-session "$_s" -p Type --value 2>/dev/null)" in
+        x11|wayland) return 0 ;;
+      esac
+    done
+  fi
+  pgrep -x Xorg >/dev/null 2>&1 && return 0
+  pgrep -x Xwayland >/dev/null 2>&1 && return 0
+  return 1
+}
+
+HOST_AUTO=0
+SSH_REMOTE=0
+ROLE_REASON="由 --host 指定"
+if [ "$DO_UNINSTALL" = 1 ]; then
+  # 卸载不需要监听地址，也不值得为判定花掉一次 1 秒的网络探测
+  HOST="127.0.0.1"
+elif [ -z "$HOST" ]; then
+  HOST_AUTO=1
+  ROLE="local"; ROLE_REASON="未检测到远程使用迹象（像是本机自用）"
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    SSH_CIP=$(echo "$SSH_CONNECTION" | awk '{print $1}')
+    SSH_SIP=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+    if [ "$SSH_CIP" != "127.0.0.1" ] || [ "$SSH_SIP" != "127.0.0.1" ]; then
+      SSH_REMOTE=1
+      ROLE="server"; ROLE_REASON="通过 SSH 从 $SSH_CIP 登录安装（插件在别的机器上）"
+    fi
+  fi
+  if [ "$ROLE" = "local" ] && command -v curl >/dev/null 2>&1; then
+    META_CODE=$(curl -s -o /dev/null -m 1 -w '%{http_code}' \
+      http://169.254.169.254/latest/meta-data/ 2>/dev/null || true)
+    case "$META_CODE" in
+      2*|3*|401|403) ROLE="server"; ROLE_REASON="检测到云主机 metadata（本机是云服务器）" ;;
+    esac
+  fi
+  if [ "$ROLE" = "local" ] && ! has_graphical_session; then
+    ROLE="server"; ROLE_REASON="没有图形会话（无头服务器）"
+  fi
+  if [ "$ROLE" = "server" ]; then HOST="0.0.0.0"; else HOST="127.0.0.1"; fi
+  ROLE_REASON="$ROLE_REASON → 监听 $HOST"
+fi
+
 PANGU_DIR="$REPO_DIR"
 cd "$PANGU_DIR"
 
@@ -236,6 +306,12 @@ printf '\033[1m盘古记忆系统 — 安装\033[0m\n'
 echo "    仓库:     $PANGU_DIR"
 echo "    数据目录: $PANGU_HOME"
 echo "    服务端口: $HOST:$PORT  (MCP + REST)"
+if [ "$HOST_AUTO" = 1 ]; then
+  echo "    监听地址: $HOST  ← 自动判定，$ROLE_REASON"
+  echo "              （想改：./install.sh --host 0.0.0.0 或 --host 127.0.0.1）"
+else
+  echo "    监听地址: $HOST  ← $ROLE_REASON"
+fi
 [ "$INSTALL_SERVICE" = 1 ] && echo "    服务管理: systemctl --user $SERVICE_NAME"
 
 # ════════════════════════════════════════════════════════════
@@ -740,49 +816,68 @@ else
 fi
 
 # ── 组装「盘古服务地址」──
-# 关键：**不假定用户绑了域名**。云端新用户很可能只用公网 IP 直连。
-# host=0.0.0.0 时 hostname -I 在公有云上返回的是内网 IP（172.x），填了连不上，
-# 所以依次尝试：SSH 连接到的地址 → 公网 IP 探测 → 本机 IPv4。
+# 目标：**照抄就能连上**。所以给"实际可达的那个地址"，并把"插件恰好就在同一台
+# 机器上"的可能一并列出（回环地址永远有效）。
+# 不假定用户绑了域名 —— 云端新用户很可能只用公网 IP 直连。
+# hostname -I 在公有云上返回的是**内网 IP**（172.x），直接印出去等于没说，
+# 所以依次尝试：SSH 连接到的地址 → 公网 IP 探测 → 网卡 IPv4（局域网部署时正确）。
+LAN_IP=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.' || true)
 if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ]; then
   ACCESS_IP=""
   # ① SSH 登录时连接到的服务端地址（公有云上通常就是公网 IP）
   if [ -n "${SSH_CONNECTION:-}" ]; then
     ACCESS_IP=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+    [ "$ACCESS_IP" = "127.0.0.1" ] && ACCESS_IP=""
+  fi
+  # ①.5 云厂商 metadata 里的公网 IP。
+  # 为什么需要：从**网页控制台**装的云主机拿不到 SSH_CONNECTION，而 hostname -I
+  # 给的是 VPC 内网 IP（172.x/10.x），填进插件根本连不上。各家字段名不同，逐个试。
+  if [ -z "$ACCESS_IP" ] && command -v curl >/dev/null 2>&1; then
+    for _p in /latest/meta-data/public-ipv4 /latest/meta-data/eipv4 /latest/meta-data/publicIpv4 /latest/meta-data/public-ip; do
+      _v=$(curl -s -m 1 "http://169.254.169.254$_p" 2>/dev/null || true)
+      case "$_v" in
+        [0-9]*.[0-9]*.[0-9]*.[0-9]*) ACCESS_IP="$_v"; break ;;
+      esac
+    done
   fi
   # ② 探测出口公网 IP（3 秒超时，失败不影响安装）
   if [ -z "$ACCESS_IP" ] && command -v curl >/dev/null 2>&1; then
     ACCESS_IP=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null || true)
   fi
-  # ③ 兜底：本机第一个 IPv4（内网部署时正确）
-  if [ -z "$ACCESS_IP" ]; then
-    ACCESS_IP=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.' || true)
+  # ③ 兜底：网卡 IPv4（局域网主机部署时这就是对的答案）
+  [ -n "$ACCESS_IP" ] || ACCESS_IP="$LAN_IP"
+  [ -n "$ACCESS_IP" ] || ACCESS_IP="<这台机器的IP>"
+  ACCESS_ADDR="http://$ACCESS_IP:$PORT"
+
+  # 附上其它同样可用的地址（插件在同机/同网段时更省事）
+  ACCESS_ALT_BLOCK=""
+  [ "$ACCESS_IP" != "127.0.0.1" ] && \
+    ACCESS_ALT_BLOCK="$ACCESS_ALT_BLOCK"$'\n'"                 本机自用：http://127.0.0.1:$PORT"
+  if [ -n "$LAN_IP" ] && [ "$LAN_IP" != "$ACCESS_IP" ]; then
+    ACCESS_ALT_BLOCK="$ACCESS_ALT_BLOCK"$'\n'"                 局域网内：http://$LAN_IP:$PORT"
   fi
-  [ -n "$ACCESS_IP" ] || ACCESS_IP="<服务器公网IP>"
-  # ③ 兜底拿到的可能是内网 IP（VPC / 家庭局域网），公网直连填它没用 —— 明说一句，
-  # 免得用户以为脚本算错了（2026-09-22：本机实测 ipify 不通时正是这种情况）。
+  ACCESS_ALT_BLOCK="$ACCESS_ALT_BLOCK"$'\n'"                 或 https://你的域名    # 若已用 nginx+TLS 绑域名，改填这个"
+
+  # 探测到内网 IP 时（VPC / 家庭局域网 / ipify 不通）明说一句，免得用户以为算错了
   case "$ACCESS_IP" in
     10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) PRIVATE_IP=1 ;;
   esac
-  ACCESS_ADDR="http://$ACCESS_IP:$PORT"
-  ACCESS_ALT="https://你的域名    # 若已用 nginx+TLS 绑域名，改填这个"
 else
   ACCESS_ADDR="http://$HOST:$PORT"
-  ACCESS_ALT=""
-  # 只监听回环、而且这台机器是**远程 SSH 装**的 —— 那 DSH 插件在另一台机器上，
-  # 这个地址根本连不通。不能沉默地印一行 127.0.0.1 让人以为照填就行
-  # （2026-09-22 云端实测踩到：卡片只给 127.0.0.1，用户无从下手）。
-  if [ "$HOST" = "127.0.0.1" ] && [ -n "${SSH_CONNECTION:-}" ]; then
+  # 本机自用（只监听回环）是最安全的形态：给一句"以后要给别的机器用怎么办"就够
+  ACCESS_ALT_BLOCK=$'\n'"                 （本机自用，只监听回环；要给别的机器用：重跑 ./install.sh --host 0.0.0.0）"
+  # 只有「明显是服务器却强制回环」时才展开详细说明：显式指定的，或经 SSH 装的
+  # （用 SSH_REMOTE 而不是裸 SSH_CONNECTION —— 后者在 `ssh localhost` 时也为真，
+  #   会给本机自用的用户加一段没用的说明）
+  if [ "$HOST_AUTO" = 0 ] || [ "$SSH_REMOTE" = 1 ]; then
     REMOTE_HINT=1
   fi
 fi
 
 # 卡片里的地址块（单变量拼接，避免多出一行空行）
-CARD_ADDR="盘古服务地址   : $ACCESS_ADDR"
-if [ -n "$ACCESS_ALT" ]; then
-  CARD_ADDR="$CARD_ADDR"$'\n'"                 或 $ACCESS_ALT"
-fi
+CARD_ADDR="盘古服务地址   : $ACCESS_ADDR$ACCESS_ALT_BLOCK"
 if [ -n "${PRIVATE_IP:-}" ]; then
-  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                 ⚠ 上面是**内网地址**（探测不到公网 IP）：公网访问请改填这台服务器的公网 IP 或域名")"
+  CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                 ⚠ 上面是**内网地址**（这台机器没有公网 IP）：跨公网访问请改填公网 IP 或域名")"
 fi
 if [ -n "${REMOTE_HINT:-}" ]; then
   CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                 ⚠ 只监听本机回环 —— DSH 插件装在别的机器上时，上面这个地址连不通。二选一：")"
@@ -793,11 +888,12 @@ if [ -n "${REMOTE_HINT:-}" ]; then
   CARD_ADDR="$CARD_ADDR"$'\n'"$(c_yellow "                       并在云安全组放行 $PORT、限制来源 IP）")"
 fi
 
-# 「远程访问」说明块：只要监听回环就给出。与卡片上的提示是同一件事，
-# 但这里不看 SSH_CONNECTION —— 从云厂商的网页控制台装的机器拿不到该变量，
-# 而那种场景（服务器上的插件装在别处）恰恰更需要这段话。
+# 「远程访问」说明块：只在**明显是服务器却仍监听回环**时给出
+# （显式 --host 127.0.0.1，或经 SSH 安装）。自动判定成本机自用的情况不展开，
+# 免得给单机用户加噪音 —— 卡片上那一句"要给别的机器用怎么办"已经够用。
 REMOTE_NOTES=""
-if [ "$HOST" = "127.0.0.1" ]; then
+if [ "$HOST" = "127.0.0.1" ] \
+   && { [ "$HOST_AUTO" = 0 ] || [ "$SSH_REMOTE" = 1 ]; }; then
   REMOTE_NOTES=$'\n'"$(c_yellow "【远程访问】本服务只监听 127.0.0.1（本机回环）")"
   REMOTE_NOTES="$REMOTE_NOTES"$'\n'
   REMOTE_NOTES="$REMOTE_NOTES"$'\n'"  若 DSH 插件装在**别的电脑**上，卡片里的 127.0.0.1 指的是这台服务器自己，连不通。二选一："
@@ -810,6 +906,16 @@ if [ "$HOST" = "127.0.0.1" ]; then
   REMOTE_NOTES="$REMOTE_NOTES"$'\n'"    脚本会把卡片地址改成探测到的公网 IP。公网暴露**必须**同时做："
   REMOTE_NOTES="$REMOTE_NOTES"$'\n'"      · nginx + TLS 反代（推荐），或用云安全组把 $PORT 只放行你的来源 IP"
   REMOTE_NOTES="$REMOTE_NOTES"$'\n'"      · 内置 API Key 只防误连，不防针对性攻击"
+fi
+
+# 绑全网卡时的安全提示：这条路是"给别的机器用"的默认选择，必须把代价说清楚。
+# 云主机不放行安全组 → 服务 active 但插件连不上，是小白最常见的卡点。
+BIND_NOTES=""
+if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ]; then
+  BIND_NOTES=$'\n'"$(c_yellow "【已监听所有网卡（$HOST）—— 别的机器可以直连】")"
+  BIND_NOTES="$BIND_NOTES"$'\n'"  · **云主机：安全组必须放行 $PORT**（默认全封；不放行则服务正常但插件连不上）"
+  BIND_NOTES="$BIND_NOTES"$'\n'"  · 暴露到公网：建议前面加 nginx+TLS —— 明文 HTTP 下 API Key 会裸奔"
+  BIND_NOTES="$BIND_NOTES"$'\n'"  · 只想本机用（更安全）：重跑 ./install.sh --host 127.0.0.1"
 fi
 
 # 凭据块：只列**要填到设置页的那一条**。
@@ -864,6 +970,7 @@ $(c_yellow '【配置】')
   环境变量: PANGU_HOST / PANGU_PORT / PANGU_LOG_LEVEL / PANGU_ONNX_CACHE_DIR
 
 $REMOTE_NOTES
+$BIND_NOTES
 
 $(c_cyan '──────────── DSH 插件填写卡（复制到 DSH 设置页）────────────')
 $(c_green "$CARD_ADDR")
