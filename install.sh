@@ -27,6 +27,11 @@
 #   ./install.sh --server           # 仅启动 API 服务（不安装，需先装好）
 #   ./install.sh --uninstall        # 卸载 systemd 服务
 #
+#   PANGU_NO_UV=1 ./install.sh      # 不自动安装 uv（改用 pip3，慢很多）
+#                                     默认会在缺少 uv 时自动装一个到 ~/.local/bin
+#                                     （不改你的 shell 配置）；装依赖因此从 8-15 分钟
+#                                     降到约 20 秒。
+#
 # 幂等：可重复执行，已完成的步骤会跳过。
 
 set -euo pipefail
@@ -43,6 +48,27 @@ if [ -n "$SELF" ]; then
   SELF_DIR="$(cd "$(dirname "$SELF")" 2>/dev/null && pwd || true)"
 fi
 
+# 取代码：首选 git（增量、可 pull），失败或没有 git 时回退 GitHub tarball。
+#
+# 为什么必须回退：`git clone https://github.com/...` 走的是 **github.com:443**，
+# 国内网络下经常被阻断/超时（本机实测：连不通，133 秒后才报错），
+# 而 **codeload.github.com** 同一网络下通常可达（实测 200）。
+# 只判断"有没有 git"是不够的 —— 有 git 但拉不动，一样装不上。
+_fetch_tarball() {
+  local dest="$1"
+  echo "    改用 tarball 下载（带进度条，约 5-10 MB）…"
+  mkdir -p "$dest"
+  local tmp
+  tmp="$(mktemp -t pangu-XXXXXX.tgz)"
+  curl -fL --progress-bar --max-time 600 -o "$tmp" \
+    https://codeload.github.com/Mlte0907/pangu/tar.gz/refs/heads/master \
+    || { echo "错误: 下载失败（codeload.github.com 也不通？）" >&2; rm -f "$tmp"; return 1; }
+  tar -xzf "$tmp" -C "$dest" --strip-components=1 \
+    || { echo "错误: 解压失败（$tmp）" >&2; rm -f "$tmp"; return 1; }
+  rm -f "$tmp"
+  return 0
+}
+
 if [ -z "$SELF_DIR" ] || [ ! -f "$SELF_DIR/pangu/api/server.py" ]; then
   INSTALL_ROOT="${PANGU_INSTALL_DIR:-$HOME/pangu}"
   echo "==> 取得盘古代码到 $INSTALL_ROOT"
@@ -52,19 +78,21 @@ if [ -z "$SELF_DIR" ] || [ ! -f "$SELF_DIR/pangu/api/server.py" ]; then
     git -C "$INSTALL_ROOT" pull --ff-only 2>/dev/null || echo "    拉取失败，用现有代码继续"
   elif command -v git >/dev/null 2>&1; then
     echo "    克隆中（git --depth 1）…"
-    git clone --depth 1 https://github.com/Mlte0907/pangu "$INSTALL_ROOT" \
-      || { echo "错误: 克隆失败，请检查网络" >&2; exit 1; }
+    # 90 秒上限：github.com:443 被阻断时会**长时间无响应**（本机实测挂 133 秒），
+    # 干等比失败更糟 —— 超时即回退 tarball。能正常克隆的机器远快于此。
+    if command -v timeout >/dev/null 2>&1; then
+      GIT_OK=$(timeout 90 git clone --depth 1 https://github.com/Mlte0907/pangu "$INSTALL_ROOT" 2>/dev/null && echo 1 || echo 0)
+    else
+      GIT_OK=$(git clone --depth 1 https://github.com/Mlte0907/pangu "$INSTALL_ROOT" 2>/dev/null && echo 1 || echo 0)
+    fi
+    if [ "$GIT_OK" != "1" ]; then
+      echo "    git 克隆失败/超时（github.com:443 不通或被限速）—— 回退 tarball…"
+      rm -rf "$INSTALL_ROOT"
+      _fetch_tarball "$INSTALL_ROOT" || exit 1
+    fi
   else
-    # 没有 git 的机器（Debian 最小安装常见）也要能装：取 GitHub tarball。
-    echo "    未检测到 git —— 改用 tarball 下载（带进度条，约 5-10 MB）…"
-    mkdir -p "$INSTALL_ROOT"
-    TMP_TGZ="$(mktemp -t pangu-XXXXXX.tgz)"
-    curl -fL --progress-bar -o "$TMP_TGZ" \
-      https://codeload.github.com/Mlte0907/pangu/tar.gz/refs/heads/master \
-      || { echo "错误: 下载失败，请检查网络（或先 apt install git 再重跑）" >&2; exit 1; }
-    tar -xzf "$TMP_TGZ" -C "$INSTALL_ROOT" --strip-components=1 \
-      || { echo "错误: 解压失败（$TMP_TGZ）" >&2; exit 1; }
-    rm -f "$TMP_TGZ"
+    echo "    未检测到 git —— 走 tarball 下载"
+    _fetch_tarball "$INSTALL_ROOT" || exit 1
   fi
 
   [ -f "$INSTALL_ROOT/install.sh" ] || { echo "错误: 取得代码失败（$INSTALL_ROOT/install.sh 不存在）" >&2; exit 1; }
@@ -214,7 +242,8 @@ if [ "$MODEL_ONLY" = 0 ]; then
 # 小白最怕的不是慢，而是"没动静、不知道还要等多久"（2026-09-22 反馈）。
 c_cyan "盘古安装程序"
 echo "  共 5 步：环境自检 → 建虚拟环境 → 装依赖 → 下载模型 → 装开机服务"
-echo "  预计 1-3 分钟；若用 pip 装依赖可能 8-15 分钟（有 uv 则约 20 秒）。"
+echo "  预计 1-3 分钟。装依赖用 uv（缺了会自动装，约 10 秒）—— 约 20 秒装完；"
+echo "  万一 uv 装不上才退回 pip，那时需 8-15 分钟（会持续报进度）。"
 echo "  每步都会打印进度；长时间无输出时会每 10 秒报一次已用时间。"
 echo "  关键步骤失败会明确报错并停下，不会静默降级。"
 
@@ -233,15 +262,41 @@ done
    提示：uv 可一键安装 Python：uv python install 3.12"
 ok "Python $("$PY" -c 'import sys;print(".".join(map(str,sys.version_info[:3])))')  ($PY)"
 
-# 包管理器：uv 优先（实测冷装 8 分钟，pip 更慢）
+# 自动装 uv：官方安装脚本，装到 ~/.local/bin。
+#
+# 两个刻意的选择：
+#  1) `UV_UNMANAGED_INSTALL` 而不是默认安装 —— 默认安装会去改用户的
+#     shell 配置（追加 PATH），那属于"未经请求地动别人的环境"。这里只把
+#     二进制放进 ~/.local/bin，本次运行临时加进 PATH 即可。
+#  2) 失败**不作为错误**：装不上就退回 pip3，只是慢，不该因此装不成。
+#
+# 想跳过自动安装：`PANGU_NO_UV=1 ./install.sh`。
+_try_install_uv() {
+  [ "${PANGU_NO_UV:-0}" = "1" ] && return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  echo "    未检测到 uv —— 自动安装（约 10 秒，装到 ~/.local/bin，不改你的 shell 配置）…"
+  if curl -LsSf --max-time 180 https://astral.sh/uv/install.sh \
+       | env UV_UNMANAGED_INSTALL="$HOME/.local/bin" sh >/dev/null 2>&1 \
+     && [ -x "$HOME/.local/bin/uv" ]; then
+    export PATH="$HOME/.local/bin:$PATH"
+    return 0
+  fi
+  echo "    uv 自动安装失败（网络？）—— 退回 pip3，速度会慢不少"
+  return 1
+}
+
+# 包管理器：uv 优先。
+# 实测差距悬殊：uv 装依赖约 20 秒，pip 首次要 8-15 分钟（56 包 / 223MB）。
+# 所以没装 uv 时**主动装一个**，而不是让小白干等十几分钟看屏幕不动。
 PKG=""
 if command -v uv >/dev/null 2>&1; then
   PKG="uv"; ok "包管理器: uv（快，推荐）"
+elif _try_install_uv; then
+  PKG="uv"; ok "包管理器: uv（本次自动安装到 ~/.local/bin）"
 elif command -v pip3 >/dev/null 2>&1; then
-  PKG="pip3"; warn "包管理器: pip3 —— 未检测到 uv，安装会明显更慢"
-  warn "  建议先装 uv：curl -LsSf https://astral.sh/uv/install.sh | sh"
+  PKG="pip3"; warn "包管理器: pip3 —— 安装会明显更慢（预计 8-15 分钟），中途会持续报进度"
 else
-  die "未找到 uv 或 pip3，请先安装其一"
+  die "未找到 uv 或 pip3，请先安装其一（apt install python3-pip 或先装 uv）"
 fi
 
 # 磁盘空间：依赖 223MB + 模型 23MB + 数据目录，留 2GB 余量
