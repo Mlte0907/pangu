@@ -70,10 +70,12 @@ curl -s -X POST http://127.0.0.1:19529/mcp \
   引入约 1.3GB CUDA 轮子，且在无 GPU 机器上永不执行（代码路径全是惰性导入）。
   实测：核心清单 56 包 / 236MB / 约 20 秒；含 torch 的完整集下载 987MB+ 仍难落盘。
   需要时用 `pip install -e ".[multimodal]"`，无 GPU 请先装 CPU-only 轮子。
-- **`dsh-pangu` 插件的 `node_modules` 被 `.gitignore` 忽略**，克隆后不存在。
-  `lib/typert.host.mjs` 会被宿主 typert-loader 自动 import，缺 `zod` 会导致
-  DSH 启动失败（`ERR_MODULE_NOT_FOUND`）。安装插件请用
-  `scripts/install_dsh_plugin.sh`（幂等，含自检）。
+- **`dsh-pangu` 插件已独立成仓**（`Mlte0907/dsh-pangu`；2026-09-22 由本仓
+  `plugins/dsh-pangu` 用 `git subtree split` 切出，历史保留）。它的 `node_modules`
+  被 `.gitignore` 忽略，克隆后不存在；而 `lib/typert.host.js` 会被宿主
+  typert-loader 自动 import，缺 `zod` 会导致 DSH 启动失败（`ERR_MODULE_NOT_FOUND`）。
+  安装：`curl -fsSL https://raw.githubusercontent.com/Mlte0907/dsh-pangu/main/install.sh | bash`
+  （本仓仍可用 `./install.sh --dsh-plugin` 拉取到 `~/.dsh-pangu` 再安装）。
 - **`tools.allow` 白名单不生效（仅指客户端侧）**：`@deepseek-ai/dsh-mcp-client`
   的 Config schema 不接受 `tools` 键，该键被静默忽略且无告警。
   **工具范围的真正控制点在服务端**：盘古有三级暴露机制
@@ -151,7 +153,7 @@ curl -s -X POST http://127.0.0.1:19529/mcp \
   且不报任何错——极易误判成业务代码有 bug。同理 `act` 要与 `react-dom` 同源。
 - **`node:test` 同进程内多次初始化 jsdom + React 会串**：事件绑定可能落到前一个
   document 上。跨多个挂载场景的测试建议拆成独立进程脚本（见
-  `plugins/dsh-pangu/test/settings/save-semantics.mjs`）。
+  `dsh-pangu/test/settings/save-semantics.mjs`，现随插件移入独立仓）。
 - 本机 `npm install` 不可用（`Class extends value undefined`），测试依赖靠软链到
   宿主的 `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>`；DSH 自带 jsdom 29
   与 react 18，可直接复用。
@@ -189,8 +191,9 @@ DSH 已安装 `dsh-brake` 插件，自动检测"方法循环"（同类工具高�
 
 ## 重启 dsh-web（插件改动生效的唯一规范方式）
 
-盘古的 dsh 插件跑在系统级服务 `dsh-web.service`（端口 3080）里。改了
-`plugins/dsh-pangu/` 下的宿主代码（lib/index.js、lib/typert.host.js）后，
+盘古的 dsh 插件跑在系统级服务 `dsh-web.service`（端口 3080）里。插件源码现位于
+**独立仓的检出目录**（本机 `~/dsh-pangu`，由 `dsh plugin add` link 进 profile）。
+改了宿主代码（`lib/index.js`、`lib/typert.host.js`）后，
 必须重启该服务才生效；`lib/client.js` 是浏览器按需拉取的，刷新页面即可。
 
 ```sh

@@ -102,10 +102,13 @@ jobs:
             uv venv && uv pip install -r requirements.txt
             ```
 
-            ### DSH 插件
+            ### DSH 插件（可选）
+
+            插件自 0.4.1 起独立成仓（https://github.com/Mlte0907/dsh-pangu ），
+            盘古本体不依赖它：
 
             ```bash
-            ./scripts/install_dsh_plugin.sh
+            curl -fsSL https://raw.githubusercontent.com/Mlte0907/dsh-pangu/main/install.sh | bash
             ```
 
             安装后在 DSH 设置 →「盘古记忆系统」填写 LLM 提供商与 API Key，

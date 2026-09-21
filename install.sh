@@ -19,7 +19,7 @@
 # 用法：
 #   ./install.sh                    # 默认：装依赖 + 预下载模型 + systemd 服务
 #   ./install.sh --no-service       # 不装 systemd 服务（仅装到目录）
-#   ./install.sh --dsh-plugin       # 额外安装 DSH 插件
+#   ./install.sh --dsh-plugin       # 额外安装 DSH 插件（从独立仓库拉取，可选）
 #   ./install.sh --port 19529       # 指定端口
 #   ./install.sh --model-only       # 仅预下载模型（已装好依赖时用）
 #   ./install.sh --offline-model /path/to/model_quantized.onnx,/path/to/tokenizer.json
@@ -512,12 +512,25 @@ fi  # INSTALL_SERVICE && !MODEL_ONLY
 # ════════════════════════════════════════════════════════════
 # 6. 安装 DSH 插件（可选）
 # ════════════════════════════════════════════════════════════
+# 插件自 2026-09-22 起是**独立仓库**（Mlte0907/dsh-pangu）：盘古本体不依赖它，
+# 不用 DSH 的人装完上面就完事。这里按需拉取，失败只提示、不影响本体安装
+# —— 插件是可选项，不该因为它拖垮主线。
 if [ "$INSTALL_DSH_PLUGIN" = 1 ]; then
-step "附加：安装 DSH 插件"
-if [ -x "$REPO_DIR/scripts/install_dsh_plugin.sh" ]; then
-  "$REPO_DIR/scripts/install_dsh_plugin.sh" "${DSH_PROFILE:-web}"
+step "附加：安装 DSH 插件（可选）"
+PLUGIN_SRC="${DSH_PANGU_SRC:-$HOME/.dsh-pangu}"
+if [ -d "$PLUGIN_SRC/.git" ]; then
+  git -C "$PLUGIN_SRC" pull --ff-only 2>/dev/null || warn "插件仓库拉取失败，用现有代码继续"
 else
-  warn "未找到 scripts/install_dsh_plugin.sh，跳过"
+  echo "    获取插件仓库到 $PLUGIN_SRC"
+  git clone --depth 1 https://github.com/Mlte0907/dsh-pangu "$PLUGIN_SRC" 2>/dev/null \
+    || warn "插件仓库获取失败（网络？）"
+fi
+if [ -x "$PLUGIN_SRC/install.sh" ]; then
+  bash "$PLUGIN_SRC/install.sh" "${DSH_PROFILE:-web}" \
+    || warn "插件安装未完成，可稍后重跑：bash $PLUGIN_SRC/install.sh"
+else
+  warn "未取得插件，已跳过。稍后可手动安装："
+  warn "  curl -fsSL https://raw.githubusercontent.com/Mlte0907/dsh-pangu/main/install.sh | bash"
 fi
 fi
 
@@ -662,8 +675,9 @@ $(c_yellow '【常用命令】')
   搜索:  .venv/bin/pangu search "关键词"
   帮助:  .venv/bin/pangu --help      ← 有 30+ 子命令，README 未提及
 
-$(c_yellow '【接入 DSH】')
-  1. ./install.sh --dsh-plugin      （或 scripts/install_dsh_plugin.sh）
+$(c_yellow '【接入 DSH（可选）】')
+  1. ./install.sh --dsh-plugin            （会拉取独立仓库 ~/.dsh-pangu 并安装）
+     或直接: curl -fsSL https://raw.githubusercontent.com/Mlte0907/dsh-pangu/main/install.sh | bash
   2. 重启 DSH
   3. DSH 设置 →「盘古记忆系统」填 LLM 提供商与 API Key，点「测试连接」
 
