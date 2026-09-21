@@ -746,3 +746,142 @@ def test_semantic_duplicates_skip_encrypted():
     ]
     dups2 = comp.find_semantic_duplicates(plain)
     assert len(dups2) == 1, f"plain prefix dup should be found: {dups2}"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 多模态内容提取总开关（默认关闭，2026-09-21）
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestMultimodalSwitch:
+    """`multimodal_enabled` 默认关闭；关着时不抽图片/PDF/音频的**内容**。
+
+    背景：这套能力此前"装了但没真的用过"——
+      · 图片只取尺寸（无 OCR，属能力边界）
+      · 音频**从不调用 whisper**，只写一句元数据 ⇒ 音频内容从未进过记忆
+      · PDF 确实抽了正文
+      · 且 pangu_ingest_file 等属 optional 层默认不暴露，等于也没有入口
+    现在加总开关（默认关闭），开启后真正把能抽的内容抽进记忆。
+    """
+
+    def test_default_off(self):
+        assert PanguConfig().multimodal_enabled is False, "多模态抽取应默认关闭"
+
+    def test_media_refused_when_disabled(self, tmp_path):
+        from pangu.memory.multimodal_pipeline import MultimodalPipeline
+
+        cfg = _make_config(tmp_path)
+        assert cfg.multimodal_enabled is False
+        pipe = MultimodalPipeline(cfg)
+        for name in ("a.pdf", "b.png", "c.mp3"):
+            target = tmp_path / name
+            target.write_bytes(b"x")
+            out = pipe.ingest_file(str(target))
+            assert out.get("stored") is False, f"{name} 关闭时不应入库: {out}"
+            assert "未启用" in str(out.get("error", "")), f"{name} 应给出明确原因: {out}"
+
+    def test_plain_text_not_gated(self, tmp_path):
+        """纯文本不属于多模态（不需要 Pillow/pypdf/whisper），开关关闭也照常抽。"""
+        from pangu.memory.multimodal_pipeline import MultimodalPipeline
+
+        cfg = _make_config(tmp_path)
+        note = tmp_path / "note.md"
+        note.write_text("# 标题\n正文内容", encoding="utf-8")
+        out = MultimodalPipeline(cfg).ingest_file(str(note), auto_store=False)
+        assert "未启用" not in str(out.get("error", "")), out
+        assert out.get("content"), out
+
+    def test_media_proceeds_when_enabled(self, tmp_path):
+        from pangu.memory.multimodal_pipeline import MultimodalPipeline
+
+        cfg = _make_config(tmp_path, multimodal_enabled=True)
+        target = tmp_path / "a.pdf"
+        target.write_bytes(b"%PDF-1.4\nnot a real pdf body")
+        out = MultimodalPipeline(cfg).ingest_file(str(target), auto_store=False)
+        # 关键判据：不再是"未启用"，说明真的进入了抽取分支
+        # （内容本身是假 PDF，抽失败也算抽过）
+        assert "未启用" not in str(out.get("error", "")), out
+
+    def test_audio_transcription_is_wired(self, tmp_path, monkeypatch):
+        """音频必须真的调用 whisper 转写 —— 此前只写元数据，内容从未进记忆。"""
+        import pangu.memory.audio_engine as audio_engine
+
+        from pangu.memory.multimodal_pipeline import MultimodalPipeline
+
+        class _FakeEngine:
+            def transcribe(self, path, language=None, task="transcribe"):
+                return {"transcription": "这是转写出来的正文"}
+
+        monkeypatch.setattr(audio_engine, "get_audio_engine", lambda cfg=None: _FakeEngine())
+        cfg = _make_config(tmp_path, multimodal_enabled=True)
+        target = tmp_path / "v.mp3"
+        target.write_bytes(b"x")
+        out = MultimodalPipeline(cfg).ingest_file(str(target), auto_store=False)
+        assert out.get("transcription") == "这是转写出来的正文", out
+        assert "这是转写出来的正文" in out.get("content", ""), "转写正文要并入 content 才能被检索到"
+        assert "transcribed" in out.get("tags", []), out
+
+    def test_audio_unavailable_reason_is_surfaced(self, tmp_path, monkeypatch):
+        """whisper 未开启/未安装时不静默：原因进 transcription_error，正文保持干净。"""
+        import pangu.memory.audio_engine as audio_engine
+
+        from pangu.memory.multimodal_pipeline import MultimodalPipeline
+
+        class _FakeEngine:
+            def transcribe(self, path, language=None, task="transcribe"):
+                return {"transcription": "", "error": "Whisper 已关闭（可在设置页「语音转写」中开启）"}
+
+        monkeypatch.setattr(audio_engine, "get_audio_engine", lambda cfg=None: _FakeEngine())
+        cfg = _make_config(tmp_path, multimodal_enabled=True)
+        target = tmp_path / "v.mp3"
+        target.write_bytes(b"x")
+        out = MultimodalPipeline(cfg).ingest_file(str(target), auto_store=False)
+        assert "已关闭" in out.get("transcription_error", ""), out
+        assert "已关闭" not in out.get("content", ""), "原因不该污染记忆正文"
+
+
+class TestConfigSetCoercion:
+    """`pangu_config_set` 的赋值类型校验（pydantic 默认**不在赋值时校验**）"""
+
+    @pytest.mark.asyncio
+    async def test_exposure_dict_is_coerced_to_model(self, tmp_path):
+        """exposure 是嵌套模型：远程传 dict 必须落成 ExposureConfig。
+
+        否则 setattr 会留下**裸 dict**，而暴露过滤器按属性读
+        （config.exposure.enabled_optional_modules）→ 下次 tools/list 直接崩。
+        """
+        from pangu.core.config import ExposureConfig
+        from pangu.server.handlers.system import handle_config_set
+
+        cfg = _make_config(tmp_path)
+        raw = await handle_config_set(
+            FakeServer(cfg),
+            None,
+            {"key": "exposure", "value": {"enabled_optional_modules": ["analytics", "multimodal"]}},
+        )
+        assert json.loads(raw).get("status") == "updated", raw
+        assert isinstance(cfg.exposure, ExposureConfig), f"应是模型而不是 {type(cfg.exposure)}"
+        assert "multimodal" in cfg.exposure.enabled_optional_modules
+
+    @pytest.mark.asyncio
+    async def test_bad_value_is_rejected(self, tmp_path):
+        """类型不合法的值必须被拒绝，而不是把坏配置落盘。"""
+        from pangu.server.handlers.system import handle_config_set
+
+        cfg = _make_config(tmp_path)
+        before = set(cfg.exposure.enabled_optional_modules)
+        raw = await handle_config_set(
+            FakeServer(cfg), None, {"key": "exposure", "value": {"enabled_optional_modules": 12345}}
+        )
+        assert "不合法" in raw, raw
+        assert set(cfg.exposure.enabled_optional_modules) == before, "坏值不应改动配置"
+
+    @pytest.mark.asyncio
+    async def test_multimodal_bool_can_be_enabled(self, tmp_path):
+        from pangu.server.handlers.system import handle_config_set
+
+        cfg = _make_config(tmp_path)
+        assert cfg.multimodal_enabled is False
+        raw = await handle_config_set(FakeServer(cfg), None, {"key": "multimodal_enabled", "value": True})
+        assert json.loads(raw).get("status") == "updated", raw
+        assert cfg.multimodal_enabled is True

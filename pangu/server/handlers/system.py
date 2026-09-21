@@ -244,6 +244,26 @@ async def handle_config_get(server, drawers, arguments):
 HANDLERS["pangu_config_get"] = handle_config_get
 
 
+def _coerce_config_value(config, key, value):
+    """按字段声明的类型校验/转换远程传入的原始值。
+
+    为什么需要：pydantic 默认**不在赋值时校验**（validate_assignment=False），
+    于是 `setattr(config, "exposure", {...})` 会把嵌套模型 `exposure: ExposureConfig`
+    留成一个**裸 dict** —— 而暴露过滤器是按属性读的
+    （`config.exposure.enabled_optional_modules`），下次 tools/list 直接
+    AttributeError 崩掉。这里用 TypeAdapter 显式校验一次，顺便拦住类型不合法
+    的写入（宁可不改，也不留坏配置）。
+
+    字段不存在时原样返回，保持"未知键"的既有行为。
+    """
+    from pydantic import TypeAdapter
+
+    field = type(config).model_fields.get(key)
+    if field is None:
+        return value
+    return TypeAdapter(field.annotation).validate_python(value)
+
+
 async def handle_config_set(server, drawers, arguments):
     """更新配置项（设置后同步落盘持久化，避免 reload 丢失——T6-F1 修复）"""
     key = arguments.get("key", "")
@@ -286,6 +306,15 @@ async def handle_config_set(server, drawers, arguments):
             except Exception:
                 setattr(server.config, key, value)
         else:
+            # 先按字段类型校验（见 _coerce_config_value）：值不合法就拒绝写入，
+            # 而不是把坏配置落盘（例如 exposure 写成裸 dict 会让 tools/list 崩）。
+            try:
+                value = _coerce_config_value(server.config, key, value)
+            except Exception as e:
+                return json.dumps(
+                    {"error": f"配置值不合法: {key}（{e}）"},
+                    ensure_ascii=False,
+                )
             setattr(server.config, key, value)
             try:
                 server.config.save()

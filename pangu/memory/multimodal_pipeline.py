@@ -68,6 +68,23 @@ class MultimodalPipeline:
             return {"error": f"不是文件: {file_path}"}
 
         ext = path.suffix.lower()
+
+        # 多模态总开关（默认关闭，2026-09-21）：图片 / PDF / 音频这三类需要
+        # Pillow / pypdf / whisper 才能抽**内容**，默认不做 —— 它们都是可选依赖，
+        # 且有 CPU/内存成本，不该由默认值替用户决定。纯文本文件不受开关影响
+        # （那是核心功能，不需要额外依赖）。
+        # 这里**不静默跳过**：调用方（MCP 工具 / 文件监听 / 批量导入）拿到明确
+        # 原因，否则又会变成"看起来成功、实际什么都没进库"。
+        if (
+            ext in self._image_extensions or ext in self._doc_extensions or ext in self._audio_extensions
+        ) and not self.config.multimodal_enabled:
+            return {
+                "error": "多模态内容提取未启用（可在设置页「多模态内容提取」打开）",
+                "file": str(path),
+                "modality": "unknown",
+                "stored": False,
+            }
+
         result = {"file": str(path), "modality": "unknown"}
 
         if ext in self._text_extensions:
@@ -253,13 +270,38 @@ class MultimodalPipeline:
             return {"error": f"PDF提取失败: {e}", "modality": "file"}
 
     def _extract_audio(self, path: Path, description: str, tags: list[str]) -> dict:
-        """提取音频元数据"""
+        """提取音频：元数据 + **Whisper 转写正文**。
+
+        ⚠ 2026-09-21 修：此前**从不调用 whisper**，只写一句"音频文件 xxx.mp3
+        (12.3KB, .MP3)" —— 于是「音频内容进记忆」实际从未发生（whisper 只被
+        `/api/audio/transcribe` 用过）。现在转写成功即把文本并入正文并进检索。
+
+        转写不可用（未安装 / whisper 已关闭）时**不静默**：原因放进
+        `transcription_error`，正文保持干净的元数据描述。
+        """
         stat = path.stat()
         desc = description or f"音频文件 {path.name} ({stat.st_size / 1024:.1f}KB, {path.suffix.upper()})"
+        transcription = ""
+        transcription_error = ""
+        try:
+            from .audio_engine import get_audio_engine
+
+            result = get_audio_engine().transcribe(str(path)) or {}
+            transcription = str(result.get("transcription") or "").strip()
+            if transcription:
+                desc = f"{desc}\n\n{transcription}"
+            else:
+                transcription_error = str(result.get("error") or "转写未返回内容")
+        except Exception as e:  # 转写失败不该阻断入库（元数据仍有价值）
+            transcription_error = f"转写失败: {e}"
+
         return {
             "modality": "audio",
             "content": desc,
-            "tags": (tags or []) + ["audio", path.suffix.lstrip(".")],
+            "transcription": transcription,
+            "transcription_length": len(transcription),
+            "transcription_error": transcription_error,
+            "tags": (tags or []) + ["audio", path.suffix.lstrip(".")] + (["transcribed"] if transcription else []),
             "file_name": path.name,
             "file_size": stat.st_size,
             "audio_format": path.suffix.lstrip("."),

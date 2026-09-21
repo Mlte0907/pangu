@@ -209,6 +209,16 @@ class MCPServer:
         if self._persistent_cache is not None:
             self._persistent_cache = None
             dropped.append("persistent_cache")
+        # 暴露面同样依赖 config（ExposureConfig），而 `get_exposure_filter()` 缓存了
+        # **构造时**的 config 单例 —— 不重置的话「设置页打开某 optional 模块」得重启
+        # 服务才生效（2026-09-21：多模态开关要靠它做到改完即生效）。
+        try:
+            from .exposure import reset_exposure_filter
+
+            reset_exposure_filter()
+            dropped.append("exposure")
+        except Exception:  # 与上面同样：属优化，不该让最小实现崩掉
+            pass
         return dropped
 
     def _maybe_schedule_warmup(self) -> None:

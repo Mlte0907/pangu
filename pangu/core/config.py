@@ -198,6 +198,13 @@ class PanguConfig(BaseSettings):
     onnx_cache_dir: str = ""
     onnx_mirror_base: str = "https://hf-mirror.com"
 
+    # ── 多模态内容提取（可选，默认关闭）──
+    # 控制 `MultimodalPipeline.ingest_file` 是否真的把文件**内容**抽进记忆：
+    #   PDF  → pypdf 抽正文；音频 → whisper 转写；图片 → Pillow 取尺寸（无 OCR）。
+    # 默认关闭：这些都是可选依赖、有 CPU/内存成本，且多数用户并不往记忆里放文件。
+    # 打开请用 DSH 设置页「多模态内容提取」（同时会暴露 pangu_multimodal_* 工具）。
+    multimodal_enabled: bool = False
+
     # ── Whisper 语音转写配置 ──
     # 默认**关闭**（2026-09-21）：openai-whisper 属可选依赖，开启后首次转写会加载
     # 模型并常驻内存（base 约 140MB）。需要时在设置页「语音转写」里显式打开即可。

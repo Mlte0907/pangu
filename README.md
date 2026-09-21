@@ -20,7 +20,7 @@
 | 🕸️ 知识结晶 | LLM 生成 WikiPage 知识页、Wikilink 实体抽取、知识图谱可视化 |
 | 🔄 自动沉淀 | MCP 工具调用透明采集（SelfImproveWorker）、会话桥接摘要、git hook、文件监控 |
 | 🖥️ 三形态接入 | MCP stdio / MCP streamable-HTTP + REST/WebSocket / 独立 Web 服务 |
-| 🧩 多模态 | 图片（Pillow）/ 音频（whisper）/ PDF（pypdf）内容进记忆 |
+| 🧩 多模态（**默认关闭**） | PDF 正文（pypdf）、音频转写（whisper，需另开语音转写）、图片尺寸（Pillow，无 OCR）—— 在设置页「多模态内容提取」一键打开 |
 
 ## 快速开始
 
@@ -121,7 +121,8 @@ pip install -e .
 > 中途别中断（中断会导致缓存已下载但包未装好）。
 > 而包含 torch 的完整集会下载 987MB 以上仍难以落盘。
 >
-> 需要图像 / 音频 / 备用嵌入能力时：
+> 需要图像 / 音频 / 备用嵌入能力时（装完依赖**还要在 DSH 设置页打开开关**才生效：
+> 「多模态内容提取」管 PDF/音频/图片抽取、「语音转写」管音频转写 —— 两者都默认关闭）：
 >
 > ```sh
 > # 无 GPU 机器建议先装 CPU-only 轮子，可省下全部 CUDA 负载
