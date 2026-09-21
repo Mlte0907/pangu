@@ -199,7 +199,9 @@ class PanguConfig(BaseSettings):
     onnx_mirror_base: str = "https://hf-mirror.com"
 
     # ── Whisper 语音转写配置 ──
-    whisper_enabled: bool = True  # 是否启用 Whisper 语音转写功能
+    # 默认**关闭**（2026-09-21）：openai-whisper 属可选依赖，开启后首次转写会加载
+    # 模型并常驻内存（base 约 140MB）。需要时在设置页「语音转写」里显式打开即可。
+    whisper_enabled: bool = False  # 是否启用 Whisper 语音转写功能（默认关闭，需显式开启）
     whisper_model: str = "base"  # 模型大小: tiny, base, small, medium, large
     # 内存占用参考: tiny(~75MB), base(~140MB), small(~460MB), medium(~1.5GB), large(~3GB)
     # 推荐: base 平衡精度与资源; tiny 最省资源但精度较低

@@ -600,8 +600,11 @@ async function apply(ctx) {
     }
   }
 
-  // 只允许用生效配置**补全**这些只读字段；用户显式写入 config.json 的值优先。
-  const READONLY_FALLBACK_KEYS = ['embedding_model', 'palace_path']
+  // config.json 只落盘用户改过的键，这些键的**权威值在服务端**（没写过时由
+  // PanguConfig 的默认值决定）。本地没写就用生效值补全，否则设置页会显示成
+  // 与服务端不一致 —— whisper 尤其明显：本地没写 ≠ 开启，服务端默认才作准。
+  // 用户显式写入 config.json 的值优先。
+  const READONLY_FALLBACK_KEYS = ['embedding_model', 'palace_path', 'whisper_enabled', 'whisper_model']
 
   const configService = {
     async get() {

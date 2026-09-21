@@ -554,7 +554,7 @@ async function loadSettings() {
                         <div class="setting-desc">启用后可将音频文件转为文字记忆。关闭可节省约 140-800MB 内存</div>
                     </div>
                     <div class="setting-control">
-                        <label class="toggle"><input type="checkbox" id="set-whisper" ${c.whisper_enabled !== false ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                        <label class="toggle"><input type="checkbox" id="set-whisper" ${c.whisper_enabled === true ? 'checked' : ''}><span class="toggle-slider"></span></label>
                     </div>
                 </div>
                 <div class="setting-row">
@@ -611,7 +611,7 @@ async function loadSettings() {
 async function saveSettings() {
     try {
         const settings = {
-            whisper_enabled: document.getElementById('set-whisper')?.checked ?? true,
+            whisper_enabled: document.getElementById('set-whisper')?.checked ?? false,
             whisper_model: document.getElementById('set-whisper-model')?.value || 'base',
         };
         

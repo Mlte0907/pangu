@@ -1728,7 +1728,8 @@ window.__ModuleLoader__.load({
             model: cfg.llm_model || '',
             baseUrl: cfg.llm_base_url || '',
             apiKey: '',
-            whisperEnabled: cfg.whisper_enabled !== false,
+            // 默认关闭：只有显式写了 true 才算开启（与服务端默认值保持一致）
+            whisperEnabled: cfg.whisper_enabled === true,
             whisperModel: cfg.whisper_model || 'base',
           })
           setKeyDirty(false)
@@ -1751,7 +1752,7 @@ window.__ModuleLoader__.load({
         draft.provider !== (config.llm_provider || 'openai') ||
         draft.model !== (config.llm_model || '') ||
         draft.baseUrl !== (config.llm_base_url || '') ||
-        draft.whisperEnabled !== (config.whisper_enabled !== false) ||
+        draft.whisperEnabled !== (config.whisper_enabled === true) ||
         draft.whisperModel !== (config.whisper_model || 'base') ||
         // 密码类输入框不回填原值，非空即视为「有改动」——否则只填凭据时
         // 保存按钮一直是灰的，等于存不下去（2026-09-21 修）。
@@ -1921,10 +1922,12 @@ window.__ModuleLoader__.load({
           }),
           h(TextField, {
             key: 'key', label: 'API Key', value: draft.apiKey, password: true, mono: true,
+            // 与「盘古凭据」同一约定：已配置时**框内显示脱敏值**（placeholder，
+            // 输入即消失，保存只读 draft.apiKey），一眼可核对生效的是哪一把 Key。
             desc: keySet
-              ? `已配置（${keyHint || '已设置'}）。明文不回显，留空即保持原 Key 不变；填入新值则覆盖。`
+              ? '灰字即当前生效的 Key（掩码，明文不回显）。留空即保持原 Key 不变；填入新值则覆盖。'
               : '尚未配置。Key 仅写入本机（权限 600），不会回传到界面。',
-            placeholder: keySet ? '留空保持不变' : '粘贴 API Key（Ollama 可留空）',
+            placeholder: keySet ? (keyHint || '已配置（明文不回显）') : '粘贴 API Key（Ollama 可留空）',
             onChange: (v) => { setKeyDirty(true); setDraft((p) => ({ ...p, apiKey: v })) },
           }),
           h('div', { key: 'test', style: { padding: '11px 0', borderBottom: `1px solid ${css.borderSoft}` } },
@@ -1972,7 +1975,7 @@ window.__ModuleLoader__.load({
             h('span', { style: { fontSize: 12.5, fontWeight: 600 } }, '语音转写'),
             h('span', { style: { fontSize: 10.5, color: css.t3 } }, 'Whisper 模型 · 关闭可节省 140-800MB 内存'),
           ),
-          h(SettingRow, { key: 'whisper-toggle', label: '启用 Whisper', desc: '启用后可将音频文件转为文字记忆' },
+          h(SettingRow, { key: 'whisper-toggle', label: '启用 Whisper', desc: '默认关闭（可选依赖）；启用后可将音频文件转为文字记忆' },
             h(Toggle, { checked: draft.whisperEnabled, onChange: () => setDraft((p) => ({ ...p, whisperEnabled: !p.whisperEnabled })) }),
           ),
           draft.whisperEnabled && h('div', { key: 'whisper-model', style: { padding: '11px 0', borderBottom: `1px solid ${css.borderSoft}` } },

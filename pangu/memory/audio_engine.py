@@ -114,7 +114,14 @@ class AudioMemoryEngine:
             return {"error": f"文件不存在: {audio_path}"}
 
         if not self.whisper:
-            return {"error": "Whisper model not available", "transcription": ""}
+            # 区分「被关掉」与「没装/加载失败」：默认关闭后前者更常见，
+            # 报错要能指路，否则用户只看到一句 not available 无从下手。
+            reason = (
+                "Whisper 已关闭（可在设置页「语音转写」中开启）"
+                if not self.config.whisper_enabled
+                else "Whisper 不可用（未安装 openai-whisper，或模型加载失败）"
+            )
+            return {"error": reason, "transcription": ""}
 
         try:
             opts = {"task": task}

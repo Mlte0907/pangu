@@ -164,12 +164,28 @@ test('LLM 表单四个字段与两个按钮都渲染', { skip }, async () => {
   const inputs = [...container.querySelectorAll('input, select')]
   const buttons = [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
 
-  assert.ok(inputs.some((i) => i.tagName === 'SELECT'), '缺少提供商下拉')
+  // 提供商不是 <select>，而是 ProvCard 按钮组。原断言查 SELECT 之所以长期
+  // "通过"，是因为 whisper 默认开启时会渲染「Whisper 模型」下拉，被误认成了
+  // 提供商下拉；whisper 改为默认关闭后暴露（2026-09-21 修）。
+  assert.ok(buttons.some((b) => b.includes('DeepSeek')), '缺少提供商卡片')
   assert.ok(inputs.some((i) => i.value === 'deepseek-chat'), '缺少模型输入框')
   assert.ok(inputs.some((i) => i.value === 'https://api.deepseek.com/v1'), '缺少 Base URL 输入框')
   assert.ok(inputs.some((i) => i.getAttribute('type') === 'password'), '缺少 API Key 密码框')
   assert.ok(buttons.some((b) => b.includes('测试连接')), '缺少「测试连接」按钮')
   assert.ok(buttons.some((b) => b === '保存'), '缺少「保存」按钮')
+})
+
+test('语音转写默认关闭，不渲染 Whisper 模型下拉', { skip }, async () => {
+  // FAKE_CFG 未写 whisper_enabled ⇒ 取服务端默认值「关闭」。
+  // 默认关闭是刻意的：openai-whisper 是可选依赖，开启后模型常驻内存
+  // （base 约 140MB），不该由默认值替用户决定。
+  const env = mountSettings(FAKE_CFG)
+  const { container } = await render(env)
+  assert.ok(container.textContent.includes('语音转写'), '缺少语音转写分区')
+  assert.ok(container.textContent.includes('启用 Whisper'), '缺少启用开关')
+  assert.ok(container.textContent.includes('默认关闭'), '未标明默认关闭')
+  const selects = [...container.querySelectorAll('select')]
+  assert.equal(selects.length, 0, '默认关闭时不应出现 Whisper 模型下拉')
 })
 
 test('提供商选项齐全且与 llm.py 的 PROVIDER_URLS 对齐', { skip }, async () => {
@@ -196,8 +212,12 @@ test('API Key 框 value 恒为空，明文绝不下发到前端', { skip }, asyn
 test('显示脱敏 hint 与「已配置」状态', { skip }, async () => {
   const env = mountSettings(FAKE_CFG)
   const { container } = await render(env)
-  assert.ok(container.textContent.includes('****4455'), '未显示脱敏 hint')
   assert.ok(container.textContent.includes('已配置'), '未提示 Key 已配置')
+  // 掩码显示在**输入框内**（placeholder）而不是说明文字里（2026-09-21 改），
+  // 与「盘古凭据」同一约定：一眼看到生效的是哪一把 Key。
+  assert.equal(llmKeyInput(container).placeholder, '****4455', '框内未显示脱敏掩码')
+  // 且必须是占位而非真值，否则保存会把掩码当 Key 提交
+  assert.equal(llmKeyInput(container).value, '', '掩码不应写进 value')
 })
 
 test('点击「测试连接」调用 remote.testLlm 并渲染结果', { skip }, async () => {
