@@ -365,7 +365,8 @@ VPY="${VPY:-$VENV_DIR/bin/python}"
 #   .admin_secret → admin_auth.verify_admin() 比对（X-Admin-Key：管理面）
 # 对单人部署而言两者隔离的边际价值很低（平台令牌审核通过即全权），却让新用户
 # 在设置页要填两次、多一个出错点。故这里**生成同一个值**写进两个文件：
-# 设置页「盘古凭据」与「管理密钥」填同一串即可；服务端代码与校验逻辑不变。
+# 于是插件设置页只需填一处「盘古凭据」，管理面复用它（见 lib/index.js
+# 的 readAdminSecret）；服务端代码与校验逻辑不变。
 # 已存在任一文件时**复用它的值**（升级场景不能改已生效的凭据 —— 服务端 env 里
 # 那把也要跟着变，很容易漏改，会直接把用户踢下线）。
 API_KEY_FILE="$PANGU_HOME/.api_key"
@@ -621,11 +622,16 @@ if [ -n "$ACCESS_ALT" ]; then
   CARD_ADDR="$CARD_ADDR"$'\n'"                 或 $ACCESS_ALT"
 fi
 
-# 两把凭据是同一把时，在卡片上点明"两处填同一串"（见 4b 的共用凭据说明）
-CARD_ADMIN_LINE="管理密钥       : $(cat "$PANGU_HOME/.admin_secret" 2>/dev/null || echo '<未生成>')"
+# 凭据块：只列**要填到设置页的那一条**。
+# 4b 已保证 .api_key 与 .admin_secret 同值，而插件设置页只有一个凭据字段，
+# 所以卡片只列「盘古凭据」；两个文件不同（早期部署）时才额外给一行服务端修正提示
+# —— 那种情况下插件管理面会 401（见 lib/index.js 的 adminFetch）。
+CARD_CRED="盘古凭据       : $(cat "$PANGU_HOME/.api_key" 2>/dev/null || echo '<未生成>')"
 if [ -s "$PANGU_HOME/.api_key" ] && [ -s "$PANGU_HOME/.admin_secret" ] \
-  && [ "$(cat "$PANGU_HOME/.api_key")" = "$(cat "$PANGU_HOME/.admin_secret")" ]; then
-  CARD_ADMIN_LINE="$CARD_ADMIN_LINE    （与盘古凭据同一把，两处填同一串）"
+  && [ "$(cat "$PANGU_HOME/.api_key")" != "$(cat "$PANGU_HOME/.admin_secret")" ]; then
+  CARD_CRED="$CARD_CRED"$'\n'"$(c_yellow '管理密钥       : —— 与上面不同（早期部署），插件管理面会 401')"
+  CARD_CRED="$CARD_CRED"$'\n'"$(c_yellow "  在服务端执行这行即可统一：")"
+  CARD_CRED="$CARD_CRED"$'\n'"$(c_yellow "    printf '%s' '$(cat "$PANGU_HOME/.api_key")' > \$HOME/.pangu/.admin_secret")"
 fi
 
 cat <<EOF
@@ -668,8 +674,7 @@ $(c_yellow '【配置】')
 
 $(c_cyan '──────────── DSH 插件填写卡（复制到 DSH 设置页）────────────')
 $(c_green "$CARD_ADDR")
-$(c_green "盘古凭据       : $(cat "$PANGU_HOME/.api_key" 2>/dev/null || echo '<未生成>')")
-$(c_green "$CARD_ADMIN_LINE")
+$(c_green "$CARD_CRED")
 $(c_cyan '──────────────────────────────────────────────────────────────────')
 $(c_yellow 'LLM 三项（模型/端点/Key）在 DSH 设置页「01 LLM 配置」里填')
 $(c_yellow '↑ 以上凭据只显示一次，请立即保存')

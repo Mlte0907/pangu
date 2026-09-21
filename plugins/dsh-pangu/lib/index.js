@@ -605,7 +605,8 @@ async function apply(ctx) {
           if (secret) config.llm_api_key = secret
         } catch (_) { /* 文件不存在 = 未配置 */ }
       }
-      // admin_secret 必须手动填写，不自动读取文件
+      // admin_secret 不自动读本机文件：管理面直接复用「盘古凭据」
+      // （见 readAdminSecret —— admin_secret || api_key）
       const live = await effectiveConfig()
       if (live) {
         for (const key of READONLY_FALLBACK_KEYS) {
@@ -774,9 +775,10 @@ async function apply(ctx) {
       return {
         ok: false,
         error:
-          `管理接口鉴权失败（HTTP ${res.status}）：当前用的管理凭据不对。`
-          + '新装默认「盘古凭据」与「管理密钥」是同一把，填一处即可；'
-          + '老部署请把「管理密钥」填成服务端 ~/.pangu/.admin_secret 的内容。',
+          `管理接口鉴权失败（HTTP ${res.status}）：当前「盘古凭据」不被管理面接受。`
+          + '正常情况两边同值（安装脚本保证）。若这台服务端是早期部署、'
+          + '~/.pangu/.admin_secret 与 REST 主密钥不同，'
+          + '在服务端把 .admin_secret 改成与「盘古凭据」相同的值即可（或重跑 install.sh）。',
       }
     }
     return res.json()

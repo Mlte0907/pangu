@@ -152,7 +152,7 @@ chk('含 provider / model', patchA?.llm_provider === 'deepseek' && patchA?.llm_m
 console.log()
 console.log('═══ 场景 B：填入新 Key ═══')
 // 注意：不能取「第一个 password 输入框」—— 设置页在 LLM 区之前还有
-// 「盘古凭据」「管理密钥」两个密码框，取第一个会命中它们（2026-09-21 修）。
+// 「盘古凭据」也是密码框，直接取第一个会命中它（而不是 LLM API Key）。
 // 以 Base URL 输入框为锚点，取它之后的第一个密码框，才是 LLM API Key。
 const allInputs = [...container.querySelectorAll('input')]
 const baseIdx = allInputs.findIndex((i) => i.value.startsWith('https://api.deepseek.com'))
@@ -166,6 +166,10 @@ chk('填入新 Key 后 patch 含 llm_api_key', patchB?.llm_api_key === 'sk-brand
 
 console.log()
 console.log('═══ 场景 C：只填「盘古凭据」，不碰其它字段 ═══')
+// 设计：设置页**只有一个**凭据字段（2026-09-21 决定）。
+// 服务端两个密钥已由 install.sh 取同值，插件管理面复用「盘古凭据」，
+// 再摆一个"可留空的管理密钥"只会让人疑惑到底要不要填。
+chk('不再有第二个凭据字段「管理密钥」', !container.textContent.includes('管理密钥'))
 // 回归（2026-09-21）：dirty 此前不统计密码框，只填凭据/管理密钥时保存按钮恒灰，
 // 等于「填了也存不下去」。这里断言：填了凭据 → 按钮可点 → patch 写出 api_key。
 const credInput = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')

@@ -1724,7 +1724,6 @@ window.__ModuleLoader__.load({
             ci: Number(cfg.consolidation_interval_hours) || 24,
             pb: cfg.pangu_base_url || '',
             pk: '',
-            ad: '',
             provider: cfg.llm_provider || 'openai',
             model: cfg.llm_model || '',
             baseUrl: cfg.llm_base_url || '',
@@ -1754,10 +1753,9 @@ window.__ModuleLoader__.load({
         draft.baseUrl !== (config.llm_base_url || '') ||
         draft.whisperEnabled !== (config.whisper_enabled !== false) ||
         draft.whisperModel !== (config.whisper_model || 'base') ||
-        // 密码类输入框不回填原值，非空即视为「有改动」——否则只填凭据/管理密钥时
+        // 密码类输入框不回填原值，非空即视为「有改动」——否则只填凭据时
         // 保存按钮一直是灰的，等于存不下去（2026-09-21 修）。
         draft.pk !== '' ||
-        draft.ad !== '' ||
         keyDirty
       )
 
@@ -1776,7 +1774,6 @@ window.__ModuleLoader__.load({
           }
           if (keyDirty && draft.apiKey) patch.llm_api_key = draft.apiKey
           if (draft.pk) patch.api_key = draft.pk
-          if (draft.ad) patch.admin_secret = draft.ad
           const value = unwrap(await callRemote('panguConfig', 'save', patch))
           if (!value?.ok) throw new Error(value?.error || '写入失败')
           const rl = value.reload
@@ -1865,10 +1862,15 @@ window.__ModuleLoader__.load({
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
               '保存即对插件的 REST/WS 生效；DSH 的 MCP 客户端共用此地址，重启 DSH 后重新挂载。仅允许 http/https，留空回退默认本地。'),
           ),
+          // 只保留**一个**凭据字段（2026-09-21）。
+          // 服务端本来有两个密钥（config.api_key / ~/.pangu/.admin_secret），
+          // 而安装脚本已让两者取同一个值，插件在管理面直接复用本字段即可 ——
+          // 再摆一个"可留空的管理密钥"只会让人疑惑"到底要不要填"。
+          // 老部署若两把确实不同，见管理面板的错误提示（改服务端文件或重跑安装）。
           h('div', { key: 's0-cred', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
               h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '盘古凭据'),
-              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '必须填写，不填写无法连接记忆服务'),
+              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '必须填写 · 记忆与「管理」页都用它'),
             ),
             h('input', {
               className: 'pangu-input', type: 'password', value: draft.pk, placeholder: config?.api_key_set ? '已配置，留空保持不变' : '粘贴安装时打印的盘古凭据',
@@ -1876,20 +1878,7 @@ window.__ModuleLoader__.load({
               style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
             }),
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
-              '盘古服务端签发的凭据，即上面「盘古服务地址」对应那台机器安装时打印的 API Key。明文不回显，留空保持原值。'),
-          ),
-          h('div', { key: 's0-admin', style: { padding: '12px 0', borderBottom: `1px solid ${css.borderSoft}` } },
-            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 } },
-              h('div', { style: { fontSize: 12.5, fontWeight: 500 } }, '管理密钥'),
-              h('div', { style: { fontSize: 10.5, color: css.t3 } }, '可留空 · 留空即用上面的「盘古凭据」'),
-            ),
-            h('input', {
-              className: 'pangu-input', type: 'password', value: draft.ad, placeholder: config?.admin_secret_set ? '已配置，留空保持不变' : '留空即用盘古凭据（新装默认同一把）',
-              onChange: (e) => setDraft((prev) => ({ ...prev, ad: e.target.value })),
-              style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
-            }),
-            h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
-              '新装默认与「盘古凭据」是同一把，留空即可；只有老部署（服务端两把不同）才需要单独填写。'),
+              '上面「盘古服务地址」那台机器安装时打印的凭据（安装横幅的「DSH 填写卡」里有）。记忆读写/搜索用它，管理面板也用它。明文不回显，留空保持原值。'),
           ),
           h('div', { key: 's1-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '14px 0 7px', borderBottom: `1px solid ${css.borderSoft}`, marginTop: 12 } },
             h('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 10, fontWeight: 600, color: ACCENT } }, '01'),
@@ -2006,7 +1995,6 @@ window.__ModuleLoader__.load({
             h(InfoRow, { label: '嵌入模型', value: config?.embedding_model }),
             h(InfoRow, { label: '记忆库', value: config?.palace_path }),
             h(InfoRow, { label: '盘古服务地址', value: config?.pangu_base_url || '默认本地 127.0.0.1:19529' }),
-            h(InfoRow, { label: '管理凭据', value: config?.admin_secret_set ? '已配置' : '未配置' }),
           ),
           // ── 04 平台接入与审核 ──
           h('div', { key: 's4-head', style: { display: 'flex', alignItems: 'baseline', gap: 9, padding: '16px 0 7px', borderBottom: `1px solid ${css.borderSoft}` } },

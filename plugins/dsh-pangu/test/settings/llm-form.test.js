@@ -130,7 +130,7 @@ const FAKE_CFG = {
  * 定位「LLM API Key」密码框。
  *
  * 不能取第一个 password 输入框 —— 设置页在 LLM 区之前还有「盘古凭据」
- * 「管理密钥」两个密码框，取第一个会命中它们（2026-09-21 修）。
+ * 密码框，取第一个会命中它（2026-09-21 修）。
  * 这里以 Base URL 输入框为锚点，取它之后的第一个密码框。
  */
 function llmKeyInput(container) {

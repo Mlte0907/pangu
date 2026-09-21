@@ -62,7 +62,7 @@ function makeRemotes(adminConfigured) {
   const env = (v) => ({ ok: true, value: v })
   const adminErr = {
     ok: false,
-    error: '未配置管理凭据：请在 DSH 设置 →「盘古记忆系统」填入「盘古凭据」（新装默认它与管理密钥是同一把）…',
+    error: '未配置管理凭据：请在 DSH 设置 →「盘古记忆系统」填入「盘古凭据」（安装横幅的「DSH 填写卡」里有）…',
   }
   return {
     panguDashboard: {
