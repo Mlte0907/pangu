@@ -771,11 +771,10 @@ class TestWorkingMemory:
         assert len(wm.slots) == 0
         assert wm._total_tokens == 0
 
-    def test_context(self):
-        wm = WorkingMemory(capacity=5)
-        wm.push(WMItem(id="a", content="hello world"))
-        ctx = wm.context
-        assert "hello world" in ctx
+    # 注：原 `test_context` 已删（2026-09-21）。
+    # WorkingMemory.context 在 cf131d7 的死代码清理中随 usage / stop_auto_checkpoint
+    # 一并移除（死代码报告判定为无引用），但当时漏删了这个测试，导致套件长期挂红。
+    # 需要"取当前上下文摘要"的能力时，用 wm.slots / wm.focus 自行拼装。
 
     def test_stats(self):
         wm = WorkingMemory(capacity=5)

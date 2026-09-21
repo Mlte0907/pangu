@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -87,7 +88,17 @@ def init(
 ):
     """初始化盘古记忆系统"""
     path = os.path.expanduser(path)
-    config = PanguConfig()
+    # ⚠ base_dir 必须在**构造时**一起给出（2026-09-21 修）。
+    # db_path / backup_dir / jwt_secret_file / llm_api_key_file /
+    # domain_knowledge_db_path 都是在 model_post_init 里由 base_dir 派生的，
+    # 而派生只发生在构造那一刻；构造完再改属性**不会**重新派生。
+    # 此前这里只改了 palace_path / wiki_path / identity_path / config_path，
+    # 于是 `init --path /X` 写出的配置自相矛盾：
+    #     base_dir = ~/.pangu            ← 没跟着走
+    #     db_path  = ~/.pangu/pangu.db   ← 没跟着走
+    # 而权威记忆路径（authoritative_drawers_path）恰恰由 db_path 派生，
+    # 结果：用自定义数据目录部署的实例，记忆仍落进 ~/.pangu。
+    config = PanguConfig(base_dir=Path(path))
     config.palace_path = os.path.join(path, "palace")
     config.wiki_path = os.path.join(path, "wiki")
     config.identity_path = os.path.join(path, "identity.txt")

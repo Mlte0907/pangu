@@ -13,6 +13,20 @@ set -euo pipefail
 PANGU_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PANGU_DIR"
 
+# ── 加载安装时生成的凭据与数据目录（与 systemd 的 EnvironmentFile 对齐）──
+# install.sh 会把 REST 主密钥（PANGU_API_KEY）以及自定义数据目录时的
+# PANGU_BASE_DIR 写进 $PANGU_HOME/pangu.env。systemd 单元用 EnvironmentFile 读它，
+# 而本脚本此前不读 —— 于是「手动启动」出来的实例没有 PANGU_API_KEY：
+# 鉴权中间件因 jwt_secret 仍然开着，填写卡上刚打印出来的凭据会被服务端拒绝
+# （401 无效的 API Key）。2026-09-21 修。
+PANGU_HOME="${PANGU_HOME:-$HOME/.pangu}"
+if [ -f "$PANGU_HOME/pangu.env" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$PANGU_HOME/pangu.env"
+    set +a
+fi
+
 # 激活虚拟环境（若存在）
 if [ -f "$PANGU_DIR/.venv/bin/activate" ]; then
     # shellcheck disable=SC1091

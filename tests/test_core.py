@@ -50,6 +50,63 @@ class TestConfig:
         loaded = PanguConfig.load(config_path)
         assert loaded.palace_path == config.palace_path
 
+    def test_cli_init_keeps_all_paths_under_given_dir(self, tmp_path, monkeypatch):
+        """`pangu cli init --path X` 必须让**所有**派生路径都落在 X 下。
+
+        回归（2026-09-21）：init 此前只改 palace_path / wiki_path /
+        identity_path / config_path，没有给 base_dir —— 而 db_path / backup_dir /
+        jwt_secret_file / llm_api_key_file / domain_knowledge_db_path 都是在
+        model_post_init 里由 base_dir 派生的，并且派生**只发生在构造那一刻**，
+        构造完再赋属性不会重跑。
+        后果：`init --path /X` 写出 base_dir=~/.pangu、db_path=~/.pangu/pangu.db 的
+        自相矛盾配置；而权威记忆路径（authoritative_drawers_path）正是由 db_path
+        派生的 ⇒ 自定义数据目录部署出来的实例，记忆实际落进 ~/.pangu。
+
+        注意：真实安装环境里这些派生路径**没有**对应环境变量，init 必须自己算对；
+        conftest 为了隔离会预设 PANGU_* 路径变量（显式环境变量优先级高于派生），
+        所以这里先清掉，等价还原生产前提。
+        """
+        from typer.testing import CliRunner
+
+        from pangu.cli import app
+
+        for key in (
+            "PANGU_BASE_DIR",
+            "PANGU_DB_PATH",
+            "PANGU_PALACE_PATH",
+            "PANGU_WIKI_PATH",
+            "PANGU_IDENTITY_PATH",
+            "PANGU_BACKUP_DIR",
+            "PANGU_DOMAIN_KNOWLEDGE_DB_PATH",
+            "PANGU_JWT_SECRET_FILE",
+            "PANGU_LLM_API_KEY_FILE",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        target = tmp_path / "data"
+        result = CliRunner().invoke(app, ["init", "--path", str(target)])
+        assert result.exit_code == 0, result.output
+
+        written = json.loads((target / "config.json").read_text(encoding="utf-8"))
+        for key in (
+            "base_dir",
+            "palace_path",
+            "wiki_path",
+            "identity_path",
+            "config_path",
+            "db_path",
+            "backup_dir",
+            "jwt_secret_file",
+            "llm_api_key_file",
+            "domain_knowledge_db_path",
+        ):
+            assert key in written, f"config.json 里缺少 {key}"
+            assert str(written[key]).startswith(str(target)), f"{key} 没落在 --path 指定的目录下：{written[key]}"
+
+        # 当初真正出错的就是这一条派生链：权威记忆目录 = db_path/v2_memories。
+        # 直接由落盘值推导（不经 PanguConfig.load，避免测试环境变量覆盖干扰）。
+        assert str(Path(written["db_path"]) / "v2_memories").startswith(str(target))
+
 
 class TestPalace:
     """宫殿测试"""

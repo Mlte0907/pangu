@@ -24,19 +24,7 @@
 
 ## 快速开始
 
-### 云端一键部署（推荐）
-
-在裸 Linux 云主机上执行一条命令，盘古全自动部署：
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Mlte0907/pangu/master/install.sh | bash -s -- --host 0.0.0.0
-```
-
-脚本结束会打印 **DSH 插件填写卡**（服务地址 / API Key / 管理密钥），只显示一次，请立即保存。
-
-> ⚠ 云端部署地址填 `https://你的域名`，需在 nginx/TLS 反向代理之后（参考 `DEPLOY.md`）。
-
-### 本地一键安装
+### 一键安装（推荐）
 
 ```sh
 git clone https://github.com/Mlte0907/pangu.git
@@ -44,6 +32,37 @@ cd pangu
 ./install.sh                 # 装依赖 + 预下载模型 + 注册 systemd 服务
 ./install.sh --dsh-plugin    # 盘古与 DSH 同机时追加
 ```
+
+### 云端部署
+
+盘古装在云主机、DSH 装在你自己的机器上时，**在云主机上**执行：
+
+```sh
+git clone https://github.com/Mlte0907/pangu.git /root/pangu && cd /root/pangu
+./install.sh --host 0.0.0.0
+```
+
+脚本结束会打印 **DSH 插件填写卡**（服务地址 / 盘古凭据 / 管理密钥），只显示一次，请立即保存。
+
+> ⚠ `--host 0.0.0.0` 会把端口暴露到公网，**必须**置于 nginx/TLS 反向代理之后
+> （参考 [`DEPLOY.md`](DEPLOY.md)），并在防火墙/安全组只放行反向代理端口。
+
+#### 备选：脚本单文件"一条命令"
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Mlte0907/pangu/master/install.sh | bash -s -- --host 0.0.0.0
+```
+
+> ⚠ **网络前提**：这条命令要先下载 `install.sh` 本身，依赖 `raw.githubusercontent.com`。
+> 中国大陆该域名常被重置（现象：`curl: (56) Recv failure` 或长时间无响应无输出），
+> 此时请改用上面的 `git clone` 方式 —— 实测 `git clone https://github.com/...`
+> 在国内可直连。若确实只想要单文件脚本，可走第三方 GitHub 加速镜像：
+>
+> ```sh
+> curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/Mlte0907/pangu/master/install.sh | bash -s -- --host 0.0.0.0
+> ```
+>
+> 镜像属第三方服务，**可用性与内容完整性不由本项目保证**；有顾虑请用 `git clone`。
 
 脚本会做完整的环境自检，并在 **ONNX 模型下载失败时明确报错中止**
 （而不是让服务静默降级到无语义的 hash 向量，见
