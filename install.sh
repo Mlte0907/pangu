@@ -590,6 +590,42 @@ fi
 fi  # MODEL_ONLY
 
 # ════════════════════════════════════════════════════════════
+# 4c. 服务器角色 ⇒ 强制 MCP 鉴权（没有令牌什么都访问不了）
+# ════════════════════════════════════════════════════════════
+# 为什么必须有这一段：/mcp 默认「无凭据也放行」（mcp_require_auth=False）。
+# 这个默认值在只监听 127.0.0.1 的年代是安全的（能连上就等于在本机）。
+# 而本脚本自 2026-09-22 起会在服务器上**自动绑 0.0.0.0**，于是"任何能连到该端口
+# 的人"都能直接读写记忆 —— **根本不经过平台令牌/审核那一套**（用户实测：不带
+# 任何凭据调用 pangu_search_memories，直接返回全部记忆原文）。
+#
+# 所以：判定为服务器角色 ⇒ 把这个开关打开，让"审核门"成为唯一入口。
+# 只在**没有显式设置过**时才写入 —— 用户显式写了 false 是他的选择，尊重原值。
+VPY="${VPY:-$VENV_DIR/bin/python}"
+if [ "$MODEL_ONLY" = 0 ]; then
+  case "$HOST" in
+    0.0.0.0|"::")
+      "$VPY" - "$PANGU_HOME/config.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+try:
+    d = json.load(open(p))
+except Exception:
+    d = {}
+if "mcp_require_auth" in d:
+    print("  ! mcp_require_auth 已显式设置 = %s（尊重原值）" % d["mcp_require_auth"])
+else:
+    d["mcp_require_auth"] = True
+    json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+    print("  ✓ 已开启 MCP 强制鉴权：没有令牌访问不了")
+PY
+      ;;
+    *)
+      ok "仅本机监听（$HOST）—— MCP 保持免鉴权（本机访问即身份）"
+      ;;
+  esac
+fi
+
+# ════════════════════════════════════════════════════════════
 # 4b. 生成凭据 + DSH 填写卡
 # ════════════════════════════════════════════════════════════
 if [ "$MODEL_ONLY" = 0 ]; then
@@ -940,6 +976,7 @@ BIND_NOTES=""
 if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ]; then
   BIND_NOTES=$'\n'"$(c_yellow "【已监听所有网卡（$HOST）—— 别的机器可以直连】")"
   BIND_NOTES="$BIND_NOTES"$'\n'"  · **云主机：安全组必须放行 $PORT**（默认全封；不放行则服务正常但插件连不上）"
+  BIND_NOTES="$BIND_NOTES"$'\n'"  · 已开启 MCP 强制鉴权：**没有令牌什么都访问不了**（仍建议安全组只放行你的 IP）"
   BIND_NOTES="$BIND_NOTES"$'\n'"  · 暴露到公网：建议前面加 nginx+TLS —— 明文 HTTP 下 API Key 会裸奔"
   BIND_NOTES="$BIND_NOTES"$'\n'"  · 只想本机用（更安全）：重跑 ./install.sh --host 127.0.0.1"
 fi

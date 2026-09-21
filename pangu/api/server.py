@@ -77,6 +77,28 @@ def _setup_logging() -> None:
         logger.warning(f"结构化日志配置失败，回退到 basicConfig: {e}")
 
 
+def mcp_auth_exposure_warning(bind_host: str, mcp_require_auth: bool) -> str:
+    """「监听地址暴露 + MCP 免鉴权」时返回可指路的警告文案（否则返回空串）。
+
+    为什么需要：`/mcp` 默认**无凭据也放行**（mcp_require_auth=False）。只监听
+    回环时这没问题（能连上就等于在本机）；一旦监听非回环地址，任何能连到该端口
+    的人都能直接读写记忆 —— **且不经过平台令牌/审核那套机制**（2026-09-22 实测：
+    不带任何凭据调用 pangu_search_memories，直接返回全部记忆原文）。
+
+    纯函数（不读全局、不产生副作用），便于单测。
+    """
+    if mcp_require_auth:
+        return ""
+    host = (bind_host or "").strip()
+    # 回环 = 只有本机能连，属于"能连上即身份"的信任模型；空 = 无从判断，不误报
+    if host in ("", "127.0.0.1", "::1", "localhost"):
+        return ""
+    return (
+        f"⚠ 正在监听 {host}，但 MCP 未强制鉴权：任何能连到该端口的人都能直接读写记忆，"
+        "且不经过平台令牌审核。请在 ~/.pangu/config.json 中设置 mcp_require_auth: true 并重启服务。"
+    )
+
+
 def create_app() -> FastAPI:
     """创建 FastAPI 应用（伏羲移植版）"""
     from pangu.core.config import PanguConfig as _Cfg
@@ -84,6 +106,13 @@ def create_app() -> FastAPI:
 
     _loaded = _Cfg.load()
     _loaded.config_path = getattr(_loaded, "config_path", "")
+    # 暴露且免鉴权 ⇒ 启动时大喊一声。install.sh 走的路由会在装的时候直接把
+    # mcp_require_auth 写成 true；这里是给手工 `pangu serve --host 0.0.0.0` 的兜底。
+    _mcp_warn = mcp_auth_exposure_warning(
+        os.environ.get("PANGU_HOST", ""), getattr(_loaded, "mcp_require_auth", False)
+    )
+    if _mcp_warn:
+        logger.warning(_mcp_warn)
     # 用配置文件的值替换全局单例，使整个模块统一使用 config.json 的内容。
     #
     # 关键：只覆盖 config.json 里**显式写明的**字段，而不是无差别地铺一层
