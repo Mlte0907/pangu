@@ -31,22 +31,49 @@
 
 set -euo pipefail
 
-# ── 自举：curl|bash 时本文件不在仓库里，先 clone 再执行自己 ──
-if [ ! -f "${BASH_SOURCE[0]}" ] || [ ! -f "$(dirname "${BASH_SOURCE[0]}")/pangu/api/server.py" ]; then
+# ── 自举：curl|bash 时本文件不在仓库里，先取得仓库再执行自己 ──
+#
+# ⚠ 必须写成 `${BASH_SOURCE[0]:-}`：`curl … | bash` 时脚本来自 stdin，
+#    BASH_SOURCE[0] **未设置**，而上面开了 `set -u` —— 裸引用会立刻以
+#    "unbound variable" 退出（curl 随之报 (23) 写管道失败），表现为
+#    "一条命令安装完全没反应、没有任何输出"。2026-09-22 云端实测踩到。
+SELF="${BASH_SOURCE[0]:-}"
+SELF_DIR=""
+if [ -n "$SELF" ]; then
+  SELF_DIR="$(cd "$(dirname "$SELF")" 2>/dev/null && pwd || true)"
+fi
+
+if [ -z "$SELF_DIR" ] || [ ! -f "$SELF_DIR/pangu/api/server.py" ]; then
   INSTALL_ROOT="${PANGU_INSTALL_DIR:-$HOME/pangu}"
-  command -v git >/dev/null 2>&1 || { echo "错误: 需要 git，请先安装（apt install git）" >&2; exit 1; }
-  if [ -d "$INSTALL_ROOT/.git" ]; then
-    echo "已有仓库 $INSTALL_ROOT，拉取最新..."
-    git -C "$INSTALL_ROOT" pull --ff-only 2>/dev/null || echo "拉取失败，用现有代码继续"
+  echo "==> 取得盘古代码到 $INSTALL_ROOT"
+
+  if [ -d "$INSTALL_ROOT/.git" ] && command -v git >/dev/null 2>&1; then
+    echo "    已有仓库，拉取最新版本…"
+    git -C "$INSTALL_ROOT" pull --ff-only 2>/dev/null || echo "    拉取失败，用现有代码继续"
+  elif command -v git >/dev/null 2>&1; then
+    echo "    克隆中（git --depth 1）…"
+    git clone --depth 1 https://github.com/Mlte0907/pangu "$INSTALL_ROOT" \
+      || { echo "错误: 克隆失败，请检查网络" >&2; exit 1; }
   else
-    echo "克隆盘古到 $INSTALL_ROOT..."
-    git clone --depth 1 https://github.com/Mlte0907/pangu "$INSTALL_ROOT"
+    # 没有 git 的机器（Debian 最小安装常见）也要能装：取 GitHub tarball。
+    echo "    未检测到 git —— 改用 tarball 下载（带进度条，约 5-10 MB）…"
+    mkdir -p "$INSTALL_ROOT"
+    TMP_TGZ="$(mktemp -t pangu-XXXXXX.tgz)"
+    curl -fL --progress-bar -o "$TMP_TGZ" \
+      https://codeload.github.com/Mlte0907/pangu/tar.gz/refs/heads/master \
+      || { echo "错误: 下载失败，请检查网络（或先 apt install git 再重跑）" >&2; exit 1; }
+    tar -xzf "$TMP_TGZ" -C "$INSTALL_ROOT" --strip-components=1 \
+      || { echo "错误: 解压失败（$TMP_TGZ）" >&2; exit 1; }
+    rm -f "$TMP_TGZ"
   fi
+
+  [ -f "$INSTALL_ROOT/install.sh" ] || { echo "错误: 取得代码失败（$INSTALL_ROOT/install.sh 不存在）" >&2; exit 1; }
+  echo "    ✓ 代码就绪"
   exec bash "$INSTALL_ROOT/install.sh" "$@"
 fi
 
 # ── 配置 ──
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$SELF_DIR"
 VENV_DIR="$REPO_DIR/.venv"
 PANGU_HOME="${PANGU_HOME:-$HOME/.pangu}"
 PORT="19529"
@@ -68,6 +95,42 @@ step()    { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()      { printf '    \033[32m✓\033[0m %s\n' "$*"; }
 warn()    { printf '    \033[33m!\033[0m %s\n' "$*"; }
 die()     { printf '\n\033[31m错误: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# ── 长耗时步骤的"心跳" ──
+# 为什么需要：装依赖（pip 可能 8-15 分钟）与下模型期间屏幕长时间不动，
+# 用户无法判断"在跑还是卡死了"（2026-09-22 用户反馈）。
+# 这里每 10 秒打一行已用时间，至少证明进程还活着。
+#
+# 实现要点：后台子进程 + 标记文件控制启停（而不是把命令塞进 subshell 里跑）——
+# 后者会打乱退出码与 `set -e` 语义，而这两步必须能可靠判断成败。
+HEARTBEAT_FLAG=""
+HEARTBEAT_PID=""
+_hb_t0=0
+heartbeat_start() {
+  local desc="${1:-处理中}"
+  _hb_t0=$(date +%s)
+  HEARTBEAT_FLAG="${TMPDIR:-/tmp}/.pangu-hb.$$"
+  : > "$HEARTBEAT_FLAG"
+  (
+    while [ -f "$HEARTBEAT_FLAG" ]; do
+      sleep 10
+      [ -f "$HEARTBEAT_FLAG" ] || break
+      printf '    … %s 仍在进行（已用 %ss）\n' "$desc" "$(( $(date +%s) - _hb_t0 ))"
+    done
+  ) &
+  HEARTBEAT_PID=$!
+}
+heartbeat_stop() {
+  [ -n "$HEARTBEAT_FLAG" ] && rm -f "$HEARTBEAT_FLAG"
+  if [ -n "$HEARTBEAT_PID" ]; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
+  HEARTBEAT_FLAG=""
+  HEARTBEAT_PID=""
+}
+# 异常退出（die / set -e 中断）也要把心跳收掉，否则后台子进程会一直打表
+trap 'heartbeat_stop' EXIT
 
 # ── 参数解析 ──
 while [ $# -gt 0 ]; do
@@ -146,6 +209,15 @@ echo "    服务端口: $HOST:$PORT  (MCP + REST)"
 # 0. 环境自检
 # ════════════════════════════════════════════════════════════
 if [ "$MODEL_ONLY" = 0 ]; then
+
+# 开场就把"将要经历什么、大概多久"说清楚 ——
+# 小白最怕的不是慢，而是"没动静、不知道还要等多久"（2026-09-22 反馈）。
+c_cyan "盘古安装程序"
+echo "  共 5 步：环境自检 → 建虚拟环境 → 装依赖 → 下载模型 → 装开机服务"
+echo "  预计 1-3 分钟；若用 pip 装依赖可能 8-15 分钟（有 uv 则约 20 秒）。"
+echo "  每步都会打印进度；长时间无输出时会每 10 秒报一次已用时间。"
+echo "  关键步骤失败会明确报错并停下，不会静默降级。"
+
 step "0/5 环境自检"
 
 # Python 版本：pyproject.toml 要求 >=3.11（注意 docs 里曾误写 3.10）
@@ -209,12 +281,14 @@ echo "       其中 onnxruntime (54MB) 与 numpy (55MB) 最大，请耐心等待
 echo "       不要中断——中断会导致缓存已下载但包未装好。"
 
 DEPS_START=$(date +%s)
+heartbeat_start "安装 Python 依赖（$PKG）"
 if [ "$PKG" = "uv" ]; then
   uv pip install -r "$REPO_DIR/requirements.txt" --python "$VPY"
 else
   "$VPY" -m pip install --upgrade pip
   "$VPY" -m pip install -r "$REPO_DIR/requirements.txt"
 fi
+heartbeat_stop
 DEPS_SEC=$(( $(date +%s) - DEPS_START ))
 ok "依赖安装完成（耗时 ${DEPS_SEC}s）"
 
@@ -261,6 +335,7 @@ print(ONNXEmbedder(cache_dir=PanguConfig.load().onnx_cache_dir or None).cache_di
 else
   # 在线下载，多源自动回退（onnx_embedder 内部已实现 hf-mirror → huggingface）
   DL_START=$(date +%s)
+  heartbeat_start "下载 ONNX 模型（约 23 MB）"
   set +e
   DL_OUT=$("$VPY" - <<'PY' 2>&1
 import sys
@@ -281,6 +356,7 @@ PY
 )
   DL_RC=$?
   set -e
+  heartbeat_stop
   DL_SEC=$(( $(date +%s) - DL_START ))
 
   if [ $DL_RC -ne 0 ] || ! grep -q "MODEL_OK" <<< "$DL_OUT"; then
