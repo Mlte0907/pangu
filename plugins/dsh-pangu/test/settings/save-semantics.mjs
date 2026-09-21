@@ -173,9 +173,10 @@ console.log('═══ 场景 C：只填「盘古凭据」，不碰其它字段 
 chk('不再有第二个凭据字段「管理密钥」', !container.textContent.includes('管理密钥'))
 const credInput = [...container.querySelectorAll('input')].find((i) => i.getAttribute('type') === 'password')
 // 用户反馈（2026-09-21）：填了凭据没有任何反馈，而没填时框里却写着「已配置」。
-// 修法：状态由独立提示行用**脱敏值**说明；输入框占位符只讲"该做什么"。
-chk('已配置时显示脱敏值（可核对生效的是哪一把）', container.textContent.includes('pgk_J_*****tnX6'))
-chk('凭据框占位符不再声称状态', credInput.placeholder === '粘贴安装时打印的盘古凭据')
+// 修法：**框内直接显示脱敏值**（一眼看到生效的是哪一把），空配置时才给说明文字。
+chk('已配置时框内显示脱敏值', credInput.placeholder === 'pgk_J_*****tnX6')
+// 必须是 placeholder 而非 value：否则保存时会把掩码当凭据提交上去
+chk('掩码只作占位、不是待提交的值', credInput.value === '')
 // 回归（2026-09-21）：dirty 此前不统计密码框，只填凭据时保存按钮恒灰，
 // 等于「填了也存不下去」。这里断言：填了凭据 → 按钮可点 → patch 写出 api_key。
 await act(async () => { setVal(credInput, 'pgk-LOCAL-ONLY') })

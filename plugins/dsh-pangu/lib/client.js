@@ -1877,17 +1877,19 @@ window.__ModuleLoader__.load({
             ),
             h('input', {
               className: 'pangu-input', type: 'password', value: draft.pk,
-              // 占位符只讲"该做什么"，不承担"是否已配置"的状态。
-              // 之前空框里写着「已配置，留空保持不变」—— 用户从没填过却看到已配置，
-              // 只会以为是幻觉（2026-09-21 修）。状态改由下方提示行用**脱敏值**说明，
-              // 用户能核对"现在生效的是哪一把"，这正是"填了没反馈"的解药。
-              placeholder: '粘贴安装时打印的盘古凭据',
+              // 已配置时**框内直接显示脱敏值**（用户要求）：一眼看到"当前生效的是哪一把"，
+              // 而不只是一句无从核对的「已配置」。这正是"填了没反馈"的解药。
+              // 用 placeholder 而非 value：一开始输入就自动消失，保存只读 draft.pk，
+              // 因此不存在"把掩码当凭据存进去"的风险。
+              placeholder: credSet
+                ? (credHint || '已配置（明文不回显）')
+                : '粘贴安装时打印的盘古凭据',
               onChange: (e) => setDraft((prev) => ({ ...prev, pk: e.target.value })),
               style: { width: '100%', boxSizing: 'border-box', padding: '7px 12px', borderRadius: 8, border: `1px solid ${css.border}`, background: css.bg2, color: css.t1, fontSize: 12, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', outline: 'none' },
             }),
             h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } },
               credSet
-                ? `已配置（${credHint || '已设置'}）—— 记忆读写/搜索、管理页都用它。明文不回显，留空保持原值，填入新值则覆盖。`
+                ? '灰字即当前生效的凭据（掩码，明文不回显）。留空保持原值，填入新值则覆盖 —— 记忆读写/搜索、管理页都用它。'
                 : '尚未配置 —— 上面「盘古服务地址」那台机器安装时打印的凭据（安装横幅的「DSH 填写卡」里有）。记忆读写/搜索、管理页都用它。',
             ),
           ),
