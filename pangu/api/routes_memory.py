@@ -89,6 +89,33 @@ class ApiResponse(BaseModel):
         return {"code": code, "message": message, "data": None}
 
 
+# ── 响应内容解密 ──
+
+
+def _plain_content(text) -> str:
+    """读取端点返回 content 前，解开写入时落库的加密。
+
+    写入方按 ``is_enabled()`` 加密 content，于是列表/搜索/详情/导出这类读取
+    端点若原样回传，客户端拿到的是 ``gAAAAAB…`` 密文而非可读正文。``decrypt()``
+    是三态的：明文原样返回、密文解开、解不开返回占位符 —— 因此加密关闭时调用
+    它不做任何事。这些端点对匿名一律 401，解密不改变暴露面。
+
+    Args:
+        text: 落库形态的 content，可能为密文、明文或空串。
+
+    Returns:
+        可读正文；入参为空时原样返回。
+    """
+    if not text:
+        return text or ""
+    try:
+        from pangu.memory.encryption import decrypt
+
+        return decrypt(text)
+    except Exception:
+        return text
+
+
 # ── ABAC 辅助函数 ──
 
 
@@ -308,7 +335,7 @@ async def list_memories(
             items.append(
                 {
                     "id": getattr(d, "id", ""),
-                    "content": getattr(d, "content", ""),
+                    "content": _plain_content(getattr(d, "content", "")),
                     "wing": getattr(d, "wing", ""),
                     "room": getattr(d, "room", ""),
                     "importance": getattr(d, "importance", 0.5),
@@ -396,7 +423,7 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
     return ApiResponse.ok(
         {
             "id": item_id,
-            "content": drawer.content if drawer else req.text,
+            "content": _plain_content(drawer.content) if drawer else req.text,
             "wing": req.wing,
             "room": req.room,
             "tenant_id": subject.tenant_id,
@@ -458,7 +485,7 @@ async def search_memories(
             results.append(
                 {
                     "id": d.id,
-                    "content": d.content,
+                    "content": _plain_content(d.content),
                     "wing": d.wing,
                     "room": d.room,
                     "importance": d.importance,
@@ -589,7 +616,7 @@ async def get_memory(memory_id: str, request: Request):
     return ApiResponse.ok(
         {
             "id": drawer.id,
-            "content": drawer.content,
+            "content": _plain_content(drawer.content),
             "wing": drawer.wing,
             "room": drawer.room,
             "importance": drawer.importance,
@@ -628,7 +655,7 @@ async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Reque
     return ApiResponse.ok(
         {
             "id": drawer.id,
-            "content": drawer.content,
+            "content": _plain_content(drawer.content),
             "wing": drawer.wing,
             "room": drawer.room,
             "importance": drawer.importance,
@@ -729,7 +756,7 @@ async def export_memories(
         return ApiResponse.ok(
             {
                 "format": format,
-                "items": [d.to_dict() for d in drawers],
+                "items": [{**d.to_dict(), "content": _plain_content(d.content)} for d in drawers],
                 "total": len(drawers),
                 "exported_at": datetime.now().isoformat(),
             }
