@@ -248,3 +248,27 @@ def decrypt_dict(data: dict, fields: list[str] | None = None) -> dict:
             result[field] = decrypt(result[field])
 
     return result
+
+
+def decrypt_drawers(drawers: list) -> list:
+    """把一批 Drawer 的 content 解成明文，返回新副本，原对象不变。
+
+    写入方按 ``is_enabled()`` 加密 content，而分词索引、关键词分组、正则实体
+    抽取这类读取方拿到的是落库后的密文；不先解开会把密文碎片当成内容（分组
+    主题、正则匹配、分词 token 全部落空）。读取入口调用一次即覆盖其后对该批
+    Drawer 的全部读取。
+
+    Args:
+        drawers: 待解开的 Drawer 列表；元素 content 可能是密文或明文。
+
+    Returns:
+        与输入等长的列表。content 本为明文的元素沿用原对象；解密成功、或
+        解密失败而由 ``decrypt()`` 返回占位符的元素，为 content 已替换的副本。
+    """
+    from dataclasses import replace
+
+    out = []
+    for d in drawers:
+        plain = decrypt(d.content)
+        out.append(replace(d, content=plain) if plain != d.content else d)
+    return out

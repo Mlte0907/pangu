@@ -1125,6 +1125,12 @@ class KnowledgeGraph:
         """
         from pangu.core.hashing import hex_digest
 
+        from .encryption import decrypt_drawers
+
+        # 实体靠关键词子串匹配 content；落库时 content 可能已加密，
+        # 不解开则密文里永远匹配不到 ENTITY_PATTERNS（见 decrypt_drawers）。
+        drawers = decrypt_drawers(drawers)
+
         # 实体类型识别规则
         ENTITY_PATTERNS = {
             "technology": [

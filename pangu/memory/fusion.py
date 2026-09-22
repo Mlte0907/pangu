@@ -17,6 +17,7 @@ from pangu.core.hashing import hex_digest
 
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
+from .encryption import decrypt_drawers
 
 
 @dataclass
@@ -69,6 +70,9 @@ class FusionEngine:
         Returns:
             融合知识，或 None
         """
+        # 分组与要点提取都读 content；落库时可能已加密（见 decrypt_drawers）。
+        drawers = decrypt_drawers(drawers)
+
         # 筛选相关记忆
         topic_lower = topic.lower()
         relevant = []
@@ -334,6 +338,10 @@ class FusionEngine:
     def _group_by_keywords(self, drawers: list[Drawer]) -> dict[str, list[Drawer]]:
         """按关键词分组"""
         import re
+
+        # 主题取自 content 的首个关键词；落库时 content 可能已加密，
+        # 不解开则分组主题是密文碎片（见 decrypt_drawers）。
+        drawers = decrypt_drawers(drawers)
 
         groups = {}
 

@@ -157,6 +157,12 @@ class FTS5SearchEngine:
 
     def build_index(self, drawers: list[Drawer]) -> int:
         """构建 FTS 内存索引（支持中文分词）+ 磁盘持久化"""
+        from .encryption import decrypt_drawers
+
+        # content 落库时可能已加密；索引记的是分词 token，拿密文建出来后
+        # 明文查询永远匹配不上（见 decrypt_drawers）。
+        drawers = decrypt_drawers(drawers)
+
         # 如果索引已构建且文档数量相同，跳过重建
         if self._indexed and self._indexed_count == len(drawers):
             return len(self._fts_index)
