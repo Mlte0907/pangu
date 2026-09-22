@@ -228,6 +228,17 @@ async def handle_search_memories(server, drawers, arguments):
     else:
         payload = results
 
+    # 搜索统计：本工具走 search/engine，同样不经过 retrieval 内部埋点，
+    # 不补则 pangu_search_stats 恒 0（与 REST 侧同因，见 record_search）。
+    try:
+        from ...memory.retrieval import record_search
+
+        _items = payload.get("results", []) if isinstance(payload, dict) else []
+        _n = payload.get("total", len(_items)) if isinstance(payload, dict) else len(_items)
+        record_search(bool(_n), "fts" if _n else "", query, int(_n or 0))
+    except Exception:
+        pass
+
     # 结果质量自检（2026-09-19）：语义搜索修好打分后，无关查询的 Top1 只有
     # 0.19-0.31（相关查询 0.36+）。若全部低于阈值，显式告诉调用方"没有高度
     # 相关的记忆"——而不是硬凑 10 条不相关的让它猜。结果照常返回供参考。
@@ -300,6 +311,16 @@ async def handle_recall(server, drawers, arguments):
         drawers = filtered
 
     # 必须把过滤后的集合传进去：recall 默认只读自身存储，不传等于隔离空转
+    #
+    # 解密必须在 recall **之前**：L2 把 content 截到 300 字符再拼 Markdown
+    # （layers.py MAX_CHARS_PER_ENTRY），若把密文拼进去，事后用正则抠出来的是
+    # 残片 —— 实测 159 条里 153 条密文 >297 字符（中位 2124），96% 必然
+    # InvalidToken → 返回「解密失败」占位符。search 路径之所以正常，正是它
+    # 先解完整值再截断（见下方 search handler）。先解出明文，L2 截断的就只是
+    # 可读摘要。
+    from ...memory.encryption import decrypt_drawers
+
+    drawers = decrypt_drawers(drawers)
     result = server.memory.recall(wing=wing, room=room, drawers=drawers)
 
     # 发布召回事件（/ws）—— 面板「7 日脉搏」的召回序列按天计数依赖它。

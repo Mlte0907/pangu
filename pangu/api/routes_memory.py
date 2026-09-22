@@ -198,9 +198,17 @@ def _resolve_tenant_id(request: Request) -> str:
       3. 其它情况 → **忽略**该头并告警（客户端无权声明租户）；
       4. 兜底：JWT claim 的 tenant_id → abac_default_tenant。
     """
-    # 中间件若已用盘古钥匙确认身份（含租户），直接采信，避免重复查表
+    # 中间件若已确认身份且带租户（盘古钥匙 / 平台 Token），直接采信，避免重复查表。
+    #
+    # platform_token 必须与 pangu_key 同等对待：auth.py 已把 ident["platform"]
+    # 解析进 principal.tenant（MCP 侧 mcp_http.py 也用它作 identity.room →
+    # set_tenant_scope），但这里此前只认 pangu_key，于是同一枚平台 Token 走 REST
+    # 写入落到兜底 default、走 MCP 则是平台名 —— 实测同一 token 写出
+    # {default:3}(REST) 与 {opencode:3}(MCP) 两种租户，导致 MCP recall 在
+    # _visible 按平台名裁剪时看不见 REST 写的记录（tenant='default' 且
+    # visibility='tenant' 的 32 条全部不可见）。
     principal = get_principal(request)
-    if principal.method == "pangu_key" and principal.tenant:
+    if principal.method in ("pangu_key", "platform_token") and principal.tenant:
         return principal.tenant
 
     ident = _tenant_from_key(request)
@@ -504,6 +512,16 @@ async def search_memories(
             record_recall_hits([r["id"] for r in results], drawers=all_drawers)
         except Exception as exc:
             logger.warning(f"自动召回反馈失败: {exc}")
+
+        # 搜索统计：本端点走 fts_search，不经过 retrieval 内部那处埋点，
+        # 不补这一下 pangu_search_stats 就恒为 0（口径分裂，见 record_search）。
+        try:
+            from pangu.memory.retrieval import record_search
+
+            _hit = bool(results)
+            record_search(_hit, "fts" if _hit else "", q, len(results))
+        except Exception:
+            pass
         return results
 
     try:

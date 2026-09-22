@@ -45,6 +45,24 @@ _search_history_max = 50
 _vector_cache = LRUCache(max_size=1000, ttl_seconds=3600)
 
 
+def record_search(hit: bool, method: str = "", query: str = "", result_count: int = 0) -> None:
+    """记录一次搜索 —— REST 与 MCP 两条搜索路径各自的入口都应调用它。
+
+    此前只有 ``retrieval`` 内部那一处调用 ``_record_search``，而 REST 的
+    ``/memories/search`` 走 ``fts_search``、MCP 的 ``pangu_search_memories``
+    走 ``search/engine``，两条路都不经过它 —— 于是 ``pangu_search_stats``
+    恒为 0（实测执行 15+ 次搜索后仍全 0），中文分词问题也因此拿不到
+    ``fts_hits`` vs ``vector_hits`` 的分布佐证。
+
+    Args:
+        hit: 是否有有效命中（不含建议性结果）。
+        method: 检索方式，``fts`` / ``vector`` / ``neural`` 之一，空串表示未知。
+        query: 原始查询串，用于写入最近搜索历史。
+        result_count: 返回条数。
+    """
+    _record_search(hit, method, query, result_count)
+
+
 def get_search_stats() -> dict:
     """获取搜索命中率统计"""
     total = _search_stats["total_searches"]
