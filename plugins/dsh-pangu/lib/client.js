@@ -1736,6 +1736,8 @@ window.__ModuleLoader__.load({
       const [updateInfo, setUpdateInfo] = React.useState(null)
       const [updateLoading, setUpdateLoading] = React.useState(false)
       const [versions, setVersions] = React.useState(null)
+      const [dash, setDash] = React.useState(null)
+      const [platforms, setPlatforms] = React.useState([])
 
       const load = React.useCallback(async () => {
         try {
@@ -1762,6 +1764,9 @@ window.__ModuleLoader__.load({
           callRemote('panguAdminKeys', 'listRooms').then(unwrap).then((v) => setRooms(v?.rooms || [])).catch(() => {})
           // 自动检查更新（05 区）
           callRemote('panguDashboard', 'checkUpdate').then(unwrap).then((v) => setUpdateInfo(v)).catch(() => {})
+          // 状态卡数据：记忆总量（数据面）+ 平台列表（管理面）
+          callRemote('panguDashboard', 'data').then(unwrap).then((v) => setDash(v)).catch(() => {})
+          callRemote('panguPlatforms', 'listPlatforms').then(unwrap).then((v) => setPlatforms(v?.platforms || [])).catch(() => {})
         } catch (e) {
           setLoadErr(String(e.message || e))
         }
@@ -1894,6 +1899,12 @@ window.__ModuleLoader__.load({
               isCloud ? '云端在线' : '本机在线'),
             h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, draft.pb || '127.0.0.1:19529')),
           h('div', { style: { background: css.bg1, padding: '9px 12px' } },
+            h('div', { style: { fontFamily: mono, fontSize: 12.5, fontWeight: 600 } }, fmtNum(dash?.stats?.total || 0)),
+            h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 2 } }, '记忆总量')),
+          h('div', { style: { background: css.bg1, padding: '9px 12px' } },
+            h('div', { style: { fontFamily: mono, fontSize: 12.5, fontWeight: 600 } }, String(platforms.filter((p) => p.status === 'active').length)),
+            h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 2 } }, '接入平台')),
+          h('div', { style: { background: css.bg1, padding: '9px 12px' } },
             h('div', { style: { fontFamily: mono, fontSize: 12.5, fontWeight: 600 } }, versions ? 'v' + versions.plugin : 'v…'),
             h('div', { style: { fontSize: 9.5, color: css.t3, marginTop: 2 } }, '插件版本' + (versions?.server ? ' · 服务 v' + versions.server : ''))),
         ),
@@ -1982,15 +1993,19 @@ window.__ModuleLoader__.load({
           h(InfoRow, { label: 'API Key', value: keySet ? (keyHint || '已配置') : '未配置' }),
           h(InfoRow, { label: '嵌入模型', value: config?.embedding_model || '—' }),
           h(InfoRow, { label: '记忆库', value: config?.palace_path || '—' }),
-          h(InfoRow, { label: 'MCP 工具', value: '白名单 30 / 全量 449 · 三级暴露' })),
+          h(InfoRow, { label: 'MCP 工具', value: '白名单 30 / 全量 449 · 三级暴露' }),
+          h(InfoRow, { label: '实时通道', value: '/ws · 8 类事件订阅' })),
 
         // ── 04 平台接入 ──
         SecHead('04', '平台接入', 'pgp_* Token · 审核管理'),
         h('div', { style: { padding: '9px 0 2px', fontSize: 11.5 } },
-          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: `1px solid ${css.borderSoft}` } },
-            h('span', { style: { fontFamily: mono, fontSize: 11, fontWeight: 600 } }, 'deepseek-harness'),
-            h('span', { style: { color: css.t3, fontSize: 10.5, flex: 1 } }, 'DeepSeek Harness智能体'),
-            h('span', { style: { fontSize: 9, padding: '1px 8px', borderRadius: 999, fontWeight: 600, background: withAlpha(css.ok, '1c'), color: css.ok } }, '活跃')),
+          platforms.length > 0 ? platforms.map((p) => h('div', { key: p.token_id, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${css.borderSoft}` } },
+            h('span', { style: { fontFamily: mono, fontSize: 11, fontWeight: 600 } }, p.platform || p.platform_name || '?'),
+            h('span', { style: { color: css.t3, fontSize: 10.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+              (p.permissions || []).join('/') + (p.last_used_at ? ' · 最近使用 ' + String(p.last_used_at).slice(5, 16).replace('T', ' ') : '')),
+            h('span', { style: { fontSize: 9, padding: '1px 8px', borderRadius: 999, fontWeight: 600, flexShrink: 0, background: withAlpha(p.status === 'active' ? css.ok : css.warn, '1c'), color: p.status === 'active' ? css.ok : css.warn } },
+              p.status === 'active' ? '活跃' : p.status === 'pending' ? '待审核' : (p.status || '—')),
+          )) : h('div', { style: { padding: '4px 0', fontSize: 11, color: css.t3 } }, '暂无接入平台'),
           h('div', { style: { fontSize: 10.5, color: css.t3, marginTop: 6, lineHeight: 1.6 } }, '新平台通过 POST /api/v2/platforms/request 申请 → pending → 管理员审核 → pgp_* 正式 Token。完整审核面在「盘古」标签页 · 管理。')),
 
         // ── 05 关于与更新 ──
