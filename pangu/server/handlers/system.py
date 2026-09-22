@@ -1,7 +1,7 @@
 """盘古 MCP Handler — system (44 tools)"""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 TOOLS = [
     {"name": "pangu_stats", "description": "\u83b7\u53d6\u7cfb\u7edf\u7edf\u8ba1"},
@@ -102,6 +102,20 @@ def collect_stats(server, drawers: list | None = None) -> dict:
         "decay_average": round(sum(decays) / len(decays), 3) if decays else 0.0,
         "consolidation": consolidation_state(server),
     }
+    # 7 日记忆脉搏（创建柱）：按 created_at 聚合最近 7 天（含今天），零填充、
+    # 旧日→今日排列 —— dsh-pangu 概览页「7日记忆脉搏」的创建柱数据源。
+    # 为什么在这里给（2026-09-23）：插件原先在自己进程里 readFileSync(palace_path/
+    # drawers.json)，那条路径是**服务端**文件系统，盘古上云后跨机读必然 ENOENT、
+    # 被静默吞掉 ⇒ 创建柱恒空。改为随 stats 下发，scoped 与其它区块同口径
+    # （管理通道=全库，MCP=本租户）。created_at 与本聚合同为服务端本地时钟
+    # （Asia/Shanghai），按日切片无时区偏差。
+    today = datetime.now().date()
+    daily = {(today - timedelta(days=i)).isoformat(): 0 for i in range(6, -1, -1)}
+    for d in scoped:
+        day = (getattr(d, "created_at", "") or "")[:10]
+        if day in daily:
+            daily[day] += 1
+    stats["daily_creates"] = [{"date": day, "count": count} for day, count in daily.items()]
     return stats
 
 
