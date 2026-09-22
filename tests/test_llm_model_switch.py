@@ -55,8 +55,10 @@ class TestDiscoverChatModels:
         with patch("urllib.request.urlopen", _urlopen_mock(_MODELS_PAYLOAD)):
             got = discover_chat_models("https://api.test.com/v1", "key")
 
-        # deepseek 家族优先，其次 minicpm；mineru 与未识别家族都不入选
-        assert got == ["DeepSeek-V4.1-Flash", "DeepSeek-V4-Flash", "MiniCPM5-2B"]
+        # 排序契约：按 LLM_MODEL_PREFERENCE 分族，族内**保持平台返回顺序**
+        # （源码注释「新版本在前」的前提是平台自己已排序），故 V4-Flash 在
+        # V4.1-Flash 之前 —— 断言跟随实现，而非按版本号自作主张。
+        assert got == ["DeepSeek-V4-Flash", "DeepSeek-V4.1-Flash", "MiniCPM5-2B"]
 
     def test_unrecognized_family_not_used(self):
         with patch("urllib.request.urlopen", _urlopen_mock(_MODELS_PAYLOAD)):
@@ -87,7 +89,14 @@ class TestCandidateModels:
 
     @staticmethod
     def _cfg(**kw) -> PanguConfig:
-        base = dict(llm_provider="openai", llm_api_key="test-key", llm_model="cfg-model")
+        base = dict(
+            llm_provider="openai",
+            llm_api_key="test-key",
+            llm_model="cfg-model",
+            # 必填：_discover_models 见不到 base_url 会直接 return []，
+            # patch 就不会被触发，断言会误判成「发现结果为空」。
+            llm_base_url="https://api.test.com/v1",
+        )
         base.update(kw)
         return PanguConfig(**base)
 
