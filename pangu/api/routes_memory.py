@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
@@ -30,7 +31,7 @@ from pangu.core.config import PanguConfig, config
 from pangu.core.palace import Drawer, Palace
 from pangu.memory.decay import purge_below_floor
 from pangu.memory.fts_search import FTS5SearchEngine
-from pangu.memory.ingestion import remember
+from pangu.memory.ingestion import IMPORTANCE_SCALE, remember
 from pangu.memory.layers import MemoryStack
 from pangu.memory.retrieval import recall, recall_context
 
@@ -45,7 +46,13 @@ class MemoryCreateRequest(BaseModel):
     text: str = Field(..., description="记忆文本内容")
     wing: str = Field(default="default", description="Wing 名称")
     room: str = Field(default="general", description="Room 名称")
-    importance: float = Field(default=0.5, ge=0.0, le=1.0, description="重要性 (0-1)")
+    importance: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="重要性，写入契约 0–1；服务端按 0–5 标度存储，读取端返回 0–5，"
+        "且会随召回反馈在 [0.5, 5.0] 内小幅上浮（设计行为）",
+    )
     tags: list[str] = Field(default_factory=list, description="标签列表")
     source: str = Field(default="direct", description="来源类型")
     author: str = Field(default="", description="写入者 agent_id")
@@ -54,13 +61,22 @@ class MemoryCreateRequest(BaseModel):
     classification: int = Field(
         default=1, ge=0, le=3, description="密级 0=public,1=internal,2=confidential,3=top_secret"
     )
-    visibility: str = Field(default="tenant", description="public|tenant|private")
+    visibility: str = Field(
+        default="tenant",
+        description="public=全平台只读（admission 毕业后系统亦会自动置为 public）|"
+        "tenant=本平台租户可见 | private=仅 owner",
+    )
 
 
 class MemoryUpdateRequest(BaseModel):
     text: str | None = Field(default=None, description="更新后的文本")
-    importance: float | None = Field(default=None, ge=0.0, le=1.0)
-    tags: list[str] | None = Field(default=None)
+    importance: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="与 POST 同标度：输入 0–1、存 0–5；GET 读回 0–5 值回填前需除以 5",
+    )
+    tags: list[str] | None = Field(default=None, description="标签列表（整体替换）")
     facts: str | None = Field(default=None, description="提取的事实")
 
 
@@ -367,7 +383,14 @@ async def list_memories(
 
 @router.post("/memories")
 async def create_memory(req: MemoryCreateRequest, request: Request):
-    """创建记忆（ABAC：tenant 隔离 + 密级 + 所有权 + 公开可访问性）。"""
+    """创建记忆（ABAC：tenant 隔离 + 密级 + 所有权 + 公开可访问性）。
+
+    importance 输入 0–1、服务端按 0–5 存储（读取端返回 0–5）。写入归当前平台
+    租户（platform Token → 平台名），初始 admission=pending_review；四问准入
+    （①无重复 ②无冲突 ③有来源指针 source_file/source_session ④有正向召回反馈
+    last_feedback=recall_success/verified）全过自动毕业为 admission=graduated
+    且 visibility=public（全平台只读区），判定不阻塞写入。
+    """
     tid = _resolve_tenant_id(request)
     principal = get_principal(request)
     if principal.method == "anonymous":
@@ -444,18 +467,31 @@ async def create_memory(req: MemoryCreateRequest, request: Request):
 @router.get("/memories/search")
 async def search_memories(
     request: Request,
-    q: str = Query(..., description="搜索关键词"),
+    q: str = Query(default="", description="搜索关键词；缺省或空串返回分层 top-N（按写入时间倒序）"),
     wing: str = Query(default=None, description="限定 Wing"),
+    tag: list[str] = Query(default=None, description="限定标签（可重复传参，AND 语义）"),
+    owner_id: str = Query(default=None, description="限定写入者"),
+    scope: Literal["own", "recommend", "all"] = Query(
+        default="all",
+        description="own=仅本平台租户；recommend=仅其他平台；all=own 优先、recommend 随后",
+    ),
     limit: int = Query(default=10, ge=1, le=50),
-    search_type: str = Query(default="fts", description="搜索类型: fts/hybrid/vector"),
+    offset: int = Query(default=0, ge=0),
+    search_type: str = Query(default="fts", description="搜索类型: fts/hybrid/vector（当前仅 fts 生效）"),
 ):
-    """搜索记忆"""
+    """搜索记忆。结果分两层：本平台租户命中（scope=own）排前，其他平台命中（scope=recommend）
+    作为推荐随后，每条带 scope 与 tenant_id 标注。search_score 为 FTS5 BM25 命中强度
+    （离散档位、越大越相关），不是相似度百分比。
+    """
 
     # 2026-09-21：关闭匿名搜索 —— 搜索/列表此前对匿名放行，平台端口公网暴露时
     # 匿名租户恰好能读到 default 租户的全部记忆（与「未通过 = 零权限」相悖）。
     # 平台/钥匙凭据照常可用，仅拦未带凭据的请求。
     if get_principal(request).method == "anonymous":
         return ApiResponse.error(401, "Authentication required")
+
+    # 分层归属：与 list 同源的租户裁决（平台 Token → 平台名）
+    _tid = _resolve_tenant_id(request)
 
     def _do_search():
         # P0-0 修复：读**权威路径** v2（此前读 v1 → 恒返回空）。
@@ -469,7 +505,7 @@ async def search_memories(
         _cfg = _authoritative_cfg()
         _raw = PanguConfig.load_drawers_nonempty(_cfg.authoritative_drawers_path)
         if not _raw:
-            return []
+            return {"results": [], "total": 0, "own_total": 0, "recommend_total": 0}
         from pangu.core.palace import Drawer as _Drawer
 
         all_drawers = [_Drawer.from_dict(d) for d in _raw]
@@ -478,18 +514,71 @@ async def search_memories(
         fts_engine = FTS5SearchEngine(_cfg)
         fts_engine.build_index(all_drawers)
 
-        # 搜索时再按 wing 过滤
-        search_drawers = all_drawers
+        # 过滤作用于全量候选、先于打分：若先按 limit 截断再过滤，tag/owner
+        # 条件会把截断后的命中误删，表现为"明明存在却搜不到"。
+        scoped = all_drawers
         if wing:
-            search_drawers = [d for d in all_drawers if d.wing == wing]
+            scoped = [d for d in scoped if d.wing == wing]
+        if owner_id:
+            scoped = [
+                d
+                for d in scoped
+                if (getattr(d, "metadata", None) or {}).get("owner_id") == owner_id
+            ]
+        if tag:
+            scoped = [
+                d
+                for d in scoped
+                if all(t in (getattr(d, "tags", None) or []) for t in tag)
+            ]
 
-        fts_results = fts_engine._fts_search(q, search_drawers, limit=limit)
-        drawer_map = {d.id: d for d in search_drawers}
+        if q.strip():
+            # 取回全部命中再分页：分层排序（own 在前）发生在截断之前，limit 只
+            # 用于最终 offset 切片。⚠ 上限必须按**全库**规模传：_fts_search 的
+            # 命中集来自全库索引、不按入参 drawers 收窄，若传 len(scoped) 会让
+            # scoped 外的同分命中占掉配额、随机挤掉 scoped 内条目（实测结果非
+            # 确定：同一查询 tag/owner 过滤时 0/1 漂移）。
+            scores = fts_engine._fts_search(q, scoped, limit=max(len(all_drawers), 1))
+            scored = [(d, scores[d.id]) for d in scoped if d.id in scores]
+        else:
+            # 空 q：FTS 无从打分，返回分层 top-N（写入时间倒序），与缺省 q 同行为。
+            scored = [(d, 0.0) for d in scoped]
+
+        def _is_own(d):
+            md = getattr(d, "metadata", None)
+            if not isinstance(md, dict):
+                md = {}
+            return md.get("tenant_id", "default") == _tid
+
+        if scope == "own":
+            pool = [x for x in scored if _is_own(x[0])]
+        elif scope == "recommend":
+            pool = [x for x in scored if not _is_own(x[0])]
+        else:
+            pool = scored
+
+        def _ordered(own):
+            grp = [x for x in pool if _is_own(x[0]) == own]
+            # 稳定排序两连：先按写入时间倒序，再按分数倒序 → 分数主序、时间次序
+            grp.sort(key=lambda x: getattr(x[0], "created_at", ""), reverse=True)
+            if q.strip():
+                grp.sort(key=lambda x: x[1], reverse=True)
+            return grp
+
+        if scope == "recommend":
+            ordered = _ordered(False)
+        elif scope == "own":
+            ordered = _ordered(True)
+        else:
+            ordered = _ordered(True) + _ordered(False)
+
+        own_total = sum(1 for x in pool if _is_own(x[0]))
+        page = ordered[offset : offset + limit]
         results = []
-        for did, score in sorted(fts_results.items(), key=lambda x: x[1], reverse=True)[:limit]:
-            d = drawer_map.get(did)
-            if not d:
-                continue
+        for d, score in page:
+            md = getattr(d, "metadata", None)
+            if not isinstance(md, dict):
+                md = {}
             results.append(
                 {
                     "id": d.id,
@@ -499,19 +588,23 @@ async def search_memories(
                     "importance": d.importance,
                     "tags": d.tags,
                     "search_score": round(score, 4),
+                    "scope": "own" if _is_own(d) else "recommend",
+                    "tenant_id": md.get("tenant_id", "default"),
                 }
             )
 
         # 自动召回反馈（2026-09-20）：搜索命中即「成功召回」，由盘古自己记录
         # recall_success 验证信号。毕业门 Q4 此前只有 MCP 工具一个上报入口，
         # MCP 客户端下线后反馈永远无法产生，pending_review 只进不出（实测积压
-        # 76 条无人毕业）。反馈失败不影响搜索本身。
-        try:
-            from pangu.memory.retrieval import record_recall_hits
+        # 76 条无人毕业）。反馈失败不影响搜索本身。空 q 是翻页浏览而非检索，
+        # 不打召回信号，避免浏览把 pending 记录推过毕业门。
+        if q.strip():
+            try:
+                from pangu.memory.retrieval import record_recall_hits
 
-            record_recall_hits([r["id"] for r in results], drawers=all_drawers)
-        except Exception as exc:
-            logger.warning(f"自动召回反馈失败: {exc}")
+                record_recall_hits([r["id"] for r in results], drawers=all_drawers)
+            except Exception as exc:
+                logger.warning(f"自动召回反馈失败: {exc}")
 
         # 搜索统计：本端点直调 fts_engine._fts_search（见上方 _do_search），
         # 不经过 fts_search.search 的主流程、也不走向量通道，故这里上报的
@@ -524,15 +617,24 @@ async def search_memories(
             record_search(_hit, "fts" if _hit else "", q, len(results))
         except Exception:
             pass
-        return results
+        return {
+            "results": results,
+            "total": len(pool),
+            "own_total": own_total,
+            "recommend_total": len(pool) - own_total,
+        }
 
     try:
-        results = await asyncio.to_thread(_do_search)
+        payload = await asyncio.to_thread(_do_search)
         return ApiResponse.ok(
             {
                 "query": q,
-                "results": results,
-                "total": len(results) if results else 0,
+                "results": payload["results"],
+                "total": payload["total"],
+                "own_total": payload["own_total"],
+                "recommend_total": payload["recommend_total"],
+                "limit": limit,
+                "offset": offset,
             }
         )
     except Exception as e:
@@ -618,8 +720,19 @@ async def get_stats():
 
 
 @router.get("/memories/{memory_id}")
-async def get_memory(memory_id: str, request: Request):
-    """获取单条记忆（ABAC：按 mid 加载资源，authorize 后返回）。"""
+async def get_memory(
+    memory_id: str,
+    request: Request,
+    include_embedding: bool = Query(
+        default=False,
+        description="在 metadata 中返回内部 embedding 向量（默认剔除，仅调试/向量对接时需要）",
+    ),
+):
+    """获取单条记忆（ABAC：按 mid 加载资源，authorize 后返回）。
+
+    metadata 默认剔除 embedding（数百维内部检索向量，随单条 GET 外带既无
+    必要也放大响应）；importance 为 0–5 存储标度（写入契约 0–1，见 POST）。
+    """
     stack = _memory_stack(request)
     drawer = stack.get_drawer_by_id(memory_id)
     if drawer is None:
@@ -627,6 +740,7 @@ async def get_memory(memory_id: str, request: Request):
     md = getattr(drawer, "metadata", None) or {}
     if not isinstance(md, dict):
         md = {}
+    md_out = md if include_embedding else {k: v for k, v in md.items() if k != "embedding"}
     res = _drawer_to_resource(drawer)
     decision = abac_authorize(
         "memories",
@@ -641,7 +755,7 @@ async def get_memory(memory_id: str, request: Request):
             "room": drawer.room,
             "importance": drawer.importance,
             "tags": drawer.tags,
-            "metadata": md,
+            "metadata": md_out,
             "created_at": getattr(drawer, "created_at", ""),
             "_policy": decision.policy,
         }
@@ -650,7 +764,12 @@ async def get_memory(memory_id: str, request: Request):
 
 @router.put("/memories/{memory_id}")
 async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Request):
-    """更新记忆（ABAC：owner_or_admin / admin_full）。"""
+    """更新记忆（ABAC：owner_or_admin / admin_full）。
+
+    importance 输入契约与 POST 一致为 0–1，服务端按 0–5 标度存储
+    （IMPORTANCE_SCALE）；GET 读回的是 0–5 值，直接回填会被 0–1 校验拒（422），
+    需先除以 5。
+    """
     stack = _memory_stack(request)
     drawer = stack.get_drawer_by_id(memory_id)
     if drawer is None:
@@ -664,7 +783,9 @@ async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Reque
 
     drawer.content = req.text if req.text is not None else drawer.content
     if req.importance is not None:
-        drawer.importance = req.importance
+        # 与 POST 同标度：输入 0–1 → 存 0–5。此前直存 0–1，同一字段两条
+        # 写路径标度分裂（POST 0.5→2.5、PUT 0.5→0.5）。
+        drawer.importance = req.importance * IMPORTANCE_SCALE
     if req.tags is not None:
         drawer.tags = req.tags
     if req.facts is not None:
@@ -680,14 +801,20 @@ async def update_memory(memory_id: str, req: MemoryUpdateRequest, request: Reque
             "room": drawer.room,
             "importance": drawer.importance,
             "tags": drawer.tags,
-            "metadata": drawer.metadata,
+            # embedding 属内部检索向量，不随响应外带（取回用 GET ?include_embedding=true）
+            "metadata": {k: v for k, v in (drawer.metadata or {}).items() if k != "embedding"},
         }
     )
 
 
 @router.delete("/memories/{memory_id}")
 async def delete_memory(memory_id: str, request: Request):
-    """删除记忆（ABAC：owner_or_admin / admin_full）。"""
+    """删除记忆（ABAC：owner_or_admin / admin_full）。
+
+    单用户部署模型：平台接入 Token 经人工审核发放，对记忆库持管理权限
+    （成功响应 policy=admin_full），删除无二次确认——调用方删除前自行核对
+    id；跨平台删除同样放行（所有接入平台同属一个所有者）。
+    """
     stack = _memory_stack(request)
     drawer = stack.get_drawer_by_id(memory_id)
     if drawer is None:
