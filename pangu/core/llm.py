@@ -17,7 +17,8 @@
 - 批量并发：asyncio.gather + Semaphore 控制并发度
 - Token 跟踪：累计 prompt/completion/cost
 - JSON 模式：原生 response_format 支持
-- 自动重试：失败时指数退避
+- 失败处理：按候选模型逐个切换（配置值优先，其失败后动态 GET /models 补备选），
+  整轮候选全败才线性退避 retry_delay×(n+1)
 """
 
 import asyncio
@@ -163,7 +164,8 @@ class LLMEngine:
     - 批量并发：asyncio.gather + Semaphore 控制并发度
     - Token 跟踪：累计 prompt/completion/cost
     - JSON 模式：原生 response_format 支持
-    - 自动重试：失败时指数退避
+    - 候选模型切换：配置值优先，其失败后动态 GET /models 补备选再试，
+      整轮全败才线性退避 retry_delay×(n+1)
     - Prometheus 指标：cache_hit_rate / tokens / cost / latency
     """
 
@@ -472,15 +474,30 @@ class LLMEngine:
 
         self._cache_misses += 1
 
-        # 2) 实际调用 —— 候选模型逐个尝试：配置值在前，动态发现的在后。
-        # 某个模型限流/繁忙（`[LMM 调用失败 …]`）或 JSON 模式下输出不可解析时，
-        # 换下一个模型；整轮候选都失败才退避后进入下一轮 attempt。全部轮次耗尽
-        # 仍未成功则返回最后一次响应，由调用方走各自的降级路径。
+        # 2) 实际调用 —— 候选模型逐个尝试。
+        # 配置了具体模型时**先只用它**，仅当它整轮失败才现拉 GET /models 找备选
+        #（懒发现）。这样「配置了且一切正常」的调用完全不碰网络 —— 配了假地址
+        # 仅供 mock 的测试因此不受影响。配置留空时一开始就发现，否则连候选都没有。
+        # 某个模型限流/繁忙（`[LMM 调用失败 …]`）或 JSON 模式下输出不可解析时换
+        # 下一个；整轮候选都失败才退避后进入下一轮 attempt。全部轮次耗尽仍未成功
+        # 则返回最后一次响应，由调用方走各自的降级路径。
         provider = self.config.llm_provider.lower()
-        models = self._candidate_models()
+        configured = str(self.config.llm_model or "").strip()
+        if configured:
+            models: list[str] = [configured]
+            discovery_done = False
+        else:
+            models = self._discover_models()
+            discovery_done = True
         response = None
         for attempt in range(self.config.llm_max_retries):
-            for model in models:
+            idx = 0
+            # 用 while 而非 for：首选失败后把动态发现的备选 append 进 models，
+            # 本轮随即接着试它们 —— 不必像 continue 到外层那样先重打一次已知失败
+            # 的首选。
+            while idx < len(models):
+                model = models[idx]
+                idx += 1
                 response = await self._do_chat(
                     provider, messages, system, temperature, max_tokens, json_mode, model=model
                 )
@@ -488,10 +505,11 @@ class LLMEngine:
                 # 判据必须用 falsy 而非 `is None`：_extract_json 失败时返回的是
                 # default（{}），恒不为 None —— 拿 `is None` 判等于不判，无效输出
                 # 会被原样返回给调用方。
+                usable = True
                 if json_mode and not response.content.startswith("[LMM"):
                     if not self._extract_json(response.content, default=None):
-                        continue
-                if not response.content.startswith("[LMM 调用失败"):
+                        usable = False
+                if usable and not response.content.startswith("[LMM 调用失败"):
                     # 3) 写入缓存（仅当 temperature=0）
                     # 缓存键沿用 config.llm_model（逻辑请求的身份，而非实际命中的
                     # 模型），故切换模型不会让同一 prompt 失去缓存。
@@ -516,7 +534,15 @@ class LLMEngine:
                             except Exception:
                                 pass
                     return response
-            # 整轮候选全败 → 退避后重试下一轮
+                # 该模型本次不可用（限流/超时/JSON 不可解析）→ 配置的模型失败后，
+                # 此刻才现拉备选。新候选已 append 进 models，while 随即接着试它们，
+                # 不必重打一次已知失败的首选。
+                if configured and not discovery_done:
+                    discovery_done = True
+                    for m in self._discover_models():
+                        if m not in models:
+                            models.append(m)
+            # 走到这里说明本轮候选（含刚发现的备选）全部不可用 → 退避后进入下一轮
             if attempt < self.config.llm_max_retries - 1:
                 await asyncio.sleep(self.config.llm_retry_delay * (attempt + 1))
 
@@ -544,24 +570,16 @@ class LLMEngine:
                 provider, messages, system, temperature, max_tokens, json_mode, model=model
             )
 
-    def _candidate_models(self) -> list[str]:
-        """候选模型列表：配置值在前，其后接动态发现的可用模型。
+    def _discover_models(self) -> list[str]:
+        """动态发现可用模型（GET /models），发现不了时返回空列表。
 
-        平台模型列表会更新，故每次调用前现拉 ``GET /models``，不写死。发现失败
-        （端点不可达、未配 key、超时）时只返回配置值 —— 行为与改动前的单模型重试
-        一致。配置留空而发现可用时，即兑现设置页「不填则自动选择最佳可用模型」的
-        承诺；配置了具体模型时它恒为首选，发现结果只在其失效后兜底。
-
-        Returns:
-            候选模型 id，至少含配置值；两者皆无时为空列表（调用方照常发起请求，
-            由服务端报错并走各自的降级路径）。
+        端点未配置、未配 key、网络不通、响应非法都归为「发现不了」，统一返回
+        ``[]`` 而不抛异常，让调用方按「没有备选」继续。chat() 只在配置的模型
+        整轮失败后才走到这里，故配了 base_url 却只做 mock 的调用不会触网。
         """
-        configured = str(self.config.llm_model or "").strip()
-        models: list[str] = [configured] if configured else []
-
         base = str(self.config.llm_base_url or "").rstrip("/")
         if not base:
-            return models
+            return []
         key = str(self.config.llm_api_key or "")
         if not key:
             try:
@@ -573,14 +591,28 @@ class LLMEngine:
             except Exception:
                 key = ""
         if not key:
-            return models
-
+            return []
         try:
-            for m in discover_chat_models(base, key):
-                if m not in models:
-                    models.append(m)
+            return discover_chat_models(base, key)
         except Exception as e:
-            logger.debug(f"动态发现模型失败，仅用配置值 {models}: {e}")
+            logger.debug(f"动态发现模型失败（base={base}），按无备选继续：{e}")
+            return []
+
+    def _candidate_models(self) -> list[str]:
+        """候选模型列表：配置值在前，其后接动态发现的可用模型。
+
+        一次性算出完整列表，供需要全量候选的场景使用。chat() 的热路径走的是
+        懒发现（见其内注释）——配置了模型且调用成功时不会触发网络发现。
+
+        Returns:
+            候选模型 id，至少含配置值；两者皆无时为空列表（调用方照常发起请求，
+            由服务端报错并走各自的降级路径）。
+        """
+        configured = str(self.config.llm_model or "").strip()
+        models: list[str] = [configured] if configured else []
+        for m in self._discover_models():
+            if m not in models:
+                models.append(m)
         return models
 
     async def stream_chat(
