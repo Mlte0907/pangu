@@ -230,12 +230,24 @@ async def handle_search_memories(server, drawers, arguments):
 
     # 搜索统计：本工具走 search/engine，同样不经过 retrieval 内部埋点，
     # 不补则 pangu_search_stats 恒 0（与 REST 侧同因，见 record_search）。
+    # method 按结果的 source 分桶：HybridSearch 给每条命中标了
+    # semantic（向量语义）或 lexical（词法），此前写死 "fts" 会让
+    # vector_hits 恒 0、检索通道分布失去参考价值。
     try:
         from ...memory.retrieval import record_search
 
         _items = payload.get("results", []) if isinstance(payload, dict) else []
         _n = payload.get("total", len(_items)) if isinstance(payload, dict) else len(_items)
-        record_search(bool(_n), "fts" if _n else "", query, int(_n or 0))
+        _sources = {r.get("source") for r in _items if isinstance(r, dict)}
+        if not _n:
+            _method = ""
+        elif "semantic" in _sources:
+            _method = "vector"
+        elif "lexical" in _sources:
+            _method = "fts"
+        else:
+            _method = ""
+        record_search(bool(_n), _method, query, int(_n or 0))
     except Exception:
         pass
 

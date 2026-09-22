@@ -513,8 +513,10 @@ async def search_memories(
         except Exception as exc:
             logger.warning(f"自动召回反馈失败: {exc}")
 
-        # 搜索统计：本端点走 fts_search，不经过 retrieval 内部那处埋点，
-        # 不补这一下 pangu_search_stats 就恒为 0（口径分裂，见 record_search）。
+        # 搜索统计：本端点直调 fts_engine._fts_search（见上方 _do_search），
+        # 不经过 fts_search.search 的主流程、也不走向量通道，故这里上报的
+        # "fts" 与真实检索方式一致；不补这一下 pangu_search_stats 恒为 0
+        # （口径分裂，见 record_search）。
         try:
             from pangu.memory.retrieval import record_search
 
