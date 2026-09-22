@@ -1,0 +1,66 @@
+{
+  "name": "dsh-pangu",
+  "version": "0.5.0",
+  "description": "盘古记忆系统 DSH 插件: MCP 接入 + 内嵌仪表盘(平台管理/知识库/记忆进化/快照)",
+  "keywords": [
+    "dsh",
+    "pangu",
+    "memory",
+    "mcp",
+    "platform",
+    "knowledge"
+  ],
+  "private": false,
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "lib/index.js",
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "install.sh",
+    "README.md",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mlte0907/dsh-pangu.git"
+  },
+  "homepage": "https://github.com/Mlte0907/dsh-pangu#readme",
+  "bugs": {
+    "url": "https://github.com/Mlte0907/dsh-pangu/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./typert": {
+      "default": "./lib/typert.host.js"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
