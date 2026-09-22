@@ -34,6 +34,47 @@ import httpx
 
 from .config import PanguConfig
 
+logger = logging.getLogger("pangu.core.llm")
+
+# 家族偏好序：deepseek 质量优先，minicpm 作最稳兜底；mineru 是文档解析模型排除。
+# 未识别的家族不盲用 —— 平台列表新增模型时在此加一行家族名即可。
+LLM_MODEL_PREFERENCE = ("deepseek", "minicpm")
+LLM_MODEL_EXCLUDE = ("mineru",)
+
+
+def discover_chat_models(base: str, key: str, timeout: int = 15) -> list[str]:
+    """动态发现可用对话模型（GET /models，列表随平台更新，不写死）。
+
+    LLMEngine 的候选模型与自主任务的结晶选型共用这一套规则，避免两处漂移。
+
+    Args:
+        base: OpenAI 兼容端点 base_url，不含末尾斜杠。
+        key: API 密钥，以 Bearer 附加。
+        timeout: 请求超时秒数。
+
+    Returns:
+        按 ``LLM_MODEL_PREFERENCE`` 家族序排列、已剔除 ``LLM_MODEL_EXCLUDE`` 的
+        模型 id 列表。端点不可达或响应非法时抛异常，由调用方决定兜底。
+    """
+    import urllib.request
+
+    req = urllib.request.Request(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode())
+    items = data.get("data") or data.get("models") or []
+    names = [m.get("id") if isinstance(m, dict) else str(m) for m in items]
+
+    ranked: list[str] = []
+    for family in LLM_MODEL_PREFERENCE:
+        for n in names:
+            if not n:
+                continue
+            low = n.lower()
+            if family in low and not any(x in low for x in LLM_MODEL_EXCLUDE) and n not in ranked:
+                ranked.append(n)
+    return ranked
+
+
 # 缓存预热审计日志：单独 logger + 单独文件（~/.pangu/logs/llm_cache_warmup.log）
 _warmup_logger = logging.getLogger("pangu.llm.warmup")
 if not _warmup_logger.handlers:
@@ -204,12 +245,15 @@ class LLMEngine:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         json_mode: bool = False,
+        model: str | None = None,
     ) -> LLMResponse:
         """调用 OpenAI 兼容 API（OpenAI, DeepSeek, OpenRouter, 智谱, 通义千问, Ollama）
 
         Args:
             json_mode: 启用 JSON 模式（response_format: {"type": "json_object"}）
                        大多数 OpenAI 兼容 API 都支持，包括智谱 GLM-4 系列
+            model: 本次实际使用的模型；None 时回落 ``config.llm_model``。候选模型
+                之间的切换由 ``chat()`` 驱动，本方法只负责按指定模型发一次请求
         """
         base_url = self._get_base_url(provider)
         api_key = self._get_api_key(provider)
@@ -239,7 +283,7 @@ class LLMEngine:
         full_messages.extend(messages)
 
         payload = {
-            "model": self.config.llm_model,
+            "model": model or self.config.llm_model,
             "messages": full_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -281,7 +325,7 @@ class LLMEngine:
 
             return LLMResponse(
                 content=data["choices"][0]["message"]["content"],
-                model=self.config.llm_model,
+                model=model or self.config.llm_model,
                 usage=usage,
                 provider=provider,
                 latency_ms=latency,
@@ -303,8 +347,13 @@ class LLMEngine:
         system: str = "",
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        model: str | None = None,
     ) -> LLMResponse:
-        """调用 Anthropic Messages API"""
+        """调用 Anthropic Messages API
+
+        Args:
+            model: 本次实际使用的模型；None 时回落 ``config.llm_model``。
+        """
         api_key = self._get_api_key("anthropic")
 
         if not api_key:
@@ -323,7 +372,7 @@ class LLMEngine:
             )
 
         payload = {
-            "model": self.config.llm_model,
+            "model": model or self.config.llm_model,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "messages": anthropic_messages,
@@ -352,7 +401,7 @@ class LLMEngine:
 
             return LLMResponse(
                 content=data["content"][0]["text"],
-                model=self.config.llm_model,
+                model=model or self.config.llm_model,
                 provider="anthropic",
                 latency_ms=latency,
             )
@@ -423,40 +472,51 @@ class LLMEngine:
 
         self._cache_misses += 1
 
-        # 2) 实际调用
+        # 2) 实际调用 —— 候选模型逐个尝试：配置值在前，动态发现的在后。
+        # 某个模型限流/繁忙（`[LMM 调用失败 …]`）或 JSON 模式下输出不可解析时，
+        # 换下一个模型；整轮候选都失败才退避后进入下一轮 attempt。全部轮次耗尽
+        # 仍未成功则返回最后一次响应，由调用方走各自的降级路径。
         provider = self.config.llm_provider.lower()
+        models = self._candidate_models()
         response = None
         for attempt in range(self.config.llm_max_retries):
-            response = await self._do_chat(provider, messages, system, temperature, max_tokens, json_mode)
-            # JSON 模式：解析失败时重试
-            if json_mode and not response.content.startswith("[LMM"):
-                parsed = self._extract_json(response.content, default=None)
-                if parsed is None and attempt < self.config.llm_max_retries - 1:
-                    await asyncio.sleep(self.config.llm_retry_delay * (attempt + 1))
-                    continue
-            if not response.content.startswith("[LMM 调用失败"):
-                # 3) 写入缓存（仅当 temperature=0）
-                if cache_key and not response.content.startswith("[LMM"):
-                    self._put_cache(cache_key, response)
-                    # 写入持久化缓存
-                    if self._persistent_cache is not None:
-                        try:
-                            self._persistent_cache.put(
-                                cache_key,
-                                provider=self.config.llm_provider.lower(),
-                                model=self.config.llm_model,
-                                request={
-                                    "messages": messages,
-                                    "system": system,
-                                    "max_tokens": max_tokens,
-                                    "json_mode": json_mode,
-                                },
-                                response=response,
-                            )
-                            self._cache_writes += 1
-                        except Exception:
-                            pass
-                return response
+            for model in models:
+                response = await self._do_chat(
+                    provider, messages, system, temperature, max_tokens, json_mode, model=model
+                )
+                # JSON 模式：本模型输出不可解析 → 换下一个模型。
+                # 判据必须用 falsy 而非 `is None`：_extract_json 失败时返回的是
+                # default（{}），恒不为 None —— 拿 `is None` 判等于不判，无效输出
+                # 会被原样返回给调用方。
+                if json_mode and not response.content.startswith("[LMM"):
+                    if not self._extract_json(response.content, default=None):
+                        continue
+                if not response.content.startswith("[LMM 调用失败"):
+                    # 3) 写入缓存（仅当 temperature=0）
+                    # 缓存键沿用 config.llm_model（逻辑请求的身份，而非实际命中的
+                    # 模型），故切换模型不会让同一 prompt 失去缓存。
+                    if cache_key and not response.content.startswith("[LMM"):
+                        self._put_cache(cache_key, response)
+                        # 写入持久化缓存
+                        if self._persistent_cache is not None:
+                            try:
+                                self._persistent_cache.put(
+                                    cache_key,
+                                    provider=self.config.llm_provider.lower(),
+                                    model=self.config.llm_model,
+                                    request={
+                                        "messages": messages,
+                                        "system": system,
+                                        "max_tokens": max_tokens,
+                                        "json_mode": json_mode,
+                                    },
+                                    response=response,
+                                )
+                                self._cache_writes += 1
+                            except Exception:
+                                pass
+                    return response
+            # 整轮候选全败 → 退避后重试下一轮
             if attempt < self.config.llm_max_retries - 1:
                 await asyncio.sleep(self.config.llm_retry_delay * (attempt + 1))
 
@@ -470,12 +530,58 @@ class LLMEngine:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         json_mode: bool = False,
+        model: str | None = None,
     ) -> LLMResponse:
-        """执行实际的 LLM 调用"""
+        """执行实际的 LLM 调用
+
+        Args:
+            model: 本次使用的模型；None 时由底层回落 ``config.llm_model``。
+        """
         if provider == "anthropic":
-            return await self._call_anthropic(messages, system, temperature, max_tokens)
+            return await self._call_anthropic(messages, system, temperature, max_tokens, model=model)
         else:
-            return await self._call_openai_compatible(provider, messages, system, temperature, max_tokens, json_mode)
+            return await self._call_openai_compatible(
+                provider, messages, system, temperature, max_tokens, json_mode, model=model
+            )
+
+    def _candidate_models(self) -> list[str]:
+        """候选模型列表：配置值在前，其后接动态发现的可用模型。
+
+        平台模型列表会更新，故每次调用前现拉 ``GET /models``，不写死。发现失败
+        （端点不可达、未配 key、超时）时只返回配置值 —— 行为与改动前的单模型重试
+        一致。配置留空而发现可用时，即兑现设置页「不填则自动选择最佳可用模型」的
+        承诺；配置了具体模型时它恒为首选，发现结果只在其失效后兜底。
+
+        Returns:
+            候选模型 id，至少含配置值；两者皆无时为空列表（调用方照常发起请求，
+            由服务端报错并走各自的降级路径）。
+        """
+        configured = str(self.config.llm_model or "").strip()
+        models: list[str] = [configured] if configured else []
+
+        base = str(self.config.llm_base_url or "").rstrip("/")
+        if not base:
+            return models
+        key = str(self.config.llm_api_key or "")
+        if not key:
+            try:
+                from pathlib import Path
+
+                kf = Path(str(self.config.llm_api_key_file or ""))
+                if kf.exists():
+                    key = kf.read_text().strip()
+            except Exception:
+                key = ""
+        if not key:
+            return models
+
+        try:
+            for m in discover_chat_models(base, key):
+                if m not in models:
+                    models.append(m)
+        except Exception as e:
+            logger.debug(f"动态发现模型失败，仅用配置值 {models}: {e}")
+        return models
 
     async def stream_chat(
         self,

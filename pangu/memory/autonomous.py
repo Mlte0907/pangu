@@ -662,10 +662,8 @@ class AutonomousMemoryEngine:
         )
 
     # ── LLM 知识结晶辅助（2026-09-20）──
-    # 家族偏好序：deepseek 质量优先，minicpm 作最稳兜底；mineru 是文档解析模型排除。
-    # 未识别的家族不盲用 —— 平台列表新增模型时在此加一行家族名即可。
-    _LLM_PREFERENCE = ("deepseek", "minicpm")
-    _LLM_EXCLUDE = ("mineru",)
+    # 家族偏好与排除规则已上移到 pangu.core.llm（LLM_MODEL_PREFERENCE /
+    # LLM_MODEL_EXCLUDE），与 LLMEngine 的候选模型共用一份，避免两处漂移。
     # 4 个预设类 + other 兜底（2026-09-20：内容不属于任何预设类时归「其他」，不硬塞）
     _LLM_CATEGORIES = ("best_practice", "solution", "guide", "insight", "other")
     _LLM_TIMEOUT = 60  # 单次调用超时（秒）
@@ -691,25 +689,13 @@ class AutonomousMemoryEngine:
     def _llm_discover_models(self, base: str, key: str) -> list[str]:
         """动态发现可用对话模型（GET /models，列表随平台更新，不写死）。
 
-        排序：按 _LLM_PREFERENCE 家族序（同家族保持平台返回顺序，新版本在前）；
-        排除 _LLM_EXCLUDE；未识别家族不盲用。
+        实现在 ``pangu.core.llm.discover_chat_models``，与 LLMEngine 的候选模型
+        共用同一份家族偏好与排除规则；本方法只做转发，保留此层是为了不改动
+        既有调用点与子类覆写面。
         """
-        import urllib.request
+        from ..core.llm import discover_chat_models
 
-        req = urllib.request.Request(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
-        items = data.get("data") or data.get("models") or []
-        names = [m.get("id") if isinstance(m, dict) else str(m) for m in items]
-        names = [n for n in names if n]
-
-        ranked: list[str] = []
-        for family in self._LLM_PREFERENCE:
-            for n in names:
-                low = n.lower()
-                if family in low and not any(x in low for x in self._LLM_EXCLUDE) and n not in ranked:
-                    ranked.append(n)
-        return ranked
+        return discover_chat_models(base, key)
 
     def _llm_chat(self, base: str, key: str, model: str, system: str, user: str) -> str:
         """单次对话补全（同步，调度线程内直跑）。失败抛异常由调用方降级。"""
