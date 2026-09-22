@@ -212,6 +212,21 @@ window.__ModuleLoader__.load({
       return `${Math.floor(s / 3600)}时前`
     }
 
+    function compareVersions(a, b) {
+      const pa = String(a || '').replace(/^[vV]/, '').match(/\d+(?:\.\d+)*/)
+      const pb = String(b || '').replace(/^[vV]/, '').match(/\d+(?:\.\d+)*/)
+      if (!pa || !pb) return 0
+      const va = pa[0].split('.').map(Number)
+      const vb = pb[0].split('.').map(Number)
+      const n = Math.max(va.length, vb.length)
+      for (let i = 0; i < n; i++) {
+        const x = va[i] || 0, y = vb[i] || 0
+        if (x > y) return 1
+        if (x < y) return -1
+      }
+      return 0
+    }
+
     async function callRemote(name, method, args) {
       const remote = (ctx.get && ctx.get('remote.' + name)) || (ctx.remote && ctx.remote[name])
       if (!remote || typeof remote[method] !== 'function') throw new Error('远程服务 ' + name + ' 未就绪')
@@ -1834,6 +1849,17 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const checkUpdate = async () => {
+        setUpdateLoading(true)
+        try {
+          const v = unwrap(await callRemote('panguDashboard', 'checkUpdate'))
+          setUpdateInfo(v)
+        } catch (_) {
+          setUpdateInfo({ ok: false, error: '检查失败：网络不可达' })
+        }
+        setUpdateLoading(false)
+      }
+
       const pickProvider = (id) => {
         const p = LLM_PROVIDERS.find((x) => x.id === id)
         setDraft((prev) => ({
@@ -2021,8 +2047,16 @@ window.__ModuleLoader__.load({
               h('div', { style: { fontFamily: mono, fontSize: 15, fontWeight: 600, marginTop: 2 } }, versions?.server ? 'v' + versions.server : '…'),
               h('div', { style: { fontSize: 9.5, color: css.t3 } }, isCloud ? '云端 /health' : '本机 /health')),
             h('div', { style: { flex: 1 } }),
-            h('button', { onClick: load, disabled: updateLoading, style: { flexShrink: 0, padding: '6px 14px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 12, cursor: updateLoading ? 'default' : 'pointer' } }, updateLoading ? '检查中…' : '检查更新'),
+            h('button', { onClick: checkUpdate, disabled: updateLoading, style: { flexShrink: 0, padding: '6px 14px', borderRadius: 7, border: `1px solid ${css.border}`, background: css.bg2, color: css.t2, fontSize: 12, cursor: updateLoading ? 'default' : 'pointer' } }, updateLoading ? '检查中…' : '检查更新'),
           ),
+          updateInfo && updateInfo.ok && h('div', { style: { fontSize: 10.5, marginTop: 8, color: css.t2, lineHeight: 1.6 } },
+            (versions?.server && updateInfo.tag && (() => {
+              const cmp = compareVersions(updateInfo.tag, versions.server)
+              if (cmp > 0) return h('span', { style: { color: css.warn } }, '有新版本 ' + updateInfo.tag + '（当前 v' + versions.server + '）— 见下方手动更新命令')
+              if (cmp < 0) return h('span', { style: { color: css.ok } }, '本机版本 v' + versions.server + ' 领先于上游 ' + updateInfo.tag)
+              return h('span', { style: { color: css.ok } }, '✓ 已是最新版本 v' + versions.server)
+            })()) || null,
+            updateInfo.ok && updateInfo.body && h('div', { style: { color: css.t3, marginTop: 4 } }, updateInfo.body)),
           updateInfo && !updateInfo.ok && h('div', { style: { fontSize: 10.5, color: css.warn, marginTop: 8 } }, '检查失败：' + (updateInfo.error || '')),
           h('div', { style: { fontSize: 10, color: css.t3, marginTop: 8, lineHeight: 1.6 } }, '更新源：GitHub Releases（gh-proxy.org 加速）。手动更新：',
             h('code', { style: { background: css.bg3, padding: '1px 4px', borderRadius: 3, fontSize: 10 } }, 'cd ~/pangu-dev && git pull && pnpm install'))),
