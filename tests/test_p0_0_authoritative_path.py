@@ -345,6 +345,18 @@ class TestConsumerParity:
         assert isinstance(st["layers"]["L0_identity"]["tokens"], int)
         assert st["total_drawers"] == st["total_memories"] == 4
 
+    def test_deep_health_reads_authoritative_store(self, clean_home):
+        """深度健康检查也必须读 v2 真库，不能继续扫描空的 v1 目录树。"""
+        cfg = PanguConfig.load()
+        _write_drawers(cfg.legacy_drawers_path(), 0)
+        _write_drawers(cfg.authoritative_drawers_path, 5)
+
+        from pangu.observability.health import _check_memory_health
+
+        result = _check_memory_health(config=cfg)
+        assert result["status"] == "ok"
+        assert result["total_drawers"] == 5
+
 
 # ── 4. 空写保护（防数据丢失）─────────────────────────────────────
 
@@ -609,6 +621,56 @@ class TestStatsEndpointParity:
         body = r.json()
         body = body.get("data", body)
         assert body.get("total", 0) > 0, f"搜索读不到 v2 内容: {body}"
+
+
+class TestMcpSystemHealthStatsParity:
+    """MCP 的健康检查与系统统计必须使用同一份请求级可见 drawers。"""
+
+    def test_health_and_stats_share_scoped_drawer_counts(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+
+        from pangu.observability import health as health_module
+        from pangu.server.handlers import system as system_module
+
+        scoped = [
+            Drawer(id="d1", content="one", wing="w1", room="r1"),
+            Drawer(id="d2", content="two", wing="w2", room="r2"),
+        ]
+
+        class _Memory:
+            def status(self):
+                # 故意返回全库旧快照：apply_tenant_view 必须把两个总数都改成本次 scoped。
+                return {"total_memories": 999, "total_drawers": 999, "by_wing": {"legacy": 999}}
+
+        class _Palace:
+            def stats(self):
+                return {
+                    "name": "test",
+                    "wings_count": 999,
+                    "rooms_count": 999,
+                    "tunnels_count": 3,
+                }
+
+        server = SimpleNamespace(
+            memory=_Memory(),
+            palace=_Palace(),
+            wiki=SimpleNamespace(stats=lambda: {}),
+            knowledge_graph=SimpleNamespace(stats=lambda: {}),
+        )
+        monkeypatch.setattr(system_module, "consolidation_state", lambda _server: {"last_run": None})
+        monkeypatch.setattr(health_module, "_check_palace_structure", lambda: {"status": "ok"})
+        monkeypatch.setattr(health_module, "_check_embedding_health", lambda: {"status": "ok"})
+
+        stats = json.loads(asyncio.run(system_module.handle_stats(server, scoped, {})))
+        health = json.loads(asyncio.run(system_module.handle_system_health(server, scoped, {})))
+
+        assert stats["memory"]["total_memories"] == 2
+        assert stats["memory"]["total_drawers"] == 2
+        assert health["checks"]["memory"]["total_drawers"] == 2
+        assert health["checks"]["memory"]["total_wings"] == stats["palace"]["wings_count"] == 2
+        assert health["checks"]["memory"]["total_rooms"] == stats["palace"]["rooms_count"] == 2
+        assert health["checks"]["memory"]["total_tunnels"] == stats["palace"]["tunnels_count"] == 3
 
 
 # ── 空写保护的**反例**测试：合法删除必须真的落盘 ──

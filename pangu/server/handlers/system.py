@@ -147,21 +147,28 @@ def apply_tenant_view(stats: dict, drawers: list) -> None:
     两者都读全库，于是面板拿到全库视角、越过 call_tool 的租户收口（实测 dsh 钥匙下
     total_memories=124，而同一进程内 pangu_analyze 已按租户报 1）。
 
+    翼/房间/抽屉计数与 ``pangu_system_health`` 共用 ``drawer_scope_stats``，避免
+    ``total_memories`` 已裁剪、旧 ``total_drawers`` 却仍来自全库 status() 的二次分叉。
+
     面板若要**全库**视角，不走 MCP 这条路，而是走管理通道 /api/v2/admin/stats
     （admin secret 鉴权，见 api/routes_keys.py 的 admin_stats）。
     """
+    from ...observability.health import drawer_scope_stats
+
+    scoped = drawer_scope_stats(drawers)
     mem = stats.get("memory")
     if isinstance(mem, dict):
         by_wing: dict[str, int] = {}
         for d in drawers:
             wing = d.wing or "default"
             by_wing[wing] = by_wing.get(wing, 0) + 1
-        mem["total_memories"] = len(drawers)
+        mem["total_memories"] = scoped["total_drawers"]
+        mem["total_drawers"] = scoped["total_drawers"]
         mem["by_wing"] = by_wing
     palace = stats.get("palace")
     if isinstance(palace, dict):
-        palace["wings_count"] = len({(d.wing or "default") for d in drawers})
-        palace["rooms_count"] = len({((d.wing or "default"), (d.room or "general")) for d in drawers})
+        palace["wings_count"] = scoped["total_wings"]
+        palace["rooms_count"] = scoped["total_rooms"]
 
 
 def _coerce_classification(value) -> int:
@@ -210,10 +217,18 @@ HANDLERS["pangu_identity"] = handle_identity
 
 
 async def handle_system_health(server, drawers, arguments):
-    """深度系统健康检查（DB/结构/嵌入/统计）"""
+    """深度系统健康检查（DB/结构/嵌入/统计）。"""
     from ...observability.health import deep_health_check
 
-    return json.dumps(deep_health_check(), ensure_ascii=False, indent=2)
+    try:
+        total_tunnels = int(server.palace.stats().get("tunnels_count", 0) or 0)
+    except Exception:
+        total_tunnels = 0
+    return json.dumps(
+        deep_health_check(drawers=drawers, total_tunnels=total_tunnels),
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 HANDLERS["pangu_system_health"] = handle_system_health

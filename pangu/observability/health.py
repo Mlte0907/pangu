@@ -29,6 +29,30 @@ REQUIRED_FILES: dict[str, list[str]] = {
 }
 
 
+def drawer_scope_stats(drawers: list[Any] | None, *, total_tunnels: int = 0) -> dict[str, int]:
+    """按同一份可见 drawers 集合统计翼、房间和抽屉数。
+
+    ``pangu_stats`` 与 ``pangu_system_health`` 必须共享这份口径：调用方传入的
+    ``drawers`` 已经过 MCP 请求级租户/密级过滤，不能再绕回进程 HOME 去扫描另一套
+    遗留目录。空列表是合法结果（该租户确实没有可见记忆），不得回退到全库。
+    """
+    scoped = list(drawers or [])
+    wings = {(getattr(drawer, "wing", None) or "default") for drawer in scoped}
+    rooms = {
+        (
+            (getattr(drawer, "wing", None) or "default"),
+            (getattr(drawer, "room", None) or "general"),
+        )
+        for drawer in scoped
+    }
+    return {
+        "total_wings": len(wings),
+        "total_rooms": len(rooms),
+        "total_drawers": len(scoped),
+        "total_tunnels": int(total_tunnels or 0),
+    }
+
+
 def quick_health_check() -> dict:
     """快速健康检查（<10ms）
 
@@ -91,31 +115,30 @@ def _check_palace_structure() -> dict[str, Any]:
     return {"status": "ok" if not issues else "fail", "schema_issues": issues} if issues else {"status": "ok"}
 
 
-def _check_memory_health() -> dict[str, Any]:
-    """检查记忆存储健康状态"""
-    palace_dir = Path(os.path.expanduser("~/.pangu/palace"))
-    stats = {"total_wings": 0, "total_rooms": 0, "total_drawers": 0}
+def _check_memory_health(
+    drawers: list[Any] | None = None,
+    config=None,
+    total_tunnels: int = 0,
+) -> dict[str, Any]:
+    """检查记忆存储健康状态。
 
+    MCP handler 会传入本请求已裁剪的 ``drawers``，从而与 ``pangu_stats`` 完全同口径；
+    REST/CLI 未传时才通过 ``MemoryStack`` 读取权威 v2 主存（并合并非空 v1 只读源）。
+
+    旧实现固定扫描 ``~/.pangu/palace/<wing>/<room>/*.json``。生产数据早已迁到
+    ``db_path/v2_memories/drawers.json`` 单文件格式，因此 v2 有记忆而 health 仍恒报 0。
+    """
     try:
-        import json
+        if drawers is None:
+            from pangu.core.config import PanguConfig
+            from pangu.memory.layers import MemoryStack
 
-        meta_path = palace_dir / "palace_meta.json"
-        if meta_path.exists():
-            with open(meta_path, encoding="utf-8") as f:
-                meta = json.load(f)
-            stats["total_wings"] = len(meta.get("wings", []))
-            stats["total_rooms"] = sum(len(v) for v in meta.get("rooms", {}).values())
-            stats["total_tunnels"] = len(meta.get("tunnels", []))
-
-        # 统计抽屉文件
-        for wing_dir in palace_dir.iterdir():
-            if wing_dir.is_dir() and not wing_dir.name.startswith("."):
-                for room_dir in wing_dir.iterdir():
-                    if room_dir.is_dir():
-                        drawer_count = len(list(room_dir.glob("*.json")))
-                        stats["total_drawers"] += drawer_count
-
-        return {"status": "ok", **stats}
+            base = config or PanguConfig.load()
+            drawers = MemoryStack(
+                config=base.authoritative_memory_config(),
+                extra_drawers_files=base.authoritative_extra_drawers_files(),
+            ).get_drawers()
+        return {"status": "ok", **drawer_scope_stats(drawers, total_tunnels=total_tunnels)}
     except Exception as e:
         return {"status": "fail", "error": str(e)}
 
@@ -158,8 +181,11 @@ def _check_embedding_health() -> dict[str, Any]:
         return {"status": "fail", "error": str(e)}
 
 
-def deep_health_check() -> dict:
-    """深度健康检查（含宫殿结构/嵌入/记忆统计）"""
+def deep_health_check(drawers: list[Any] | None = None, config=None, total_tunnels: int = 0) -> dict:
+    """深度健康检查（含宫殿结构/嵌入/记忆统计）。
+
+    ``drawers`` 是 MCP 请求级可见集合；传 ``None`` 时按权威 v2 存储现读。
+    """
     checks: dict[str, Any] = {}
 
     # 宫殿结构完整性
@@ -168,9 +194,13 @@ def deep_health_check() -> dict:
     except Exception as e:
         checks["structure"] = {"status": "fail", "errors": [str(e)]}
 
-    # 记忆统计
+    # 记忆统计（与 pangu_stats 共用同一份 scoped drawers）
     try:
-        checks["memory"] = _check_memory_health()
+        checks["memory"] = _check_memory_health(
+            drawers=drawers,
+            config=config,
+            total_tunnels=total_tunnels,
+        )
     except Exception as e:
         checks["memory"] = {"status": "fail", "error": str(e)}
 

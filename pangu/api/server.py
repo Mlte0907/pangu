@@ -921,7 +921,7 @@ def create_app() -> FastAPI:
     async def deep_health():
         from pangu.observability.health import deep_health_check
 
-        return {"code": 0, "message": "ok", "data": deep_health_check()}
+        return {"code": 0, "message": "ok", "data": deep_health_check(config=config)}
 
     # Prometheus 指标
     @app.get("/metrics")
