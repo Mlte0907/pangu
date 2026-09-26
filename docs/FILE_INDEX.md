@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **349** 个 py 文件 / **106,762** 行。
+共 **350** 个 py 文件 / **106,890** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,323 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 102 文件 / 31,718 行
+## `tests/` — 103 文件 / 31,846 行
 
 测试
 
@@ -241,6 +241,7 @@
 | `test_performance_optimizations.py` | 420 | 测试性能优化效果 |
 | `test_persistent_cache.py` | 476 | 盘古 — 持久化缓存 + Prometheus 指标 测试 |
 | `test_phase1_keys.py` | 248 | 阶段 1 测试：钥匙管理 + 身份解析 + 管理端点鉴权 + require_auth |
+| `test_python_version_matrix.py` | 128 | CI 的 Python 矩阵必须与 `pyproject.toml` 的声明一致，且覆盖开发实际使用的版本。 |
 | `test_rbac.py` | 246 | 盘古 RBAC 角色权限测试 |
 | `test_real_llm.py` | 528 | 盘古 — 真实 LLM 集成测试 |
 | `test_rest_v2_contract.py` | 234 | REST v2 契约回归（2026-09-22 mimo-desktop-agent 接入实测报告）。 |
