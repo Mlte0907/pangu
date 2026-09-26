@@ -1,6 +1,7 @@
 """盘古 MCP Handler — memory_ops (4 tools)"""
 
 import json
+import os
 import uuid
 
 from ...core.palace import Drawer
@@ -198,25 +199,59 @@ async def handle_add_memory(server, drawers, arguments):
 HANDLERS["pangu_add_memory"] = handle_add_memory
 
 
-# 「本平台优先」分档用的两个常量（2026-09-26）。
+# 「本平台优先」的两个模式与常量（2026-09-26）。
+#
+# 模式（env PANGU_OWN_FIRST_MODE，不重新部署也能回退/切换）：
+#   "split" = 硬分两档：本平台的整块排前面，其余排后面
+#   "boost" = 位次加权：本平台的每条在排序上提前 N 位，强相关的别平台记忆仍能冒头
+#   "off"   = 完全不干预（= 改造前的原始行为）
+#
+# 为什么加权必须用**位次**而不是**分数**（实测踩过）：
+# 引擎两种来源的分数量纲完全不同 —— semantic 是余弦相似度（实测 0.33~0.76），
+# lexical 是关键词计数 `kw_score + title_bonus + importance_weight + tag_score`
+# （engine.py:102，量级是个位数甚至几十）。给语义分 +0.1 是大动作，给词法分 +0.1
+# 几乎等于没加；按分数加权会随「碰巧命中哪种来源」剧烈漂移。位次无量纲，不受影响。
 #
 # 为什么需要超额取：engine.search 结尾是 `merged[:n_results]`。若按最终条数取，
 # 后面再怎么重排，也只能在「已被相关性截出来的前 N 条」内部换位 —— 排在第 11 名的
-# 本平台记忆永远进不来。3 倍是折中：搜索池 272 条、默认 limit 10 → 取 30 条够把
-# 本平台的结果捞上来，又不至于把打分成本放大到不可接受。
+# 本平台记忆永远进不来，功能等于半残。故先按 OVERFETCH 倍取，重排后再截到 limit。
 _OWN_FIRST_OVERFETCH = 3
 _OWN_FIRST_MAX_POOL = 100
+# 「boost」里本平台提前的位次。默认值 4 有实测依据（scripts/ab_own_first.py 的位次扫描）：
+#   位次        0(基线)  2     4     6     8     12    20
+#   改前第1名留在前3   6/6   6/6   6/6   5/6   5/6   3/6   2/6
+#   本平台占比        30.0% 33.3% 38.3% 41.7% 43.3% 48.3% 61.7%
+# 4 正是拐点：本平台占比 30%→38%，而「改前第 1 名仍在前 3」仍是 6/6、零损失；到 6 就掉一条。
+# 另：boost 在任何位次下都**不会**把改前第 1 名挤出前 10（只是下移），只有 split 会挤出去。
+_OWN_FIRST_BOOST_POSITIONS = 4
+
+
+def _own_first_mode() -> str:
+    """读 env 而非模块常量：切模式只要重启服务，不必改代码重新部署。"""
+    m = str(os.environ.get("PANGU_OWN_FIRST_MODE", "boost")).strip().lower()
+    return m if m in ("split", "boost", "off") else "boost"
+
+
+def _own_first_positions() -> int:
+    """位次也允许 env 覆盖：调参是运维动作，不该每次都改代码重新部署。
+
+    上限 50 是防呆 —— 位次过大就退化成 split 的行为了（实测 20 时 keep@3 已掉到 2/6）。
+    """
+    raw = str(os.environ.get("PANGU_OWN_FIRST_BOOST", _OWN_FIRST_BOOST_POSITIONS)).strip()
+    try:
+        return max(0, min(int(raw), 50))
+    except (TypeError, ValueError):
+        return _OWN_FIRST_BOOST_POSITIONS
 
 
 def _partition_own_first(items, owner_by_id, own_tenant):
-    """稳定分档：本平台的在前，别平台的在后，**档内保持原有相关性顺序**。
+    """「split」：稳定分档 —— 本平台的在前，别平台的在后，**档内保持原有相关性顺序**。
 
-    两个容易写错的地方，这里都钉住：
-    1. **必须是稳定分档，不是按平台排序**。若直接 `sort(key=is_own)`，同档内的相关性
-       顺序会被打乱 —— 排第二的强命中可能落到排第十二的弱命中后面。用两个 list
-       顺序 append 天然保序。
-    2. **own_tenant 为空 ⇒ 完全不重排**。api_key 身份的 room 是空串，若拿它当平台名，
-       会把一批归属为空的记忆误判成「本平台的」而顶到最前（实测云端有 46 条这种记忆）。
+    两个容易写错的地方：
+    1. **必须稳定分档，不能按平台排序**。直接 `sort(key=is_own)` 会打乱同档内的相关性
+       顺序 —— 排第二的强命中可能落到排第十二的弱命中后面。两个 list 顺序 append 天然保序。
+    2. **own_tenant 为空 ⇒ 完全不重排**。api_key 身份的 room 是空串，拿它当平台名会把
+       一批归属为空的记忆误判成「本平台的」顶到最前（实测云端有 46 条这种记忆）。
        宁可不给优先，也不给错优先。
     """
     if not own_tenant or not owner_by_id or not isinstance(items, list):
@@ -228,10 +263,44 @@ def _partition_own_first(items, owner_by_id, own_tenant):
     return own + other
 
 
+def _boost_own(items, owner_by_id, own_tenant, positions=None):
+    """「boost」：位次加权 —— 本平台每条提前 N 位，其余保持原位次。
+
+    与 split 的关键差别：改前第 1 名若属于别平台且足够强，它**留在第 1 名**；split 会把
+    它整块挤到本平台那批之后。实测「浏览器 自动化 点击 失败」在 split 下丢掉了改前第 1 名
+    （importance 5.0 的「避免死循环验证」教训），那一条不该丢。
+
+    实现按 (有效位次, 原位次) 排序：同位次按原始顺序，故稳定可复现。
+    """
+    if not own_tenant or not owner_by_id or not isinstance(items, list) or len(items) < 2:
+        return items
+    pos = _own_first_positions() if positions is None else positions
+    if pos <= 0:
+        return items
+    tagged = []
+    for i, it in enumerate(items):
+        iid = it.get("id") if isinstance(it, dict) else None
+        eff = i - (pos if owner_by_id.get(iid) == own_tenant else 0)
+        tagged.append((eff, i, it))
+    tagged.sort(key=lambda t: (t[0], t[1]))
+    return [it for _, _, it in tagged]
+
+
+def _apply_own_first(items, owner_by_id, own_tenant):
+    """按当前模式分派。off / 无平台身份 / 无对照表 → 原样返回。"""
+    mode = _own_first_mode()
+    if mode == "off":
+        return items
+    if mode == "split":
+        return _partition_own_first(items, owner_by_id, own_tenant)
+    return _boost_own(items, owner_by_id, own_tenant)
+
+
 async def handle_search_memories(server, drawers, arguments):
     """搜索记忆（P1-3 阶段 2.2：按 metadata.tenant_id 过滤 + public 毕业区）
 
-    2026-09-26：本平台的记忆排前面，别平台的排后面（稳定分档，见 _partition_own_first）。
+    2026-09-26：本平台优先。默认「boost」（位次加权），可用 env
+    PANGU_OWN_FIRST_MODE=split|boost|off 切换，见 _apply_own_first。
     """
     query = arguments.get("query", "")
     wing = arguments.get("wing")
@@ -296,7 +365,7 @@ async def handle_search_memories(server, drawers, arguments):
         _owner_by_id = {
             d.id: (d.metadata or {}).get("tenant_id", "") for d in drawers if getattr(d, "id", None)
         }
-        _reordered = _partition_own_first(_items, _owner_by_id, identity_room)
+        _reordered = _apply_own_first(_items, _owner_by_id, identity_room)
         if isinstance(payload, dict) and _reordered is not _items:
             payload["results"] = _reordered[:limit]
             # total 必须**跟着返回条数走**，不能沿用引擎给的原值。
