@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **351** 个 py 文件 / **107,218** 行。
+共 **351** 个 py 文件 / **107,256** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,323 行
@@ -263,7 +263,7 @@
 | `test_vector_degradation_visible.py` | 167 | 向量路径的降级必须**看得见**。 |
 | `test_warmup_audit.py` | 133 | 盘古 — 缓存预热审计日志测试 |
 
-## `pangu/server/` — 26 文件 / 11,456 行
+## `pangu/server/` — 26 文件 / 11,474 行
 
 服务器层：MCP 服务器、Web 服务器、WebSocket、工具 handler 与暴露面
 
@@ -288,7 +288,7 @@
 | `handlers/search.py` | 919 | 盘古 MCP Handler — search (33 tools) |
 | `handlers/session.py` | 425 | 盘古 MCP Handler — session (28 tools) |
 | `handlers/supersede.py` | 170 | 盘古 MCP Handler — supersede (1 tool) |
-| `handlers/system.py` | 903 | 盘古 MCP Handler — system (44 tools) |
+| `handlers/system.py` | 921 | 盘古 MCP Handler — system (44 tools) |
 | `handlers/timeline.py` | 400 | 盘古 MCP Handler — timeline (16 tools) |
 | `handlers/wiki.py` | 66 | 盘古 MCP Handler — wiki (4 tools) |
 | `mcp_server.py` | 496 | 盘古 MCP 服务器 — 为 AI Agent 提供记忆工具接口 |
@@ -358,7 +358,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `keys.py` | 145 | 盘古钥匙管理器 |
 | `task_tracker.py` | 143 | 任务进度追踪器 — 在工具执行后自动保存任务状态（伏羲移植） |
 
-## `pangu/core/` — 6 文件 / 3,067 行
+## `pangu/core/` — 6 文件 / 3,087 行
 
 核心设施：配置、LLM 接入、加密、哈希、缓存、宫殿数据模型
 
@@ -368,7 +368,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `cache.py` | 452 | 盘古 — 持久化 LLM 响应缓存 |
 | `config.py` | 630 | 盘古核心配置模块 — 基于 pydantic-settings（伏羲移植） |
 | `hashing.py` | 39 | 盘古 — 统一哈希工具 |
-| `llm.py` | 1631 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
+| `llm.py` | 1651 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
 | `palace.py` | 308 | 盘古宫殿核心 — Wings/Rooms/Drawers/Halls/Tunnels 管理 |
 
 ## `experimental/` — 16 文件 / 1,172 行

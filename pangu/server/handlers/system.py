@@ -116,6 +116,24 @@ def collect_stats(server, drawers: list | None = None) -> dict:
         if day in daily:
             daily[day] += 1
     stats["daily_creates"] = [{"date": day, "count": count} for day, count in daily.items()]
+    # 当日 LLM token 使用量（dsh-pangu 仪表盘「LLM 用量」卡片的数据源）
+    try:
+        from ...core.llm import LLMEngine
+
+        engine = getattr(server, "_llm", None)
+        if engine is None:
+            engine = LLMEngine(server.config)
+        llm_stats = engine.get_stats()
+        stats["llm_daily"] = llm_stats.get("daily", {})
+        stats["llm_total"] = {
+            "call_count": llm_stats.get("call_count", 0),
+            "total_tokens": llm_stats.get("total_tokens", 0),
+            "estimated_cost_usd": llm_stats.get("estimated_cost_usd", 0),
+            "cache_hit_rate": llm_stats.get("cache_hit_rate", 0),
+        }
+    except Exception as exc:
+        stats["llm_daily"] = {"error": str(exc)[:120]}
+        stats["llm_total"] = {}
     return stats
 
 

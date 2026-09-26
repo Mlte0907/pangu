@@ -261,6 +261,8 @@ class LLMEngine:
         self._total_prompt_tokens: int = 0
         self._total_completion_tokens: int = 0
         self._estimated_cost_usd: float = 0.0
+        # 按日 token 统计（key = "YYYY-MM-DD"）
+        self._daily_tokens: dict[str, dict[str, int]] = {}
         # LRU 响应缓存（内存层）
         self._cache: OrderedDict[str, LLMResponse] = OrderedDict()
         self._cache_max: int = getattr(config, "llm_cache_max", 128) if config else 128
@@ -397,11 +399,19 @@ class LLMEngine:
 
             # 累计 token 用量
             usage = data.get("usage", {})
-            self._total_prompt_tokens += usage.get("prompt_tokens", 0)
-            self._total_completion_tokens += usage.get("completion_tokens", 0)
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            self._total_prompt_tokens += prompt_tokens
+            self._total_completion_tokens += completion_tokens
             self._estimated_cost_usd += self._estimate_cost(
-                provider, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+                provider, prompt_tokens, completion_tokens
             )
+            # 按日 token 统计（用于仪表盘当日用量可视化）
+            day_key = time.strftime("%Y-%m-%d")
+            daily = self._daily_tokens.setdefault(day_key, {"prompt_tokens": 0, "completion_tokens": 0, "call_count": 0})
+            daily["prompt_tokens"] += prompt_tokens
+            daily["completion_tokens"] += completion_tokens
+            daily["call_count"] += 1
 
             return LLMResponse(
                 content=data["choices"][0]["message"]["content"],
@@ -1062,6 +1072,16 @@ class LLMEngine:
                 stats["persistent_cache"] = self._persistent_cache.get_stats()
             except Exception:
                 stats["persistent_cache"] = {"error": "unavailable"}
+        # 当日 token 使用量（按日期键控，仪表盘/成本告警用）
+        day_key = time.strftime("%Y-%m-%d")
+        daily = self._daily_tokens.get(day_key, {})
+        stats["daily"] = {
+            "date": day_key,
+            "prompt_tokens": daily.get("prompt_tokens", 0),
+            "completion_tokens": daily.get("completion_tokens", 0),
+            "total_tokens": daily.get("prompt_tokens", 0) + daily.get("completion_tokens", 0),
+            "call_count": daily.get("call_count", 0),
+        }
         return stats
 
     def clear_cache(self) -> int:

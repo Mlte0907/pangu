@@ -513,6 +513,40 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — LLM 按日 token 统计 + dsh-pangu 仪表盘「LLM 用量」卡片（用户要求）。
+  - **背景**：用户要求细化维护方案中 LLM 接入后的预期，并在 dsh-pangu 仪表盘加当日 LLM token 使用量可视化。
+  - **数据流**（用户纠正后确认）：仪表盘走 REST API `/api/v2/admin/stats`（`collect_stats`），
+    不是 MCP 工具。MCP `pangu_stats` 是平台 agent 用的。`collect_stats` 被两者共用。
+  - **改 pangu 侧**（`pangu/core/llm.py`）：
+    - `__init__` 加 `_daily_tokens: dict[str, dict[str, int]]`（按 "YYYY-MM-DD" 键控）。
+    - `_call_openai_compatible` 在每次调用后记录 prompt/completion tokens 到当日统计。
+    - `get_stats()` 加 `daily` 字段（date、prompt_tokens、completion_tokens、total_tokens、call_count）。
+  - **改 pangu 侧**（`pangu/server/handlers/system.py`）：
+    `collect_stats` 加 `llm_daily` 和 `llm_total`（从 `LLMEngine.get_stats()` 取）。
+    REST API `/api/v2/admin/stats` 和 MCP `pangu_stats` 都返回这些字段。
+  - **改 ROADMAP.md**：加 Phase 1.5「LLM 接入效果验证」（预期效果、风险对策、验收标准）。
+  - **验证**：pangu 侧 238 passed（test_model_discovery_cache + test_llm_model_switch +
+    test_llm_optimizations + test_llm_providers + test_core）。
+  - **生效方式**：改的是运行时代码，需 `systemctl --user restart pangu-api`。
+- **2026-09-27（补记）** — **纠正 ROADMAP_V1.md 里「未接线」的错误结论。**
+  - **错在哪**：我写 ROADMAP_V1.md 时，用 `grep -rl` 数了 6 个高级模块
+    （`multi_agent.py` / `world_model.py` / `causal_reasoning.py` / `narrative.py` /
+    `deep_emotion.py` / `collaborative_intelligence.py`）的**静态文本引用次数**，
+    发现都只被引用 1 处，就断言「骨架没接线」。**用户质疑后实测**：
+    这 6 个模块全部通过 **lazy import** 接入了 handler
+    （`handlers/advanced.py` / `handlers/timeline.py` / `handlers/llm_tools.py`），
+    每个被 3~5 处动态加载。
+  - **计量对象错位**：我量的是「静态文本引用次数」，真正要查的是「运行时调用路径」。
+    lazy import 在代码里是 `from ...memory.xxx import yyy`，只在函数体内出现，
+    不是顶层 import——`grep -rl` 只看文件名匹配，没追踪 lazy import 链。
+  - **与 V4.1 事件同构**：我基于**单次测量**（grep 计数）下了**未接线**的结论，
+    实际全部已接线。这已经是本轮第二次「计量对象错位」了。
+  - **怎么验证的**：`grep -rn "multi_agent\|world_model\|causal_reasoning|narrative\|deep_emotion\|collaborative_intelligence" pangu/ --include="*.py"`
+    确认了每个模块的实际调用路径。
+  - **修正**：ROADMAP_V1.md 里 6 处「未接线」全部改为「已接线，当前是单点/被动/事后模式」。
+  - **教训**：**「没找到」≠「不存在」**。lazy import / 动态加载 / 插件系统 /
+    事件总线都会让静态 grep 失真。查调用路径要顺着 import 链走，不能只数文件名。
+
 - **2026-09-27** — 实测全部候选模型的延迟，**决定保持现有偏好序不变**（不改代码）。
   - **背景**：用户反馈「`DeepSeek-V4-1-Flash` 限流超时频繁、AMD 页面显示满负载」，
     建议对比速度后调整偏好序。
