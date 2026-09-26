@@ -198,14 +198,52 @@ async def handle_add_memory(server, drawers, arguments):
 HANDLERS["pangu_add_memory"] = handle_add_memory
 
 
+# 「本平台优先」分档用的两个常量（2026-09-26）。
+#
+# 为什么需要超额取：engine.search 结尾是 `merged[:n_results]`。若按最终条数取，
+# 后面再怎么重排，也只能在「已被相关性截出来的前 N 条」内部换位 —— 排在第 11 名的
+# 本平台记忆永远进不来。3 倍是折中：搜索池 272 条、默认 limit 10 → 取 30 条够把
+# 本平台的结果捞上来，又不至于把打分成本放大到不可接受。
+_OWN_FIRST_OVERFETCH = 3
+_OWN_FIRST_MAX_POOL = 100
+
+
+def _partition_own_first(items, owner_by_id, own_tenant):
+    """稳定分档：本平台的在前，别平台的在后，**档内保持原有相关性顺序**。
+
+    两个容易写错的地方，这里都钉住：
+    1. **必须是稳定分档，不是按平台排序**。若直接 `sort(key=is_own)`，同档内的相关性
+       顺序会被打乱 —— 排第二的强命中可能落到排第十二的弱命中后面。用两个 list
+       顺序 append 天然保序。
+    2. **own_tenant 为空 ⇒ 完全不重排**。api_key 身份的 room 是空串，若拿它当平台名，
+       会把一批归属为空的记忆误判成「本平台的」而顶到最前（实测云端有 46 条这种记忆）。
+       宁可不给优先，也不给错优先。
+    """
+    if not own_tenant or not owner_by_id or not isinstance(items, list):
+        return items
+    own, other = [], []
+    for it in items:
+        iid = it.get("id") if isinstance(it, dict) else None
+        (own if owner_by_id.get(iid) == own_tenant else other).append(it)
+    return own + other
+
+
 async def handle_search_memories(server, drawers, arguments):
-    """搜索记忆（P1-3 阶段 2.2：按 metadata.tenant_id 过滤 + public 毕业区）"""
+    """搜索记忆（P1-3 阶段 2.2：按 metadata.tenant_id 过滤 + public 毕业区）
+
+    2026-09-26：本平台的记忆排前面，别平台的排后面（稳定分档，见 _partition_own_first）。
+    """
     query = arguments.get("query", "")
     wing = arguments.get("wing")
     room = arguments.get("room")
+    try:
+        limit = max(1, min(int(arguments.get("limit", 10) or 10), 100))
+    except (TypeError, ValueError):
+        limit = 10
 
     # P1-3 阶段 2.2：有身份时预过滤 drawers（隔离轴是 metadata.tenant_id，不是 Drawer.room）
     identity = arguments.get("_identity", {})
+    identity_room = ""
     if identity:
         identity_room = identity.get("room", "")
         filtered = [
@@ -221,7 +259,12 @@ async def handle_search_memories(server, drawers, arguments):
     from time import perf_counter as _perf_counter
 
     _t0 = _perf_counter()
-    results = server.search.search(query, drawers, wing=wing, room=room)
+    # 超额取：engine.search 内部会 `merged[:n_results]` 截断。若按最终条数取，
+    # 后面再重排也只在「已经被相关性截出来的前 N 条」里换顺序 —— 排在第 11 名的
+    # 本平台记忆永远进不来，这个功能等于半残。所以先按 OVERFETCH 倍取，
+    # 分档之后再截到 limit。
+    _overfetch = min(max(limit * _OWN_FIRST_OVERFETCH, limit), _OWN_FIRST_MAX_POOL)
+    results = server.search.search(query, drawers, wing=wing, room=room, n_results=_overfetch)
     try:
         from ...memory.encryption import decrypt
 
@@ -243,6 +286,25 @@ async def handle_search_memories(server, drawers, arguments):
         payload = {"results": results, "total": len(results), "query": query}
     else:
         payload = results
+
+    # 本平台优先（2026-09-26）：搜索结果条目里**没有 tenant_id**（engine 只带
+    # id/content/wing/room/hall/importance/source/source_file/tags/created_at），
+    # 所以这里用 drawers 现建一张 id → 归属 的对照表 —— drawers 就在手边，
+    # 几十次查表而已，不必为此改引擎或改存储。
+    _items = payload.get("results", []) if isinstance(payload, dict) else []
+    if isinstance(_items, list) and _items:
+        _owner_by_id = {
+            d.id: (d.metadata or {}).get("tenant_id", "") for d in drawers if getattr(d, "id", None)
+        }
+        _reordered = _partition_own_first(_items, _owner_by_id, identity_room)
+        if isinstance(payload, dict) and _reordered is not _items:
+            payload["results"] = _reordered[:limit]
+            # total 必须**跟着返回条数走**，不能沿用引擎给的原值。
+            # 引擎的 total 是「截断前那一批」的条数，而上面为分档超额取了 3 倍，
+            # 于是它会变成池子大小（limit=30 时 total 报 90、实际返回 30）。
+            # 契约是 total == len(results)（改动前 engine 截到 n_results 时二者相等），
+            # 且下面 record_search 直接拿 total 当搜索次数记 —— 放大的数字会污染统计。
+            payload["total"] = len(payload["results"])
 
     # 搜索统计：本工具走 search/engine，同样不经过 retrieval 内部埋点，
     # 不补则 pangu_search_stats 恒 0（与 REST 侧同因，见 record_search）。
