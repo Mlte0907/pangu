@@ -147,6 +147,68 @@ def test_no_fallback_when_preference_matches(monkeypatch):
     assert got == ["DeepSeek-V4-Flash", "MiniCPM5-2B"], f"偏好序不对：{got}"
 
 
+# ── 精确优先序（LLM_MODEL_PRIORITY）──
+
+
+def test_priority_lifts_faster_model_within_family(monkeypatch):
+    """同家族内更快的模型应被提到最前。
+
+    2026-09-27 实测：DeepSeek-V4.1-Flash 首次调用 88~121s（高负载排队），
+    DeepSeek-V4-Flash 首次只要 1.4s。二者同属 deepseek 家族，家族偏好无法区分，
+    所以用 LLM_MODEL_PRIORITY 把 V4-Flash 提到 #1。
+    """
+    _patch_urlopen(
+        monkeypatch,
+        ["DeepSeek-V4.1-Flash", "DeepSeek-V4-Flash", "DeepSeek-V4-Flash-Vision-Exp", "MiniCPM5-2B"],
+        {"calls": 0},
+    )
+    got = llm.discover_chat_models("https://example.test/v1", "sk-test")
+    assert got[0] == "DeepSeek-V4-Flash", f"V4-Flash 应排第一，实际 {got}"
+    # V4.1 仍留在家族偏好档，排在 V4-Flash 之后
+    assert got.index("DeepSeek-V4.1-Flash") > got.index("DeepSeek-V4-Flash")
+
+
+def test_priority_does_not_mis_match_v41(monkeypatch):
+    """精确优先序不能误匹配 V4.1 —— 中间有个点。
+
+    "deepseek-v4-flash" 不是 "deepseek-v4.1-flash" 的子串，所以 V4.1
+    不该被提级，仍按家族偏好排在后面。
+    """
+    _patch_urlopen(
+        monkeypatch,
+        ["DeepSeek-V4.1-Flash", "DeepSeek-V4-Flash"],
+        {"calls": 0},
+    )
+    got = llm.discover_chat_models("https://example.test/v1", "sk-test")
+    assert got == ["DeepSeek-V4-Flash", "DeepSeek-V4.1-Flash"], f"误匹配了 V4.1：{got}"
+
+
+def test_priority_respects_exclude(monkeypatch):
+    """精确优先序也要遵守排除项。"""
+    _patch_urlopen(
+        monkeypatch,
+        ["MinerU2.5-Pro", "DeepSeek-V4-Flash"],
+        {"calls": 0},
+    )
+    got = llm.discover_chat_models("https://example.test/v1", "sk-test")
+    assert "MinerU2.5-Pro" not in got, f"精确优先序没排除 mineru：{got}"
+    assert got == ["DeepSeek-V4-Flash"]
+
+
+def test_priority_empty_falls_back_to_family(monkeypatch):
+    """精确优先序为空时，完全回退到家族偏好。"""
+    monkeypatch.setattr(llm, "LLM_MODEL_PRIORITY", ())
+    _patch_urlopen(
+        monkeypatch,
+        ["DeepSeek-V4.1-Flash", "DeepSeek-V4-Flash", "MiniCPM5-2B"],
+        {"calls": 0},
+    )
+    got = llm.discover_chat_models("https://example.test/v1", "sk-test")
+    assert got == ["DeepSeek-V4.1-Flash", "DeepSeek-V4-Flash", "MiniCPM5-2B"], (
+        f"精确优先序为空时应回退到家族偏好：{got}"
+    )
+
+
 def test_only_mineru_available_returns_empty(monkeypatch):
     """平台只剩 mineru 时，回退也救不了 —— 返回空列表（调用方走无备选路径）。"""
     _patch_urlopen(monkeypatch, ["MinerU2.5-Pro"], {"calls": 0})

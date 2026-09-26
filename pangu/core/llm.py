@@ -38,6 +38,17 @@ from .config import PanguConfig
 
 logger = logging.getLogger("pangu.core.llm")
 
+# 精确优先序：在家族偏好**之前**匹配，用于把同家族里更快/更稳的模型提到前面。
+#
+# 为什么需要：DeepSeek-V4.1-Flash 与 DeepSeek-V4-Flash 同属 deepseek 家族，
+# 家族偏好无法区分二者。但 2026-09-27 实测：V4.1 首次调用稳定要 88~121s
+# （高负载排队，用的人太多），V4-Flash 首次只要 1.4s —— 同家族内速度差 60 倍。
+# 匹配规则与家族偏好一致：模型名小写后**包含**该字符串即算命中。
+#
+# 注意 "deepseek-v4-flash" 不会误匹配 "DeepSeek-V4.1-Flash"（中间有个点），
+# 所以 V4.1 仍留在家族偏好那一档，排在被提级的 V4-Flash 之后。
+LLM_MODEL_PRIORITY = ("deepseek-v4-flash",)
+
 # 家族偏好序：deepseek 质量优先，minicpm 作最稳兜底；mineru 是文档解析模型排除。
 # 未识别的家族不盲用 —— 平台列表新增模型时在此加一行家族名即可。
 LLM_MODEL_PREFERENCE = ("deepseek", "minicpm")
@@ -73,6 +84,15 @@ def _fetch_model_list(base: str, key: str, timeout: int) -> list[str]:
     names = [m.get("id") if isinstance(m, dict) else str(m) for m in items]
 
     ranked: list[str] = []
+    # 先按精确优先序（同家族内提级更快的模型）
+    for fam in LLM_MODEL_PRIORITY:
+        for n in names:
+            if not n:
+                continue
+            low = n.lower()
+            if fam in low and not any(x in low for x in LLM_MODEL_EXCLUDE) and n not in ranked:
+                ranked.append(n)
+    # 再按家族偏好序
     for family in LLM_MODEL_PREFERENCE:
         for n in names:
             if not n:
