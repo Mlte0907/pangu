@@ -878,8 +878,24 @@ class AutonomousMemoryEngine:
             from .retrievability import audit_retrievability, save_report
 
             report = audit_retrievability(self.config)
+
+            # LLM 阶段（2026-09-26）：规则版问的是「记忆能否用自身特征词搜到自己」，
+            # 那个问题太弱 —— 答案几乎总是能（见 retrievability 模块 docstring 里那个
+            # 定向验证的反例：立项动机那条记忆被判为可检索）。LLM 阶段问的才是真问题：
+            # 「这条记忆里有没有与主题无关、但仍关键的事实，而别人不会按这个主题去搜」。
+            # 单独包 try：LLM 不可用只降级，不让整个任务失败（规则阶段的结论仍有用）。
+            try:
+                import asyncio
+
+                from .retrievability import audit_retrievability_llm
+
+                report["llm"] = asyncio.run(audit_retrievability_llm(self.config))
+            except Exception as e:  # noqa: BLE001
+                report["llm"] = {"error": str(e)[:200], "note": "LLM 阶段降级，不影响规则阶段"}
+
             report["ran_at"] = datetime.now().isoformat()
             save_report(self.config, report)
+            llm = report.get("llm") or {}
             return TaskResult(
                 name="retrievability",
                 status="success",
@@ -890,6 +906,9 @@ class AutonomousMemoryEngine:
                     "buried_count": report.get("buried_count", 0),
                     # 只带 top 3 的标题进日志：全量报告可能几十条，日志会被刷爆
                     "buried_top": [b.get("head", "")[:40] for b in report.get("buried", [])[:3]],
+                    "llm_facts_found": llm.get("facts_found", 0),
+                    "llm_buried_fact_count": llm.get("buried_fact_count", 0),
+                    "llm_error": llm.get("error"),
                     "report_file": f"{self.config.palace_path}/retrievability_report.json",
                 },
             )

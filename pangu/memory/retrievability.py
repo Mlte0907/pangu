@@ -190,6 +190,146 @@ def audit_retrievability(config, max_memories: int = 40, top_n: int = 10) -> dic
                 pass
 
 
+async def _llm_extract_incidental_facts(config, items: list[dict], per_item: int = 2) -> dict:
+    """让 LLM 挑出「与主题无关但很关键」的事实。
+
+    这是规则版补不上的那一环。规则版只能用记忆自身的罕见词造查询，而那必然搜得到自己
+    —— 问的是「你认得你自己吗」。真正要问的是「这条记忆里有没有**与它的主题无关**、
+    但仍然关键的事实」，典型如：SSH 访问方式出现在一篇讲移动端登录的发布记录里。
+
+    返回 {memory_id: [{"fact": "...", "query": "..."}, ...]}。LLM 不可用时返回空 dict
+    —— 这一阶段是增强，不是体检的必需部分，缺了不该让整个任务失败。
+    """
+    if not items:
+        return {}
+    try:
+        from ..core.llm import LLMEngine
+    except Exception:  # noqa: BLE001
+        return {}
+
+    payload = [
+        {"id": it["id"], "tags": it.get("tags", []), "head": it.get("head", "")[:400]} for it in items
+    ]
+    prompt = (
+        "下面每条是一个记忆系统的记忆摘要（tags 是它的主题标签，head 是开头片段）。\n"
+        "请找出其中**与自身主题无关、但独立来看仍然关键**的事实 —— 也就是：有人可能因为\n"
+        "另一件事需要这条信息，却不会用这条记忆的主题去搜。典型：访问方式、端口、路径、\n"
+        "命令行、凭据位置、前置条件。\n"
+        "只输出确实存在的事实；某条没有就跳过它，不要凑数。\n"
+        f'每条最多给 {per_item} 个。对每个事实给出：fact=事实一句话，query=有人想找这条事实时'
+        '会输入的搜索词（用中文自然提问，不是从原文抄关键词）。\n'
+        '输出 JSON：{"items":[{"id":"...","facts":[{"fact":"...","query":"..."}]}]}\n\n'
+        f"输入：{json.dumps(payload, ensure_ascii=False)}"
+    )
+    try:
+        eng = LLMEngine(config)
+        resp = await eng.chat(
+            [{"role": "user", "content": prompt}],
+            system="你是记忆库审计员，只输出 JSON。",
+            temperature=0.1,
+            max_tokens=2000,
+            json_mode=True,
+        )
+        data = LLMEngine._extract_json(resp.content, default={}) or {}
+    except Exception:  # noqa: BLE001 — LLM 不可用/超时/输出不合法都只降级，不让任务失败
+        return {}
+
+    out: dict[str, list] = {}
+    for row in data.get("items", []) or []:
+        mid = row.get("id")
+        facts = row.get("facts") or []
+        if not mid:
+            continue
+        clean = [
+            {"fact": str(f.get("fact", ""))[:200], "query": str(f.get("query", ""))[:120]}
+            for f in facts
+            if isinstance(f, dict) and f.get("fact") and f.get("query")
+        ]
+        if clean:
+            out[str(mid)] = clean[:per_item]
+    return out
+
+
+async def audit_retrievability_llm(config, max_memories: int = 12, top_n: int = 10) -> dict:
+    """LLM 阶段：找出「跨主题埋藏的关键事实」并验证它们是否搜得到。
+
+    与规则版的关系：规则版回答「这条记忆用自身特征词能否搜到自己」，这个问题**太弱**
+    （答案几乎总是能）。本阶段回答的是真正困扰人的那个问题——重要的东西埋在不相干的
+    记忆里，别人根本不会按那个主题去搜。
+
+    流程：候选 → LLM 挑出与主题无关的关键事实并给出「有人会怎么问」→ 逐条搜 →
+    搜不回来的即 buried_fact。搜的次数很少（每事实 1 次），LLM 调用每轮 1 次。
+    """
+    from .layers import MemoryStack, reset_tenant_scope, set_tenant_scope
+
+    from ..search.engine import HybridSearch
+
+    started = time.time()
+    token = None
+    try:
+        token = set_tenant_scope("", "", 0)
+        drawers = MemoryStack(config=config).get_drawers() or []
+        if not drawers:
+            return {"checked": 0, "buried_facts": [], "note": "记忆库为空", "duration_ms": 0}
+        cands = _candidates(drawers, max_memories)
+        items = [
+            {
+                "id": d.id,
+                "head": _plaintext(d),
+                "tags": (d.tags or [])[:6],
+                "importance": d.importance,
+            }
+            for d in cands
+        ]
+        items = [it for it in items if it["head"]]
+        extracted = await _llm_extract_incidental_facts(config, items)
+        if not extracted:
+            return {
+                "checked": len(items),
+                "facts_found": 0,
+                "buried_facts": [],
+                "note": "LLM 阶段未产出（LLM 不可用或模型判定无跨主题事实）",
+                "duration_ms": round((time.time() - started) * 1000, 1),
+            }
+
+        engine = HybridSearch(config)
+        buried, ok = [], 0
+        for mid, facts in extracted.items():
+            for f in facts:
+                try:
+                    hits = engine.search(f["query"], drawers, n_results=top_n) or []
+                except Exception:  # noqa: BLE001
+                    continue
+                ids = [h.get("id") for h in hits]
+                if mid in ids:
+                    ok += 1
+                else:
+                    buried.append(
+                        {
+                            "id": mid,
+                            "fact": f["fact"],
+                            "query": f["query"],
+                            "rank": ids.index(mid) + 1 if mid in ids else None,
+                        }
+                    )
+        return {
+            "checked": len(items),
+            "facts_found": sum(len(v) for v in extracted.values()),
+            "fact_recall_ok": ok,
+            "buried_fact_count": len(buried),
+            "buried_facts": buried,
+            "duration_ms": round((time.time() - started) * 1000, 1),
+        }
+    finally:
+        if token is not None:
+            try:
+                from .layers import reset_tenant_scope
+
+                reset_tenant_scope(token)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def report_path(config) -> Path:
     return Path(config.palace_path) / "retrievability_report.json"
 
