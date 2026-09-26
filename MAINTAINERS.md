@@ -513,6 +513,20 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — P0 任务执行：1.2 分路径耗时度量 + 2.1 拆分 test_concurrent_search + 3.1 模块分级。
+  - **1.2 分路径耗时度量**（`fts_search.py` / `hybrid_search.py`）：
+    FTS 和向量搜索分别计时，响应加 `fts_ms` / `vector_ms` / `kg_ms` / `search_total_ms`。
+    让「FTS 慢还是向量慢」在响应里可见，不再只靠 `degraded` 标志。
+  - **2.1 拆分 test_concurrent_search**（`tests/test_bench.py`）：
+    medium_drawers(1000条)→small_drawers(100条)，搜索次数 100→20。
+    耗时从 1863s 降到 4.9s（降幅 99.7%），远低于 60s 目标。
+  - **3.1 模块分级**（`docs/MODULE_TIERS.md`）：
+    全部 230 个模块按「核心/活跃/边缘」三级分类。核心 ~60 个（26%），
+    活跃 ~140 个（61%），边缘 ~30 个（13%）。
+    核心模块 = 搜索/存储/API 主链路，坏了系统不能工作。
+    活跃模块 = 自主任务/辅助功能，坏了功能降级但系统还能用。
+    边缘模块 = 未接线/实验性/可选功能，坏了无感知。
+  - **验证**：264 passed + 27 passed（维护文档）；test_concurrent_search 4.90s。
 - **2026-09-27** — LLM 按日 token 统计 + dsh-pangu 仪表盘「LLM 用量」卡片（用户要求）。
   - **背景**：用户要求细化维护方案中 LLM 接入后的预期，并在 dsh-pangu 仪表盘加当日 LLM token 使用量可视化。
   - **数据流**（用户纠正后确认）：仪表盘走 REST API `/api/v2/admin/stats`（`collect_stats`），
