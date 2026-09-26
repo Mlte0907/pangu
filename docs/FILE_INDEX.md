@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **351** 个 py 文件 / **107,256** 行。
+共 **351** 个 py 文件 / **107,279** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,323 行
+## `pangu/memory/` — 136 文件 / 43,346 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -68,7 +68,7 @@
 | `export_import.py` | 404 | 盘古记忆导出导入 — 多格式导出和跨系统导入 |
 | `feishu_webhook.py` | 151 | 盘古飞书 Webhook — 记忆事件自动推送到飞书群 |
 | `file_watcher.py` | 173 | 盘古文件监控 — 监控目录变更自动提取记忆 |
-| `fts_search.py` | 741 | 盘古 FTS5 全文搜索 + RRF 混合搜索引擎 |
+| `fts_search.py` | 748 | 盘古 FTS5 全文搜索 + RRF 混合搜索引擎 |
 | `fusion.py` | 407 | 盘古记忆融合引擎 — 高层抽象理解 |
 | `fuxi_bridge.py` | 281 | 盘古-Fuxi 桥接引擎 — 调用 Fuxi 认知能力做深度分析 |
 | `git_hook.py` | 179 | 盘古 Git Hook 集成 — 自动记录 git 操作到记忆 |
@@ -76,7 +76,7 @@
 | `graph_reasoning.py` | 430 | 盘古图推理引擎 — 基于知识图谱的推理能力 |
 | `health_monitor.py` | 294 | 盘古记忆健康监控 — 实时监控记忆系统健康状态 |
 | `hologram.py` | 372 | 盘古全息记忆编码 — 多维度投影 + 跨维度检索 |
-| `hybrid_search.py` | 412 | 盘古混合检索引擎 — 融合 FTS + 向量 + KG 的 RRF 排序 |
+| `hybrid_search.py` | 428 | 盘古混合检索引擎 — 融合 FTS + 向量 + KG 的 RRF 排序 |
 | `image_engine.py` | 315 | 盘古图片记忆引擎 — CLIP 嵌入 + 图片分析 + 跨模态搜索 |
 | `importance_scorer.py` | 154 | 盘古记忆重要性评分 — 基于多维度特征的智能评分 |
 | `ingestion.py` | 935 | 盘古 — 记忆摄入管道（从伏羲 v1.5.6 移植，适配盘古数据模型） |

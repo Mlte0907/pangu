@@ -371,10 +371,19 @@ def hybrid_search(
     config = (config or PanguConfig.load()).authoritative_memory_config()
     all_ids = {d.id: d for d in drawers}
 
-    # 三路召回
+    # 三路召回（分别计时）
+    import time as _time
+    _t0 = _time.perf_counter()
     fts_ranks = _fts_recall(query, drawers, all_ids)
+    fts_ms = (_time.perf_counter() - _t0) * 1000
+
+    _t0 = _time.perf_counter()
     vector_ranks = _vector_recall(query, drawers, all_ids)
+    vector_ms = (_time.perf_counter() - _t0) * 1000
+
+    _t0 = _time.perf_counter()
     kg_ranks = _kg_recall(query, all_ids, config)
+    kg_ms = (_time.perf_counter() - _t0) * 1000
 
     # RRF 融合
     rrf_scores = _rrf_fusion(
@@ -408,5 +417,12 @@ def hybrid_search(
 
     # 存入缓存（带作用域）
     _cache_set(query, results, limit, scope)
+
+    # 分路径耗时挂到第一条结果上（结果列表可能为空，调用方需判空）
+    if results:
+        results[0]["fts_ms"] = round(fts_ms, 2)
+        results[0]["vector_ms"] = round(vector_ms, 2)
+        results[0]["kg_ms"] = round(kg_ms, 2)
+        results[0]["search_total_ms"] = round(fts_ms + vector_ms + kg_ms, 2)
 
     return results

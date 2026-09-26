@@ -527,12 +527,16 @@ class FTS5SearchEngine:
         if not self._indexed:
             self.build_index(filtered)
 
-        # FTS 搜索
+        # FTS 搜索（计时）
+        _fts_t0 = time.perf_counter()
         fts_results = self._fts_search(query, filtered, limit=limit * 3)
+        fts_ms = (time.perf_counter() - _fts_t0) * 1000
 
-        # 向量搜索
+        # 向量搜索（计时）
         _tls.vector_degraded = False  # 每次搜索重置，避免把上一次的状态带过来
+        _vec_t0 = time.perf_counter()
         vec_results = self._vector_search(query, filtered, limit=limit * 3)
+        vec_ms = (time.perf_counter() - _vec_t0) * 1000
         degraded = bool(getattr(_tls, "vector_degraded", False))
 
         # RRF 融合
@@ -587,6 +591,9 @@ class FTS5SearchEngine:
             # 与「没有文档相似度达阈值」区分开：后者 degraded=False，属正常。
             "degraded": degraded,
             "weights": {"vector": vector_weight, "fts": round(1 - vector_weight, 2)},
+            # 分路径耗时（毫秒）—— 让 FTS 慢还是向量慢在响应里可见
+            "fts_ms": round(fts_ms, 2),
+            "vector_ms": round(vec_ms, 2),
         }
 
         if cache_key:
