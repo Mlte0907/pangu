@@ -215,7 +215,70 @@ class EmbeddingService:
         # ONNX 批量（高效的本地方案）
         if self._onnx is not None and self._onnx.is_available:
             try:
-                onnx_results = self._onnx.embed_batch(texts)
+                # 先查缓存：ONNX 是**确定性**的，同一段文本永远得到同一个向量，
+                # 所以按内容哈希缓存是安全的。
+                #
+                # 为什么以前没查：`_embed_batch_api`（:259-262）有缓存，ONNX 分支没有。
+                # 后果是**每次搜索都把整个语料重算一遍** —— 实测 1000 条文档、
+                # 单次搜索 15 秒（ONNX 单条约 15ms）；`test_bench.py::
+                # test_concurrent_search` 那 31 分钟的红色根因就在这里。
+                # 这也是「本该是 O(命中数) 的搜索退化成 O(全库)」的根源。
+                cache_keys = [hex_digest(t) for t in texts]
+                onnx_results: list[list[float] | None] = [None] * len(texts)
+                uncached_idx: list[int] = []
+                uncached_texts: list[str] = []
+                _degraded = 0  # 本次因 ONNX 返回 None 而用 hash 补位的条数
+                with self._cache_lock:
+                    for i, key in enumerate(cache_keys):
+                        hit = self._cache.get(key)
+                        if hit is not None:
+                            onnx_results[i] = hit
+                        else:
+                            uncached_idx.append(i)
+                            uncached_texts.append(texts[i])
+
+                if uncached_texts:
+                    fresh = self._onnx.embed_batch(uncached_texts)
+                    for j, vec in enumerate(fresh):
+                        idx = uncached_idx[j]
+                        if vec:
+                            onnx_results[idx] = vec
+                            self._cache_embedding(cache_keys[idx], vec)
+                        else:
+                            # ONNX 没给出向量 → 用 hash 补位，但**绝不写进缓存**。
+                            #
+                            # 写进去会有两个后果，都很坏：
+                            #  1) 一次偶发失败被永久记住，之后再也恢复不了真向量；
+                            #  2) 那个 hash 向量会和真 ONNX 向量**性质不同**（无语义），
+                            #     混在缓存里会让 /health 看到 onnx 后端却含大量无语义向量。
+                            # 宁可在每次搜索里重算，也不能把降级结果当成功结果缓存。
+                            onnx_results[idx] = self._local_embed(uncached_texts[j])
+                            _degraded += 1
+
+                # 补齐**缓存未命中**留下的 None（正常情况下不该有，
+                # 但 embed_batch 提前 return 的那条 len(texts)<=1 路径不算在内）。
+                filled = _degraded
+                for i, r in enumerate(onnx_results):
+                    if r is None:
+                        onnx_results[i] = self._local_embed(texts[i])
+                        filled += 1
+
+                # 降级记账必须和补位在同一处发生。
+                #
+                # 曾经写成「补位之后再遍历一次数 None」——加了缓存后 None 已被就地消化，
+                # 那次遍历永远数到 0，于是 `partial_hash_vectors` 一直是 0：
+                # **部分降级在 /health 里彻底不可见**。既有测试
+                # test_embedding_degradation.py::test_partial_fill_counts_and_warns 逮住了它。
+                if filled == len(texts):
+                    self._mark_backend("hash", "ONNX 批量嵌入全部返回 None")
+                else:
+                    if filled:
+                        self._partial_hash_count += filled
+                        logger.warning("ONNX 批量嵌入有 %d/%d 条降级为 hash 向量", filled, len(texts))
+                    self._mark_backend("onnx")
+                return onnx_results
+            except Exception as e:
+                logger.warning(f"ONNX batch failed, falling back to hash: {e}")
                 # 补齐 ONNX 返回 None 的位置。
                 # 注意：这些补位是 hash 向量，与其余位置**性质不同**。
                 # 若整批都补位（ONNX 实际失败），那就是彻底降级，必须如实上报，

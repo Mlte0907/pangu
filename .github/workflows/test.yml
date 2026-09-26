@@ -15,7 +15,11 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # 2026-09-26 实测：全套（含 test_bench.py）在本机 14 分 27 秒跑完、1926 passed。
+    # 此前这里是 30 分钟，而当时全套要 41 分半且有 1 个失败 —— **每次都跑到一半被杀**，
+    # 等于「一直在跑但永远跑不完」，也就是全量从未真正被验证过。
+    # 60 分钟给 GitHub runner（通常比本机慢 2~3 倍，且允许下载模型）留足余量。
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false

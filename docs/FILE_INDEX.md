@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **347** 个 py 文件 / **106,424** 行。
+共 **349** 个 py 文件 / **106,762** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,260 行
+## `pangu/memory/` — 136 文件 / 43,323 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -56,7 +56,7 @@
 | `domain_knowledge.py` | 644 | 盘古领域知识库 — 软件工程、项目管理、团队协作知识管理 |
 | `drawer_storage.py` | 486 | 抽屉存储后端 — SQLite 并发安全存储 |
 | `dream_memory.py` | 182 | 盘古梦境巩固 — 5步睡眠整理周期 |
-| `embedding.py` | 441 | 盘古 — 统一嵌入服务（API → ONNX → hash 三级降级） |
+| `embedding.py` | 504 | 盘古 — 统一嵌入服务（API → ONNX → hash 三级降级） |
 | `emotional_intelligence.py` | 218 | 盘古情感智能 — 理解用户情绪，调整记忆优先级 |
 | `encryption.py` | 274 | 盘古 — 记忆数据加密模块 |
 | `enhanced_evaluation.py` | 324 | 盘古增强评估 — LLM 驱动矛盾检测 + 轨迹追踪 |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 100 文件 / 31,443 行
+## `tests/` — 102 文件 / 31,718 行
 
 测试
 
@@ -177,11 +177,13 @@
 | `test_benchmark_v3.py` | 207 | 盘古性能基准测试 — 延迟/吞吐量/并发/内存 |
 | `test_boundary_cases.py` | 983 | 盘古记忆系统边界与极端情况测试 |
 | `test_cache_warmup.py` | 357 | 盘古 — 缓存预热 功能测试 |
+| `test_ci_covers_everything.py` | 126 | CI 的测试范围必须是「整个目录」，不能是手写文件清单。 |
 | `test_cli_serve.py` | 120 | `pangu serve` 的命令行语义测试 |
 | `test_core.py` | 1658 | 盘古核心功能测试 |
 | `test_e2e_rbac_abac.py` | 188 | 盘古 E2E 联调测试 — RBAC + ABAC + 记忆业务路由 |
 | `test_embedding_cache_persistence.py` | 282 | 盘古 — 嵌入缓存跨进程持久化测试（v0.2.0） |
 | `test_embedding_degradation.py` | 325 | 盘古 — 嵌入后端降级可见性测试（v0.1.3 P0） |
+| `test_embedding_onnx_cache.py` | 149 | ONNX 批量嵌入必须走缓存 —— 修「每次搜索重算整个语料」。 |
 | `test_embedding_remote_api.py` | 196 | 盘古 — 远程 Embedding API 分支可用性测试（v0.1.3 P0） |
 | `test_encryption.py` | 57 | 盘古 encryption.py 测试 — E2E 加密模块 |
 | `test_fuxi_port.py` | 212 | 盘古伏羲移植模块测试 |

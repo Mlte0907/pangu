@@ -129,14 +129,19 @@ jobs:
           TRANSFORMERS_OFFLINE: "0"
         run: |
           mkdir -p reports
-          # 说明：清单里必须显式带上 tests/test_p1_3_*.py —— 那是租户隔离 / 密级 /
-          # 跨租户泄漏扫描的闸门。此前只写固定文件名，新增的隔离测试一个都没被跑到，
-          # 闸门形同虚设（CI 绿了但没在守）。改动测试清单时勿漏。
-          python -m pytest tests/test_core.py tests/test_v2_features.py \
-                          tests/test_top_level_intelligence.py \
-                          tests/test_v3_modules_*.py \
-                          tests/test_integration.py \
-                          tests/test_p1_3_*.py \
+          # 跑**整个** tests/ 目录，不再维护手写文件清单。
+          #
+          # 为什么改（2026-09-26）：此前这里逐个列文件名，实测 88 个测试文件里
+          # 只列了 33 个 —— 另外 55 个（含 test_auth / test_abac / test_e2e_rbac_abac）
+          # **CI 从来没跑过**。清单本身就是腐烂的根源：新增测试文件默认没人跑，
+          # 门铃装在门上却有一半的窗户没接线。跑整个目录后新测试自动被纳入。
+          #
+          # 为什么排除 tests/test_bench.py：那是**性能基准**，里面断言的是墙钟预算
+          # （如 `平均搜索耗时 < 15000ms`），而预算取决于机器快慢。GitHub runner
+          # 与本机性能不同，拿墙钟当门禁必然变成随机红灯。它仍然在 test.yml 的
+          # 全量 job 里跑完整套（那里已把超时提到能容纳）。
+          python -m pytest tests/ \
+                          --ignore=tests/test_bench.py \
                           --junitxml=reports/junit.xml \
                           -q --tb=short --maxfail=20
 
@@ -144,10 +149,10 @@ jobs:
         continue-on-error: true
         run: |
           pip install pytest-cov
-          python -m pytest tests/test_core.py tests/test_v2_features.py \
-                          tests/test_top_level_intelligence.py \
-                          tests/test_v3_modules_*.py \
-                          tests/test_p1_3_*.py \
+          # 与上面的门禁同一套范围（含此前被漏掉的 55 个文件），
+          # 否则覆盖率报告描述的是一个 CI 实际没在跑的子集，读它会得出错误结论。
+          python -m pytest tests/ \
+                          --ignore=tests/test_bench.py \
                           --cov=pangu --cov-report=xml:reports/coverage.xml \
                           --cov-report=term-missing:skip-covered \
                           -q --no-header

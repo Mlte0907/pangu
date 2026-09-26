@@ -386,21 +386,38 @@ EOF
    `PANGU_BENCH_SEARCH_MS` 调整，且注释里写明「该值受机器性能影响」。
    **别为了让套件变绿去调大这个数字** —— 那是把「机器速度」伪装成「代码质量」。
 
-10. **`FTS5SearchEngine.search()` 每次调用都把全库重新嵌入（O(全库)，无跨调用缓存）。**
+10. ~~**搜索每次都重算整个语料的嵌入（O(全库)）。**~~ **2026-09-26 已修，根因在嵌入层不在检索层。**
 
-    `fts_search.py:390-401` 的 `_vector_search` 每次都新建 `items` 并 `embed_batch` 全部文档；
-    `fts_search.py:466-474` 的 `search()` 又无条件先 `build_index` 再调它 —— 两次全量工作。
-    实测（275 条，生产规模）：`build_index 0.66s` + `search 1.58s` ⇒ **单次 ≈ 2.24s**，随库线性变差。
-    1000 条 × 100 查询就是那 31 分钟。
+    **我此前两次判断都是错的，记在这里当反面教材：**
 
-    **但当前不影响线上**，三条实测依据：
+    - 第一次说「`FTS5SearchEngine.search()` 没有跨调用缓存」，并拿「275 条单次 2.24s」当证据。
+      那 2.24s 是**坏数据** —— 当时向量路径静默失败，我拿一个「没干活」的数字当性能。
+    - 第二次查 `EmbeddingService`，发现它**有** `_cache`，于是改口说「缓存有效，另有原因」。
+      只看了一半：`embed_batch` 的 **API 分支**（`embedding.py:259-262`）有缓存，
+      而 **ONNX 分支完全没有** —— 生产与测试环境走的正是 ONNX 分支。
 
-    - `pangu_fts_search` **不在 31 个默认暴露工具里**（`CORE_WHITELIST` 无它，线上 `tools/list` 也没有）
-    - 暴露的 `pangu_hybrid_search` 走 `hybrid_search.py`，实测 **857ms**
-    - 生产记忆检索 `retrieval.py:211` 调的是纯 `fts._fts_search(...)`，**不走向量**
+    **真正的根因**：`EmbeddingService.embed_batch` 的 ONNX 分支既不查也不写 `_cache`。
+    于是每次搜索都用 ONNX 把**整个语料**重算一遍（单条约 15ms；1000 条 ≈ 15 秒/次）。
+    证据：pytest 环境里连搜 4 次后 `len(_cache) == 4` —— 只有 4 个**查询**向量，
+    1000 条文档向量一个都没缓存。
 
-    要修的话方向明确（按内容哈希缓存文档嵌入 + 语料未变时不重建索引），但那是改检索路径，
-    属于要人点头的事，**别顺手塞进去**。
+    修法：ONNX 分支按 `hex_digest(text)` 查/写缓存（ONNX 是确定性的，同文同向量）。
+    **降级补位的 hash 向量绝不写进缓存** —— 那会把一次偶发失败永久固化成无语义向量。
+
+    | | 修前 | 修后 |
+    | --- | --- | --- |
+    | `test_concurrent_search`（1000 条 × 100 查询） | 1863 s，**FAILED** | **42.7 s，PASSED** |
+    | 单次搜索平均 | 18630 ms | **~427 ms** |
+
+    **预算一个字没动**（仍是 15000ms）—— 修的是缺陷，不是把及格线搬家。
+    回归测试 `tests/test_embedding_onnx_cache.py`（6 项），其中
+    `test_cache_does_not_change_vectors` 钉死「命中缓存与重算逐维相等」。
+
+    > 顺带修掉一个**我自己造出来的回归**：把 hash 补位提前后，原来那句
+    > 「补位后再遍历一次数 `None`」永远数到 0，于是 `partial_hash_vectors` 一直是 0 ——
+    > **部分降级在 `/health` 里彻底不可见**，正是第 11 条刚修的那类 bug。
+    > 既有测试 `test_embedding_degradation.py::test_partial_fill_counts_and_warns` 逮住了它。
+    > **教训：给带记账的代码加缓存，记账必须跟着挪到同一处，否则静默归零。**
 
 11. ~~**`fts_search.py` 的向量路径把异常全吞了、连日志都没有。**~~ **2026-09-26 已修。**
     修前：`_try_batch_embed` 的 `except: scores = self._fallback_embed(...)`，
@@ -485,6 +502,59 @@ cd /root/pangu
 
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
+
+- **2026-09-26** — 修「每次搜索重算整个语料」：**根因在嵌入层，不在检索层**。
+  - **两次判断错在先，记下来**：① 先说「`FTS5SearchEngine.search()` 无跨调用缓存」，
+    证据「275 条单次 2.24s」——**那 2.24s 是向量路径静默失败时的坏数据**；
+    ② 改口说「`EmbeddingService` 有缓存、另有原因」—— 只看了一半：
+    `embed_batch` 的 **API 分支**有缓存，**ONNX 分支完全没有**，而生产/测试走的正是 ONNX。
+  - **真根因**：`embedding.py` 的 ONNX 分支既不查也不写 `_cache`，每次搜索用 ONNX
+    重算全库（单条 ~15ms，1000 条 ≈15s/次）。证据：pytest 里连搜 4 次后
+    `len(_cache) == 4` —— 只有 4 个查询向量，1000 条文档向量一个都没缓存。
+  - **修**：ONNX 分支按 `hex_digest(text)` 查/写缓存（ONNX 确定性，同文同向量）。
+    **降级补位的 hash 向量绝不写缓存** —— 会把偶发失败永久固化成无语义向量。
+  - **结果**：`test_concurrent_search` **1863s FAILED → 42.7s PASSED**，
+    单次搜索 **18630ms → ~427ms**（快 43 倍），**预算 15000ms 一个字没动**。
+    修缺陷，不是把及格线搬家。
+  - **修掉自己造的一个回归**：把 hash 补位提前后，「补位后再遍历数 `None`」永远数到 0，
+    `partial_hash_vectors` 恒为 0 ⇒ **部分降级在 `/health` 里不可见**。
+    被既有测试 `test_embedding_degradation.py::test_partial_fill_counts_and_warns` 逮住。
+    **给带记账的代码加缓存，记账必须挪到同一处，否则静默归零。**
+  - **加**：`tests/test_embedding_onnx_cache.py`（6 项），含
+    `test_cache_does_not_change_vectors`（命中缓存与重算逐维相等）、
+    `test_none_result_is_not_cached`（None 不入缓存，否则故障无法恢复）、
+    `test_search_over_corpus_becomes_sublinear`（重复搜索不再重算全库）。
+  - **验证**：嵌入/搜索相关子集 **268 passed**；`test_concurrent_search` 单独跑 PASSED。
+  - **未完成**：全套 `test_bench.py` 与全量套件的复测结果见下一条补记。
+
+- **2026-09-26** — 修 CI 的「手写测试清单」腐烂：门禁原本 88 个文件只列 33 个，55 个从未被跑过且无任何症状。
+  - **问题**：门禁 job 逐个列文件名，88 个文件里只列 33 个，另外 55 个**从未被 CI 跑过**。
+    门铃装在门上，一半窗户没接线，而这种遗漏**没有任何症状** —— CI 不红、PR 不卡。
+    清单本身就是腐烂根源：新增测试文件默认不被跑到。注释里那句「改动测试清单时勿漏」
+    就是历史上留给自己的警告。
+  - **改**（`.github/workflows/ci.yml`）：门禁与覆盖率两步都改成
+    `pytest tests/ --ignore=tests/test_bench.py`。
+    排除项是**显式决策**（留在 diff 里），而漏掉的文件不会有任何痕迹。
+    排除 `test_bench.py` 的理由写进注释：它断言的是**墙钟预算**，取决于机器快慢，
+    拿它当门禁必然变成随机红灯；它仍在 `test.yml` 的全量 job 里跑完整套。
+  - **改**（`.github/workflows/test.yml`）：超时 30 → **60 分钟**。实测全套 14 分 27 秒，
+    30 分钟在 GitHub runner（通常慢 2~3 倍）上**必然被杀** ——
+    「全量已验证」这个状态此前从未存在过。
+  - **加**：`tests/test_ci_covers_everything.py`（5 项）把规则钉死：
+    门禁不得出现裸的 `tests/xxx.py`；每个测试文件要么被 `--ignore` 排除、要么靠跑整个
+    目录自动纳入；排除项必须带理由注释；全量 job 的超时必须大于「实测 × 3」。
+    已用「把 ci.yml 改回手写清单」验过确实会红。
+  - **前提**：这次敢改成跑全目录，是因为全量实测**那 55 个文件全部通过**。
+    没验证就改，等于把「CI 报绿但没在守」换成「CI 一直红」。
+
+- **2026-09-26（补记）** — 上一条的复测结果：bench 与全量套件失败归零，耗时降到三分之一。
+  - `test_bench.py` 全文件：**21 passed / 0 failed，437s**（修前约 2400s 且 1 failed）。
+    其中 `test_fts_engine_memory` 153→175s、`test_bench_fts_search_large` 141→171s
+    **变慢了 14%~21%** —— 它们是内存/索引基准、不走搜索缓存，回退来自缓存查找开销 + 机器噪声。
+    **不 claim「全都变快」。**
+  - **全量套件：1926 passed / 17 skipped / 0 failed，14 分 27 秒**
+    （修前 `1 failed / 1913 passed / 41 分 33 秒`）。失败归零、耗时降到三分之一。
+
 
 - **2026-09-26** — 修「向量路径静默降级」：加日志 + 返回值加 `degraded` 标志。**本轮唯一改运行时代码的一次。**
   - **为什么**：见 §10 第 11 条。嵌入器一坏，搜索悄悄退化成纯 FTS，结果变差而没人知道；
