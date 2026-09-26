@@ -172,7 +172,7 @@ exec python -c "from pangu.api.server import create_app; uvicorn.run(create_app(
 | 数据目录 | `/root/.pangu/` |
 | 权威记忆库 | `/root/.pangu/pangu.db/v2_memories/`（`drawers.json` + `knowledge_graph.db`） |
 | 旧版目录 | `/root/.pangu/`（v1）。**别读它** —— `KnowledgeGraph` 读 v2，读 v1 会得到「stats 报 19 实体、graph 返回 0」这类假象 |
-| Python | `/root/pangu/.venv/bin/python`（3.13）。用 `.venv/bin/python -m pytest` |
+| Python | `/root/pangu/.venv/bin/python`。用 `.venv/bin/python -m pytest` |
 
 **没有 CI 部署**（`.github/workflows` 里唯一的 deploy 是文档站）。所以「改了没生效」= 忘了 scp 或忘了 restart。
 
@@ -339,6 +339,20 @@ EOF
    （`server.py:116-129`）。且网关 `enabled` 是全局开关，`api_key`/`jwt_secret`/`mcp_require_auth`
    皆空时中间件整体不生效，不显式配 `api_key` 会假绿。
 6. **全量测试套件很慢**（几分钟才到 3%）。改完先跑受影响的子集，别等全量。
+7. **云端不是 git 仓库，所以「本地改了」不会自动到云端，反过来「云端漏了」也没人提醒。**
+   2026-09-26 实测：当天修的三个洞（图谱按 id 聚合、MCP 写入归属回退、搜索本平台优先）
+   的**回归测试和清理脚本一个都没部署到云端**，而云端的 `tests/test_p1_4_batch2_gate.py`
+   还是修复前的版本，**仍在断言「`/api/v2/graph` 属于豁免路径、无凭据可访问」** ——
+   也就是说线上没有任何测试在保护那三个修复。
+   比对办法（全树 md5，别只看文件名/行数，等行数的内容差异索引抓不到）：
+   ```sh
+   ssh -4 -i ~/.ssh/id_rsa_113 root@113.45.134.86 'cd /root/pangu && find . -name "*.py" \
+     -not -path "./.venv/*" -not -path "*/__pycache__/*" -type f -print0 | xargs -0 md5sum' > /tmp/cloud.md5
+   python3 /tmp/opencode/cmp_tree.py /home/xiaoxin/pangu-dev /tmp/cloud.md5
+   ```
+   > 教训：**改代码和改它的测试要当成一个不可分割的部署单元**。只 scp 代码，线上就退回到
+   > 「没有测试保护」的状态，而且没有任何症状。
+8. **云端 venv 是 Python 3.11.2，本地是 3.13.5。** 本地测试绿不证明线上能跑，见 §15 的警告。
 
 ---
 
@@ -397,7 +411,21 @@ cd /root/pangu
     故意把 `§13 维护日志` 改成 `§10 维护日志` 验过确实会红。
   - **加**：`test_file_index_is_current` 调 `scripts/gen_file_index.py --check`，
     索引过期即红 —— 加上当天就抓到一次（加完三节索引就过期了）。
-  - **验证**：`pytest tests/test_maintainers_doc.py` → 25 passed。`AGENTS.md` 3167 字节。
+  - **验证**：`pytest tests/test_maintainers_doc.py` → 27 passed。`AGENTS.md` 3167 字节。
+  - **加**：把说明书部署到云端时顺手做**全树 md5 比对**（本地 vs `scp` 后的线上），
+    逮到一个一直没人提的部署缺口，见 §10 第 7 条：
+    当天修的三个洞的**回归测试 + 清理脚本一个都没上云**，云端 `tests/test_p1_4_batch2_gate.py`
+    还是修复前的版本、**仍在断言「`/api/v2/graph` 无凭据可访问」** —— 线上没有任何测试在保护那三个修复。
+    已补齐 7 个缺失文件 + 更新那 1 个落后的，云端跑受影响子集 **108 passed**。
+    **教训：改代码和改它的测试是一个不可分割的部署单元。**
+  - **修**：生成器会把 `.bak-*` 这类备份目录索引进去（云端 4 个 `.bak-decrypt-fix/*.py`
+    被算进 343）。已改成跳过一切点开头目录；实测云端 350 个 `.py` → 索引 346 条、`.bak` 命中 0。
+  - **修**：说明书 §15 写「Python 3.13」—— 那是**本地** venv；云端实测 **3.11.2**，且服务
+    `ExecStart` 用的就是它。本地测试绿**不证明线上能跑**。已改成「以 `.venv/bin/python -V` 为准」
+    并加两条测试禁止再写死版本号。
+  - **踩**：比对脚本第一版用 shell 管道归一化路径，函数在管道里没生效导致输出全空；
+    第二版忘了归一化 `./` 前缀，把 346 个文件**全报成不一致**。两次都是「结论看着炸裂、
+    其实是脚本坏了」。最后用 Python 重写才拿到可信结果（7 缺 / 4 多 / 1 不同）。
 
 - **2026-09-26** — 建这份说明书 + 加交叉核对测试；修 3 个缺陷；加 2 个能力。
   - **修**：`/api/v2/graph` 从网关 `_EXEMPT_PREFIXES` 摘掉。此前它**同时**满足「在豁免名单」
@@ -479,13 +507,28 @@ DSH 装了 `dsh-brake`，连续 6 个同类工具 step 会警告、10 个拒绝�
 | 项 | 值 | 核实方式 |
 | --- | --- | --- |
 | 仓库路径 | 云端 `/root/pangu`（**非 git**） | `pwd` |
-| Python | 3.13，`.venv/bin/python` | `.venv/bin/python -V` |
+| Python | **云端 3.11.2 / 本地 3.13.5**（见下方警告） | `.venv/bin/python -V` |
 | 服务管理 | `systemctl --user pangu-api` | `systemctl --user status pangu-api` |
 | 监听 | `0.0.0.0:19529`（MCP 与 REST 同端口） | `ss -ltn \| grep 19529` |
-| 版本 | 以 `/health` 的 `data.version` 为准 | `curl -s .../health` |
+| 版本 | 以 `/health` 的 `data.version` 为准（实测 `0.4.1`） | `curl -s .../health` |
 
 > 历史上曾有文档记录「421 个工具」与 `~/.pangu/palace/` 等值，来自**另一台主机**，与本机不符。
 > **工具数量、路径、端口这类事实一律以实测为准**，别照搬任何文档（包括本文件）。
+
+### ⚠️ 本地 Python 比云端新，测试绿不等于能上线
+
+2026-09-26 实测：**云端 `.venv` 是 3.11.2，本地是 3.13.5**，服务 `ExecStart` 用的就是云端那个 venv。
+所以：
+
+- 在本地跑绿的测试**只证明 3.13 能跑**，不证明 3.11 能跑。
+- 用了 3.12+ 语法/标准库行为的改动，**必须在云端再跑一次**才算数：
+  ```sh
+  ssh -4 -i ~/.ssh/id_rsa_113 root@113.45.134.86 'cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q'
+  ```
+- 这条对**新写的运维脚本**尤其要紧：它们大多只在云端手动跑，本地根本不会执行到。
+
+> 修法（未做，留给你决定）：要么把云端 venv 升到 3.13，要么 CI 固定用 3.11 跑一遍。
+> 现状是**两边都不设防**，靠人记得。
 
 ### 常用命令
 

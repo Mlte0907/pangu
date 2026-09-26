@@ -23,6 +23,19 @@ OUT = ROOT / "docs" / "FILE_INDEX.md"
 
 SKIP_DIRS = {".venv", ".git", "__pycache__", ".pytest_cache", ".ruff_cache", "node_modules"}
 
+
+def skipped(rel: Path) -> str | None:
+    """返回跳过原因，None 表示不跳过。
+
+    点开头的目录一律跳过：2026-09-26 在云端实测到 `.bak-decrypt-fix/` 里的 4 个
+    旧版 .py 被当成正常文件数进索引（343 里占 4 个），索引就开始撒谎了。
+    备份目录是排查时留下的，不属于「这个仓库现在是什么」。
+    """
+    for part in rel.parts[:-1]:
+        if part in SKIP_DIRS or part.startswith("."):
+            return part
+    return None
+
 # 一级目录的中文说明（手写，属于「推导不出来」的那部分）
 SUBSYSTEMS = {
     "pangu/core": "核心设施：配置、LLM 接入、加密、哈希、缓存、宫殿数据模型",
@@ -109,7 +122,7 @@ def collect() -> dict[str, list[tuple[str, int, str]]]:
     groups: dict[str, list[tuple[str, int, str]]] = {}
     for p in sorted(ROOT.rglob("*.py")):
         rel = p.relative_to(ROOT)
-        if any(part in SKIP_DIRS for part in rel.parts):
+        if skipped(rel) is not None:
             continue
         key = group_key(rel)
         groups.setdefault(key, []).append((display_path(rel, key), count_lines(p), first_docstring(p)))

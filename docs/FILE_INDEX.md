@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **346** 个 py 文件 / **106,152** 行。
+共 **346** 个 py 文件 / **106,190** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,193 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 99 文件 / 31,251 行
+## `tests/` — 99 文件 / 31,276 行
 
 测试
 
@@ -195,7 +195,7 @@
 | `test_llm_model_switch.py` | 257 | 盘古 — LLM 候选模型发现与切换测试 |
 | `test_llm_optimizations.py` | 734 | 盘古 — LLM 优化功能测试 |
 | `test_llm_providers.py` | 378 | 盘古 — LLM 后端集成测试 |
-| `test_maintainers_doc.py` | 384 | 维护说明书（MAINTAINERS.md）与代码的一致性检查。 |
+| `test_maintainers_doc.py` | 409 | 维护说明书（MAINTAINERS.md）与代码的一致性检查。 |
 | `test_mcp_auth_exposure.py` | 35 | 「监听暴露 + MCP 免鉴权」告警的单测。 |
 | `test_mcp_tenant_fallback.py` | 107 | MCP 写入的 tenant_id 归属回退（2026-09-26）。 |
 | `test_mcp_warmup.py` | 87 | 盘古 — MCP 服务器启动预热测试 |
@@ -314,7 +314,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `safe_eval.py` | 218 | Safe expression evaluator for ABAC conditions. |
 | `server.py` | 1509 | 盘古 FastAPI 服务器工厂（伏羲移植） |
 
-## `scripts/` — 21 文件 / 3,336 行
+## `scripts/` — 21 文件 / 3,349 行
 
 运维脚本
 
@@ -328,7 +328,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `embed_all.py` | 98 | 为所有抽屉生成 ONNX 嵌入并重建向量索引 |
 | `eval_report.py` | 107 | 盘古记忆评估报告 |
 | `fast_collect.py` | 106 | 盘古自动采集脚本 — 简化版（跳过嵌入） |
-| `gen_file_index.py` | 172 | 生成「文件职责索引」→ docs/FILE_INDEX.md。 |
+| `gen_file_index.py` | 185 | 生成「文件职责索引」→ docs/FILE_INDEX.md。 |
 | `generate_knowledge.py` | 261 | 盘古知识生成脚本 — 从记忆中提取知识 |
 | `mcp_stdio_bridge.py` | 131 | 盘古 MCP 的 stdio ↔ HTTP 桥。 |
 | `merge_kg_duplicates.py` | 134 | 合并 entities_all / relations_all 里同 id 多属主的重复行（2026-09-26）。 |

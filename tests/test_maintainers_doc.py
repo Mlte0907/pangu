@@ -153,6 +153,31 @@ def test_file_index_covers_the_biggest_modules():
         assert must in idx, f"索引里找不到 {must}"
 
 
+def test_manual_does_not_hardcode_the_python_version():
+    """说明书不能写死 Python 版本号。
+
+    2026-09-26 实测踩到：手册写「Python 3.13」，那是**本地** venv 的版本；
+    云端 `.venv` 其实是 3.11.2，而且服务 `ExecStart` 用的就是它。
+    写死版本号的文档必然腐烂 —— 改成「去哪儿核实」而不是「是多少」。
+    """
+    doc = DOC.read_text(encoding="utf-8")
+    assert "3.13，`" not in doc and "| Python | 3.13" not in doc, (
+        "说明书把 Python 版本写死成 3.13 了。云端实测是 3.11.2、本地 3.13.5，"
+        "应该写「以 `.venv/bin/python -V` 为准」"
+    )
+    assert ".venv/bin/python -V" in doc, "应给出核实命令，而不是写死一个版本号"
+
+
+def test_manual_records_the_local_vs_cloud_python_skew():
+    """本地与云端 Python 版本不同这件事必须留在说明书里。
+
+    不写下来的后果：改完本地测试绿就以为能上线，而线上跑的是另一个 Python。
+    """
+    doc = DOC.read_text(encoding="utf-8")
+    assert "3.11.2" in doc and "3.13.5" in doc, "应记录云端/本地各自的实测版本"
+    assert "测试绿不等于能上线" in doc, "要写明这个风险"
+
+
 # ── AGENTS.md 必须保持精简，且它的节索引不能骗人 ──
 
 
