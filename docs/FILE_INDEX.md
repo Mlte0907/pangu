@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **346** 个 py 文件 / **106,190** 行。
+共 **347** 个 py 文件 / **106,424** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,193 行
+## `pangu/memory/` — 136 文件 / 43,260 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -68,7 +68,7 @@
 | `export_import.py` | 404 | 盘古记忆导出导入 — 多格式导出和跨系统导入 |
 | `feishu_webhook.py` | 151 | 盘古飞书 Webhook — 记忆事件自动推送到飞书群 |
 | `file_watcher.py` | 173 | 盘古文件监控 — 监控目录变更自动提取记忆 |
-| `fts_search.py` | 674 | 盘古 FTS5 全文搜索 + RRF 混合搜索引擎 |
+| `fts_search.py` | 741 | 盘古 FTS5 全文搜索 + RRF 混合搜索引擎 |
 | `fusion.py` | 407 | 盘古记忆融合引擎 — 高层抽象理解 |
 | `fuxi_bridge.py` | 281 | 盘古-Fuxi 桥接引擎 — 调用 Fuxi 认知能力做深度分析 |
 | `git_hook.py` | 179 | 盘古 Git Hook 集成 — 自动记录 git 操作到记忆 |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 99 文件 / 31,276 行
+## `tests/` — 100 文件 / 31,443 行
 
 测试
 
@@ -256,6 +256,7 @@
 | `test_v3_modules_g.py` | 820 | 盘古 V3.0 模块测试 — 11 个记忆引擎 |
 | `test_v3_modules_h.py` | 812 | V3 模块测试 H — onnx_embedder / proactive / reconsolidation / sanitizer / |
 | `test_vacuum.py` | 248 | 盘古 — 持久化缓存 VACUUM 后台任务测试 |
+| `test_vector_degradation_visible.py` | 167 | 向量路径的降级必须**看得见**。 |
 | `test_warmup_audit.py` | 133 | 盘古 — 缓存预热审计日志测试 |
 
 ## `pangu/server/` — 26 文件 / 11,456 行

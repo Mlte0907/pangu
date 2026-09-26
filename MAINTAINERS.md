@@ -402,8 +402,8 @@ EOF
     要修的话方向明确（按内容哈希缓存文档嵌入 + 语料未变时不重建索引），但那是改检索路径，
     属于要人点头的事，**别顺手塞进去**。
 
-11. **`fts_search.py` 的向量路径把异常全吞了、连日志都没有。**
-    `_try_batch_embed` 的 `except: scores = self._fallback_embed(...)`，
+11. ~~**`fts_search.py` 的向量路径把异常全吞了、连日志都没有。**~~ **2026-09-26 已修。**
+    修前：`_try_batch_embed` 的 `except: scores = self._fallback_embed(...)`，
     `_fallback_embed` 逐条 `except: continue` —— 向量路径整体失效时**不报错、不记录、不降级告警**，
     悄悄退化成纯 FTS。
 
@@ -411,6 +411,29 @@ EOF
     > search 0.00s —— 「越跑越快」是不可能的，真实原因是嵌入抛异常被吞了。
     > **我差点把那个 0.03s 当成好性能报出来。** 对照组 `hybrid_search.py` 同样吞异常，
     > 但至少有 `logger.debug`。差距就在这。
+
+    修后（`pangu/memory/fts_search.py`）：
+
+    - 4 处静默吞异常全部留痕：批量失败 → `warning`（含堆栈）；逐条失败 → **聚合成 1 条**
+      `warning`（写明 `N/M 条失败`，避免 1000 条全失败刷 1000 行）；
+      查询嵌入失败 → `warning`；**没有嵌入器** → `debug`（那是部署状态不是故障，与
+      `hybrid_search.py` 的 ONNX 不可用一致）。
+    - 返回值新增 `degraded: bool`：**True 表示向量路径故障降级过**。
+      这是关键 —— 此前 `method` 在两种完全不同的情况下都是 `"fts"`：
+      向量**坏了**（该告警）vs 向量正常但**没有文档达阈值**（完全正常）。
+      不区分，故障就隐形了。
+    - 降级标志用 `threading.local()` 而非实例属性：`_get_fts_engine()` 是**跨线程共享单例**，
+      挂实例属性会让 A 请求的降级状态报到 B 请求头上。
+    - 三个 `empty` 早退分支统一走 `_empty_response()`：原先各写各的、键集合不一致，
+      调用方按 `r["degraded"]` 取值会在其中一条路上 **KeyError**（写测试时当场抓到）。
+    - 回归测试 `tests/test_vector_degradation_visible.py`（6 项），其中两项是**行为不变**断言：
+      降级前后返回的结果 id 序列必须一致 —— 加可观测性不许动行为。
+
+    > 写这个测试时踩到的坑，值得单独记：**`_SEARCH_CACHE` 是模块级全局 LRU**，
+    > key 只由 `(query, wing, room, limit, offset, min_importance, vector_weight)` 组成，
+    > **与嵌入器状态无关**。所以同一 query 的第二次调用会直接拿到上一次的响应，
+    > `degraded` 读到的是别人的结果。测试里必须 `use_cache=False`；
+    > 线上排查「为什么这次报了降级那次没有」时，先想到它。
 
 12. **教训（我这一轮连犯两次）：结论看着很炸裂时，先怀疑「测量本身坏了」。**
     - 第一次：`pgrep -f pytest` 先匹配到 bash 包装进程，CPU 读数取错对象，
@@ -462,6 +485,26 @@ cd /root/pangu
 
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
+
+- **2026-09-26** — 修「向量路径静默降级」：加日志 + 返回值加 `degraded` 标志。**本轮唯一改运行时代码的一次。**
+  - **为什么**：见 §10 第 11 条。嵌入器一坏，搜索悄悄退化成纯 FTS，结果变差而没人知道；
+    我自己被它骗过，差点把「500 条只要 0.03s」当性能优化报出来。
+  - **改**（`pangu/memory/fts_search.py`）：4 处静默 `except` 全部留痕；逐条失败聚合成 1 条日志；
+    返回值加 `degraded: bool` 区分「向量坏了」与「没有文档达阈值」——
+    **此前 `method` 在这两种情况下都是 `"fts"`，故障因此隐形。**
+    降级标志用 `threading.local()`（`_get_fts_engine()` 是跨线程共享单例，实例属性会竞态）。
+    三个 `empty` 早退分支统一到 `_empty_response()`（原先键集合不一致，按 key 取会 KeyError）。
+  - **加**：`tests/test_vector_degradation_visible.py`（6 项）。含两项**行为不变**断言 ——
+    降级前后结果 id 序列必须一致，即「加可观测性不许动行为」。
+  - **踩**：写测试时 `degraded` 恒为 False，查出是**模块级全局 `_SEARCH_CACHE` 命中了上一次结果**
+    （key 与嵌入器状态无关），必须 `use_cache=False`。已写进 §10 第 11 条。
+    另有一处**我自己写错的断言**：曾断言降级后 `vector_used is False` ——
+    错在「降级 ≠ 向量不可用」，逐条路径的意义就是「慢但能用」，断言成不可用等于要求它别救场。
+  - **验证**：新测试 6 passed；受影响子集 **263 passed**（core / 搜索质量 / 嵌入 / own-first / retrievability）；
+    契约类 **89 passed**（rest_v2_contract / honest_returns / integration / docs_freshness）。
+    **未部署云端**（见下一条）。
+  - **遗留**：本条只改本地。云端 `/root/pangu` 仍是旧代码 —— 见 §10 第 7 条，
+    **改完运行时代码必须连测试一起 scp**，这次别再漏。
 
 - **2026-09-26** — **首次把全量测试套件跑完**（还清了一笔挂了两天的债），并查清「为什么跑不动」。
   - **结果**：`1 failed, 1913 passed, 17 skipped, 25 warnings in 41:33`。

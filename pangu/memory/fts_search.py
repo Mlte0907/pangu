@@ -81,6 +81,35 @@ def _rrf_fuse(fts_scores: dict, vec_scores: dict, k: int = 60) -> dict:
     return dict(sorted(merged.items(), key=lambda x: x[1], reverse=True))
 
 
+def _empty_response(query: str) -> dict:
+    """空结果的统一返回体。
+
+    三个早退分支（空查询 / 过滤后为空 / 两路都没命中）曾经各写各的，
+    键集合不一致 —— 调用方按 `r["degraded"]` 取值时会在其中一条路上 KeyError。
+    统一到这里，避免再加字段时漏掉某一处。
+    """
+    return {
+        "results": [],
+        "total": 0,
+        "query": query,
+        "method": "empty",
+        "fts_used": False,
+        "vector_used": False,
+        "degraded": False,
+    }
+
+
+# 向量路径的「本次搜索是否降级」标志。
+#
+# 为什么用 thread-local：`_get_fts_engine()` 返回的是**跨线程共享的单例**，
+# 挂实例属性会在并发搜索时互相覆盖 —— A 请求的降级状态会报到 B 请求头上。
+# 为什么需要它：`search()` 的 `method` 字段在两种完全不同的情况下都会变成 "fts"：
+#   (a) 向量路径**坏了**（该告警）
+#   (b) 向量路径正常，但**没有一条文档相似度达阈值**（完全正常，不该告警）
+# 此前这两者无法区分，于是 (a) 被当成 (b)，故障就隐形了。
+_tls = threading.local()
+
+
 class FTS5SearchEngine:
     """FTS5 全文搜索 + 向量语义搜索 + RRF 融合引擎
 
@@ -97,6 +126,9 @@ class FTS5SearchEngine:
         self.vector_weight = vector_weight
         self.similarity_threshold = similarity_threshold
         self._embedder = None
+        # 本次搜索的向量路径是否发生了**降级**。用 thread-local 而不是实例属性：
+        # `_get_fts_engine()` 是跨线程共享的单例，实例属性会竞态。
+        _tls.vector_degraded = False
         self._fts_index: dict[str, set[str]] = {}  # token -> drawer_ids
         self._fts_content_map: dict[str, str] = {}  # drawer_id -> content
         self._tokenizer: str = ""  # 构建索引时用的分词器（"jieba"/"regex"）
@@ -363,7 +395,16 @@ class FTS5SearchEngine:
         return scores
 
     def _fallback_embed(self, query_vec: list, items: list[dict]) -> dict[str, float]:
+        """逐条嵌入的降级路径。
+
+        2026-09-26 起不再静默 `except: continue`：向量路径整体失效时，
+        搜索会悄悄退化成纯 FTS，结果变差而**没有任何人知道**。
+        这里聚合失败条数，只打第一条的完整堆栈 + 一条汇总，
+        避免 1000 条全失败时刷 1000 行日志。
+        """
         scores: dict[str, float] = {}
+        failed = 0
+        first_exc: Exception | None = None
         for item in items:
             try:
                 emb = self.embedder.embed(item["content"])
@@ -371,20 +412,32 @@ class FTS5SearchEngine:
                     sim = cosine_similarity(query_vec, emb)
                     if sim >= self.similarity_threshold:
                         scores[item["id"]] = sim
-            except Exception:
-                continue
+            except Exception as e:  # noqa: BLE001 — 逐条容错，但必须留痕
+                failed += 1
+                if first_exc is None:
+                    first_exc = e
+        if failed:
+            logger.warning(
+                "向量降级路径：%d/%d 条文档嵌入失败，向量检索已不完整（首条异常：%r）",
+                failed, len(items), first_exc, exc_info=first_exc,
+            )
         return scores
 
     def _vector_search(self, query: str, drawers: list[Drawer], limit: int = 50) -> dict[str, float]:
         """向量语义搜索，返回 {drawer_id: similarity}"""
         if not self.embedder:
+            # 没有嵌入器是一种**部署状态**（既无 ONNX 也无 API），不是故障。
+            # 与 hybrid_search 的 ONNX 不可用一致用 debug，避免每次搜索刷屏。
+            logger.debug("没有可用的嵌入器，向量检索跳过（method 将退化为 fts）")
             return {}
 
         try:
             query_vec = self.embedder.embed(query)
             if not query_vec:
+                logger.debug("查询嵌入为空（%r），跳过向量检索", query[:50])
                 return {}
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            logger.warning("查询嵌入失败，向量检索跳过：%r", e, exc_info=True)
             return {}
 
         items = [
@@ -397,7 +450,13 @@ class FTS5SearchEngine:
 
         try:
             scores = self._try_batch_embed(query_vec, items)
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            # 批量嵌入失败 → 降级为逐条。这是**能力降级**，必须留痕：
+            # 结果仍然会返回，但向量那一路的质量已经变了。
+            logger.warning(
+                "批量嵌入失败（%r），降级为逐条嵌入：向量检索变慢且可能不完整", e, exc_info=True
+            )
+            _tls.vector_degraded = True
             scores = self._fallback_embed(query_vec, items)
 
         sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
@@ -437,7 +496,8 @@ class FTS5SearchEngine:
             vector_weight = self.vector_weight
 
         if not query or not query.strip():
-            return {"results": [], "total": 0, "query": query, "method": "empty"}
+            # 三个 empty 早退分支都必须带全套键，否则调用方按 key 取会 KeyError
+            return _empty_response(query)
 
         # 结果缓存
         cache_key = None
@@ -461,7 +521,7 @@ class FTS5SearchEngine:
             filtered.append(d)
 
         if not filtered:
-            return {"results": [], "total": 0, "query": query, "method": "empty"}
+            return _empty_response(query)
 
         # 确保索引已构建
         if not self._indexed:
@@ -471,13 +531,17 @@ class FTS5SearchEngine:
         fts_results = self._fts_search(query, filtered, limit=limit * 3)
 
         # 向量搜索
+        _tls.vector_degraded = False  # 每次搜索重置，避免把上一次的状态带过来
         vec_results = self._vector_search(query, filtered, limit=limit * 3)
+        degraded = bool(getattr(_tls, "vector_degraded", False))
 
         # RRF 融合
         fused = _rrf_fuse(fts_results, vec_results)
 
         if not fts_results and not vec_results:
-            return {"results": [], "total": 0, "query": query, "method": "empty"}
+            r = _empty_response(query)
+            r["degraded"] = degraded  # 这一路的降级状态要如实带出去
+            return r
 
         fts_used = len(fts_results) > 0
         vec_used = len(vec_results) > 0
@@ -519,6 +583,9 @@ class FTS5SearchEngine:
             "method": method,
             "fts_used": fts_used,
             "vector_used": vec_used,
+            # True = 本次搜索的向量路径**故障降级**过（已打过 warning）。
+            # 与「没有文档相似度达阈值」区分开：后者 degraded=False，属正常。
+            "degraded": degraded,
             "weights": {"vector": vector_weight, "fts": round(1 - vector_weight, 2)},
         }
 
