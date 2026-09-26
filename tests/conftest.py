@@ -11,6 +11,22 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _clear_llm_discovery_cache():
+    """每个用例前清空模型列表缓存。
+
+    `pangu.core.llm._DISCOVERY_CACHE` 是**模块级全局**（跨线程共享单例的引擎会读它），
+    不清空就会跨用例污染：既有测试把 `urlopen` 打桩成返回空列表，
+    却拿到上一个用例缓存的结果，报出「assert ['deepseek-one', ...] == []」
+    这种看着像逻辑错、其实是状态泄漏的失败。
+    """
+    from pangu.core import llm
+
+    llm._DISCOVERY_CACHE.clear()
+    yield
+    llm._DISCOVERY_CACHE.clear()
+
 # 手工 E2E 套件排除在自动收集之外。
 #
 # 原因：tests/manual_e2e/test_comprehensive.py 需要两样 CI 里没有的东西——

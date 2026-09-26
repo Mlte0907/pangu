@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **350** 个 py 文件 / **106,890** 行。
+共 **351** 个 py 文件 / **107,136** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,323 行
@@ -152,14 +152,14 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 103 文件 / 31,846 行
+## `tests/` — 104 文件 / 32,034 行
 
 测试
 
 | 文件 | 行 | 职责（首句 docstring） |
 | --- | ---: | --- |
 | `__init__.py` | 1 | 盘古测试模块 |
-| `conftest.py` | 283 | pytest session-level fixtures |
+| `conftest.py` | 299 | pytest session-level fixtures |
 | `manual_api_smoke.py` | 264 | 盘古系统接口契约/冒烟测试 — REST API + MCP 工具 + CLI |
 | `manual_benchmark.py` | 133 | 盘古 Benchmark — 性能基准测试 + 竞品对比 |
 | `manual_e2e/__init__.py` | 1 | (无 docstring) |
@@ -202,6 +202,7 @@
 | `test_mcp_tenant_fallback.py` | 107 | MCP 写入的 tenant_id 归属回退（2026-09-26）。 |
 | `test_mcp_warmup.py` | 87 | 盘古 — MCP 服务器启动预热测试 |
 | `test_memory_system.py` | 962 | 盘古记忆系统综合测试 — 覆盖存储/检索/遗忘曲线/巩固/自然语言查询/多Agent协作 |
+| `test_model_discovery_cache.py` | 172 | 模型列表的 TTL 缓存与偏好落空回退。 |
 | `test_onnx_embedder.py` | 417 | 盘古 — ONNX 嵌入器测试 |
 | `test_optimization_2026_08_27.py` | 885 | PANGU 优化改进项 2026-08-27 实现验证（R1-R4 盘古侧） |
 | `test_p0_0_authoritative_path.py` | 1278 | P0-0 回归测试：统一权威记忆路径 + 空写保护。 |
@@ -357,7 +358,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `keys.py` | 145 | 盘古钥匙管理器 |
 | `task_tracker.py` | 143 | 任务进度追踪器 — 在工具执行后自动保存任务状态（伏羲移植） |
 
-## `pangu/core/` — 6 文件 / 2,989 行
+## `pangu/core/` — 6 文件 / 3,047 行
 
 核心设施：配置、LLM 接入、加密、哈希、缓存、宫殿数据模型
 
@@ -367,7 +368,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `cache.py` | 452 | 盘古 — 持久化 LLM 响应缓存 |
 | `config.py` | 630 | 盘古核心配置模块 — 基于 pydantic-settings（伏羲移植） |
 | `hashing.py` | 39 | 盘古 — 统一哈希工具 |
-| `llm.py` | 1553 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
+| `llm.py` | 1611 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
 | `palace.py` | 308 | 盘古宫殿核心 — Wings/Rooms/Drawers/Halls/Tunnels 管理 |
 
 ## `experimental/` — 16 文件 / 1,172 行

@@ -26,6 +26,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import AsyncGenerator
@@ -42,21 +43,27 @@ logger = logging.getLogger("pangu.core.llm")
 LLM_MODEL_PREFERENCE = ("deepseek", "minicpm")
 LLM_MODEL_EXCLUDE = ("mineru",)
 
+# ── 模型列表的 TTL 缓存 ──
+#
+# 为什么需要：`GET /models` 是**网络调用**，而 `_discover_models()` 在首选模型失败时
+# 会被触发。没有缓存时，一次 LLM 调用若首选失败，就要为「找备选」额外打一次平台接口
+# （实测 150~400ms），而且候选越多重试越久。
+#
+# 为什么用模块级 dict 而不是 LRUCache：模型列表是**一个整体**，要么整个新鲜、
+# 要么整个过期，不存在「淘汰其中几个」的语义。LRUCache 的逐条目淘汰会把它扭曲。
+#
+# 为什么 key 只用 base 不用 key：模型列表与用哪个密钥无关（任何有效密钥拿到的
+# 列表都一样），而密钥不该出现在缓存键里。
+#
+# TTL 默认 6 小时：太短会频繁打平台接口，太长则平台改列表后恢复太慢。
+# 可用环境变量 PANGU_LLM_DISCOVERY_TTL 覆盖（单位秒）。
+_DISCOVERY_TTL = float(os.environ.get("PANGU_LLM_DISCOVERY_TTL", str(6 * 3600)))
+_DISCOVERY_CACHE: dict[str, tuple[float, list[str]]] = {}
+_DISCOVERY_LOCK = threading.Lock()
 
-def discover_chat_models(base: str, key: str, timeout: int = 15) -> list[str]:
-    """动态发现可用对话模型（GET /models，列表随平台更新，不写死）。
 
-    LLMEngine 的候选模型与自主任务的结晶选型共用这一套规则，避免两处漂移。
-
-    Args:
-        base: OpenAI 兼容端点 base_url，不含末尾斜杠。
-        key: API 密钥，以 Bearer 附加。
-        timeout: 请求超时秒数。
-
-    Returns:
-        按 ``LLM_MODEL_PREFERENCE`` 家族序排列、已剔除 ``LLM_MODEL_EXCLUDE`` 的
-        模型 id 列表。端点不可达或响应非法时抛异常，由调用方决定兜底。
-    """
+def _fetch_model_list(base: str, key: str, timeout: int) -> list[str]:
+    """真正打平台接口拉模型列表，并按偏好序排序。"""
     import urllib.request
 
     req = urllib.request.Request(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
@@ -73,6 +80,57 @@ def discover_chat_models(base: str, key: str, timeout: int = 15) -> list[str]:
             low = n.lower()
             if family in low and not any(x in low for x in LLM_MODEL_EXCLUDE) and n not in ranked:
                 ranked.append(n)
+
+    # 偏好落空回退：deepseek 和 minicpm 家族**都不在**平台列表里时，
+    # 返回未过滤的完整列表（仍排除 mineru）。
+    #
+    # 没有这个回退的后果是返回空列表 → 没有任何候选 → LLM 调用全部失败，
+    # 而且**没有任何日志**说明是偏好序把模型全过滤掉了。
+    # 2026-09-26 实测：平台只剩 GLM/Qwen/MiMo 时，旧逻辑返回 0 个候选。
+    if not ranked:
+        fallback = [
+            n
+            for n in names
+            if n and not any(x in n.lower() for x in LLM_MODEL_EXCLUDE)
+        ]
+        if fallback:
+            logger.warning(
+                "模型列表里没有偏好家族 %s 的任何成员，回退到平台全部可用模型（已排除 %s）",
+                LLM_MODEL_PREFERENCE, LLM_MODEL_EXCLUDE,
+            )
+        return fallback
+    return ranked
+
+
+def discover_chat_models(base: str, key: str, timeout: int = 15) -> list[str]:
+    """动态发现可用对话模型（GET /models，列表随平台更新，不写死）。
+
+    LLMEngine 的候选模型与自主任务的结晶选型共用这一套规则，避免两处漂移。
+
+    带 TTL 缓存（默认 6 小时，``PANGU_LLM_DISCOVERY_TTL`` 可覆盖）：
+    模型列表是**一个整体**，过期才重新拉，避免每次首选失败都打一次平台接口。
+
+    Args:
+        base: OpenAI 兼容端点 base_url，不含末尾斜杠。
+        key: API 密钥，以 Bearer 附加。
+        timeout: 请求超时秒数。
+
+    Returns:
+        按 ``LLM_MODEL_PREFERENCE`` 家族序排列、已剔除 ``LLM_MODEL_EXCLUDE`` 的
+        模型 id 列表。偏好家族全部不在平台列表时，回退到未过滤的完整列表
+        （仍排除 ``LLM_MODEL_EXCLUDE``）。端点不可达或响应非法时抛异常，
+        由调用方决定兜底。
+    """
+    now = time.time()
+    with _DISCOVERY_LOCK:
+        hit = _DISCOVERY_CACHE.get(base)
+        if hit is not None and now - hit[0] < _DISCOVERY_TTL:
+            return hit[1]
+
+    ranked = _fetch_model_list(base, key, timeout)
+
+    with _DISCOVERY_LOCK:
+        _DISCOVERY_CACHE[base] = (time.time(), ranked)
     return ranked
 
 
