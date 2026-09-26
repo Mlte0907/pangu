@@ -144,7 +144,16 @@ class MemoryImporter:
         # 导入知识图谱（2026-09-19 补）：此前 import_from_file 只认
         # memories/wiki_pages/identity，export_all 写出的 knowledge_graph 被
         # 静默丢弃 —— 导出→导入往返后 KG 全丢（与当初备份漏 KG 同族问题）。
-        # add_entity/add_relation 均为 INSERT OR REPLACE，天然幂等。
+        #
+        # 2026-09-26 订正：原注释写「add_entity/add_relation 均为 INSERT OR REPLACE，
+        # 天然幂等」——**这句在复合主键下不成立**。基表主键是 (id, tenant_id)
+        # （knowledge_graph.py 的 CREATE TABLE），所以 REPLACE 只覆盖「同 id 同属主」那一份；
+        # 同一个 id 换了个 tenant_id 就会**新增一行**而不是替换。
+        # 云端实证：09-22 晚间把记忆归属整体改写成按平台分后，09-26 的抽取把 14 个已存在的
+        # 实体又插了一遍，entities_all 从 19 行涨到 33 行、图谱上每个实体出现两次
+        # （读取侧已改为按 id 合并，见 api/server.py 的 graph_data）。
+        # 推论：导出→导入往返**只在 tenant_id 也一致时**才幂等；导入数据的属主与本地不同
+        # （例如本地 default、导出方 deepseek-harness）就会翻倍。
         if data.get("knowledge_graph"):
             try:
                 from .knowledge_graph import KnowledgeGraph

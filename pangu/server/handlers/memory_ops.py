@@ -77,7 +77,23 @@ async def handle_add_memory(server, drawers, arguments):
     if drawer is not None:
         drawer.metadata = dict(drawer.metadata or {})
         drawer.metadata["owner_id"] = arguments.get("owner_id", "mcp_user")
-        drawer.metadata["tenant_id"] = identity.get("room", arguments.get("tenant_id", "default"))
+        # 2026-09-26：`identity.get("room", 默认值)` 有一个**只在 key 缺失时才回退**的陷阱。
+        # api_key 凭据的 identity 里 room 是**存在但为空串**（mcp_server.py 里
+        # `tenant = identity.get("room", "")`），默认值永远不生效，写进去的是 ''。
+        # 云端实证：46 条记忆 tenant_id 为空，source_session 全是 'key:api_key_user@'
+        # （即用 api_key 走 MCP 写入的），时间集中在 09-23 ~ 09-26。
+        #
+        # 为什么不是小事：metadata_visible 对 vis='tenant' 的判据是
+        # `md.get("tenant_id","") != tenant` 即拒绝（layers.py:389）。空串不等于任何平台的
+        # room（opencode / deepseek-harness / workbuddy 都不是 ''），所以这 44 条
+        # **对每个平台 agent 都不可见**，只有全库视角（admin / 后台 / 图谱）看得到 ——
+        # 等于「写进去了却谁都搜不到」。
+        #
+        # 改成 `or` 链：空串 / None 一律往下回退，与 REST 侧对 api_key 调用方的处理一致
+        # （routes_memory._resolve_tenant_id 兜底到 config.abac_default_tenant）。
+        drawer.metadata["tenant_id"] = (
+            identity.get("room") or arguments.get("tenant_id") or getattr(server.config, "abac_default_tenant", "default")
+        )
         # 密级是**数值** 0=public…3=secret（与 ABAC 的 Resource.classification 同一套）。
         # 此前默认写成字符串 "normal"，而 REST/ABAC 侧按 int 读取 → 遇到这些行会 ValueError。
         #

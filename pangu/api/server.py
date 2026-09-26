@@ -632,13 +632,19 @@ def create_app() -> FastAPI:
             "/redoc",
         }
         _EXEMPT_EXACT = {"/api/v2/auth/login", "/api/v2/auth/refresh", "/api/v2/platforms/request"}
+        # 2026-09-26：/api/v2/graph 从豁免前缀中移除。此前它**同时**满足「在豁免名单里」
+        # 与「路由内无任何自身校验」两个条件 → 网关不查凭据、路由自己也不查，实测匿名请求
+        # 返回 200 + 全量图谱（nodes 33 / edges 14），平台 token 同样畅通。这条同时破坏了
+        # 两条用户设定：① FastAPI 只给仪表盘/管理员，② 平台无法用 token 走 FastAPI 取数据。
+        # 同名单里的 /api/v2/admin 与 /api/v2/{platforms,dashboard} 仍在豁免中是**安全的** ——
+        # 它们都在路由内自己校验了 admin（admin_auth.verify_admin），网关豁免只是省一次重复
+        # 校验。graph 没有这层自保护，所以必须由网关兜住。
         _EXEMPT_PREFIXES = (
             "/docs",
             "/redoc",
             "/api/v2/admin",
             "/api/v2/platforms",
             "/api/v2/dashboard",
-            "/api/v2/graph",
             "/mcp",
         )
 
@@ -1301,14 +1307,83 @@ def create_app() -> FastAPI:
         return RedirectResponse(url="/health")
 
     # ── 知识图谱 API ──
+
+    def _kg_row_rank(row: dict) -> tuple:
+        """同名实体多行时挑哪一行留下：created_at 新者优先。
+
+        复合主键 (id, tenant_id) 让同一概念按属主各存一行，读取侧必须挑一行代表。
+        挑「更新的那条」而不是「任意一条」：归属改写这类操作会重跑抽取并刷新 created_at，
+        新行才是当前真相（云端实测重复两组的 created_at 相差 4 天）。
+        """
+        return (str(row.get("created_at") or ""),)
+
+    def _kg_source_counts(names: list[str]) -> dict[str, int]:
+        """数出每个实体名出现在多少条记忆里。
+
+        为什么现算：`entities_all` 建表时**没有** memory_count 列，而 graph 一直在读它，
+        于是仪表盘上每个实体的「记忆数」恒为 0（会被读成「没有任何记忆提到它」）。
+        这里按抽取器**同一个判定**重数一遍（knowledge_graph.auto_extract_entities 用的就是
+        `kw.lower() in content.lower()`），所以数字与「盘古认为哪些记忆提到了它」一致。
+
+        ⚠ 必须先解密：记忆在盘古里是 **Fernet 密文落库**（content 以 `gAAAAA` 开头）。
+        直接在 `drawer.content` 上做子串匹配是在密文里数 —— 数字看着合理、实则随机
+        （首次实现就踩到：密文里 'mcp' 偶然出现 16 次，于是 MCP 报了 16 而其余全 0）。
+        解密写法照抄 search/engine.py 的既有范式：先判前缀再 decrypt，失败则跳过该条。
+
+        单趟扫描 + 预算上限：O(记忆数 × 实体数) 次子串判断，超过预算就整体放弃、退回 0，
+        避免大图谱把接口拖死（云端 19 实体 × 272 记忆 ≈ 5 千次，Fernet 解密 272 条为毫秒级）。
+        """
+        if not names:
+            return {}
+        try:
+            drawers = app.state.memory.get_drawers() or []
+        except Exception:  # noqa: BLE001 — 拿不到记忆就只影响这一个字段，不该让整图谱 500
+            return {}
+        budget = 5_000_000
+        if len(drawers) * len(names) > budget:
+            logger.warning("graph: 实体×记忆 组合数超预算，跳过 memory_count 统计")
+            return {}
+        lowered = [(n, str(n).strip().lower()) for n in names if n and str(n).strip()]
+        counts = dict.fromkeys(names, 0)
+        if not lowered:
+            return counts
+        for d in drawers:
+            content = getattr(d, "content", "") or ""
+            if isinstance(content, str) and content.startswith("gAAAAA"):
+                try:
+                    from pangu.memory.encryption import decrypt
+
+                    content = decrypt(content)
+                except Exception:  # noqa: BLE001 — 密钥不匹配/数据损坏：跳过这条，不猜
+                    continue
+            content = str(content).lower()
+            if not content:
+                continue
+            for name, low in lowered:
+                if low in content:
+                    counts[name] += 1
+        return counts
+
     @app.get("/api/v2/graph")
     async def graph_data(entity_type: str = None, limit: int = 100):
         """知识图谱数据。
 
-        2026-09-20：加鉴权。此前该路由在 `_EXEMPT_PREFIXES` 里（`/api/v2/graph`），
-        且自身不校验 —— 实测**无凭据**即可 GET 到全部实体与关系。在用户
-        「审核门是唯一边界」的模型下，这是唯一一个不进门就能拿数据的入口。
-        已从豁免前缀中移除，网关鉴权（盘古钥匙/平台 Token/API Key/JWT）即生效。
+        鉴权：2026-09-20 的注释曾写「已从豁免前缀中移除」——**当时并没有真移除**，
+        `/api/v2/graph` 一直留在 `_EXEMPT_PREFIXES` 里，而本路由自身也没有任何校验，
+        于是网关与路由两层都不设卡：实测匿名请求返回 200 + 全量图谱。2026-09-26 才真正
+        从豁免前缀摘掉（见该处注释）。同名单里的 admin/platforms/dashboard 不受影响，
+        它们在路由内自己校验 admin。
+
+        按 id 聚合（2026-09-26）：`entities_all` 主键是 **(id, tenant_id)**，同一概念在
+        不同属主下各有一行，而本路由走 REST 全库视角（`_TENANT_SCOPE` 默认空串 → 视图
+        首句 `current_tenant()=''` 短路到全库），于是同一个实体会随属主数返回多份。
+        云端实测：19 个实体被返回成 33 行（`default` 19 行 + `deepseek-harness` 14 行），
+        每组的 name/type/description 逐字节相同。成因是一次性把记忆归属从 `default`
+        整体改写成按平台分之后，下一轮抽取对同一 id 换了属主 → `INSERT OR REPLACE`
+        变成 INSERT（见 knowledge_graph.add_entity 的说明）。
+
+        这里按 id 合并成一份，**不动存储层**（多租户「同名实体互不覆盖」是有意设计，
+        tests/test_p1_3_kg_tenant_scope.py 锁定）。同一 id 有多行时取 created_at 最新的那条。
         """
         try:
             from pangu.core.config import PanguConfig as _Cfg
@@ -1319,13 +1394,29 @@ def create_app() -> FastAPI:
             # 指向 v1（云端实测：stats 报 19 实体、graph 返回 0）。
             cfg = _Cfg.load().authoritative_memory_config()
             kg = KnowledgeGraph(cfg)
-            entities = kg.list_entities(entity_type)[:limit]
+            # 先按 id 合并再截断：否则 limit 会被重复行吃掉一半名额
+            # （limit=100 实际只放得下 50 个不同实体）。
+            merged: dict[str, dict] = {}
+            for e in kg.list_entities(entity_type):
+                cur = merged.get(e["id"])
+                if cur is None or _kg_row_rank(e) > _kg_row_rank(cur):
+                    merged[e["id"]] = e
+            entities = list(merged.values())[:limit]
+            src_counts = _kg_source_counts([e.get("name", "") for e in entities])
+
             edges = []
+            seen_rel: set[tuple] = set()
             # 边构建范围随 limit 放宽(默认仍从 50 起),避免大图谱只剩孤岛节点
             edge_sources = min(len(entities), max(50, limit // 3))
+            # 按**合并后**的实体逐个查：此前按重复行逐行查，同一条关系会被 append 两次，
+            # 而 relations_all 同样是 (id, tenant_id) 复合主键、query_relations 也不去重
+            # → 实测同一条边出现 4 次（2 实体行 × 2 关系行）。
             for e in entities[:edge_sources]:
-                rels = kg.query_relations(subject_id=e["id"])
-                for r in rels:
+                for r in kg.query_relations(subject_id=e["id"]):
+                    key = (r["subject_id"], r["object_id"], r.get("predicate", ""))
+                    if key in seen_rel:
+                        continue
+                    seen_rel.add(key)
                     edges.append(
                         {
                             "source": r["subject_id"],
@@ -1339,12 +1430,15 @@ def create_app() -> FastAPI:
                     "id": e["id"],
                     "name": e["name"],
                     "type": e.get("type", "default"),
-                    "memory_count": e.get("memory_count", 0),
+                    # entities_all 没有 memory_count 列（knowledge_graph.py 建表语句），
+                    # 此前这里读不到就是 0，仪表盘上每个实体的「记忆数」恒为 0。
+                    # 改为按抽取器同一判定现算（见 _kg_source_counts，注意要先解密）。
+                    "memory_count": src_counts.get(e.get("name", ""), 0),
                     "description": e.get("description", ""),
                 }
                 for e in entities
             ]
-            return {"code": 0, "data": {"nodes": nodes, "edges": edges, "total_entities": len(entities)}}
+            return {"code": 0, "data": {"nodes": nodes, "edges": edges, "total_entities": len(nodes)}}
         except Exception as e:
             return {"code": 500, "error": str(e)}
 
