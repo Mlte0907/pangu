@@ -503,6 +503,31 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — 清理云端部署目录：把两个 `.bak-*` 目录**归档**到 `/root/pangu-backups/`。
+  - **为什么不是直接删**：要消除的是「它们躺在部署目录里、看起来像现行代码」这个**位置**隐患，
+    不是内容本身。删除不可逆，而 `mv` 同样解决问题。云端不是 git 仓库，
+    这些手工副本是唯一的回退途径，必须留。
+  - **过程里修正了自己的一个事实**：我原以为只有 4 个 `.py`、日期 09-19；
+    实际是 **7 个文件（含 3 个 `.orig`）**、日期 **2026-09-22 02:38**。
+    漏掉是因为我只 `find -name '*.py'` —— 另一个 `.bak-issue-fix` 里全是
+    `.orig` / `.json`，根本没进我的视野。**「找全」要用对模式，不是换个更大的数字。**
+  - **`.bak-issue-fix` 里藏着更值钱的东西**：`drawers.json.pre-tenant-migration`（2.5MB，
+    **161 条**记忆）—— 租户归属改写**之前**的权威库快照，也就是「实体重复」事故的**证据基线**
+    （现行已 302 条）。已**单独归档**到
+    `/root/pangu-backups/drawers-pre-tenant-migration-20260922/` 并写明它为什么不能被覆盖回用：
+    那次事故的触发条件在**数据**里，代码备份复现不了。
+  - **每个归档都写了「恢复前必读」**：7 份备份全部比现行**更旧**
+    （如 `llm.py.orig` 1415 行 vs 现行 1553 行），整目录覆盖会回退掉
+    本周刚上线的全部修复（`degraded` 标志、ONNX 缓存、own-first、图谱按 id 聚合…）。
+    **要求逐个 diff 手工合并。**
+  - **归档位置**：`/root/pangu-backups/decrypt-fix-20260922/`（代码）、
+    `/root/pangu-backups/issue-fix-20260922/`（代码+索引）、
+    `/root/pangu-backups/drawers-pre-tenant-migration-20260922/`（**数据证据**），各带 `CHECKSUMS.txt`。
+  - **留下的**（不是备份，正常运维目录）：`.benchmarks`、`.deploy-logs`、`.venv`、`.github`、`.pytest_cache`。
+  - **验证**：服务未重启仍在线（uptime 7215s、v0.4.1、ONNX 后端）；`gen_file_index.py --check` 一致；
+    云端 43 passed / 1 skipped、`exit=0`；线上搜索实测 825ms 正常。
+  - **未改任何代码。** 本轮只动了云端文件位置 + 文档。
+
 - **2026-09-27** — 修 CI 的 Python 矩阵，并**订正我昨天那条错误的建议**。
   - **我昨天说「让 CI 固定用 3.11」是错的，而且方向正好相反。** 核对后发现：
     生产版本 3.11 **一直**在 `test.yml` 矩阵里、一直被门禁着；
