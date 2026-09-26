@@ -5,9 +5,9 @@
 ## 🔴 维护流程（硬性，不是建议）
 
 ```
-1. 动手之前  →  读完本文件（尤其 §0 四条认知错误 与 §7 已知坑）
-2. 定位根因  →  别信注释/docstring，它们会说谎（见 §10 第 4 条）
-3. 改 + 验证 →  跑受影响的测试子集（§9）
+1. 动手之前  →  读完本文件（尤其 §0 四条认知错误 与 §40 已知坑）
+2. 定位根因  →  别信注释/docstring，它们会说谎（见 §43 第 4 条）
+3. 改 + 验证 →  跑受影响的测试子集（§42）
 4. 写日志    →  在下面「维护日志」追加一条：日期 / 改了什么 / 为什么 / 怎么验证
 5. 收尾自检  →  pytest tests/test_maintainers_doc.py 必须绿
 ```
@@ -25,7 +25,7 @@
 
 | 你可能以为 | 实际是 | 依据 |
 | --- | --- | --- |
-| `config.json` 里 `llm_model` 是空的 = LLM 没接通 | **正常**。空值意味着「走动态发现」，见 §5 | `llm.py:468-500` |
+| `config.json` 里 `llm_model` 是空的 = LLM 没接通 | **正常**。空值意味着「走动态发现」，见 §8 | `llm.py:468-500` |
 | 实体表里同一个 id 出现多行 = 数据坏了 | **设计如此**。主键是 `(id, tenant_id)`，跨属主各存一份 | `knowledge_graph.py:126` |
 | 某条记忆 `visibility='tenant'` = 只有本平台能看 | 还取决于**归属**。归属为空的记忆**任何平台都看不到** | `layers.py:389` |
 | `/api/v2/graph` 挂在网关豁免名单里是正常的 | **不正常**。它 2026-09-26 之前一直**同时**满足「在豁免名单」+「路由内无自校验」，匿名可拉走全库图谱 | `server.py` 的 `_EXEMPT_PREFIXES` |
@@ -34,7 +34,135 @@
 
 ---
 
-## 1. 东西在哪
+## 1. 盘古是什么
+
+**一句话：盘古是一个人的记忆系统。** 多个 AI 平台（Claude Code、OpenCode、DSH、Mimo 等）
+把工作过程写进同一个盘古，盘古负责把这些碎片**整理、分类、去重、沉淀成知识**，
+并在各平台需要时把它们**取回**。
+
+### 它解决什么
+
+各平台的 agent 是**互不通信**的。同一类问题，A 平台踩过的坑，B 平台还会再踩一遍；
+B 平台发现 A 平台的记忆有出入、自己复测后写入新记忆，但**没人知道旧的那条已经错了**。
+盘古就是那个共同底座：
+
+| 能力 | 说明 |
+| --- | --- |
+| **跨平台共享** | 所有审核通过的平台写进同一份记忆库，搜到的经验互相可见 |
+| **跨平台去重** | 两个平台写了同一件事，盘古识别并合并（实体 id 按**名字哈希**生成，天然同 id） |
+| **纠错与归档** | 一条记忆被订正时，旧版本**快照归档**而不是直接覆盖，保留可追溯性 |
+| **知识提炼** | 平台 agent 只负责写原始记忆，**由盘古（接 LLM）把它提炼成结构化知识** |
+| **毕业机制** | 只有「有来源指针 + 被成功召回验证过」的记忆才对所有平台可见（见 §7） |
+
+### 它不是什么（这条最容易误解）
+
+- **不是多租户 SaaS。** 代码里有 `tenant_id` / `visibility` / `classification` 三轴，
+  那是**多租户架构的预留能力**，业务上是**单用户**——所有平台共享全部记忆。
+  记忆的 `tenant_id` 只是「哪个平台写的」这个**来源标记**，不是隔离墙。
+- **不是向量数据库。** 向量只是检索通道之一；主存是 JSON 抽屉 + SQLite。
+- **不含界面。** 仪表盘在插件仓 [`dsh-pangu`](https://github.com/Mlte0907/dsh-pangu)，
+  盘古只提供数据面。
+
+### 主存是什么
+
+**记忆 = Drawer**（`pangu/core/palace.py`）：
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 记忆 id |
+| `content` | 正文（**密文落库**，见 §7） |
+| `wing` / `room` / `hall` | 宫殿结构：翼 / 房间 / 厅 |
+| `importance` | 重要度 0~5（默认 3.0） |
+| `emotional_weight` | 情绪权重 |
+| `source` / `source_file` / `author` | 来源平台 / 来源文件 / 写入者 |
+| `tags` / `created_at` | 标签 / 创建时间 |
+| `metadata` | **扩展位**：`tenant_id` / `visibility` / `classification` / `owner_key_id` / `admission` / `last_feedback` 等 |
+
+### 四层记忆栈（`pangu/memory/layers.py`）
+
+渐进式加载，**避免一次把整个库塞进上下文**：
+
+| 层 | 体积 | 何时加载 |
+| --- | --- | --- |
+| **L0 身份层** | ~100 tokens | 始终。读 `~/.pangu/identity.txt`，定义「我是谁」 |
+| **L1 概要层** | ~500-800 | 始终。最重要/最近的记忆摘要 |
+| **L2 按需层** | ~200-500 | 话题触发时 |
+| **L3 深度搜索** | 无限 | 全文语义搜索 |
+
+---
+
+## 2. 运行模式
+
+盘古有 **5 种运行形态**，默认端口 19529（MCP 与 REST 同端口）。
+
+### 2.1 API 服务（当前部署形态）
+
+```sh
+# start.sh / install.sh 生成 systemd --user 单元
+exec python -c "from pangu.api.server import create_app; uvicorn.run(create_app(), host=..., port=19529)"
+```
+
+- 入口：`pangu/api/server.py` 的 `create_app()`（FastAPI 工厂，1509 行）
+- 提供 REST（`/api/v2/*`）+ MCP-HTTP（`/mcp`）+ WebSocket（`/ws`）
+- 进程内还会起自主引擎的后台线程（§2.5）
+- **云端 `/root/pangu` 不是 git 仓库**，部署 = `scp` 覆盖 + `systemctl --user restart pangu-api`
+
+### 2.2 MCP over HTTP
+
+- 传输层 `pangu/api/mcp_http.py`；端点 `POST /mcp`，支持 **SSE** 与 **StreamableHTTP**
+- 握手鉴权：token 走 query 参数（api_key / `pgk_` 主密钥 / JWT）
+
+### 2.3 MCP over stdio
+
+给本地 MCP 客户端（如 Claude Code）用。`scripts/mcp_stdio_bridge.py` 是 stdio ↔ HTTP 桥。
+
+### 2.4 CLI
+
+`pangu/cli.py`（2616 行，typer，**75 个命令**），`pyproject.toml` 注册为 `pangu`。
+覆盖记忆读写、搜索、备份、配置、诊断。适合手工排查与脚本化。
+
+### 2.5 自主引擎（进程内后台线程）
+
+`pangu/memory/autonomous.py` 的 `AutonomousMemoryEngine` + `BackgroundScheduler`，
+按 `SCHEDULE_RULES` 周期跑 **15 个维护任务**（见 §9）。
+
+> **这段历史上停摆过**：巩固、准入复检此前只挂在 MCP 宿主上，MCP 客户端全部下线后
+> 面板就停在「1 天前」。现已统一挂进引擎调度。
+
+### 2.6 另外两个独立 Web 服务器
+
+- `pangu/server/web_server.py`（543 行）：记忆管理 Web UI + REST
+- `pangu/server/websocket_server.py`（334 行）：实时记忆流推送
+
+---
+
+## 3. 功能地图
+
+136 个记忆模块不是并列的，按能力域分九块。下表是**导航**；逐文件职责见
+[`docs/FILE_INDEX.md`](./docs/FILE_INDEX.md)（自动生成，346 个文件）。
+
+| 能力域 | 关键文件（行数） | 说明 |
+| --- | --- | --- |
+| **存取管道** | `ingestion.py`(935) `retrieval.py`(837) `layers.py`(1328) `drawer_storage.py` `encryption.py` | 写入走 `remember()` 全管道（脱敏→去重→冲突检测→supersede→版本链）；读走 `_read_drawers()` |
+| **搜索** | `fts_search.py`(674) `hybrid_search.py` `vector_index.py`(777) `embedding.py`(441) `reranker.py` `query_rewriter.py` `synonyms.py` | FTS5 + 向量 + KG 三路，RRF 融合。嵌入三级降级：API → ONNX → hash |
+| **知识** | `knowledge_graph.py`(1325) `distillation.py` `distill_enhanced.py` `domain_knowledge.py`(644) `knowledge_synthesis.py` `wiki/engine.py` | 实体/关系图谱、记忆→知识蒸馏、领域知识库、Wiki 知识页 |
+| **生命周期** | `autonomous.py`(1282) `consolidation.py` `decay.py` `lifespan.py` `dream_memory.py` `adaptive_forgetting.py` `compression.py` | 巩固、衰减、遗忘、压缩、梦境整理 |
+| **质量治理** | `dedup.py` `conflict.py` `sanitizer.py` `quality.py` `importance_scorer.py` `memory_validator.py` `versioning.py` | 去重、矛盾检测、脱敏、质量评分、验证、版本链 |
+| **推理** | `advanced_reasoning.py`(764) `causal_reasoning.py` `temporal_reasoning.py` `graph_reasoning.py` `debate.py` `world_model.py` | 因果、时间、图推理、多策略辩论、世界模型 |
+| **多智能体** | `multi_agent.py`(801) `collaborative_intelligence.py` `session_bridge.py` `cross_session.py` `social_memory.py`(470) | 共享记忆空间、跨会话桥接与关联、记忆社交化 |
+| **多模态** | `multimodal_pipeline.py` `image_engine.py` `audio_engine.py` `video_engine.py` | 图片/音频/视频/文件/URL 提取并存入记忆 |
+| **观测运维** | `observability/` `error_monitor.py` `health_monitor.py` `analytics.py` `audit_analytics.py` `retrievability.py` | 健康检查、Prometheus 指标、OTel 追踪、错误监控、可检索性体检 |
+
+**会真的调 LLM 的模块**（耗时/花钱）：`distill_enhanced` `debate` `world_model`
+`semantic_compression` `judge` `query_rewriter` `retrievability`(LLM 阶段) 等。
+
+**工具规模**：handler 注册了约 **430** 个 MCP 工具（`advanced` 121 / `system` 44 / `analytics` 37 /
+`search` 33 / `consolidation` 32 / `io_tools` 30 / `session` 28 / `quality` 20 / `llm_tools` 19 /
+`multimodal` 17 / `timeline` 16 / … ），但**默认只暴露 31 个**，其余需开 `exposure`（见 §6）。
+
+---
+
+## 4. 东西在哪
 
 | 项 | 值 |
 | --- | --- |
@@ -50,7 +178,7 @@
 
 ---
 
-## 2. 怎么连、怎么发请求
+## 5. 怎么连、怎么发请求
 
 ```sh
 # 远程执行（注意 heredoc 与 setlocale 过滤）
@@ -77,7 +205,7 @@ EOF
 
 ---
 
-## 3. 工具暴露面
+## 6. 工具暴露面
 
 `tools/list` 实测 **31 个**。数量会随版本漂移，**以实测为准，别写死**。
 
@@ -104,14 +232,14 @@ EOF
 
 ---
 
-## 4. 记忆模型（最容易误解的部分）
+## 7. 记忆模型（最容易误解的部分）
 
 ### 4.1 单用户，不做租户隔离
 
 盘古是**单用户**的。代码里有 `tenant_id` / `visibility` / `classification` 三轴，但那是**多租户架构的预留能力**，业务上所有审核通过的平台共享全部记忆。
 
 - 记忆的归属来自**平台 token**（`metadata.tenant_id` = 平台名，如 `deepseek-harness`、`opencode`）。
-- 用 `api_key` 经 MCP 写入时，身份的 `room` **是空串** → 归属为 `''`。已修（见 §7），
+- 用 `api_key` 经 MCP 写入时，身份的 `room` **是空串** → 归属为 `''`。已修（见 §40），
   但**存量 46 条仍是空归属**。空归属 + `vis='tenant'` = **任何平台都不可见**。
 
 ### 4.2 `visibility` 三档
@@ -144,7 +272,7 @@ EOF
 
 ---
 
-## 5. LLM：动态模型 + 轮换
+## 8. LLM：动态模型 + 轮换
 
 用的是 AMD 的**免费**模型（`llm_base_url=https://developer.amd.com.cn/radeon/api/v1`）。
 **必须动态**，因为：① 平台模型列表会变，写死的模型可能已下线；② 免费模型经常限流/拥塞。
@@ -162,7 +290,7 @@ EOF
 
 ---
 
-## 6. 自主任务
+## 9. 自主任务
 
 引擎：`pangu/memory/autonomous.py`，`SCHEDULE_RULES` 是唯一的调度表。
 
@@ -182,7 +310,7 @@ EOF
 | `compression` | 24h | `min_old_memories=20` |
 | `forget` | 24h | `min_forgettable=5` |
 | `consolidation` | 24h | 夜间巩固，**任务内自查 03:00–05:00 窗口** |
-| `retrievability` | 24h | 可检索性体检，见 §8 |
+| `retrievability` | 24h | 可检索性体检，见 §41 |
 
 共 15 个任务。带 `min_*` 的除间隔外还有「量够了才跑」的条件。
 
@@ -194,7 +322,7 @@ EOF
 
 ---
 
-## 7. 已知的坑（都是实测踩出来的）
+## 10. 已知的坑（都是实测踩出来的）
 
 1. **`entities_all` 主键是 `(id, tenant_id)`** —— 同一 id 在不同属主下各一行，**不是脏数据**。
    `INSERT OR REPLACE` 只覆盖「同 id 同属主」那份；换属主就变成新增。
@@ -214,7 +342,7 @@ EOF
 
 ---
 
-## 8. 可检索性体检（`retrievability` 自主任务）
+## 11. 可检索性体检（`retrievability` 自主任务）
 
 模块：`pangu/memory/retrievability.py`。两个阶段，**能力边界不同，别混为一谈**。
 
@@ -232,7 +360,7 @@ EOF
 
 ---
 
-## 9. 测试怎么跑
+## 12. 测试怎么跑
 
 ```sh
 cd /root/pangu
@@ -250,10 +378,26 @@ cd /root/pangu
 
 ---
 
-## 10. 维护日志
+## 13. 维护日志
 
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
+
+- **2026-09-26** — 说明书补齐「是什么/运行模式/功能地图」三节；`AGENTS.md` 从 14KB 压成索引。
+  - **为什么**：原 `AGENTS.md` 14350 字节、6 节，而它被 DSH **自动注入每个进入本项目的会话** ——
+    篇幅一大就稀释注意力（用户 2026-09-26 明确提出）。所以定成「`AGENTS.md` 只做索引，
+    细节全进说明书」，并加测试把预算焊死（4KB）。
+  - **加**：`AGENTS.md` 旧内容里属于说明书的部分迁进 §14（行为规则、配置热加载的坑、协议约束、
+    容器约束、dsh-brake 死亡循环预防）与 §15（环境事实表）。测试核对「迁走的内容真的在说明书里」。
+  - **加**：§1 盘古是什么（含**它不是什么**：不是多租户 SaaS、不是向量库、不含界面）、§2 运行模式
+    （API/MCP-HTTP/MCP-stdio/CLI/进程内自主引擎）、§3 功能地图（136 个记忆模块分九大能力域）。
+  - **修**（自己踩的）：为插入这三节把手册整体右移重编号后，`AGENTS.md` 的节索引**没跟着改**，
+    索引把读者指到错误的节。新增 `test_agents_md_section_index_points_at_real_sections` 校验
+    「§号 → 节标题文字」逐行对得上（只认表格行；允许短标题 vs 括号后缀的前缀匹配）。
+    故意把 `§13 维护日志` 改成 `§10 维护日志` 验过确实会红。
+  - **加**：`test_file_index_is_current` 调 `scripts/gen_file_index.py --check`，
+    索引过期即红 —— 加上当天就抓到一次（加完三节索引就过期了）。
+  - **验证**：`pytest tests/test_maintainers_doc.py` → 25 passed。`AGENTS.md` 3167 字节。
 
 - **2026-09-26** — 建这份说明书 + 加交叉核对测试；修 3 个缺陷；加 2 个能力。
   - **修**：`/api/v2/graph` 从网关 `_EXEMPT_PREFIXES` 摘掉。此前它**同时**满足「在豁免名单」
@@ -276,10 +420,90 @@ cd /root/pangu
 
 ---
 
-## 11. 维护规矩
+## 14. 运维与协作细节（从旧 AGENTS.md 迁入）
+
+> 原来这些都在 `AGENTS.md` 里，会被注入**每个**进入本项目的会话，篇幅一大就稀释注意力。
+> 现在 AGENTS.md 只留硬规则 + 索引，细节在这里。
+
+### 12.1 使用盘古的行为规则
+
+1. **会话开始先查记忆**：`pangu_search_memories` / `pangu_fts_search`，关键词 2-3 个，
+   把上次会话的结论与未完成事项检索出来（相当于「翻笔记本」）。
+2. **会话结束前写记忆**：核心成果 / 结论 / 没做完的，一事一条、标主题标签。
+3. **动手前先查**具体任务相关历史，避免重复踩坑。
+4. **写入即记**：过程中出现值得记住的结论、决策、bug 根因，随手 `pangu_add_memory`（`wing=tech`）。
+5. **状态外置**：长任务的中期状态写进盘古，任何新会话能检索恢复上下文。
+6. **修复留痕**：修完 bug 写一条「根因 + 修法 + 验证方式」。
+7. 长期政策：系统/技术/修复类记忆直接写公共区（`wing=default`），方便其他平台 agent 知晓。
+
+### 12.2 配置热加载的坑
+
+只替换 `server.config` 引用**不够**：`llm` / `search` / `wiki` 三个属性在首次访问时就把**旧
+config 对象**存进了实例（如 `LLMEngine(self.config)`）。改 `config.json` 或只换 `server.config`，
+这些已构造对象仍用旧值 —— 表现是「改了 LLM 模型/Key，保存后毫无变化，也不报错」。
+
+修法：`MCPServer.invalidate_config_dependents()` 丢弃 `_llm`/`_search`/`_wiki`/`_persistent_cache`。
+`pangu_config_set` 与 `pangu_config_reload` 都会调它。**新增持有 config 的组件时必须同步加进这个方法。**
+
+密钥从不落 `config.json`（`save()` 排除了密钥字段），只存 `~/.pangu/.llm_api_key`（0600）。
+**判定「配没配密钥」必须看那个文件** —— 只看 `config.json` 会永远得出「没配」。
+
+### 12.3 协议与运行时约束
+
+- MCP 工具必须带 `inputSchema` 且**不得重名**，否则官方 SDK 整表拒收。
+- `pangu_config_reload` **不在**默认暴露面内（调它得 code=1002）；改配置用 `pangu_config_set`
+  （它自己会落盘 + 失效组件缓存）。
+- **`cordis.patch.yml` 的 HMR 在 web 实例不生效**，改完必须重启宿主。
+
+### 12.4 容器 / 受限环境
+
+- `sudo` 可能被 `no_new_privs` 拦截 → 走 **userspace**（`uv` 装 Python、`systemctl --user` 管服务），
+  不要依赖 `apt` / 系统级 `systemctl`。
+- 长时安装/下载要 `setsid nohup ... &` 完全脱离控制终端，否则工具调用中断会连带杀掉子进程。
+- **不要 `pip install -r requirements.txt` 的老清单**：会传递引入约 1.3GB CUDA 轮子，且无 GPU
+  机器上永不执行（代码路径都是惰性导入）。用 `pip install -e ".[multimodal]"`，无 GPU 装 CPU-only。
+
+### 12.5 死亡循环预防（dsh-brake）
+
+DSH 装了 `dsh-brake`，连续 6 个同类工具 step 会警告、10 个拒绝执行。硬规则：
+
+1. 同一方向试 2 次失败就停 —— 换工具不算「新方向」（grep/read/bash 查同一问题本质同方向）。
+2. 第 3 次碰壁必须向用户报告：试了什么、为什么失败、需要什么帮助。
+3. 区分「代码错误」与「运行时问题」：代码逻辑对 ≠ 运行时正常。
+4. 设硬停条件：两个不同路径都失败 → 停下来汇报、等指示。
+
+---
+
+## 15. 环境前提（部署形态相关）
+
+| 项 | 值 | 核实方式 |
+| --- | --- | --- |
+| 仓库路径 | 云端 `/root/pangu`（**非 git**） | `pwd` |
+| Python | 3.13，`.venv/bin/python` | `.venv/bin/python -V` |
+| 服务管理 | `systemctl --user pangu-api` | `systemctl --user status pangu-api` |
+| 监听 | `0.0.0.0:19529`（MCP 与 REST 同端口） | `ss -ltn \| grep 19529` |
+| 版本 | 以 `/health` 的 `data.version` 为准 | `curl -s .../health` |
+
+> 历史上曾有文档记录「421 个工具」与 `~/.pangu/palace/` 等值，来自**另一台主机**，与本机不符。
+> **工具数量、路径、端口这类事实一律以实测为准**，别照搬任何文档（包括本文件）。
+
+### 常用命令
+
+```sh
+curl -s http://127.0.0.1:19529/health
+# 数一下当前暴露了几个工具（别写死这个数字）
+curl -s -X POST http://127.0.0.1:19529/mcp -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+  | python3 -c "import sys,json;print(len(json.load(sys.stdin)['result']['tools']))"
+cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
+```
+
+---
+
+## 16. 维护规矩
 
 1. 改了 `pangu/**` → **同步更新本文件**，并跑 `tests/test_maintainers_doc.py`。
-2. 查清「为什么这样设计」比「它现在坏没坏」重要 —— 上面 §0/§4/§5 那些坑都是这么来的。
+2. 查清「为什么这样设计」比「它现在坏没坏」重要 —— 上面 §0/§7/§8 那些坑都是这么来的。
 3. 改数据前先备份；`merge_kg_duplicates.py` 是范例（dry-run 默认、事务、自动备份、幂等、校验）。
 4. 定位到根因再动手。**注释和文档可能说谎**：今天就遇到
    `graph_data` 的 docstring 声称「已从豁免前缀中移除」，而代码里其实一直还在。

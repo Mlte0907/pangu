@@ -1,224 +1,56 @@
 # 项目指令：盘古工作区（Pangu Workspace）
 
-> 本文件由 DSH agent-instructions 机制在进入本项目会话时自动注入。
-> 项目根：`/home/xiaoxin/pangu`（盘古记忆系统仓库）
+> 本文件由 DSH agent-instructions 机制**自动注入每个进入本项目的会话**，所以刻意保持精简 ——
+> 篇幅一大就稀释注意力。**细节全在 [`MAINTAINERS.md`](./MAINTAINERS.md)，按需查。**
 
-## 🔴 维护盘古前必读（2026-09-26 用户定，硬流程）
+## 🔴 两条硬规则
 
-**动盘古的任何代码/数据之前，先读 `MAINTAINERS.md`。** 不要靠翻源码和试错来了解盘古——
-那份说明书就是为省掉这个而存在的。
+1. **动盘古之前先读 [`MAINTAINERS.md`](./MAINTAINERS.md)**（尤其 §0 四条认知错误、§10 已知坑）。
+   不要靠翻源码和试错来了解盘古。
+2. **维护完成后必须写维护日志**：在说明书的 **§13 维护日志** 追加一条
+   （日期 / 改了什么 / 为什么 / 怎么验证）。收尾跑
+   `pytest tests/test_maintainers_doc.py` 必须绿 —— 它会核对日志日期是否落后于代码修改时间。
 
-**维护完成后，必须回 `MAINTAINERS.md` 的「维护日志」追加一条**，写清：日期、改了什么、
-为什么、怎么验证的。这一条不是形式主义：
+## 环境速查
 
-- `tests/test_maintainers_doc.py` 会核对日志里最新的日期是否**不早于** `pangu/**` 下最新的
-  文件修改时间。改了代码不写日志 → **测试红**。这条在无 git 的云端（scp 部署）也成立。
-- 目的是让下一个维护者一进来就知道「盘古被改成什么样了、为什么这么改」。
-
-顺序：**读说明书 → 改 → 验证 → 写日志 → 跑 `tests/test_maintainers_doc.py`**。
-
-## 环境前提（重要）
-
-本文档中的路径、服务名与工具数量**以本机实际部署为准**，不是通用事实。
-换机器时请先按下表核实，不要直接照搬：
-
-| 项 | 本机实际值 | 核实方式 |
-| --- | --- | --- |
-| 仓库路径 | `/home/xiaoxin/pangu` | `pwd` |
-| Python | 3.12（`uv` 托管于 `.venv/`） | `.venv/bin/python -V` |
-| 服务管理 | `systemctl --user pangu-api` | `systemctl --user status pangu-api` |
-| 监听端口 | `127.0.0.1:19529` | `ss -ltn \| grep 19529` |
-| MCP 工具数 | 以 `tools/list` 实测为准（非固定值） | 见下方"速查" |
-
-> 历史上本文档曾记录 `421 个工具` 与 `~/.pangu/palace/` 等值，
-> 那些来自**另一台主机**的部署，与本机不符，已修正。
-> `tools/list` 的实际返回数量取决于服务端版本与启用的处理器，
-> 任何写死的数字都会随版本漂移——请以实测为准。
-
-## 盘古服务速查
-
-- MCP 端点：`http://127.0.0.1:19529/mcp`（REST 与 MCP 同端口）
-- 服务管理：`systemctl --user {start|stop|restart|status} pangu-api`
-- 健康检查：`curl http://127.0.0.1:19529/health`
-- 配置：`~/.pangu/config.json`（600）；数据：`~/.pangu/`
-- SDK 探针：`scripts/mcp_sdk_probe.mjs <url> <apikey>`
-- 接入文档：`docs/PANGU_DSH_INTEGRATION.md`
-
-实测工具数（供参考，会随版本变化）：
+| 项 | 值 |
+| --- | --- |
+| 仓库 | 云端 `/root/pangu`（**非 git**，靠 `scp` + `systemctl --user restart pangu-api` 部署） |
+| Python | `.venv/bin/python` |
+| 服务 | `systemctl --user pangu-api`，`0.0.0.0:19529`（MCP 与 REST 同端口） |
+| 权威数据 | `/root/.pangu/pangu.db/v2_memories/`（`drawers.json` + `knowledge_graph.db`） |
+| MCP 工具数 | **以 `tools/list` 实测为准**（别信任何文档写的数字，含本文件） |
 
 ```sh
-curl -s -X POST http://127.0.0.1:19529/mcp \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | python3 -c "import sys,json;print(len(json.load(sys.stdin)['result']['tools']))"
+curl -s http://127.0.0.1:19529/health
+cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
 ```
 
-## 行为规则：主动使用盘古（无需用户指示）
+## 说明书索引（`MAINTAINERS.md`）
 
-在本工作区工作时，agent 应当**主动、默认地**使用盘古，不等用户要求：
+| 你要知道的 | 看哪节 |
+| --- | --- |
+| 容易误判的地方（`llm_model` 为空、复合主键、归属为空、graph 曾匿名可读） | §0 四条最容易踩的认知错误 |
+| **盘古是什么、不是什么**（单用户不是多租户 SaaS） | §1 盘古是什么 |
+| 怎么跑起来（API / MCP / CLI / 自主引擎） | §2 运行模式 |
+| 有哪些功能（136 个记忆模块分九大能力域） | §3 功能地图 |
+| 东西在哪、SSH 与身份边界 | §4 东西在哪 |
+| 怎么连、怎么发请求 | §5 怎么连、怎么发请求 |
+| 工具暴露面、错误码 1001 vs 1002 | §6 工具暴露面 |
+| 记忆模型：单用户无隔离、`public` 是毕业区、内容是密文 | §7 记忆模型 |
+| LLM 动态模型发现与轮换 | §8 LLM：动态模型 + 轮换 |
+| 15 个自主任务 | §9 自主任务 |
+| 已知坑 | §10 已知的坑 |
+| 可检索性体检的**能力边界** | §11 可检索性体检 |
+| 测试怎么跑 | §12 测试怎么跑 |
+| **维护日志**（硬性要求，改完必写） | §13 维护日志 |
+| 行为规则、配置热加载、容器约束、死亡循环预防 | §14 运维与协作细节 |
+| 部署形态相关的事实（端口/路径/服务名） | §15 环境前提 |
+| 维护规矩 | §16 维护规矩 |
+| 每个文件干什么（346 个） | [`docs/FILE_INDEX.md`](./docs/FILE_INDEX.md)（自动生成） |
 
-1. **会话开始查记忆**：每次新会话启动时，必须先用 `pangu_search_memories`
-   或 `pangu_fts_search` 查相关历史（关键词 2-3 个即可），把上次会话的结论、
-   未完成事项、待确认事项检索出来，避免重复劳动或遗忘上下文。
-   如果是同一个用户的连续会话，这一步尤其重要——它相当于"翻笔记本"。
-2. **会话结束前写记忆**：会话即将结束或用户暂停时，把本次会话的核心成果
-   （做了什么、结论是什么、还有什么没做完）写入盘古。写法要精炼、一件事一条，
-   标上主题标签，方便下次检索。这是跨会话连续性的唯一保障。
-3. **动手先查**：开始一个具体任务前，先查相关历史，避免重复踩坑。
-4. **写入即记**：会话中产生值得记住的结论、决策、bug 根因、环境事实时，
-   随手调用 `mcp__pangu__pangu_add_memory`（wing=tech 或 default，打上主题标签）。
-   短小、一事一条；不要等会话结束。
-5. **状态外置**：长任务的中期状态（做到哪、剩什么、关键发现）写入盘古，
-   让任何新会话能通过检索恢复上下文——这是超长会话报废后的标准复活通道。
-6. **修复留痕**：修完 bug 后写一条「根因+修法+验证方式」的记忆。
+## 两条最贵的教训
 
-> 若 `mcp__pangu__*` 工具未出现在当前会话的工具列表中，说明 DSH 尚未重启加载
-> 插件，或服务端未运行。先确认 `curl http://127.0.0.1:19529/health` 返回正常。
-
-## 已知教训（勿重复）
-
-**部署相关**
-
-- **不要直接 `pip install -r requirements.txt` 的老版本清单**：核心清单已剥离
-  `torch` / `sentence-transformers` / `chromadb` / `openai-whisper`。这些包会传递
-  引入约 1.3GB CUDA 轮子，且在无 GPU 机器上永不执行（代码路径全是惰性导入）。
-  实测：核心清单 56 包 / 236MB / 约 20 秒；含 torch 的完整集下载 987MB+ 仍难落盘。
-  需要时用 `pip install -e ".[multimodal]"`，无 GPU 请先装 CPU-only 轮子。
-- **`dsh-pangu` 插件已独立成仓**（`Mlte0907/dsh-pangu`；2026-09-22 由本仓
-  `plugins/dsh-pangu` 用 `git subtree split` 切出，历史保留）。它的 `node_modules`
-  被 `.gitignore` 忽略，克隆后不存在；而 `lib/typert.host.js` 会被宿主
-  typert-loader 自动 import，缺 `zod` 会导致 DSH 启动失败（`ERR_MODULE_NOT_FOUND`）。
-  安装：`curl -fsSL https://raw.githubusercontent.com/Mlte0907/dsh-pangu/main/install.sh | bash`
-  （本仓仍可用 `./install.sh --dsh-plugin` 拉取到 `~/.dsh-pangu` 再安装）。
-- **`tools.allow` 白名单不生效（仅指客户端侧）**：`@deepseek-ai/dsh-mcp-client`
-  的 Config schema 不接受 `tools` 键，该键被静默忽略且无告警。
-  **工具范围的真正控制点在服务端**：盘古有三级暴露机制
-  （`core` / `optional` / `experimental`，见 `pangu/server/exposure.py`），
-  **缺省收敛为 28 个核心工具**（`pangu/core/config.py:39`），其余不会出现在
-  `tools/list`；用 `call_tool` 调未暴露工具会被拒（code=1002）。
-  放开需改 `~/.pangu/config.json` 的 `exposure` 段：
-
-  ```json
-  { "exposure": {
-      "enabled_optional_modules": ["multimodal", "timeline"],
-      "enabled_core_modules":     ["search", "palace"],   // 展开 core 层非白名单工具
-      "enabled_experiments":      ["causal", "cognitive"] // 实验组，或 "advanced"
-  } }
-  ```
-
-  - `enabled_core_modules`：core 层默认启用，但此前**只有 28 个白名单工具**
-    能暴露，其余约 76 个（`pangu_fts_search` / `pangu_holographic_encode` /
-    `pangu_wm_push` …）**没有任何配置途径**可展开。列出模块名即可展开该模块
-    的全部工具。默认为空集，保持"开箱 28 个"不变。
-  - 实验组除按**前缀**匹配（`pangu_causal_*`）外，也按**模块名**匹配——
-    因为 `advanced` 是 experimental 层的容器模块，其工具名不带实验前缀，
-    只做前缀匹配会让它们永远不可达。
-  - 实测：默认 28 → 全开 optional+experiments 192 → 加 core 288 →
-    再加 `advanced` **408**，且零"已暴露但无 handler"的工具。
-
-  **错误码语义（1001 vs 1002）**：
-
-  | code | 含义 | 怎么办 |
-  | --- | --- | --- |
-  | 1001 | 工具**不存在**于任何模块登记 | 改配置永远修不好，检查工具名或先注册 |
-  | 1002 | 工具**存在**，但所在模块/实验组未启用 | 在 `exposure` 段开启对应模块 |
-  | 5000 | handler 执行时抛异常 | 看 error 字段的异常信息 |
-
-  早期版本两者共用 1002 且文案都是"未知工具"，调用方按提示去开模块
-  却怎么也修不好。另：**未登记在模块中的工具（第三方扩展通过 `HANDLERS`
-  注册点加入）一律放行**——暴露面只约束它自己登记过的工具，否则扩展点
-  会被永久锁死。
-
-  ⚠ 这两个"白名单"极易混淆，写文档时务必区分：客户端那个无效，服务端那个有效。
-  **另注**：`pangu_config_reload` 也不在默认暴露面内，调它得 code=1002；
-  改配置请用 `pangu_config_set`（它自己会落盘 + 失效组件缓存）。
-
-**配置热加载的坑（T6-F2）**
-
-- **只替换 `server.config` 引用是不够的**：`llm` / `search` / `wiki` 三个属性在
-  首次访问时就把**旧 config 对象**存进了实例（如 `LLMEngine(self.config)`）。
-  直接改 `config.json` 或只替换 `server.config`，这些已构造对象仍用旧值——
-  表现为「改了 LLM 模型/Key，保存后毫无变化，也不报错」。
-  修法：`MCPServer.invalidate_config_dependents()` 丢弃 `_llm`/`_search`/`_wiki`/
-  `_persistent_cache`，让它们按新 config 惰性重建。`config_set` 与
-  `config_reload` 都会调用它。**新增持有 config 的组件时，务必同步加进这个方法。**
-- **密钥不落 `config.json`**：`PanguConfig.save()` 用 `exclude` 排除了
-  `llm_api_key` / `api_key` 等字段（安全设计）。所以密钥**必须**另存独立文件
-  （`~/.pangu/.llm_api_key`，0600），否则通过设置页写入的 Key 只活在内存里，
-  **服务一重启就丢**。加载顺序：环境变量 > 密钥文件 > 空。
-- **密钥从不回显**：`pangu_config_set` 对密钥类字段回显 `****`；
-  插件的 `configService.get` 把密钥脱敏成 `*_set` / `*_hint`（尾 4 位）。
-  前端拿不到明文，因此「留空」语义是**保持原值**，清空必须显式传 `null`。
-- **判定「Key 已配置」必须看密钥文件，不能只看 config.json**：
-  `config.json` 因 `save()` 的 `exclude` 永远不含密钥，所以只读它会永远
-  得出「未配置」——用户保存成功后刷新设置页仍显示未配置，看起来像没生效。
-  `configService.get()` 需在 `config.json` 无密钥时补读
-  `~/.pangu/.llm_api_key`（仅用于判定状态与生成尾 4 位提示，明文不出函数）。
-- **`pangu_config_get` 的全量接口主动排除密钥字段**（`handlers/system.py` 的
-  `model_dump(exclude=...)`），所以 `config_get({})` 里**没有** `llm_api_key`。
-  要单查某字段请传 `key` 参数：`pangu_config_get({key:"llm_api_key"})`。
-  排查「配置没生效」时若用全量接口取值，会误判成密钥丢失。
-
-**测试脚手架的坑（写渲染测试前必读）**
-
-- **`react-dom` 必须在 `global.window` 就绪之后再 `require`**：它在加载时会捕获
-  当时的全局环境，过早加载会绑定到错误的 document。表现为**事件派发后组件状态
-  不更新**（输入框 DOM 值已变，但 React 的 state 没变，保存按钮恒 `disabled`），
-  且不报任何错——极易误判成业务代码有 bug。同理 `act` 要与 `react-dom` 同源。
-- **`node:test` 同进程内多次初始化 jsdom + React 会串**：事件绑定可能落到前一个
-  document 上。跨多个挂载场景的测试建议拆成独立进程脚本（见
-  `dsh-pangu/test/settings/save-semantics.mjs`，现随插件移入独立仓）。
-- 本机 `npm install` 不可用（`Class extends value undefined`），测试依赖靠软链到
-  宿主的 `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>`；DSH 自带 jsdom 29
-  与 react 18，可直接复用。
-
-**协议与运行时**
-
-- MCP 服务端工具必须带 `inputSchema` 且不得重名，否则官方 SDK 整表拒收
-- `cordis.patch.yml` 的 HMR 在 web 实例不生效，改后需重启 deepseek-harness
-- 单会话超过模型上下文窗口（stealth 262144）会被 provider 秒拒且无法自愈——
-  长会话要靠「状态外置到盘古」+ 新会话续接，不要无限单轮硬撑
-- **cordis 预设互斥**：tool-cordis 的 Host inspect 提供器是进程级单例，
-  同一时刻只能有一个活跃的 cordis 会话；第二个挂载报
-  `inspect provider "Service" is already registered`。standard 预设无此限制
-
-**死亡循环预防（dsh-brake 插件 + 行为规则）**
-
-DSH 已安装 `dsh-brake` 插件，自动检测"方法循环"（同类工具高频调用 + 无用户消息打断）。
-插件会在连续 6 个 step 警告、10 个 step 拒绝执行。行为规则（硬限制）：
-
-1. **同一方向尝试 2 次失败必须停下来**：如果一个方法（如 curl 查端点）失败了，
-   换工具再试不算"新方向"——grep/read/bash 查同一个问题本质是同一方向。
-2. **第 3 次碰壁必须向用户报告**：说明已尝试了什么、为什么失败、需要什么帮助。
-3. **区分"代码错误"和"运行时问题"**：代码逻辑对 ≠ 运行时正常。
-   如果需要浏览器/终端/用户操作才能验证，直接告诉用户，不要从服务端"猜"。
-4. **设硬停条件**：同一问题尝试 2 次不同路径都失败 → 停下来 → 汇报 → 等指示。
-   不要觉得"再试一次就好了"。
-
-**容器/受限环境**
-
-- `sudo` 可能被 `no_new_privs` 拦截（容器常见），此时所有配置必须走
-  **userspace**：用 `uv` 装 Python、用 `systemctl --user` 管服务，
-  不要依赖系统级 `apt` / `systemctl`（非 `--user`）。
-- 长时安装/下载务必用 `setsid nohup <cmd> > log 2>&1 < /dev/null &` 完全脱离
-  控制终端，否则工具调用中断会连带杀死子进程，导致"缓存涨了但包没装上"。
-
-## 重启 dsh-web（插件改动生效的唯一规范方式）
-
-盘古的 dsh 插件跑在系统级服务 `dsh-web.service`（端口 3080）里。插件源码现位于
-**独立仓的检出目录**（本机 `~/dsh-pangu`，由 `dsh plugin add` link 进 profile）。
-改了宿主代码（`lib/index.js`、`lib/typert.host.js`）后，
-必须重启该服务才生效；`lib/client.js` 是浏览器按需拉取的，刷新页面即可。
-
-```sh
-dsh-restart        # = ~/.local/bin/dsh-restart，唯一推荐入口
-```
-
-**绝不要**自己 `node --import tsx/esm apps/cli/src/bin.ts web &` 手工拉起：
-那会产生占着 3080 的孤儿进程，导致 systemd 每次启动都 `EADDRINUSE` 崩溃循环，
-而界面显示的还是旧进程的代码（2026-09-17 插件设置页"不显示"就是这个原因）。
-
-`dsh-restart` 会先清掉占端口的孤儿，再执行
-`sudo -n /usr/bin/systemctl restart dsh-web.service`
-（sudoers 只放行全路径 + 全单元名这种写法；写成 `sudo systemctl restart dsh-web`
-会要密码而失败），最后等到新主进程持有端口才算成功。
+- **注释和 docstring 会说谎。** 2026-09-26 遇到 `graph_data` 的 docstring 声称「已从豁免前缀中移除」，
+  而代码里一直还在 —— 那个洞让匿名请求能拉走全库图谱。只有代码不会说谎。
+- **别在没读说明书的情况下重复试错。** 本仓库的坑大多已被前人踩过并写下来了。
