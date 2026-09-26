@@ -119,6 +119,19 @@ SCHEDULE_RULES = {
     "crystallize": {
         "interval_hours": 12,
     },
+    # 可检索性体检（2026-09-26）：对每条重要记忆，用**它自己的内容**造探针查询回搜，
+    # 搜不回来的即「难以用自身特征词检索」。产出写 retrievability_report.json，并经
+    # /api/v2/autonomous/status 的 retrievability 字段暴露。
+    #
+    # ⚠ 别高估它：立项动机是「云端盘古怎么连这条信息埋在 dsh-remote-x 上线记录中间，
+    # 按内容搜搜不到」，但**实测它检测不到那个案例** —— 它问的是「用自己的词能否搜到
+    # 自己」，而那条记忆用自己的词（frps.toml 等）确实搜得到自己。详见
+    # memory/retrievability.py 的模块 docstring。它真正命中的是叙述型记忆（发布记录、
+    # 踩坑流水账），误报率不低。保留它的理由：能持续给出「哪些记忆用自身特征词搜不到」
+    # 的清单，作为 agent 后续判断的输入，而不是最终结论。
+    "retrievability": {
+        "interval_hours": 24,
+    },
 }
 
 
@@ -853,6 +866,36 @@ class AutonomousMemoryEngine:
         except Exception as e:
             return TaskResult(name="collect", status="failed", details={"error": str(e)})
 
+    def _task_retrievability(self, drawers: list[Drawer]) -> TaskResult:
+        """可检索性体检：搜不到自己内容的重要记忆 = 埋住了的关键事实。
+
+        做法与取参见 memory/retrievability.py。产出落 retrievability_report.json，
+        并由 get_status() 暴露，这样 /api/v2/autonomous/status 能直接看到体检结果，
+        不必再手工翻库。
+        """
+        start = time.time()
+        try:
+            from .retrievability import audit_retrievability, save_report
+
+            report = audit_retrievability(self.config)
+            report["ran_at"] = datetime.now().isoformat()
+            save_report(self.config, report)
+            return TaskResult(
+                name="retrievability",
+                status="success",
+                duration_ms=(time.time() - start) * 1000,
+                details={
+                    "checked": report.get("checked", 0),
+                    "recall_ok": report.get("recall_ok", 0),
+                    "buried_count": report.get("buried_count", 0),
+                    # 只带 top 3 的标题进日志：全量报告可能几十条，日志会被刷爆
+                    "buried_top": [b.get("head", "")[:40] for b in report.get("buried", [])[:3]],
+                    "report_file": f"{self.config.palace_path}/retrievability_report.json",
+                },
+            )
+        except Exception as e:
+            return TaskResult(name="retrievability", status="failed", details={"error": str(e)})
+
     def _task_anomaly_detection(self, drawers: list[Drawer]) -> TaskResult:
         """异常检测：频率/内容/标签集中度/创建间隔四通道。
 
@@ -1014,6 +1057,11 @@ class AutonomousMemoryEngine:
         # 后会永远错过窗口（同 consolidation 的教训）
         tasks.append(("crystallize", self._task_crystallize, False))
 
+        # 可检索性体检（2026-09-26）：走 _should_run 的 24h 门即可 —— 它不像巩固那样
+        # 有时间窗口要求，漏一轮只是晚一天发现问题，不会永久错过。
+        if force or self._should_run("retrievability"):
+            tasks.append(("retrievability", self._task_retrievability, False))
+
         trigger = f"new={new_count},old={old_count},force={force}"
         success = 0
         skipped = 0
@@ -1079,12 +1127,33 @@ class AutonomousMemoryEngine:
             )
 
         drawers = self._load_drawers()
-        return {
+        status = {
             "total_memories": len(drawers),
             "total_runs": self._state.get("total_runs", 0),
             "total_tasks": self._state.get("total_tasks", 0),
             "tasks": pending,
         }
+        # 可检索性体检结果（2026-09-26）：挂进来是为了让「哪些关键事实搜不到」有一个
+        # 正常出口 —— 此前 TaskResult.details 不落盘，所有任务跑完就没痕迹了。
+        # 只带摘要与 top 若干条，不把整份报告塞进接口响应。
+        try:
+            from .retrievability import load_report
+
+            rep = load_report(self.config)
+            if rep:
+                status["retrievability"] = {
+                    "ran_at": rep.get("ran_at"),
+                    "checked": rep.get("checked", 0),
+                    "recall_ok": rep.get("recall_ok", 0),
+                    "buried_count": rep.get("buried_count", 0),
+                    "buried_top": [
+                        {"id": b.get("id"), "head": b.get("head", "")[:60], "probe": b.get("probe_query")}
+                        for b in rep.get("buried", [])[:5]
+                    ],
+                }
+        except Exception:  # noqa: BLE001 — 报告读不出来不该拖垮整个 status 接口
+            pass
+        return status
 
 
 # 全局单例
