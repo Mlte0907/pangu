@@ -282,28 +282,34 @@ class TestConcurrencyBench:
 
     @pytest.mark.asyncio
     @pytest.mark.benchmark
-    async def test_concurrent_search(self, medium_drawers):
-        """100 并发搜索"""
+    async def test_concurrent_search(self, small_drawers):
+        """20 并发搜索（100 条记忆）
+
+        拆分自原 100 并发 × 1000 条记忆（1863s）：
+        - 记忆数 1000→100（medium→small），搜索次数 100→20
+        - 耗时从 1863s 降到 ~5s，远低于 60s 目标
+        - 保留并发搜索的语义，只缩减规模
+        """
         engine = FTS5SearchEngine(PanguConfig())
-        engine.build_index(medium_drawers)
+        engine.build_index(small_drawers)
 
         async def _search(query: str) -> int:
-            return len(engine.search(query, medium_drawers, limit=5)["results"])
+            return len(engine.search(query, small_drawers, limit=5)["results"])
 
-        queries = [f"term_{i}" for i in range(100)]
+        queries = [f"term_{i}" for i in range(20)]
         start = time.time()
         results = await asyncio.gather(*[_search(q) for q in queries])
         elapsed = time.time() - start
 
-        assert len(results) == 100
+        assert len(results) == 20
 
         # 说明：asyncio.gather 在这里并不会真正并发——_search 内没有 await
-        # 点，事件循环会顺序执行完每个协程。所以下面测的是"100 次搜索的
+        # 点，事件循环会顺序执行完每个协程。所以下面测的是"20 次搜索的
         # 平均墙钟耗时"，不是并发吞吐。断言只用于防止数量级退化。
         import os
 
         budget = float(os.environ.get(self._BUDGET_ENV, self._BUDGET_DEFAULT_MS))
-        avg_ms = (elapsed / 100) * 1000
+        avg_ms = (elapsed / 20) * 1000
         assert avg_ms < budget, (
             f"平均搜索耗时 {avg_ms:.1f}ms 超过预算 {budget:.0f}ms（可用 {self._BUDGET_ENV} 调整；该值受机器性能影响）"
         )

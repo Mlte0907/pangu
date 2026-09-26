@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **351** 个 py 文件 / **107,279** 行。
+共 **351** 个 py 文件 / **107,285** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,346 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 104 文件 / 32,096 行
+## `tests/` — 104 文件 / 32,102 行
 
 测试
 
@@ -172,7 +172,7 @@
 | `test_abac.py` | 391 | 盘古 ABAC 多租户测试 |
 | `test_auth.py` | 387 | 盘古 — 双鉴权 (API Key + JWT) 单元测试 |
 | `test_auto_collect_handler.py` | 121 | pangu_auto_collect handler 回归测试 |
-| `test_bench.py` | 406 | 盘古性能基准测试 — 搜索/检索/索引速度、并发压测、内存分析 |
+| `test_bench.py` | 412 | 盘古性能基准测试 — 搜索/检索/索引速度、并发压测、内存分析 |
 | `test_benchmark_v2.py` | 85 | 盘古 v2.0 综合性能基准测试 |
 | `test_benchmark_v3.py` | 207 | 盘古性能基准测试 — 延迟/吞吐量/并发/内存 |
 | `test_boundary_cases.py` | 983 | 盘古记忆系统边界与极端情况测试 |
