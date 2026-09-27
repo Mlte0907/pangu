@@ -513,6 +513,75 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — 冲突 supersede 改造：字词法止血 + LLM 后台复核（方案 A）。
+  - **事故与根因**：用户写完新记忆后发现一条**毫无关系**的旧记忆被自动标
+    `superseded`、移出常规搜索（无人告知）。上云实测复现，根因在
+    `memory/conflict.py` 关键词路：
+    1. **不看语义相似度** —— `_keyword_conflict_detect` 调 `_contradiction_score`
+       时不传 `semantic_sim`（默认 0.0）。实测事故对 sim=**0.4724 < 0.5**，
+       向量路被自己的阈值挡下，关键词路却照判；
+    2. **裸子串匹配** `any(w in text)` —— 「于是」命中正词「是」、「455 passed」
+       命中「pass」、「有意」命中「有」，与另一篇的「不是 git」「没有 llmDaily」
+       「error」凑成三处假阳性 → confidence=0.8 ≥ min_confidence(0.3) → 判冲突；
+    3. 而 `tests/test_core.py` 的断言是 `assert len(conflicts) >= 0`（**恒真**），
+       所以这条路径一直是绿灯裸奔。
+  - **放大效应（真正的严重性）**：`_detect_conflicts` 原本**同步**执行 supersede，
+    且取 `conflicts[:CONFLICT_MAX_REPORT]`=前 3 条。上云用「新 + 最近 20 条」
+    实测跑出 **52 个候选（conf 全部 1.0/CRITICAL）** —— 即**几乎每写一条记忆就
+    静默下架 3 条旧记忆**，不是偶发。
+  - **改 1 止血（`memory/conflict.py`）**：
+    - `detect_conflicts` 改为**全量算一次 embedding、两路共用**，关键词路同样受
+      `min_similarity` 约束（语义不像的两条不可能是「同一事实的矛盾」）；
+    - 新增 `_polarity()` 做**最长匹配**：同位置长词先占位，「不是」覆盖其内的
+      「是」、「没有」覆盖「有」，`_contradiction_score` 改用它替代裸子串；
+    - `_check_vector_conflict_pair` 签名改为收 `(emb_a, emb_b)` 二元组。
+  - **改 2 方案 A（`memory/ingestion.py`）**：
+    - `_detect_conflicts` 不再同步下架 —— 候选只写进新 drawer 的
+      `metadata.conflict_candidates`，然后提交**后台线程**跑 LLM 复核，写入路径
+      一行不等（实测该端点 **avg 41.2s、区间 2~120s**，同步等会把每条写入卡半分钟）；
+    - 新增 `_llm_confirm_conflict()`：判「是否同一事实的矛盾」，**任何异常一律返回
+      False（fail-open）** —— 误下架的代价是记忆静默消失，远高于多留一条重复；
+    - 抽出 `_apply_supersede()` 执行确认后的下架（写 superseded_by / superseded_at /
+      memory_status、落盘、versioning），并**每次下架打 logger.warning 带 LLM 理由**，
+      这是本次事故「查不动」的直接补救；
+    - 两个开关：`LLM_REVIEW_ENABLED=False` ⇒ 只登记不下架（一键回退到更保守）；
+      `LLM_REVIEW_INLINE=True` ⇒ 同步跑、不起线程（**仅测试用**）。
+    - ⚠ prompt 用 `str.replace` 而非 `str.format()`：模板含 JSON 示例
+      `{"conflicts": ...}`，`format()` 会把它当占位符抛
+      `KeyError: '"conflicts"'`（本轮实测踩过，已有用例锁死）。
+    - ⚠ **送 LLM 前必须解密**（新增 `_plain_for_review`）：写入管道里的 content
+      是 Fernet 密文，不解密 LLM 收到 `gAAAAAB…` 直接回「无法解析具体事实内容」
+      ⇒ **恒判 no ⇒ 永远不下架，功能名存实亡**（fail-open 虽安全，但谈不上把关）。
+      这条是端到端实测抓出来的，日志原文「两条记忆为加密字符串，无法解析」。
+  - **LLM 准确率实测（用户要求 ≥90%）**：**40 对样本 40 对全中 = 100%**，
+    95% Clopper-Pearson 置信下界 **91.2% ≥ 90%**。构成：20 对**难假冲突**
+    （改前改后 200000→1048576、不同口径计数 16/324 与 246/325、不同套件通过数
+    117/1968、不同环境 3.11/3.13、不同字段 snake/camel、不同统计维度）全判 no；
+    16 对真冲突（同端点鉴权头、同参数默认值、同文件位置、同条数）全判 yes；
+    4 对真实记忆对（含事故对）全判 no。**局限**：仅 4 对取自真实库，
+    36 对为构造样本（答案无争议但不完全代表真实语料分布）。
+  - **回滚兜底（用户硬要求）**：改库前双份备份 —— `pangu_backup` 出
+    `backup_20260927_205259_01cec16c`（checksum 01cec16cc6745d7d）+ 文件级
+    `/root/pangu-backup-20260927-205259`（24M，含 drawers 325 / archive 16 /
+    **改前的 conflict.py 与 ingestion.py**）。代码侧 `git checkout` 即可回退。
+  - **验证**：新增 `tests/test_conflict_fp_guard.py`（15 例：相似度闸门、真冲突
+    仍判得出、最长匹配）+ `tests/test_supersede_llm_review.py`（11 例：写入零延迟、
+    确认才下架、fail-open、开关可关、prompt 不用 format）。两者实现前红、
+    实现后绿；`tests/test_p0_1_supersede.py` 加 autouse fixture 强制
+    「同步 + 立即确认」（否则该文件会**真打 LLM** 且同步断言扑空，第一版实测
+    8 个用例失败，fixture 后 17 全绿）；`-k` 受影响面 **141 passed**；
+    全量 `pytest tests/` **1995 passed, 19 skipped**。
+  - **端到端实测（部署后真实写入）**：写入耗时 **0.47s**（不是 41s，写入与复核
+    确已解耦）；日志链路完整：
+    `检测到 3 个冲突候选，已提交后台 LLM 复核（写入不等待）` → 0.25ms 后
+    `Remembered: 1023a8e5` → 数十秒后 `冲突候选未通过 LLM 复核，不下架:
+    b7a19021 vs e0102bcd —— 两条记忆主题不同，各说各事，无同一对象或属性冲突` →
+    `冲突复核结束：9 个候选全部未确认，0 条下架`。
+    **对比：旧代码同样场景是 52 个候选取前 3 ⇒ 每次写入静默下架 3 条；现在 9~10 个
+    候选 0 条下架**，且每条未确认都有可读理由留痕。
+  - **生效方式**：改的是**云端服务端**，需 scp `conflict.py` + `ingestion.py` +
+    两个测试文件 + `restart pangu-api`（部署验证见提交信息）。
+
 - **2026-09-27** — 补齐加密 fail-open 的**读侧** + 启动自检采样面扩到归档表。
   - **根因①（读侧静默吐密文）**：`memory/encryption.py` 的 `decrypt()` 在
     `_get_fernet()` 返回 None（cryptography 缺失 / 密钥非法）时直接

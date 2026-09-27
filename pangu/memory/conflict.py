@@ -123,21 +123,39 @@ class ConflictDetector:
 
         Returns:
             冲突列表
+
+        ⚠ 2026-09-27：**两路检测共用同一把相似度尺子**。此前关键词路
+        （``_keyword_conflict_detect``）调 ``_contradiction_score`` 时不传
+        ``semantic_sim``，等于**完全不看语义**——实测一对相似度仅 0.4724 的记忆
+        被向量路挡下、却从关键词路判成冲突并触发静默 supersede。语义不像的两条
+        不可能是「同一事实的矛盾」，这条闸门必须对两路同时生效。
         """
         if len(drawers) < 2:
             return []
 
-        conflicts = []
-
-        # 尝试向量方法
+        # 全量算一次 embedding，两路共用（比各算各的省，且保证尺子一致）
+        embeddings: list | None = None
         if self.embedder:
             try:
-                conflicts = self._vector_conflict_detect(drawers, min_similarity, min_confidence)
+                embeddings = self.embedder.embed_batch([d.content for d in drawers])
+            except Exception:
+                embeddings = None
+
+        conflicts = []
+
+        # 向量方法
+        if embeddings is not None:
+            try:
+                conflicts = self._vector_conflict_detect(
+                    drawers, min_similarity, min_confidence, embeddings=embeddings
+                )
             except Exception:
                 conflicts = []
 
-        # 关键词方法（补充检测）
-        keyword_conflicts = self._keyword_conflict_detect(drawers, min_confidence)
+        # 关键词方法（补充检测）—— 同样受 min_similarity 约束
+        keyword_conflicts = self._keyword_conflict_detect(
+            drawers, min_confidence, embeddings=embeddings, min_similarity=min_similarity
+        )
         existing_pairs = {(c.memory_a, c.memory_b) for c in conflicts}
         existing_pairs.update((c.memory_b, c.memory_a) for c in conflicts)
         for c in keyword_conflicts:
@@ -148,7 +166,11 @@ class ConflictDetector:
         return conflicts
 
     def _vector_conflict_detect(
-        self, drawers: list[Drawer], min_similarity: float, min_confidence: float
+        self,
+        drawers: list[Drawer],
+        min_similarity: float,
+        min_confidence: float,
+        embeddings: list | None = None,
     ) -> list[MemoryConflict]:
         """基于向量的冲突检测"""
         has_fact = [self._contains_fact_keywords(d.content) for d in drawers]
@@ -158,14 +180,25 @@ class ConflictDetector:
         if len(candidates) < 2:
             return []
 
-        texts = [d.content for _, d in candidates]
-        embeddings = self.embedder.embed_batch(texts)
+        if embeddings is None:
+            texts = [d.content for _, d in candidates]
+            embeddings = self.embedder.embed_batch(texts)
+            # 走这条分支时 embeddings 与 candidates 一一对应，用候选索引
+            index_map = {ci: k for k, (ci, _) in enumerate(candidates)}
+        else:
+            # 传入的是全量 embeddings，用 drawer 在 drawers 中的原索引
+            index_map = None
 
         conflicts = []
         for a in range(len(candidates)):
             for b in range(a + 1, len(candidates)):
+                ia, ib = candidates[a][0], candidates[b][0]
+                if index_map is None:
+                    ea, eb = embeddings[ia], embeddings[ib]
+                else:
+                    ea, eb = embeddings[index_map[ia]], embeddings[index_map[ib]]
                 conflict = self._check_vector_conflict_pair(
-                    candidates, a, b, embeddings, min_similarity, min_confidence
+                    candidates, a, b, (ea, eb), min_similarity, min_confidence
                 )
                 if conflict:
                     conflicts.append(conflict)
@@ -173,9 +206,16 @@ class ConflictDetector:
         return conflicts
 
     def _check_vector_conflict_pair(
-        self, candidates: list, a: int, b: int, embeddings: list, min_similarity: float, min_confidence: float
+        self,
+        candidates: list,
+        a: int,
+        b: int,
+        embeddings: tuple,
+        min_similarity: float,
+        min_confidence: float,
     ) -> MemoryConflict | None:
-        sim = self._cosine_sim(embeddings[a], embeddings[b])
+        """判定一对候选是否冲突。``embeddings`` 是 (emb_a, emb_b) 二元组。"""
+        sim = self._cosine_sim(embeddings[0], embeddings[1])
         if sim < min_similarity:
             return None
         conf = self._contradiction_score(candidates[a][1].content, candidates[b][1].content, sim)
@@ -192,9 +232,22 @@ class ConflictDetector:
             )
         return None
 
-    def _keyword_conflict_detect(self, drawers: list[Drawer], min_confidence: float) -> list[MemoryConflict]:
-        """基于关键词的冲突检测"""
+    def _keyword_conflict_detect(
+        self,
+        drawers: list[Drawer],
+        min_confidence: float,
+        embeddings: list | None = None,
+        min_similarity: float | None = None,
+    ) -> list[MemoryConflict]:
+        """基于关键词的冲突检测。
+
+        2026-09-27 起也校验语义相似度：关键词法原本**只看反义词是否同现**，
+        于是一篇长文里的「于是/不是」「有/没有」「pass/error」这类**子串巧合**
+        就能把毫无关系的两条记忆判成冲突。相似度不够 ⇒ 直接跳过该对。
+        未提供 embeddings（无 embedder 或算失败）时保持旧口径，不做误杀。
+        """
         conflicts = []
+        texts = [d.content for d in drawers]
 
         for i in range(len(drawers)):
             for j in range(i + 1, len(drawers)):
@@ -205,7 +258,17 @@ class ConflictDetector:
                 if not self._share_topic(a.content, b.content):
                     continue
 
-                conf = self._contradiction_score(a.content, b.content)
+                sim = 0.0
+                if embeddings is not None and min_similarity is not None:
+                    try:
+                        sim = self._cosine_sim(embeddings[i], embeddings[j])
+                    except Exception:
+                        sim = 0.0
+                    if sim < min_similarity:
+                        # 语义不像 ⇒ 不是「同一事实的矛盾」，只是各说各事
+                        continue
+
+                conf = self._contradiction_score(a.content, b.content, sim)
                 if conf["confidence"] >= min_confidence:
                     conflicts.append(
                         MemoryConflict(
@@ -222,30 +285,67 @@ class ConflictDetector:
 
         return conflicts
 
+    def _polarity(self, text: str) -> tuple[bool, bool]:
+        """文本在矛盾词表上的极性 `(含正词, 含负词)`。
+
+        **同位置长词优先（最长匹配）** —— 裸子串匹配是 2026-09-27 三处假阳性的
+        来源之一：
+
+            「于是 gAAAAAB… 直出」含子串「是」  → 被当成正词「是」
+            「当前目录不是 git」含子串「是」    → 也含正词「是」（而「不是」是负词）
+            「455 passed」含子串「pass」        → 被当成正词
+
+        长词先占位后，「不是」会覆盖其内部的「是」、「没有」覆盖「有」，于是
+        「不是 git」只记负、不记正。这**不能**单独解决全部误报（长文常常两边
+        同时有正负词），但能让极性如实反映文本，是相似度闸门之外的第二道网。
+        """
+        t = (text or "").lower()
+        entries: list[tuple[str, bool]] = []
+        for positive_words, negative_words in self.CONTRADICTION_PATTERNS:
+            entries.extend((w, True) for w in positive_words)
+            entries.extend((w, False) for w in negative_words)
+        entries.sort(key=lambda e: -len(e[0]))  # 长的先占位
+
+        occupied: list[tuple[int, int]] = []
+        has_pos = has_neg = False
+        for word, is_positive in entries:
+            if not word:
+                continue
+            start = 0
+            while True:
+                i = t.find(word, start)
+                if i < 0:
+                    break
+                j = i + len(word)
+                start = j
+                if any(i >= a and j <= b for a, b in occupied):
+                    continue  # 已被同位置更长的词覆盖
+                occupied.append((i, j))
+                if is_positive:
+                    has_pos = True
+                else:
+                    has_neg = True
+        return has_pos, has_neg
+
     def _contradiction_score(self, text_a: str, text_b: str, semantic_sim: float = 0.0) -> dict:
         """计算两个文本的矛盾程度"""
-        text_a_lower = text_a.lower()
-        text_b_lower = text_b.lower()
+        # 极性判定改走 _polarity（最长匹配），不再用 `w in text` 裸子串
+        a_pos, a_neg = self._polarity(text_a)
+        b_pos, b_neg = self._polarity(text_b)
 
         contradictions_found = []
         max_severity = ConflictSeverity.POTENTIAL
 
-        for positive_words, negative_words in self.CONTRADICTION_PATTERNS:
-            a_pos = any(w in text_a_lower for w in positive_words)
-            a_neg = any(w in text_a_lower for w in negative_words)
-            b_pos = any(w in text_b_lower for w in positive_words)
-            b_neg = any(w in text_b_lower for w in negative_words)
-
-            # A 说正面，B 说反面
-            if a_pos and b_neg:
-                contradictions_found.append(("positive_vs_negative", 0.8))
-                if max_severity in (ConflictSeverity.POTENTIAL, ConflictSeverity.MINOR):
-                    max_severity = ConflictSeverity.MAJOR
-            # A 说反面，B 说正面
-            elif a_neg and b_pos:
-                contradictions_found.append(("negative_vs_positive", 0.8))
-                if max_severity in (ConflictSeverity.POTENTIAL, ConflictSeverity.MINOR):
-                    max_severity = ConflictSeverity.MAJOR
+        # A 说正面，B 说反面
+        if a_pos and b_neg:
+            contradictions_found.append(("positive_vs_negative", 0.8))
+            if max_severity in (ConflictSeverity.POTENTIAL, ConflictSeverity.MINOR):
+                max_severity = ConflictSeverity.MAJOR
+        # A 说反面，B 说正面
+        if a_neg and b_pos:
+            contradictions_found.append(("negative_vs_positive", 0.8))
+            if max_severity in (ConflictSeverity.POTENTIAL, ConflictSeverity.MINOR):
+                max_severity = ConflictSeverity.MAJOR
 
         # 综合置信度
         if not contradictions_found:

@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **352** 个 py 文件 / **108,293** 行。
+共 **354** 个 py 文件 / **109,132** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,473 行
+## `pangu/memory/` — 136 文件 / 43,799 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -38,7 +38,7 @@
 | `collaborative_intelligence.py` | 201 | 盘古多 Agent 协作智能 — Agent 间知识共享和协作推理 |
 | `collector.py` | 272 | 盘古通用自动记忆采集器 — 从任意来源采集记忆 |
 | `compression.py` | 142 | 盘古 LLM 记忆压缩 — 智能压缩旧记忆 |
-| `conflict.py` | 325 | 盘古冲突检测引擎 — 发现矛盾记忆 |
+| `conflict.py` | 425 | 盘古冲突检测引擎 — 发现矛盾记忆 |
 | `consolidation.py` | 296 | 盘古记忆巩固引擎 — 类人记忆特征实现 |
 | `consolidation_intelligence.py` | 281 | 盘古记忆巩固智能 — 更智能的记忆合并和巩固策略 |
 | `context_injection.py` | 257 | 盘古上下文注入引擎 — 自动为对话注入相关记忆上下文 |
@@ -79,7 +79,7 @@
 | `hybrid_search.py` | 428 | 盘古混合检索引擎 — 融合 FTS + 向量 + KG 的 RRF 排序 |
 | `image_engine.py` | 315 | 盘古图片记忆引擎 — CLIP 嵌入 + 图片分析 + 跨模态搜索 |
 | `importance_scorer.py` | 154 | 盘古记忆重要性评分 — 基于多维度特征的智能评分 |
-| `ingestion.py` | 935 | 盘古 — 记忆摄入管道（从伏羲 v1.5.6 移植，适配盘古数据模型） |
+| `ingestion.py` | 1161 | 盘古 — 记忆摄入管道（从伏羲 v1.5.6 移植，适配盘古数据模型） |
 | `intent_prediction.py` | 174 | 盘古用户意图预测 — 时序意图建模 / 任务链追踪 / 上下文感知建议 |
 | `judge.py` | 248 | 盘古 MemoryJudge — LLM 记忆价值判断 |
 | `knowledge.py` | 244 | 盘古知识生成模块 |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 105 文件 / 32,678 行
+## `tests/` — 107 文件 / 33,191 行
 
 测试
 
@@ -179,6 +179,7 @@
 | `test_cache_warmup.py` | 357 | 盘古 — 缓存预热 功能测试 |
 | `test_ci_covers_everything.py` | 126 | CI 的测试范围必须是「整个目录」，不能是手写文件清单。 |
 | `test_cli_serve.py` | 120 | `pangu serve` 的命令行语义测试 |
+| `test_conflict_fp_guard.py` | 170 | 冲突检测假阳性守卫（2026-09-27）。 |
 | `test_core.py` | 1658 | 盘古核心功能测试 |
 | `test_e2e_rbac_abac.py` | 188 | 盘古 E2E 联调测试 — RBAC + ABAC + 记忆业务路由 |
 | `test_embedding_cache_persistence.py` | 282 | 盘古 — 嵌入缓存跨进程持久化测试（v0.2.0） |
@@ -207,7 +208,7 @@
 | `test_onnx_embedder.py` | 417 | 盘古 — ONNX 嵌入器测试 |
 | `test_optimization_2026_08_27.py` | 885 | PANGU 优化改进项 2026-08-27 实现验证（R1-R4 盘古侧） |
 | `test_p0_0_authoritative_path.py` | 1278 | P0-0 回归测试：统一权威记忆路径 + 空写保护。 |
-| `test_p0_1_supersede.py` | 722 | P0-1 supersede 全链路测试 |
+| `test_p0_1_supersede.py` | 741 | P0-1 supersede 全链路测试 |
 | `test_p0_2_search_quality.py` | 191 | P0-2 回归测试：检索质量——噪声不能压过信号。 |
 | `test_p1_1_install_experience.py` | 109 | P1-1 回归测试：安装体验（upgrade / uninstall / --server）。 |
 | `test_p1_2_docs_freshness.py` | 173 | P1-2 回归测试：文档新鲜度——版本号/工具名/镜像 tag 必须与代码一致。 |
@@ -250,6 +251,7 @@
 | `test_retrievability_audit.py` | 201 | 可检索性体检（memory/retrievability.py）的回归测试。 |
 | `test_retrievability_llm.py` | 148 | 可检索性体检的 LLM 阶段（2026-09-26）。 |
 | `test_search_own_first.py` | 321 | 搜索「本平台优先」的两个模式（2026-09-26）。 |
+| `test_supersede_llm_review.py` | 324 | 方案 A：冲突 supersede 改为「后台 LLM 复核」（2026-09-27）。 |
 | `test_top_level_intelligence.py` | 258 | 盘古顶级智能验证 — 端到端集成测试 |
 | `test_v2_features.py` | 231 | 盘古 v2.0 新功能测试 — neural_memory / multi_agent / social_memory |
 | `test_v3_modules_a.py` | 334 | 盘古 V3.0 模块测试 — 7 个记忆引擎 |

@@ -10,6 +10,8 @@
 """
 
 import logging
+import threading
+import time
 import uuid
 from datetime import datetime
 from typing import Any
@@ -351,23 +353,264 @@ def _persist_supersede_update(storage, old_id: str, modified_drawer: Drawer) -> 
     return True
 
 
+# ── 冲突 supersede 的 LLM 复核（方案 A，2026-09-27）──────────────────────
+#
+# 原行为：字词法一旦给出候选就**同步**把旧记忆标 superseded 移出搜索。上云实测
+# 新记忆与最近 20 条能碰出 52 个候选（conf=1.0），而 CONFLICT_MAX_REPORT=3
+# ⇒ 几乎每写一条记忆就静默下架 3 条旧的。
+#
+# 现行为：候选只登记不落锤，交给**后台线程**跑 LLM 复核，确认矛盾才下架。
+# 之所以必须后台 —— 实测该 LLM 端点 avg 41.2s（2~120s），而 remember() 是同步
+# 写入管道，塞进去 = 每存一条记忆卡半分钟。
+#
+# 三条铁律：写入零延迟 / 下架必过 LLM / LLM 出任何问题一律**不下架**（fail-open）。
+LLM_REVIEW_ENABLED = True  # 一键关掉 LLM 复核 ⇒ 退化为「只检测不下架」
+LLM_REVIEW_INLINE = False  # 测试专用：True = 同步跑复核（不起线程），让用例无需 sleep
+LLM_REVIEW_MAX_PAIRS = CONFLICT_MAX_REPORT  # 每次写入最多复核几对（控制延迟与费用）
+LLM_REVIEW_INPUT_CHARS = 2000  # 单条送入 LLM 的正文截断长度（记忆动辄数千字）
+
+_SUPERSEDE_LOCK = threading.Lock()  # 串行化「改旧 drawer + 落盘」，避免并发写坏库
+
+_REVIEW_PROMPT = """你是记忆冲突审计员。判断两条记忆是否构成**同一事实的相互矛盾**。
+
+严格标准：
+- 只有当两条在描述**同一个对象/属性/结论**且给出**互斥取值或相反结论**才算冲突。
+- 下列一律答 no：
+  a) 主题不同、各说各事；
+  b) 不同对象各自的取值（不同服务的端口、不同测试套件的通过数、不同字段命名）；
+  c) 同一对象的先后版本/改前改后/统计口径差异；
+  d) 一条是另一条的补充、细化或不同侧面。
+- 拿不准时答 no。
+只输出 JSON：{{"conflicts": true/false, "reason": "不超过30字理由"}}
+
+【新记忆】
+{new}
+
+【已有记忆】
+{old}"""
+
+
+def _make_llm_engine():
+    """构造 LLM 引擎（单独抽出来便于测试注入假引擎）。"""
+    from pangu.core.config import PanguConfig
+    from pangu.core.llm import LLMEngine
+
+    return LLMEngine(PanguConfig.load().authoritative_memory_config())
+
+
+def _plain_for_review(text: str) -> str:
+    """送 LLM 前解密 —— 写入管道里的 content 是 Fernet 密文。
+
+    2026-09-27 端到端实测抓到：不先解密的话，LLM 收到的是
+    ``gAAAAAB…``，直接回「两条记忆为加密字符串，无法解析」⇒ 恒判 no ⇒
+    **永远不下架，功能名存实亡**（虽然 fail-open 是安全的，但那样就谈不上"把关"）。
+
+    用三态 `decrypt`：明文原样、密文解开、解不开给占位符（后者仍会让 LLM 判
+    「看不懂」→ fail-open，与「旧密钥数据本就无法复核」的现实一致）。
+    """
+    if not text:
+        return ""
+    try:
+        from pangu.memory.encryption import decrypt
+
+        return decrypt(text)
+    except Exception:  # noqa: BLE001 — 解密失败就原样送，交给 LLM 的 fail-open 兜底
+        return text
+
+
+def _llm_confirm_conflict(new_content: str, old_content: str) -> tuple[bool, str]:
+    """让 LLM 判断这对是否**真的**矛盾。
+
+    Returns:
+        ``(确认冲突, 理由)``。**任何异常一律返回 (False, ...)** —— fail-open：
+    误下架的代价（记忆静默消失、用户不知情）远高于多留一条重复记忆。
+
+    ⚠ 不要用 ``str.format()`` 填 prompt：模板里的 JSON 示例 ``{"conflicts": ...}``
+    会被当成格式化占位符抛 ``KeyError: '"conflicts"'``（2026-09-27 实测踩过）。
+    """
+    new_content = _plain_for_review(new_content)
+    old_content = _plain_for_review(old_content)
+    prompt = _REVIEW_PROMPT.replace("{new}", (new_content or "")[:LLM_REVIEW_INPUT_CHARS]).replace(
+        "{old}", (old_content or "")[:LLM_REVIEW_INPUT_CHARS]
+    )
+    try:
+        import asyncio
+        import json as _json
+
+        engine = _make_llm_engine()
+        reply = asyncio.run(engine.chat([{"role": "user", "content": prompt}]))
+        text = (getattr(reply, "content", None) or str(reply or "")).strip()
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            return False, "LLM 未返回 JSON，按不冲突处理"
+        data = _json.loads(text[start : end + 1])
+        if not isinstance(data, dict) or "conflicts" not in data:
+            return False, "LLM 返回缺少 conflicts 字段，按不冲突处理"
+        return bool(data.get("conflicts")), str(data.get("reason") or "")[:80]
+    except Exception as e:  # noqa: BLE001 — fail-open 是这里的硬要求
+        logger.warning(f"冲突 LLM 复核失败（按不冲突处理，不下架）: {type(e).__name__}: {e}")
+        return False, f"复核失败: {type(e).__name__}"
+
+
+def _apply_supersede(
+    confirmed: list[tuple[str, str]],
+    drawer: Drawer,
+    existing_drawers: list[Drawer],
+    item_id: str,
+    storage=None,
+) -> None:
+    """执行已经被 LLM 确认的下架（原 `_detect_conflicts` 的同步执行段，抽出来复用）。
+
+    Args:
+        confirmed: ``[(被取代的旧 id, LLM 给出的理由), ...]``
+    """
+    now = datetime.now().isoformat()
+    new_supersedes: list[str] = []
+    for old_id, reason in confirmed:
+        new_supersedes.append(old_id)
+        for d in existing_drawers:
+            if d.id == old_id:
+                superseded_by = d.metadata.get("superseded_by", []) if d.metadata else []
+                if not isinstance(superseded_by, list):
+                    superseded_by = []
+                if item_id not in superseded_by:
+                    superseded_by.append(item_id)
+                if d.metadata is None:
+                    d.metadata = {}
+                d.metadata["superseded_by"] = superseded_by
+                d.metadata["superseded_at"] = now
+                d.metadata["memory_status"] = "superseded"
+                try:
+                    _persist_supersede_update(storage, old_id, d)
+                except Exception as e:
+                    logger.warning(f"update old drawer failed for {old_id[:8]}: {e}")
+                # ⚠ 每次真下架都留痕：静默下架正是这次事故最难查的地方
+                logger.warning(
+                    f"Supersede applied（LLM 复核确认）: {old_id[:8]} 被 {item_id[:8]} 取代"
+                    f" —— LLM 理由: {reason}"
+                )
+                break
+
+    if drawer.metadata is None:
+        drawer.metadata = {}
+    drawer.metadata["supersedes"] = new_supersedes
+    drawer.metadata.pop("conflict_candidates", None)  # 候选已被消化
+
+    # versioning 记录（与旧行为一致，供 pangu_get_supersede_chain 追链）
+    try:
+        from pangu.memory.versioning import get_version_control
+
+        vc = get_version_control()
+        for old_id in new_supersedes:
+            try:
+                vc.record_version(
+                    memory_id=old_id,
+                    content=f"superseded by {item_id}",
+                    change_type="superseded",
+                    metadata={"by": item_id, "at": now},
+                )
+            except Exception as e:
+                logger.debug(f"record_version superseded skipped for {old_id[:8]}: {e}")
+        try:
+            vc.record_version(
+                memory_id=item_id,
+                content=drawer.content,
+                change_type="supersede",
+                metadata={"supersedes": new_supersedes, "at": now},
+            )
+        except Exception as e:
+            logger.debug(f"record_version supersede skipped for {item_id[:8]}: {e}")
+    except Exception as e:
+        logger.debug(f"Version recording skipped: {e}")
+
+    logger.info(f"Supersede recorded for {item_id[:8]}: replaces {len(new_supersedes)} memories")
+
+
+def _review_conflicts_background(
+    conflicts: list,
+    drawer: Drawer,
+    existing_drawers: list[Drawer],
+    item_id: str,
+    storage=None,
+    delay: float = 0.3,
+) -> None:
+    """后台任务：逐对跑 LLM 复核，**只有确认矛盾的才下架**。
+
+    Args:
+        delay: 启动前的等待秒数。后台路径给 0.3s —— `remember()` 返回后由 handler
+            才真正落盘新 drawer，立刻回填会扑空（`_persist_supersede_update` 找不到
+            id 会静默跳过，不算错）；同步路径给 0（测试要的是确定性，不是时序仿真）。
+
+    设计要点：全程包 try —— 后台线程的异常若逃逸只会打一条 stderr，问题照样静默。
+    """
+    try:
+        if delay:
+            time.sleep(delay)
+        by_id = {d.id: d for d in existing_drawers}
+        confirmed: list[tuple[str, str]] = []
+        for c in conflicts[:LLM_REVIEW_MAX_PAIRS]:
+            old_id = c.memory_a if c.memory_b == item_id else c.memory_b
+            old = by_id.get(old_id)
+            if old is None:
+                continue
+            try:
+                ok, reason = _llm_confirm_conflict(drawer.content, old.content)
+            except Exception as e:  # 双保险：stub/实现层异常也 fail-open
+                ok, reason = False, f"复核异常: {type(e).__name__}"
+            if ok:
+                confirmed.append((old_id, reason))
+            else:
+                logger.info(
+                    f"冲突候选未通过 LLM 复核，不下架: {item_id[:8]} vs {old_id[:8]} —— {reason}"
+                )
+
+        if not confirmed:
+            logger.info(f"冲突复核结束：{len(conflicts)} 个候选全部未确认，0 条下架")
+            return
+
+        with _SUPERSEDE_LOCK:
+            _apply_supersede(confirmed, drawer, existing_drawers, item_id, storage)
+            # 回填已落盘的新 drawer（未落盘则跳过，_persist_supersede_update 自带守卫）
+            try:
+                _persist_supersede_update(storage, item_id, drawer)
+            except Exception as e:
+                logger.debug(f"回填新 drawer supersedes 失败: {e}")
+    except Exception as e:
+        logger.warning(f"conflict review task failed（不影响本次写入）: {type(e).__name__}: {e}")
+
+
 def _detect_conflicts(
     drawer: Drawer,
     existing_drawers: list[Drawer],
     item_id: str,
     storage=None,
 ) -> None:
-    """自动冲突检测 + supersede 关系建立（P0-1）
+    """自动冲突检测 → 登记候选 → **后台 LLM 复核** → 确认才下架（P0-1 + 方案 A）
 
-    当检测到冲突时（CONFLICT_MIN_EXISTING 阈值通过）：
+    2026-09-27 改：原来在这里**同步**把候选对应的旧记忆标 superseded 移出搜索。
+    上云实测新记忆与最近 20 条能碰出 52 个候选（conf=1.0），而
+    `CONFLICT_MAX_REPORT=3` ⇒ 几乎每写一条记忆就静默下架 3 条旧的。事故形态是
+    用户写完记忆才发现某条搜不到了，且无人告知。
 
-    1. 在新 drawer 的 metadata 写 `supersedes`（指向被取代的旧 id 列表）
-    2. 在每个被取代的旧 drawer 的 metadata 写：
-       - `superseded_by`: list（允许多重取代 A→B→C 时 B/C 都进 A 的 superseded_by）
-       - `superseded_at`: ISO 时间戳
-       - `memory_status`: "superseded"（让 hybrid_search._build_results 一眼识别）
-    3. 通过 storage 直写路径把旧 drawer 的更新落盘（保留空写保护守卫）
-    4. 调用 versioning.record_version 给新旧 drawer 都记一条版本
+    现在的流程：
+
+    1. 检出候选（字词法 + 相似度闸门，见 conflict.py）；
+    2. 候选只写进新 drawer 的 `metadata.conflict_candidates`，**不下架**；
+    3. 提交后台线程跑 LLM 复核（实测 avg 41.2s，同步等会把写入卡半分钟）；
+    4. 只有 LLM 明确判「是同一事实的矛盾」才执行下架 ——
+       `_apply_supersede` 写 `superseded_by` / `superseded_at` /
+       `memory_status="superseded"`、落盘、记 versioning；
+    5. **LLM 出任何问题一律不下架**（fail-open）：误下架的代价是记忆静默消失，
+       远高于多留一条重复。
+
+    两个开关：
+        * `LLM_REVIEW_ENABLED=False` ⇒ 只登记不下架（一键回退到更保守的行为）；
+        * `LLM_REVIEW_INLINE=True` ⇒ 同步跑复核、不起线程（**仅测试用**，
+          让用例拿到确定性而不是时序仿真）。
+
+    Returns:
+        提交的后台线程；无候选 / 复核关闭 / 同步模式 / 出异常时返回 ``None``。
+        调用方 `remember()` 不关心返回值。
 
     签名变更（向后兼容）：
         新增 storage=None。旧调用方 _detect_conflicts(d, ex, item) 不传 storage
@@ -375,41 +618,26 @@ def _detect_conflicts(
         通过 storage 完成。生产代码路径不感知本函数。
     """
     if not (existing_drawers and len(existing_drawers) >= CONFLICT_MIN_EXISTING):
-        return
+        return None
     try:
         from pangu.memory.conflict import ConflictDetector
 
         detector = ConflictDetector()
         conflicts = detector.detect_conflicts([drawer] + existing_drawers[-CONFLICT_LOOKBACK:])
         if not conflicts:
-            return
-        now = datetime.now().isoformat()
-        new_supersedes: list[str] = []
+            return None
+
+        # ── 候选只登记，不落锤（方案 A）──────────────────────────────
+        # 老行为在这里**同步**把旧记忆标 superseded 移出搜索：字词法误判一下就变成
+        # 「记忆静默消失、用户不知情」。现在候选挂到新 drawer 上，交后台 LLM 复核，
+        # 写入路径一行都不等（LLM 实测 avg 41.2s，同步等 = 每存一条卡半分钟）。
+        candidates: list[str] = []
         for c in conflicts[:CONFLICT_MAX_REPORT]:
             old_id = c.memory_a if c.memory_b == item_id else c.memory_b
-            new_supersedes.append(old_id)
-            for d in existing_drawers:
-                if d.id == old_id:
-                    superseded_by = d.metadata.get("superseded_by", []) if d.metadata else []
-                    if not isinstance(superseded_by, list):
-                        superseded_by = []
-                    if item_id not in superseded_by:
-                        superseded_by.append(item_id)
-                    if d.metadata is None:
-                        d.metadata = {}
-                    d.metadata["superseded_by"] = superseded_by
-                    d.metadata["superseded_at"] = now
-                    d.metadata["memory_status"] = "superseded"
-                    # 落盘失败**不抛**（蓝图 §1.1.4 边界条件）；单独 try/except
-                    # 避免一个旧 drawer 的落盘失败中断整个冲突链路
-                    try:
-                        result = _persist_supersede_update(storage, old_id, d)
-                    except Exception as e:
-                        logger.warning(f"update old drawer failed for {old_id[:8]}: {e}")
-                    break
+            candidates.append(old_id)
+
         if drawer.metadata is None:
             drawer.metadata = {}
-        drawer.metadata["supersedes"] = new_supersedes
         # 兼容旧字段：保留原 conflicts 列表（API/handler 不感知 supersede）
         drawer.metadata["conflicts"] = [
             {
@@ -419,37 +647,35 @@ def _detect_conflicts(
             }
             for c in conflicts[:CONFLICT_MAX_REPORT]
         ]
+        drawer.metadata["conflict_candidates"] = candidates
 
-        # versioning.record_version 接线
-        try:
-            from pangu.memory.versioning import get_version_control
+        if not LLM_REVIEW_ENABLED:
+            # 一键关掉 ⇒ 退化成「只检测不下架」，比老行为安全，比新行为保守
+            logger.info(
+                f"检测到 {len(candidates)} 个冲突候选，LLM 复核已关闭 ⇒ 仅登记不下架"
+            )
+            return None
 
-            vc = get_version_control()
-            for old_id in new_supersedes:
-                try:
-                    vc.record_version(
-                        memory_id=old_id,
-                        content=f"superseded by {item_id}",
-                        change_type="superseded",
-                        metadata={"by": item_id, "at": now},
-                    )
-                except Exception as e:
-                    logger.debug(f"record_version superseded skipped for {old_id[:8]}: {e}")
-            try:
-                vc.record_version(
-                    memory_id=item_id,
-                    content=drawer.content,
-                    change_type="supersede",
-                    metadata={"supersedes": new_supersedes, "at": now},
-                )
-            except Exception as e:
-                logger.debug(f"record_version supersede skipped for {item_id[:8]}: {e}")
-        except Exception as e:
-            logger.debug(f"Version recording skipped: {e}")
-
-        logger.info(f"Supersede recorded for {item_id[:8]}: replaces {len(new_supersedes)} memories")
+        logger.info(
+            f"检测到 {len(candidates)} 个冲突候选，已提交后台 LLM 复核（写入不等待）"
+        )
+        if LLM_REVIEW_INLINE:
+            # 测试路径：同步跑，不 sleep、不起线程 —— 用例拿到确定性而非时序仿真
+            _review_conflicts_background(
+                list(conflicts), drawer, existing_drawers, item_id, storage, delay=0.0
+            )
+            return None
+        task = threading.Thread(
+            target=_review_conflicts_background,
+            args=(list(conflicts), drawer, existing_drawers, item_id, storage),
+            name="pangu-conflict-review",
+            daemon=True,
+        )
+        task.start()
+        return task
     except Exception as e:
         logger.debug(f"Conflict detection skipped: {e}")
+        return None
 
 
 def _admission_gate(drawer: Drawer, existing_drawers: list[Drawer] | None, item_id: str) -> None:

@@ -30,6 +30,25 @@ _WING = f"p01_supersede_{uuid.uuid4().hex[:8]}"
 _ROOM = "t"
 
 
+@pytest.fixture(autouse=True)
+def _inline_llm_review(monkeypatch):
+    """本文件测的是 supersede 的**副作用**（写 metadata / 落盘 / 清缓存 / 记版本 /
+    检索标注 / 追链工具），不是 LLM 复核本身 —— 后者由
+    `tests/test_supersede_llm_review.py` 专门覆盖。
+
+    2026-09-27 起 supersede 改为「候选 → 后台 LLM 复核 → 确认才下架」。若不加本
+    fixture，这些用例会：
+      1. **真打 LLM**（实测 avg 41.2s，结果还不确定 —— 日志里出现过真实中文理由）；
+      2. 因后台异步而让同步断言扑空（第一版实测 8 个用例因此失败）。
+    所以强制：**同步跑 + 立即确认** ⇒ 行为与旧版一致，下面的用例一行都不用改。
+    """
+    from pangu.memory import ingestion
+
+    monkeypatch.setattr(ingestion, "LLM_REVIEW_INLINE", True)
+    monkeypatch.setattr(ingestion, "LLM_REVIEW_ENABLED", True)
+    monkeypatch.setattr(ingestion, "_llm_confirm_conflict", lambda a, b: (True, "测试：确认冲突"))
+
+
 # ── 工具函数 ──
 
 
