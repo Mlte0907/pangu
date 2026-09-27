@@ -513,6 +513,26 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — P1 任务全部完成：1.3 模型健康度检查 + 2.2 基准测试独立 job + 2.3 模型列表预热 + 3.2 死代码清理 + 3.3 自主任务效果度量 + 4.1 知识结晶效果度量 + 4.2 搜索结果解释增强。
+  - **1.3 模型健康度检查**（`llm.py` / `mcp_server.py`）：
+    - `health_check_models()` 探测所有候选模型（最小 prompt + 超时）
+    - `start_background_health_check()` 后台调度，不阻塞首请求
+    - `chat()` 跳过不可用模型
+    - 动机：V4.1 首次 121s，GLM 全挂，不探测就要等试了才知道
+  - **2.2 基准测试独立 job**（`.github/workflows/test.yml`）：
+    - 主 job 排除 `test_bench.py`，独立 `benchmark` job（`continue-on-error: true`）
+    - 主 job 门禁从 600s 降到 173s（快 7 分钟）
+  - **2.3 模型列表预热**（`llm.py` / `mcp_server.py`）：
+    - `warmup_model_discovery()` 启动时后台拉一次模型列表填充缓存
+  - **3.2 死代码清理**：没有真正的死代码。`task_tracker` 被引用 0 次但它是独立工具。
+  - **3.3 自主任务效果度量**（`autonomous.py`）：
+    - `TaskResult` 加 `metrics` 字段 + `make_metrics()` helper
+    - 10 个关键任务加 metrics（fusion/compression/decay/forget/dream/curiosity/kg_enrichment/consolidation/readmission/crystallize）
+  - **4.1 知识结晶效果度量**（`knowledge.py`）：
+    - `search_knowledge` 命中时调 `_increment_usage` 累加 `usage_count`
+    - `get_stats()` 加 `avg_usage_count` 字段
+  - **4.2 搜索结果解释增强**：`search_explainer.py` 已被 `hybrid_search.py` 调用，功能已实现。
+  - **验证**：264-265 passed + 27 passed（维护文档）。
 - **2026-09-27** — P1 任务执行：1.3 模型健康度检查 + 2.2 基准测试独立 job。
   - **1.3 模型健康度检查**（`llm.py` / `mcp_server.py`）：
     - `LLMEngine.health_check_models()`：探测所有候选模型（最小 prompt + 超时）
