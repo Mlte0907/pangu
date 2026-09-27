@@ -513,6 +513,35 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — 修 `/api/v2/memories/lifecycle` 回传密文（读取端点漏解密）。
+  - **根因**：端点直接返回 `[e.__dict__ for e in events]`，而 `TimelineEvent.content`
+    取自 `d.content` —— 落库时已按 `is_enabled()` 加密。列表 / 搜索 / 详情 / 导出
+    都过了 `_plain_content()`，唯独生命周期页漏了 ⇒ dsh-pangu 仪表盘「生命周期」
+    标签把 `gAAAAAB…` Fernet 密文原样渲染（实测云端 `curl -H 'X-API-Key: …'`
+    该端点 content 全是密文）。
+  - **改**（`pangu/api/routes_memory.py`）：events 出站前逐条过 `_plain_content()`。
+    三态解密（明文原样 / 密文解开 / 解不开给占位符），加密关闭时无副作用；这些端点
+    对匿名 401，解密不改变暴露面。
+  - **顺带查清的第二个根因（dsh-pangu 侧，跨仓）**：该端点属**数据面**只认
+    `X-API-Key`，`X-Admin-Key` 恒 401。实测矩阵：lifecycle `X-Admin-Key=401 /
+    X-API-Key=200`，而 `admin|dashboard|platforms` 恰好相反。dsh-pangu 的
+    `fetchLifecycle` 用了 `adminFetch`（发 X-Admin-Key），401 的 error body 又被
+    `if (body && !body.error)` 分支压成硬编码 `'lifecycle error'` —— **真正的原因
+    （鉴权头用错）就此消失**，页面只给一句无从排查的文案。已改用 `fetchJson`
+    （对 `PANGU_BASE` 自动挂 x-api-key，与 `fetchKG` 同通道）并按 ApiResponse 的
+    `code` 判成败，401/403 给出可操作提示。
+  - **验证**：新增 `tests/test_lifecycle_endpoint.py`（3 例：解密为正文 / stats
+    不丢 / 加密关闭时明文透传）—— `git stash` 还原端点改动后该文件红、恢复后绿，
+    确认测试真能守住；全量 `pytest tests/` **1950 passed, 19 skipped**；另跑
+    `pytest tests/test_maintainers_doc.py` 27 passed；`scripts/gen_file_index.py`
+    重新生成 `docs/FILE_INDEX.md`（352 文件）。
+  - **生效方式**：改的是**云端服务端**（`/root/pangu` 非 git）。已 scp
+    `pangu/api/routes_memory.py` **连同** `tests/test_lifecycle_endpoint.py`
+    （代码+测试是一个不可分割的部署单元，MAINTAINERS §10 硬教训 7）+
+    `systemctl --user restart pangu-api`；云端 `pytest tests/test_lifecycle_endpoint.py`
+    3 passed（venv 是 Python 3.11.2），curl 实测 `X-API-Key` 打 lifecycle 返回**明文**。
+    本地仓 commit 待推。
+
 - **2026-09-27** — P2-4.4 记忆生命周期 API（commit e76e5b6）。
   - **改动**（`pangu/api/routes_memory.py`）：加 `GET /api/v2/memories/lifecycle`
     端点，调用 `TimelineEngine.build_timeline` 返回时间线数据。

@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **351** 个 py 文件 / **107,499** 行。
+共 **352** 个 py 文件 / **107,654** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,399 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 104 文件 / 32,102 行
+## `tests/` — 105 文件 / 32,248 行
 
 测试
 
@@ -194,6 +194,7 @@
 | `test_hotfix_llm_key.py` | 51 | 热修：resolveLlmApiKey + testConnection 逻辑分支测试 |
 | `test_ingestion.py` | 79 | 盘古 ingestion.py 测试 — 核心写入路径 |
 | `test_integration.py` | 659 | 盘古 API 服务器 + MCP 集成测试 |
+| `test_lifecycle_endpoint.py` | 146 | `/api/v2/memories/lifecycle` 读取端点的回归（2026-09-27）。 |
 | `test_llm_model_switch.py` | 257 | 盘古 — LLM 候选模型发现与切换测试 |
 | `test_llm_optimizations.py` | 734 | 盘古 — LLM 优化功能测试 |
 | `test_llm_providers.py` | 378 | 盘古 — LLM 后端集成测试 |
@@ -296,7 +297,7 @@
 | `web_server.py` | 543 | 盘古 Web 服务器 — 提供记忆管理 Web UI 和 REST API |
 | `websocket_server.py` | 334 | 盘古 WebSocket 服务器 — 实时记忆流推送 |
 
-## `pangu/api/` — 16 文件 / 5,967 行
+## `pangu/api/` — 16 文件 / 5,976 行
 
 FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传输
 
@@ -311,7 +312,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `rbac.py` | 306 | 盘古 — RBAC 角色权限模型 |
 | `routes_dashboard.py` | 164 | 盘古 REST API 路由 — /api/v2/dashboard（仪表盘） |
 | `routes_keys.py` | 285 | 盘古 REST API 路由 — /api/v2/admin/keys（钥匙管理） |
-| `routes_memory.py` | 974 | 盘古 REST API 路由 — /api/v2/memories（伏羲移植） |
+| `routes_memory.py` | 983 | 盘古 REST API 路由 — /api/v2/memories（伏羲移植） |
 | `routes_platforms.py` | 141 | 盘古 REST API 路由 — /api/v2/platforms（平台接入审核） |
 | `routes_tags.py` | 303 | 盘古标签管理 API — CRUD + 统计 + 合并 + 推荐 |
 | `routes_tasks.py` | 249 | 盘古任务状态同步 API — 跨 Agent 任务追踪（SQLite 持久化） |

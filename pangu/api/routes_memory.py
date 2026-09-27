@@ -938,7 +938,16 @@ async def get_memory_lifecycle(request: Request, wing: str = None, limit: int = 
 
         # 统计：按状态分组
         stats = {"total": len(drawers), "events": len(events)}
-        return ApiResponse.ok({"events": [e.__dict__ for e in events], "stats": stats})
+        # ⚠ 读取端点必须解密 content —— 写入方按 is_enabled() 加密，此处原样回传
+        # e.__dict__ 会让客户端拿到 gAAAAAB… 密文并直接渲染（2026-09-27 实测：
+        # lifecycle 返回的 content 全是 Fernet 密文，而列表/搜索/详情/导出都过了
+        # _plain_content）。生命周期页是读取端点，同一规则适用。
+        events_out = []
+        for e in events:
+            item = dict(e.__dict__)
+            item["content"] = _plain_content(item.get("content") or "")
+            events_out.append(item)
+        return ApiResponse.ok({"events": events_out, "stats": stats})
     except Exception as e:
         return ApiResponse.error(500, f"获取生命周期失败: {e}")
 
