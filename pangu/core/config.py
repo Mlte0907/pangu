@@ -318,6 +318,8 @@ class PanguConfig(BaseSettings):
     backup_max_count: int = 7
 
     # ── 外部服务密钥 ──
+    # siliconflow_key / pangu_llm_model：已废弃（2026-09-27 配置项收敛），
+    # 保留字段仅为向后兼容，读取时忽略。
     siliconflow_key: str = ""
     pangu_llm_model: str = "glm-5.1"
 

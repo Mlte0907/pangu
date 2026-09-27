@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **351** 个 py 文件 / **107,466** 行。
+共 **351** 个 py 文件 / **107,468** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,399 行
@@ -358,7 +358,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `keys.py` | 145 | 盘古钥匙管理器 |
 | `task_tracker.py` | 143 | 任务进度追踪器 — 在工具执行后自动保存任务状态（伏羲移植） |
 
-## `pangu/core/` — 6 文件 / 3,175 行
+## `pangu/core/` — 6 文件 / 3,177 行
 
 核心设施：配置、LLM 接入、加密、哈希、缓存、宫殿数据模型
 
@@ -366,7 +366,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | --- | ---: | --- |
 | `__init__.py` | 7 | 盘古核心模块 |
 | `cache.py` | 452 | 盘古 — 持久化 LLM 响应缓存 |
-| `config.py` | 630 | 盘古核心配置模块 — 基于 pydantic-settings（伏羲移植） |
+| `config.py` | 632 | 盘古核心配置模块 — 基于 pydantic-settings（伏羲移植） |
 | `hashing.py` | 39 | 盘古 — 统一哈希工具 |
 | `llm.py` | 1739 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
 | `palace.py` | 308 | 盘古宫殿核心 — Wings/Rooms/Drawers/Halls/Tunnels 管理 |
