@@ -213,6 +213,108 @@ class TestFailOpen:
         assert storage.saves == 0
 
 
+class _ScriptedEngine:
+    """按脚本顺序吐回复的假引擎，并记录调用次数。
+
+    脚本项若是 Exception 则直接抛（模拟网络/超时）。
+    """
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = 0
+
+    async def chat(self, msgs):
+        self.calls += 1
+        r = self.replies[min(self.calls - 1, len(self.replies) - 1)]
+        if isinstance(r, Exception):
+            raise r
+
+        class _Resp:
+            content = ""
+
+        resp = _Resp()
+        resp.content = r
+        return resp
+
+
+class TestRetryOnBadFormat:
+    """解析失败要重试 —— 三模型盲测实测降级率 3.7%（5/135），其中两题是靠
+    fail-open 蒙对的；真冲突题若撞上 2 次降级就会被漏判。"""
+
+    def test_retry_then_success(self, monkeypatch):
+        """第一次输出非 JSON、第二次合法 ⇒ 应重试并拿到真判断。"""
+        eng = _ScriptedEngine([
+            "抱歉，我无法判断这两条记忆的关系。",
+            '{"conflicts": true, "reason": "端口取值互斥"}',
+        ])
+        monkeypatch.setattr(ingestion, "_make_llm_engine", lambda: eng)
+
+        ok, reason = ingestion._llm_confirm_conflict("A 内容", "B 内容")
+
+        assert ok is True, "重试后拿到合法 JSON 却没采纳"
+        assert eng.calls == 2, f"应调用 2 次（1 次原始 + 1 次重试），实际 {eng.calls}"
+        assert "端口" in reason
+
+    def test_all_attempts_bad_format_fails_open(self, monkeypatch):
+        """重试次数用尽仍解析不了 ⇒ fail-open 判不冲突，且理由要说明重试过。"""
+        eng = _ScriptedEngine(["完全不是 JSON", "还是不是 JSON"])
+        monkeypatch.setattr(ingestion, "_make_llm_engine", lambda: eng)
+
+        ok, reason = ingestion._llm_confirm_conflict("A", "B")
+
+        assert ok is False, "解析不出必须 fail-open（宁可漏判，不可误杀）"
+        assert eng.calls == 1 + ingestion.LLM_REVIEW_MAX_RETRIES, (
+            f"调用次数应为 1+MAX_RETRIES={1 + ingestion.LLM_REVIEW_MAX_RETRIES}，实际 {eng.calls}"
+        )
+        assert "已重试" in reason and "按不冲突处理" in reason
+
+    def test_call_exception_does_not_retry(self, monkeypatch):
+        """系统性异常（网络/超时/配置）不重试 —— 重试只是白等一次 41 秒。"""
+        eng = _ScriptedEngine([RuntimeError("连接超时 41s"), RuntimeError("还会再挂")])
+        monkeypatch.setattr(ingestion, "_make_llm_engine", lambda: eng)
+
+        ok, reason = ingestion._llm_confirm_conflict("A", "B")
+
+        assert ok is False
+        assert eng.calls == 1, f"调用异常不该重试，实际调了 {eng.calls} 次"
+        assert "复核失败" in reason
+
+    def test_happy_path_makes_exactly_one_call(self, monkeypatch):
+        """正常路径不许多调 —— 每次调用 41 秒，多调就是白烧时间。"""
+        eng = _ScriptedEngine(['{"conflicts": false, "reason": "主题不同"}'])
+        monkeypatch.setattr(ingestion, "_make_llm_engine", lambda: eng)
+
+        ok, reason = ingestion._llm_confirm_conflict("A", "B")
+
+        assert ok is False and "主题" in reason
+        assert eng.calls == 1, f"正常路径应只调 1 次，实际 {eng.calls}"
+
+    def test_missing_conflicts_field_also_retries(self, monkeypatch):
+        """合法 JSON 但缺 conflicts 字段，同样算「没答上」，应重试。"""
+        eng = _ScriptedEngine(['{"verdict": "yes"}', '{"conflicts": true, "reason": "同对象互斥"}'])
+        monkeypatch.setattr(ingestion, "_make_llm_engine", lambda: eng)
+
+        ok, _ = ingestion._llm_confirm_conflict("A", "B")
+
+        assert ok is True
+        assert eng.calls == 2
+
+
+class TestKillSwitchLite:
+    """开关仍要能关掉重试（回退到「一次不中就 fail-open」）。"""
+
+    def test_zero_retries_makes_single_call(self, monkeypatch):
+        monkeypatch.setattr(ingestion, "LLM_REVIEW_MAX_RETRIES", 0)
+        eng = _ScriptedEngine(["不是 JSON", "第二次本该成功但不该被调"])
+        monkeypatch.setattr(ingestion, "_make_llm_engine", lambda: eng)
+
+        ok, reason = ingestion._llm_confirm_conflict("A", "B")
+
+        assert ok is False
+        assert eng.calls == 1, f"MAX_RETRIES=0 时应只调 1 次，实际 {eng.calls}"
+        assert "已重试 0 次" in reason
+
+
 class TestKillSwitch:
     """④ 能一键关掉 LLM 复核而不炸（回滚到「只检测不下架」）。"""
 

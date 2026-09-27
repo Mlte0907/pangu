@@ -368,6 +368,7 @@ LLM_REVIEW_ENABLED = True  # 一键关掉 LLM 复核 ⇒ 退化为「只检测�
 LLM_REVIEW_INLINE = False  # 测试专用：True = 同步跑复核（不起线程），让用例无需 sleep
 LLM_REVIEW_MAX_PAIRS = CONFLICT_MAX_REPORT  # 每次写入最多复核几对（控制延迟与费用）
 LLM_REVIEW_INPUT_CHARS = 2000  # 单条送入 LLM 的正文截断长度（记忆动辄数千字）
+LLM_REVIEW_MAX_RETRIES = 1  # 解析失败时的额外重试次数（见 _llm_confirm_conflict）
 
 _SUPERSEDE_LOCK = threading.Lock()  # 串行化「改旧 drawer + 落盘」，避免并发写坏库
 
@@ -418,12 +419,42 @@ def _plain_for_review(text: str) -> str:
         return text
 
 
+def _ask_review_llm(prompt: str) -> tuple[bool, str, bool]:
+    """单次向 LLM 提问并解析。
+
+    Returns:
+        ``(是否矛盾, 理由, 是否解析成功)`` —— 第三个值是关键：它区分
+        「模型判了但格式坏」与「模型压根没法判断」，只有前者值得重试。
+    """
+    import asyncio
+    import json as _json
+
+    engine = _make_llm_engine()
+    reply = asyncio.run(engine.chat([{"role": "user", "content": prompt}]))
+    text = (getattr(reply, "content", None) or str(reply or "")).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return False, "LLM 未返回 JSON", False
+    data = _json.loads(text[start : end + 1])   # JSON 非法会抛，交给上层当异常
+    if not isinstance(data, dict) or "conflicts" not in data:
+        return False, "LLM 返回缺少 conflicts 字段", False
+    return bool(data.get("conflicts")), str(data.get("reason") or "")[:80], True
+
+
 def _llm_confirm_conflict(new_content: str, old_content: str) -> tuple[bool, str]:
     """让 LLM 判断这对是否**真的**矛盾。
 
     Returns:
         ``(确认冲突, 理由)``。**任何异常一律返回 (False, ...)** —— fail-open：
     误下架的代价（记忆静默消失、用户不知情）远高于多留一条重复记忆。
+
+    两条路径分开处理（2026-09-28 三模型盲测发现）：
+    * **格式解析失败 → 重试 `LLM_REVIEW_MAX_RETRIES` 次**。盲测 135 次作答里有
+      **5 次（3.7%）**返回的不是合法 JSON，当时直接 fail-open 判「不矛盾」。其中
+      两题表面是「三票一致」、实际 2/3 票是降级票 —— **靠运气答对**。若某道真冲突
+      题撞上 2 次降级，就会漏判放走重复记忆。重试是低成本的止血。
+    * **调用异常（网络/超时/配置）→ 不重试**。这类通常是系统性的，重试只是白等
+      一次 41 秒，仍按 fail-open 返回。
 
     ⚠ 不要用 ``str.format()`` 填 prompt：模板里的 JSON 示例 ``{"conflicts": ...}``
     会被当成格式化占位符抛 ``KeyError: '"conflicts"'``（2026-09-27 实测踩过）。
@@ -433,23 +464,25 @@ def _llm_confirm_conflict(new_content: str, old_content: str) -> tuple[bool, str
     prompt = _REVIEW_PROMPT.replace("{new}", (new_content or "")[:LLM_REVIEW_INPUT_CHARS]).replace(
         "{old}", (old_content or "")[:LLM_REVIEW_INPUT_CHARS]
     )
-    try:
-        import asyncio
-        import json as _json
 
-        engine = _make_llm_engine()
-        reply = asyncio.run(engine.chat([{"role": "user", "content": prompt}]))
-        text = (getattr(reply, "content", None) or str(reply or "")).strip()
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            return False, "LLM 未返回 JSON，按不冲突处理"
-        data = _json.loads(text[start : end + 1])
-        if not isinstance(data, dict) or "conflicts" not in data:
-            return False, "LLM 返回缺少 conflicts 字段，按不冲突处理"
-        return bool(data.get("conflicts")), str(data.get("reason") or "")[:80]
-    except Exception as e:  # noqa: BLE001 — fail-open 是这里的硬要求
-        logger.warning(f"冲突 LLM 复核失败（按不冲突处理，不下架）: {type(e).__name__}: {e}")
-        return False, f"复核失败: {type(e).__name__}"
+    last_reason = ""
+    for attempt in range(LLM_REVIEW_MAX_RETRIES + 1):
+        try:
+            ok, reason, parsed = _ask_review_llm(prompt)
+        except Exception as e:  # noqa: BLE001 — fail-open 是这里的硬要求
+            logger.warning(f"冲突 LLM 复核失败（按不冲突处理，不下架）: {type(e).__name__}: {e}")
+            return False, f"复核失败: {type(e).__name__}"
+        if parsed:
+            if attempt:
+                logger.info(f"冲突复核第 {attempt + 1} 次才拿到合法 JSON（已重试 {attempt} 次）")
+            return ok, reason
+        last_reason = reason
+        if attempt < LLM_REVIEW_MAX_RETRIES:
+            logger.warning(
+                f"冲突复核第 {attempt + 1} 次输出无法解析，重试: {reason}"
+            )
+
+    return False, f"{last_reason}（已重试 {LLM_REVIEW_MAX_RETRIES} 次仍失败，按不冲突处理）"
 
 
 def _apply_supersede(
