@@ -725,6 +725,27 @@ class LLMEngine:
         except Exception as e:
             logger.warning(f"后台模型健康度检查失败（忽略，不影响服务）: {e}")
 
+    async def warmup_model_discovery(self) -> list[str]:
+        """启动时后台预热模型列表缓存（不阻塞首请求）。
+
+        当前 TTL 6h，但冷启动仍要等网络请求才能发现可用模型。
+        服务启动时调一次，后续 6h 内命中缓存。
+        """
+        try:
+            base = str(self.config.llm_base_url or "").rstrip("/")
+            key = str(self.config.llm_api_key or "")
+            if not key:
+                from pathlib import Path as _Path
+                kf = _Path(str(self.config.llm_api_key_file or ""))
+                if kf.exists():
+                    key = kf.read_text().strip()
+            if not base or not key:
+                return []
+            return discover_chat_models(base, key)
+        except Exception as e:
+            logger.warning(f"模型列表预热失败（忽略，不影响服务）: {e}")
+            return []
+
     def _discover_models(self) -> list[str]:
         """动态发现可用模型（GET /models），发现不了时返回空列表。
 

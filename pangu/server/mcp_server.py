@@ -40,6 +40,7 @@ class MCPServer:
         self._domain_knowledge = None
         self._warmup_task: asyncio.Task | None = None
         self._health_check_task: asyncio.Task | None = None
+        self._discovery_warmup_task: asyncio.Task | None = None
         self._vacuum_task: asyncio.Task | None = None
         self._periodic_vacuum_task: asyncio.Task | None = None
         # 夜间巩固循环（03:00–05:00 窗口）。2026-09-18 补：此前 LifecycleManager 从没被
@@ -61,6 +62,7 @@ class MCPServer:
         # 幂等，因此在同步上下文构造对象也不会出问题。
         self._maybe_schedule_warmup()
         self._maybe_schedule_health_check()
+        self._maybe_schedule_discovery_warmup()
 
     @property
     def palace(self):
@@ -266,6 +268,24 @@ class MCPServer:
         self._health_check_task = loop.create_task(
             self.llm.start_background_health_check(),
             name="pangu-llm-health-check",
+        )
+
+    def _maybe_schedule_discovery_warmup(self) -> None:
+        """在事件循环可用时把模型列表预热调度为后台任务
+
+        行为：
+        - 无运行中的事件循环（如单元测试中） → 跳过
+        - 已调度过 → 跳过（幂等）
+        """
+        if self._discovery_warmup_task is not None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._discovery_warmup_task = loop.create_task(
+            self.llm.warmup_model_discovery(),
+            name="pangu-llm-discovery-warmup",
         )
 
     async def await_warmup(self) -> dict | None:
