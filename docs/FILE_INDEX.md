@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **352** 个 py 文件 / **108,068** 行。
+共 **352** 个 py 文件 / **108,293** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,456 行
+## `pangu/memory/` — 136 文件 / 43,473 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -58,7 +58,7 @@
 | `dream_memory.py` | 182 | 盘古梦境巩固 — 5步睡眠整理周期 |
 | `embedding.py` | 504 | 盘古 — 统一嵌入服务（API → ONNX → hash 三级降级） |
 | `emotional_intelligence.py` | 218 | 盘古情感智能 — 理解用户情绪，调整记忆优先级 |
-| `encryption.py` | 274 | 盘古 — 记忆数据加密模块 |
+| `encryption.py` | 291 | 盘古 — 记忆数据加密模块 |
 | `enhanced_evaluation.py` | 324 | 盘古增强评估 — LLM 驱动矛盾检测 + 轨迹追踪 |
 | `error_monitor.py` | 162 | 盘古错误监控 — 集中日志 + 异常追踪 + 健康报告 |
 | `evaluation.py` | 131 | 盘古 — 评估缓存独立化（从伏羲 v1.5.6 移植） |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 105 文件 / 32,523 行
+## `tests/` — 105 文件 / 32,678 行
 
 测试
 
@@ -215,7 +215,7 @@
 | `test_p1_3_backup_restore.py` | 267 | 备份/恢复真落盘回归（2026-09-19）。 |
 | `test_p1_3_classification_axis.py` | 283 | P1-3 阶段 4：classification（密级）轴 —— 与租户**正交**的第二条可读判据。 |
 | `test_p1_3_decay_idempotent.py` | 101 | 衰减幂等性（2026-09-19 修复回归）。 |
-| `test_p1_3_encryption.py` | 110 | 加密边界回归（2026-09-19）。 |
+| `test_p1_3_encryption.py` | 265 | 加密边界回归（2026-09-19）。 |
 | `test_p1_3_honest_returns.py` | 65 | 落盘失败时的诚实返回（2026-09-19 修 BUG）。 |
 | `test_p1_3_kg_tenant_scope.py` | 334 | P1-3 阶段 3：知识图谱（KG）多租户回归测试。 |
 | `test_p1_3_kg_wiki_classification.py` | 137 | KG / wiki 的**密级轴** —— 第二条正交判据，与记忆层 metadata_readable 同规则。 |
@@ -297,7 +297,7 @@
 | `web_server.py` | 543 | 盘古 Web 服务器 — 提供记忆管理 Web UI 和 REST API |
 | `websocket_server.py` | 334 | 盘古 WebSocket 服务器 — 实时记忆流推送 |
 
-## `pangu/api/` — 16 文件 / 6,058 行
+## `pangu/api/` — 16 文件 / 6,111 行
 
 FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传输
 
@@ -318,7 +318,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `routes_tasks.py` | 249 | 盘古任务状态同步 API — 跨 Agent 任务追踪（SQLite 持久化） |
 | `routes_tools.py` | 105 | 盘古 REST API 路由 — /api/v2/tools（通用 MCP 工具网关） |
 | `safe_eval.py` | 218 | Safe expression evaluator for ABAC conditions. |
-| `server.py` | 1509 | 盘古 FastAPI 服务器工厂（伏羲移植） |
+| `server.py` | 1562 | 盘古 FastAPI 服务器工厂（伏羲移植） |
 
 ## `scripts/` — 21 文件 / 3,349 行
 

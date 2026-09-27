@@ -99,6 +99,55 @@ def mcp_auth_exposure_warning(bind_host: str, mcp_require_auth: bool) -> str:
     )
 
 
+def collect_encryption_samples(config) -> list[tuple[str, str]]:
+    """收集每个存储文件里的**全部**已知密文，供启动自检逐条验证。
+
+    两处设计都是被实测逼出来的（2026-09-27）：
+
+    1. **必须含归档表**：启动体检原先只扫 ``drawers.json``，而
+       ``forgetting_archive.json`` 里的密文同样可能是旧密钥写的 —— 实测云端有 1 条
+       解不开、页面显示「[[解密失败…]]」，启动日志却照打「加密可用」。采样面漏了
+       哪儿，哪儿的故障就永远不会被 ``self_check`` 发现。
+    2. **必须全量、不能只取每个文件的第一条**：初版每来源只 break 取一条，云端
+       实测归档表**第一条恰好能解开**，于是坏数据照样报「全部解密通过」——
+       抽样第一条只回答「这把钥还活着吗」，回答不了「还有没有解不开的条目」。
+
+    纯读、无副作用、损坏文件不影响启动（与 ``mcp_auth_exposure_warning`` 同风格，
+    便于单测）。
+
+    Args:
+        config: 权威 config（用 ``palace_path`` 定位 drawers 与归档表）。
+
+    Returns:
+        ``[(来源标签, 密文样本), ...]``；该来源没有密文或文件不可读时跳过。
+    """
+    import json
+    from pathlib import Path
+
+    palace = Path(config.palace_path)
+    # 归档路径必须与 adaptive_forgetting._resolve_archive_file 同一算法：
+    # palace 的**父目录**下（即 ~/.pangu/pangu.db/forgetting_archive.json）
+    sources = (
+        ("drawers.json", palace / "drawers.json"),
+        ("forgetting_archive.json", palace.parent / "forgetting_archive.json"),
+    )
+    samples: list[tuple[str, str]] = []
+    for label, path in sources:
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 — 损坏/半截文件不该让启动体检失败
+            continue
+        if not isinstance(data, list):
+            continue
+        for item in data:
+            content = str((item or {}).get("content") or "")
+            if content.startswith("gAAAAA"):
+                samples.append((label, content))
+    return samples
+
+
 def create_app() -> FastAPI:
     """创建 FastAPI 应用（伏羲移植版）"""
     from pangu.core.config import PanguConfig as _Cfg
@@ -291,33 +340,37 @@ def create_app() -> FastAPI:
         # 加密体检（2026-09-19）：确认已有密文还能解开。
         # 典型故障：换机器/重装时丢了 ~/.pangu/.encryption_key，新密钥生成后旧密文
         # 全部不可解 —— 旧行为是静默返回密文，用户只看得到 gAAAAAB… 乱码查不到原因。
+        #
+        # 2026-09-27：采样面从「只扫 drawers.json」扩到**含归档表** —— 归档里同样
+        # 可能有旧密钥写的密文，原先永远不会被 self_check 发现（见
+        # collect_encryption_samples docstring）。
         try:
-            import json as _json
-            from pathlib import Path as _Path
-
             from pangu.memory import encryption as _enc
 
-            sample = None
-            _drawers_file = _Path(config.palace_path) / "drawers.json"
-            if _drawers_file.exists():
-                for _item in _json.loads(_drawers_file.read_text()):
-                    _c = str((_item or {}).get("content") or "")
-                    if _c.startswith("gAAAAA"):
-                        sample = _c
-                        break
-            _verdict = _enc.self_check(sample)
+            samples = collect_encryption_samples(config)
+            _verdict = _enc.self_check(samples[0][1] if samples else None)
             if not _verdict["enabled"]:
                 logger.error(f"启动体检：加密不可用 —— {_verdict['error']}（新数据将以明文写入）")
-            elif _verdict["sample_ok"] is False:
-                logger.error(
-                    "启动体检：**已有密文无法解密**（密钥不匹配）—— 旧加密记忆将显示为占位符。"
-                    "检查 ~/.pangu/.encryption_key 与 PANGU_ENCRYPTION_KEY 是否与加密时一致"
-                )
             else:
-                logger.info(
-                    f"启动体检：加密可用（{_verdict['keys']} 把密钥，"
-                    f"样本解密 {'通过' if _verdict['sample_ok'] else '无密文样本'}）"
-                )
+                # 逐条验并**按来源计数**：抽样第一条会漏（云端归档表首条恰好可解、
+                # 坏的在后面），全量才回答得了「还有没有解不开的条目」。
+                _broken: dict[str, int] = {}
+                for _label, _sample in samples:
+                    if _enc.self_check(_sample)["sample_ok"] is False:
+                        _broken[_label] = _broken.get(_label, 0) + 1
+                if _broken:
+                    _detail = "、".join(f"{k} {v} 条" for k, v in sorted(_broken.items()))
+                    logger.error(
+                        f"启动体检：**已有密文无法解密**（密钥不匹配）—— {_detail}。"
+                        "这些记忆将显示为占位符。"
+                        "检查 ~/.pangu/.encryption_key 与 PANGU_ENCRYPTION_KEY 是否与加密时一致"
+                    )
+                else:
+                    logger.info(
+                        f"启动体检：加密可用（{_verdict['keys']} 把密钥，"
+                        f"全量校验 {len(samples)} 处密文全部解密通过"
+                        f"{'·无密文样本' if not samples else ''}）"
+                    )
         except Exception as e:
             logger.warning(f"Encryption health probe failed: {e}")
 

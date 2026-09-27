@@ -513,6 +513,43 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — 补齐加密 fail-open 的**读侧** + 启动自检采样面扩到归档表。
+  - **根因①（读侧静默吐密文）**：`memory/encryption.py` 的 `decrypt()` 在
+    `_get_fernet()` 返回 None（cryptography 缺失 / 密钥非法）时直接
+    `return ciphertext`。这与它自己 docstring 宣称的「**不再静默返回密文**」矛盾
+    —— 2026-09-19 修过同款坑，但只修了「密钥不匹配」那一态，**漏了「加密根本
+    不可用」这一态**。于是 `gAAAAAB…` 照样直出到搜索结果、召回注入与仪表盘。
+    写侧（`encrypt`）反而是**有意** fail-open 存明文且打了 WARNING（见其注释），
+    读侧却零留痕 —— 两边不对称才是真正的洞。
+  - **改①（`decrypt`）**：先 `_looks_encrypted` 判密文（明文行为不变），再对
+    「密文 + 加密不可用」返回 `_DECRYPT_FAILED_PLACEHOLDER` 并留一次 WARNING，
+    与「密钥不匹配」那一态**共用同一条去重标志**。补齐的是既有决策，不是新语义。
+  - **根因②（自检采样面漏了归档表）**：`api/server.py` 启动体检原先只扫
+    `drawers.json`。而归档表 `forgetting_archive.json` 里的密文同样可能是旧密钥
+    写的 —— **实测云端就有 1 条解不开、页面显示「[[解密失败…]]」，启动日志却照打
+    「加密可用」**。采样面漏了哪儿，哪儿的故障就永远不会被 `self_check` 发现。
+  - **改②（`api/server.py`）**：抽模块级纯函数 `collect_encryption_samples(config)`
+    返回 `[(来源标签, 密文样本)]`，同时覆盖 drawers 与归档表（归档路径必须与
+    `adaptive_forgetting._resolve_archive_file` 同算法：palace 的**父目录**），
+    并**全量收集**每个文件里的全部密文；lifespan 体检改为逐条 `self_check` 后
+    **按来源计数**，任一条解不开就 ERROR 并指明「哪个文件几条」。抽成纯函数是
+    为了可测（原逻辑内联在 `lifespan` 里，测不到）。
+    ⚠ 初版每来源只 `break` 取第一条，云端实测**归档表首条恰好可解、坏数据在后面**
+    ⇒ 照样报「全部解密通过」。抽样第一条只回答「这把钥还活着吗」，回答不了
+    「还有没有解不开的条目」—— 已改为全量并加测试锁死。
+  - **验证**：`tests/test_p1_3_encryption.py` 由 8 例扩到 **15 例**，新增 7 例
+    （读侧返回占位符而非密文 / 明文仍透传 / 留痕一次即止 / drawers 采样 /
+    **归档表采样** / **全量收集而非只取首条** / 缺文件不抛且明文与坏 JSON 不污染）。
+    实现前 6 红 8 绿，实现后 15 绿；`-k "encrypt or decrypt or server or auth or
+    search or recall or lifecycle or archive or forget or key"` **455 passed,
+    6 skipped**；全量 `pytest tests/` **1968 passed, 19 skipped**。
+  - **边界（不是代码能修的）**：云端 `PANGU_ENCRYPTION_KEY` 为空、
+    `~/.pangu/.encryption_key` 只有 **1 把钥**（44 字符）。那条解不开的归档是用
+    **另一把**写的历史数据，**原文需找回旧钥才能恢复** —— 现在至少会被启动体检
+    的 ERROR 指名道姓报出来，不再静默。
+  - **生效方式**：改的是**云端服务端**，scp 代码+测试 + `systemctl --user restart
+    pangu-api`（部署记录见提交信息）。
+
 - **2026-09-27** — 落地 ROADMAP P2-4.4：生命周期端点真正做到「从入库到遗忘」。
   - **背景**：验收标准是「dashboard 展示记忆**从入库到遗忘的全轨迹**」
     （`docs/ROADMAP.md:167`）。初版（commit e76e5b6）只调了 `build_timeline`，

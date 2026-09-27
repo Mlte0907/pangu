@@ -145,11 +145,28 @@ def decrypt(ciphertext: str) -> str:
        看到 gAAAAAB… 乱码却查不到原因（2026-09-19 实测：换密钥后原样吐回密文）。
     """
     global _decrypt_failed_warned
-    f = _get_fernet()
-    if f is None:
-        return ciphertext
+    # 先判是不是密文：明文原样返回，任何加密状态下都不变。
     if not _looks_encrypted(ciphertext):
         return ciphertext
+
+    f = _get_fernet()
+    if f is None:
+        # 加密不可用（cryptography 缺失 / 密钥非法 / 密钥为空）。
+        #
+        # 这是 fail-open 链条的**读**侧。写侧（encrypt）已刻意 fail-open 存明文
+        # 并打 WARNING —— 拒绝写入会让整个系统不可用。但读侧若把密文原样返回，
+        # `gAAAAAB…` 就会直出到搜索结果、召回注入与仪表盘，用户看到乱码且查不到
+        # 原因。本函数 docstring 宣称的「**不再静默返回密文**」（2026-09-19 修的
+        # 同款坑）只覆盖了「密钥不匹配」那一态，漏掉了「加密根本不可用」这一态。
+        # 补齐为同一语义：解不开就给明确占位符 + 留一次痕。
+        if not _decrypt_failed_warned:
+            logger.warning(
+                "加密不可用，密文无法解密：cryptography 缺失或密钥非法。"
+                f"受影响内容将显示为 {_DECRYPT_FAILED_PLACEHOLDER}"
+            )
+            _decrypt_failed_warned = True
+        return _DECRYPT_FAILED_PLACEHOLDER
+
     try:
         return f.decrypt(ciphertext.encode()).decode()
     except Exception as e:
