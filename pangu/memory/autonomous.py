@@ -35,6 +35,30 @@ class TaskResult:
     status: str  # success / skipped / failed
     duration_ms: float = 0.0
     details: dict = field(default_factory=dict)
+    # 标准 metrics — 每个任务统一输出「处理了多少条 / 跳过了多少 / 失败了多少」
+    metrics: dict = field(default_factory=dict)
+
+
+def make_metrics(total: int = 0, processed: int = 0, skipped: int = 0, failed: int = 0) -> dict:
+    """生成统一的任务 metrics 字典。
+
+    每个自主任务输出相同的 metrics 结构，方便 dashboard 和告警统一处理。
+
+    Args:
+        total: 总共需要处理的记忆条数
+        processed: 实际处理了多少条
+        skipped: 跳过了多少条（不满足条件）
+        failed: 失败了多少条
+
+    Returns:
+        {"total": N, "processed": N, "skipped": N, "failed": N}
+    """
+    return {
+        "total": total,
+        "processed": processed,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
 @dataclass
@@ -309,6 +333,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details={"fused_groups": fused, "total_topics": len(topic_groups)},
+                metrics=make_metrics(total=len(drawers), processed=fused, skipped=len(topic_groups) - fused),
             )
         except Exception as e:
             return TaskResult(name="fusion", status="failed", details={"error": str(e)})
@@ -337,6 +362,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details={"compressed": compressed, "tokens_saved": tokens_saved},
+                metrics=make_metrics(total=len(compressible), processed=compressed, skipped=len(compressible) - compressed),
             )
         except Exception as e:
             return TaskResult(name="compression", status="failed", details={"error": str(e)})
@@ -353,6 +379,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details=stats,
+                metrics=make_metrics(total=len(drawers), processed=stats.get("decayed", 0), skipped=len(drawers) - stats.get("decayed", 0)),
             )
         except Exception as e:
             return TaskResult(name="decay", status="failed", details={"error": str(e)})
@@ -370,6 +397,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details=result,
+                metrics=make_metrics(total=len(drawers), processed=result.get("forget_count", 0), skipped=len(drawers) - result.get("forget_count", 0)),
             )
         except Exception as e:
             return TaskResult(name="forget", status="failed", details={"error": str(e)})
@@ -387,6 +415,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details=result,
+                metrics=make_metrics(total=len(drawers), processed=result.get("consolidated", 0), skipped=len(drawers) - result.get("consolidated", 0)),
             )
         except Exception as e:
             return TaskResult(name="dream", status="failed", details={"error": str(e)})
@@ -407,6 +436,7 @@ class AutonomousMemoryEngine:
                     "gaps_found": result.get("knowledge_gaps", 0),
                     "suggestions": len(result.get("suggestions", [])),
                 },
+                metrics=make_metrics(total=len(drawers), processed=result.get("knowledge_gaps", 0), skipped=len(drawers) - result.get("knowledge_gaps", 0)),
             )
         except Exception as e:
             return TaskResult(name="curiosity", status="failed", details={"error": str(e)})
@@ -430,6 +460,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details=result,
+                metrics=make_metrics(total=len(drawers), processed=result.get("entities_extracted", 0), skipped=len(drawers) - result.get("entities_extracted", 0)),
             )
         except Exception as e:
             return TaskResult(name="kg_enrichment", status="failed", details={"error": str(e)})
@@ -474,6 +505,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details={"result": result},
+                metrics=make_metrics(total=len(drawers), processed=result.get("consolidated", 0), skipped=len(drawers) - result.get("consolidated", 0)),
             )
         except Exception as e:
             return TaskResult(name="consolidation", status="failed", details={"error": str(e)})
@@ -504,6 +536,7 @@ class AutonomousMemoryEngine:
                 status="success",
                 duration_ms=(time.time() - start) * 1000,
                 details={"rechecked": rechecked, "graduated": graduated},
+                metrics=make_metrics(total=rechecked, processed=graduated, skipped=rechecked - graduated),
             )
         except Exception as e:
             return TaskResult(name="readmission", status="failed", details={"error": str(e)})
