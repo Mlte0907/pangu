@@ -1,7 +1,11 @@
 """盘古搜索模块 — 多模式记忆搜索"""
 
+import logging
+
 from ..core.config import PanguConfig
 from ..core.palace import Drawer
+
+logger = logging.getLogger(__name__)
 
 
 class SemanticSearch:
@@ -182,13 +186,77 @@ class HybridSearch:
     """混合搜索 — 结合语义和词汇搜索"""
 
     def __init__(self, config: PanguConfig = None):
+        self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self.semantic = SemanticSearch(config)
         self.lexical = LexicalSearch(config)
+
+    def _search_rrf(
+        self, query: str, drawers: list[Drawer], wing: str | None, room: str | None, n_results: int
+    ) -> list[dict]:
+        """三路 RRF 召回（FTS + 向量 + KG），并把字段对齐到本类的返回契约。
+
+        为什么要有它（2026-09-28 实测）：本类原本是 `SemanticSearch`（纯向量）+
+        `LexicalSearch`（**整串子串**匹配 `query.lower() in content.lower()`）。
+        于是「精确标识符查询」两路全废 —— 实测查询
+        ``llmDaily ReferenceError 概览全显 根因``：
+
+            本类      n=10/30/100 → 目标记忆**连 top-100 都进不去**（向量排 271/331，
+                                 词法因整串不匹配返回 0 条）
+            三路 RRF            → **第 7 名，fts_rank=1**（FTS 精确命中标识符）
+
+        字段对齐要点（下游有硬依赖，别改）：
+        * ``score`` ← ``rrf_score`` —— `memory_ops.py` 用它算「最高相似度」并对比
+          0.32 可信阈值；
+        * ``source`` 必须落回 ``semantic`` / ``lexical`` —— `memory_ops.py:388`
+          按它分桶统计 `vector_hits` / `fts_hits`，写别的值统计就恒 0；
+        * 补 ``hall`` / ``source_file`` —— RRF 结果不带这两个字段，而
+          SemanticSearch 的返回契约里有。
+        """
+        pool = list(drawers or [])
+        if wing:
+            pool = [d for d in pool if d.wing == wing]
+        if room:
+            pool = [d for d in pool if d.room == room]
+        if not pool:
+            return []
+
+        from ..memory.hybrid_search import hybrid_search as rrf_search
+
+        hits = rrf_search(query, pool, config=self.config, limit=max(1, n_results))
+        if not hits:
+            return []  # 无命中是合法结果，不要回退去硬凑不相关的条目
+
+        by_id = {d.id: d for d in pool}
+        out: list[dict] = []
+        for r in hits:
+            d = by_id.get(r.get("id"))
+            item = dict(r)
+            item["score"] = float(r.get("rrf_score") or 0.0)
+            if r.get("vector_rank") is not None:
+                item["source"] = "semantic"
+            elif r.get("fts_rank") is not None:
+                item["source"] = "lexical"
+            else:
+                item["source"] = "semantic"
+            item["hall"] = getattr(d, "hall", "") if d else ""
+            item["source_file"] = getattr(d, "source_file", "") if d else ""
+            out.append(item)
+        return out
 
     def search(
         self, query: str, drawers: list[Drawer], wing: str = None, room: str = None, n_results: int = 10
     ) -> list[dict]:
-        """混合搜索"""
+        """混合搜索。
+
+        优先走三路 RRF（见 `_search_rrf`）；**只在抛异常时**回退到
+        Semantic + Lexical 合并 —— 返回空列表是合法结果，不代表失败，
+        否则会拿不相关的条目去凑数。
+        """
+        try:
+            return self._search_rrf(query, drawers, wing, room, n_results)
+        except Exception:
+            logger.debug("RRF 搜索失败，回退 Semantic+Lexical 合并", exc_info=True)
+
         semantic_results = self.semantic.search(query, drawers, wing=wing, room=room, n_results=n_results * 2)
         lexical_results = self.lexical.search(query, drawers, wing=wing, n_results=n_results * 2)
 

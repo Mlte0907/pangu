@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **354** 个 py 文件 / **109,132** 行。
+共 **355** 个 py 文件 / **109,376** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,799 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 107 文件 / 33,191 行
+## `tests/` — 108 文件 / 33,367 行
 
 测试
 
@@ -251,6 +251,7 @@
 | `test_retrievability_audit.py` | 201 | 可检索性体检（memory/retrievability.py）的回归测试。 |
 | `test_retrievability_llm.py` | 148 | 可检索性体检的 LLM 阶段（2026-09-26）。 |
 | `test_search_own_first.py` | 321 | 搜索「本平台优先」的两个模式（2026-09-26）。 |
+| `test_search_rrf_recall.py` | 176 | `search/engine.py::HybridSearch` 改走三路 RRF 的回归（2026-09-28）。 |
 | `test_supersede_llm_review.py` | 324 | 方案 A：冲突 supersede 改为「后台 LLM 复核」（2026-09-27）。 |
 | `test_top_level_intelligence.py` | 258 | 盘古顶级智能验证 — 端到端集成测试 |
 | `test_v2_features.py` | 231 | 盘古 v2.0 新功能测试 — neural_memory / multi_agent / social_memory |
@@ -418,7 +419,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `__init__.py` | 327 | 盘古插件系统 — 可扩展的记忆处理器 |
 | `plugin_manager.py` | 455 | 盘古插件管理器 — 插件化架构核心 |
 
-## `pangu/search/` — 3 文件 / 698 行
+## `pangu/search/` — 3 文件 / 766 行
 
 搜索层：嵌入引擎 + 混合检索引擎
 
@@ -426,7 +427,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | --- | ---: | --- |
 | `__init__.py` | 5 | 盘古搜索模块 |
 | `embedder.py` | 479 | 盘古向量嵌入引擎 — 真正的语义搜索 |
-| `engine.py` | 214 | 盘古搜索模块 — 多模式记忆搜索 |
+| `engine.py` | 282 | 盘古搜索模块 — 多模式记忆搜索 |
 
 ## `pangu/wiki/` — 2 文件 / 376 行
 

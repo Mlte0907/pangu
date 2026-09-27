@@ -513,6 +513,54 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-28** — MCP/Web/CLI 共用的 `HybridSearch` 改走三路 RRF（修「记忆在库却搜不到」）。
+  - **现象与定位**：用户报某条记忆搜不到。逐层取证推翻了两个错误假设：
+    ① 不是 supersede 下架 —— `hybrid_search.py:277` 对 `memory_status=="superseded"`
+    **只加 `warning: "⚠ 已被更新"` 标注、不过滤**，全代码库无一处按它排除结果；
+    ② 不是租户隔离 —— 那条 `tenant_id=opencode / visibility=tenant`，用
+    `room=opencode` 预过滤实测**排第 7 名**。
+    真凶是**搜索引擎选错**：
+  - **根因（`search/engine.py::HybridSearch`）**：它是 `SemanticSearch`（纯向量）
+    + `LexicalSearch`（**整串子串** ``query.lower() in content.lower()``）。两路对
+    「精确标识符查询」同时失效，实测查询 `llmDaily ReferenceError 概览全显 根因`：
+    * 本类 `n_results=10/30/100` → 目标**连 top-100 都进不去**（向量排 **271/331**、
+      score 0.2655；词法因整串不匹配恒 0 条）；
+    * `memory/hybrid_search.py` 三路 RRF（FTS+向量+KG）→ **第 7 名，`fts_rank=1`**
+      （FTS 精确命中标识符）。
+    这就是「明明在库里却搜不到」的实证。该类被 `mcp_server.py:22`、
+    `web_server.py:25`、`cli.py:39`、`retrievability.py:128,265` 共用。
+  - **改（`search/engine.py`）**：新增 `_search_rrf()` 优先走三路 RRF，**只在抛异常时**
+    回退原 Semantic+Lexical 合并 —— 返回空是合法结果，不能回退去拿不相关的条目凑数。
+    字段对齐（下游有硬依赖，别改）：
+    * `score` ← `rrf_score`：`memory_ops.py` 用它算「最高相似度」比 0.32 可信阈值；
+    * `source` 必须落回 `semantic`/`lexical`：`memory_ops.py:388` 按它分桶统计
+      `vector_hits`/`fts_hits`，写别的值统计恒 0（按 `vector_rank`/`fts_rank` 哪路命中判定）；
+    * 补 `hall`/`source_file`：RRF 结果不带，而原返回契约里有；
+    * `wing`/`room` 过滤在本类补齐（RRF 函数无这两个参数）。
+    顺带补上 `logger`（原先 `except` 里调未定义的 logger 会 NameError 冒泡把搜索打崩）
+    与 `HybridSearch.config` 属性。
+  - **测试隔离坑（全量才挂）**：新增 `tests/test_search_rrf_recall.py`（14 例）。单跑
+    14 passed、前半 767 passed、后半 1231 passed，**唯独全量挂 6 个**、报 `[]`。
+    根因是 `fts_search.py:199` 的 `if self._indexed and self._indexed_count == len(drawers)`
+    **只比文档数不比内容**就跳过重建 —— 本文件固定 4 条 drawer，前序用例恰好也索引 4 条时
+    就拿别人的索引来搜我的文档 ⇒ FTS 恒不命中。conftest 已隔离 `vector_index` 单例却没管
+    FTS，故在本测试文件加 autouse `_isolate_fts_index`（置 `_indexed=False`、
+    `_indexed_count=None`）。**「单跑过、半量过、全量挂」是状态泄漏的典型指纹。**
+  - **验证**：`tests/test_search_rrf_recall.py` 14 passed；`test_core.py` +
+    `test_search_own_first.py` 157 passed（原 HybridSearch 用例不受影响）；前半组合
+    767 passed；全量 `pytest tests/` 见提交信息。
+  - **存量误判恢复（同日数据操作，非代码）**：改造上线后回溯复核历史下架 ——
+    `drawers` 中 34 条 `memory_status=="superseded"`，逐条取 `superseded_by` 前 2 个
+    代表配对送 LLM 复核，结果 **false_positive 32 / keep 0 / no_valid_rep 2**，
+    即**历史 34 条下架无一被确认为真冲突**（最离谱的 `62cb8c8f` 被 **25 条**不同主题
+    记忆"取代"）。已停服恢复 32 条 → `memory_status=active` +
+    `review_verdict=false_positive` + `reviewed_at`/`review_note`，`superseded_by`
+    保留作历史。恢复后状态分布 `active 329 / superseded 2`；2 条 `no_valid_rep`
+    （代表 id 已被物理删除、无法配对）**未动**，留人工。
+    回滚：`/root/pangu-backup-20260928-003438`（25M，改前状态）。
+    ⚠ 该操作**不解决**搜不到 —— supersede 本就不过滤搜索（见上），真凶是搜索引擎。
+  - **生效方式**：`search/engine.py` 是服务端代码 → scp + `systemctl --user restart pangu-api`。
+
 - **2026-09-27** — 冲突 supersede 改造：字词法止血 + LLM 后台复核（方案 A）。
   - **事故与根因**：用户写完新记忆后发现一条**毫无关系**的旧记忆被自动标
     `superseded`、移出常规搜索（无人告知）。上云实测复现，根因在
