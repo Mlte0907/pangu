@@ -15,8 +15,9 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库 | 云端 `/root/pangu`（**非 git**，靠 `scp` + `systemctl --user restart pangu-api` 部署） |
-| Python | `.venv/bin/python` |
+| 本地 | 就是 git 仓库（`origin` = Mlte0907/pangu），改完 commit/push |
+| 云端 | `/root/pangu` **非 git**：靠 `scp` 部署 + `systemctl --user restart pangu-api` |
+| Python | `.venv/bin/python`（版本以 `.venv/bin/python -V` 为准，别写死进文档） |
 | 服务 | `systemctl --user pangu-api`，`0.0.0.0:19529`（MCP 与 REST 同端口） |
 | 权威数据 | `/root/.pangu/pangu.db/v2_memories/`（`drawers.json` + `knowledge_graph.db`） |
 | MCP 工具数 | **以 `tools/list` 实测为准**（别信任何文档写的数字，含本文件） |
@@ -25,6 +26,18 @@
 curl -s http://127.0.0.1:19529/health
 cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
 ```
+
+## dsh-pangu 仪表盘（跨仓，改错地方＝白改）
+
+- **DSH 真正加载的插件是 `/home/xiaoxin/dsh-pangu-src`**（`link:` 进
+  `~/.dsh/profiles/web`）；本仓 `plugins/dsh-pangu/` 是落后多个小版本的副本，
+  改它在 DSH 里不生效。
+- 「仪表盘外壳在、指标全是 `—`、控制台零报错」＝宿主侧 `fetchPanguStats()` 抛错被
+  `catch` 吞成 `stats.error`（客户端 `unwrap` 只在**顶层** `ok===false` 时才抛）。
+  真错误要看浏览器 React fiber 上的 `dash.stats.error`；宿主侧探针看
+  `~/.dsh/web.log` 的 `[dsh-pangu] census`（`view=2/2` 才算工具在位）。
+- 改 `lib/index.js` / `typert.host.js` / `cordis.patch.yml` 必须 `dsh-restart`；
+  只改 `lib/client.js` 刷新浏览器即可。
 
 ## 说明书索引（`MAINTAINERS.md`）
 
