@@ -59,6 +59,7 @@ jobs:
       - name: 单元测试
         run: |
           pytest tests/ -v --tb=short \
+            --ignore=tests/test_bench.py \
             --cov=pangu \
             --cov-report=term-missing \
             --cov-report=xml \
@@ -71,3 +72,32 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  # 基准测试独立 job — 不阻塞 PR 门禁（continue-on-error: true）
+  # test_bench.py 需要 ~6 分钟（最慢的两个用例占 343s），拆出后主 job 门禁更快。
+  # 只在 Python 3.11（云端生产版本）跑，避免重复。
+  benchmark:
+    name: Benchmark (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true  # 基准测试不阻塞 PR 门禁
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: 基准测试
+        run: |
+          pytest tests/test_bench.py -v --tb=short

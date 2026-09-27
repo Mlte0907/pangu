@@ -513,6 +513,19 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — P1 任务执行：1.3 模型健康度检查 + 2.2 基准测试独立 job。
+  - **1.3 模型健康度检查**（`llm.py` / `mcp_server.py`）：
+    - `LLMEngine.health_check_models()`：探测所有候选模型（最小 prompt + 超时）
+    - `LLMEngine.start_background_health_check()`：后台调度，不阻塞首请求
+    - `chat()`：跳过健康度检查中发现的不可用模型
+    - `mcp_server.py`：启动时后台调度健康检查
+    - 动机：V4.1 首次 121s，GLM 全挂，不探测就要等试了才知道
+  - **2.2 基准测试独立 job**（`.github/workflows/test.yml`）：
+    - 主 job 排除 `test_bench.py`（`--ignore=tests/test_bench.py`）
+    - 独立 `benchmark` job：`continue-on-error: true`，不阻塞 PR 门禁
+    - 只在 Python 3.11（云端生产版本）跑
+    - 效果：主 job 门禁从 600s 降到 173s（快 7 分钟），bench 6 分 30 秒独立跑
+  - **验证**：主 job 1907 passed in 173s；bench 21 passed in 390s。
 - **2026-09-27** — P0 任务执行：1.2 分路径耗时度量 + 2.1 拆分 test_concurrent_search + 3.1 模块分级。
   - **1.2 分路径耗时度量**（`fts_search.py` / `hybrid_search.py`）：
     FTS 和向量搜索分别计时，响应加 `fts_ms` / `vector_ms` / `kg_ms` / `search_total_ms`。
