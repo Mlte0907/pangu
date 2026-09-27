@@ -513,6 +513,10 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — P2-4.4 记忆生命周期 API（commit e76e5b6）。
+  - **改动**（`pangu/api/routes_memory.py`）：加 `GET /api/v2/memories/lifecycle`
+    端点，调用 `TimelineEngine.build_timeline` 返回时间线数据。
+  - **验证**：pangu 侧 264 passed；云端端点已注册（`/memories/lifecycle` 在路由表中）。
 - **2026-09-27** — P2 任务执行：2.4 向量索引增量更新 + 3.4 配置项收敛。
   - **2.4 向量索引增量更新**（`vector_index.py`）：
     - `add_batch()` 已实现增量更新（`_add_to_backend` + `_maybe_rebuild_index`）
