@@ -175,6 +175,7 @@ class KnowledgeEngine:
         entries = self._read()
         query_lower = query.lower()
         results = []
+        hit_ids = []
         for e in entries:
             score = 0
             if query_lower in e.get("title", "").lower():
@@ -187,8 +188,25 @@ class KnowledgeEngine:
             if score > 0:
                 result = KnowledgeEntry.from_dict(e)
                 results.append((score, result))
+                hit_ids.append(e.get("id", ""))
         results.sort(key=lambda x: x[0], reverse=True)
+        # 记录被引用次数（知识结晶效果度量：结晶后的知识条目被搜索命中的次数）
+        if hit_ids:
+            self._increment_usage(hit_ids)
         return [r[1] for r in results[:10]]
+
+    def _increment_usage(self, knowledge_ids: list[str]) -> None:
+        """累加知识条目的被引用次数（搜索命中时调用）"""
+        if not knowledge_ids:
+            return
+        entries = self._read()
+        changed = False
+        for e in entries:
+            if e.get("id") in knowledge_ids:
+                e["usage_count"] = int(e.get("usage_count", 0)) + 1
+                changed = True
+        if changed:
+            self._write(entries)
 
     def delete_knowledge(self, knowledge_id: str) -> bool:
         """删除知识条目"""
@@ -206,9 +224,11 @@ class KnowledgeEngine:
         for e in entries:
             cat = e.get("category", "unknown")
             categories[cat] = categories.get(cat, 0) + 1
+        total_usage = sum(int(e.get("usage_count", 0)) for e in entries)
         return {
             "total": len(entries),
             "categories": categories,
+            "avg_usage_count": round(total_usage / len(entries), 2) if entries else 0,
         }
 
 
