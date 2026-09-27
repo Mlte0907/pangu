@@ -263,6 +263,10 @@ class LLMEngine:
         self._estimated_cost_usd: float = 0.0
         # 按日 token 统计（key = "YYYY-MM-DD"）
         self._daily_tokens: dict[str, dict[str, int]] = {}
+        # 模型健康度：不可用的模型集合 + 上次探测时间
+        self._unhealthy_models: set[str] = set()
+        self._health_check_ts: float = 0.0
+        self._health_check_lock = asyncio.Lock()
         # LRU 响应缓存（内存层）
         self._cache: OrderedDict[str, LLMResponse] = OrderedDict()
         self._cache_max: int = getattr(config, "llm_cache_max", 128) if config else 128
@@ -577,6 +581,9 @@ class LLMEngine:
         else:
             models = self._discover_models()
             discovery_done = True
+        # 跳过健康度检查中发现的不可用模型
+        if self._unhealthy_models:
+            models = [m for m in models if m not in self._unhealthy_models]
         response = None
         for attempt in range(self.config.llm_max_retries):
             idx = 0
@@ -657,6 +664,66 @@ class LLMEngine:
             return await self._call_openai_compatible(
                 provider, messages, system, temperature, max_tokens, json_mode, model=model
             )
+
+    async def health_check_models(self, timeout: float = 10.0) -> dict[str, bool]:
+        """探测所有候选模型的健康度，返回 {model: is_healthy}。
+
+        对每个候选模型发一个最小 prompt（"ping"），成功且延迟 < timeout 的
+        标记为健康。结果缓存 30 分钟，避免每次调用都探测。
+
+        为什么需要：V4.1 首次调用稳定要 88~121s（高负载排队），GLM 全挂。
+        不探测就要等试了才知道，浪费用户时间。
+        """
+        now = time.time()
+        if now - self._health_check_ts < 1800 and self._unhealthy_models:
+            return {}  # 30 分钟内已探测过，直接返回缓存
+
+        models = self._discover_models()
+        if not models:
+            return {}
+
+        results: dict[str, bool] = {}
+        for model in models:
+            try:
+                resp = await asyncio.wait_for(
+                    self._do_chat(
+                        self.config.llm_provider.lower(),
+                        [{"role": "user", "content": "ping"}],
+                        max_tokens=5,
+                        model=model,
+                    ),
+                    timeout=timeout,
+                )
+                healthy = bool(resp.content) and not resp.content.startswith("[LMM")
+                results[model] = healthy
+                if not healthy:
+                    self._unhealthy_models.add(model)
+            except Exception:
+                results[model] = False
+                self._unhealthy_models.add(model)
+
+        # 健康的模型从不可用集合里移除（可能恢复了）
+        for model, healthy in results.items():
+            if healthy:
+                self._unhealthy_models.discard(model)
+
+        self._health_check_ts = now
+        logger.info(f"模型健康度检查完成: {sum(results.values())}/{len(results)} 可用")
+        return results
+
+    async def start_background_health_check(self) -> None:
+        """启动时后台触发模型健康度检查（不阻塞首请求）。
+
+        用法：
+            asyncio.create_task(engine.start_background_health_check())
+        """
+        try:
+            models = self._discover_models()
+            if not models:
+                return
+            await self.health_check_models()
+        except Exception as e:
+            logger.warning(f"后台模型健康度检查失败（忽略，不影响服务）: {e}")
 
     def _discover_models(self) -> list[str]:
         """动态发现可用模型（GET /models），发现不了时返回空列表。
