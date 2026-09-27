@@ -513,6 +513,50 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-27** — 落地 ROADMAP P2-4.4：生命周期端点真正做到「从入库到遗忘」。
+  - **背景**：验收标准是「dashboard 展示记忆**从入库到遗忘的全轨迹**」
+    （`docs/ROADMAP.md:167`）。初版（commit e76e5b6）只调了 `build_timeline`，
+    交付出来的是「活跃记忆按 created_at 排序的清单」，与验收标准差三件事。
+    用户问「这个生命周期的展示是为了表达什么」时无法自圆其说 —— 这次补齐。
+  - **改 1（`pangu/api/routes_memory.py` 端点重写）**：
+    - **状态**：活跃记忆经 `AdaptiveForgetting.evaluate_all` 逐条算出
+      `status/next_action(keep|compress|archive|forget)/status_reason/status_score`
+      —— 没有状态就不知道一条记忆在生命周期的哪一格（`TimelineEvent` 与 `Drawer`
+      **都没有状态字段**，这是初版的根本缺口）。
+    - **合并离场记忆**：从冷存储 `forgetting_archive.json` 取 `include_forgotten=True`
+      合并进同一时间轴。它们被 `remove_drawer` 移出 drawers.json，只活在那张表里，
+      不合并则「到遗忘」永远缺尾。
+    - **倒序 + 取最新**：初版升序且 `drawers[:limit]` 取文件头部 ⇒ 实测把**全库最旧**
+      的 50 条当成「最近 50 条」（云端 drawers.json n=322，全库 max=09-27，
+      而端点返回 max=09-22）。现改为合并后倒序、limit 截在最新条目上。
+    - **stats 反映全库**：初版 `total = len(drawers[:limit]) ≡ limit`，被 UI 读成
+      「全库只有 50 条」。现 `total = 活跃 + 归档/遗忘`，并给出
+      `active/archived/forgotten/keep/compress/archive/forget` 状态分布。
+  - **改 2（`pangu/memory/adaptive_forgetting.py` 补数据）**：
+    - `archive_memory()` 与 `auto_forget()` 归档分支补 `created_at`/`action`/`reason`
+      —— 缺入库时刻则时间跨度缺一头，缺原因则页面只能显示光秃秃的状态。
+    - **`auto_forget()` 的 forget 分支留痕**：此前只 `forgotten.append(id)` 再从
+      drawers 移除，既不在 drawers.json 也不在归档表，只剩计数 ⇒ **「到遗忘」在数据上
+      根本不存在**。现写入同一张表标 `action="forgotten"`。
+    - `get_archive(limit, include_forgotten=False)` 新增**默认 False 的**参数 +
+      `get_forgetting_stats()["archive_size"]` 改按默认口径计数 ⇒
+      `pangu_get_archive`（handlers/advanced.py）与 `pangu_archive_memory` 的
+      `archive_count` **契约零变化**。
+  - **取到 authoritative 的教训**：归档路径必须用 authoritative config 算
+    （`~/.pangu/pangu.db/forgetting_archive.json`）。`PanguConfig.load()` 的
+    palace_path 是 `~/.pangu/palace` ⇒ 两条路会读写**两个不同的归档文件**。
+    服务端三条路径（`MCPServer.__init__` 显式 `.authoritative_memory_config()`、
+    端点 `_authoritative_cfg()`、`autonomous` ）已核实全部 authoritative，
+    云端文件落在 `pangu.db/` 亦印证；测试初版种错位置，已改。
+  - **验证**：`tests/test_lifecycle_endpoint.py` 扩到 **14 例**（状态装配 /
+    分数随重要度单调 / 归档可见且解密 / 缺 created_at 的老数据回退 / 倒序 /
+    limit 落在最新 / stats 全库口径与状态分布 / 归档写入补字段 / 遗忘留痕 /
+    默认口径不破坏契约），实现前 11 红 3 绿、实现后 14 绿；
+    `-k "forget or archive or lifecycle or timeline or adaptive"` **112 passed**；
+    全量 `pytest tests/` **1935 passed, 19 skipped**。
+  - **生效方式**：改的是**云端服务端**，需 scp 代码+测试 + 重启 `pangu-api`
+    （见下方条目的部署记录）。
+
 - **2026-09-27** — 修 `/api/v2/memories/lifecycle` 回传密文（读取端点漏解密）。
   - **根因**：端点直接返回 `[e.__dict__ for e in events]`，而 `TimelineEvent.content`
     取自 `d.content` —— 落库时已按 `is_enabled()` 加密。列表 / 搜索 / 详情 / 导出

@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **352** 个 py 文件 / **107,654** 行。
+共 **352** 个 py 文件 / **108,068** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,399 行
+## `pangu/memory/` — 136 文件 / 43,456 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -17,7 +17,7 @@
 | --- | ---: | --- |
 | `__init__.py` | 80 | 盘古记忆模块 |
 | `adaptive_architecture.py` | 187 | 盘古自适应记忆架构 — 记忆系统自动重构 |
-| `adaptive_forgetting.py` | 307 | 盘古自适应遗忘 — 智能记忆生命周期管理 |
+| `adaptive_forgetting.py` | 364 | 盘古自适应遗忘 — 智能记忆生命周期管理 |
 | `adaptive_learning.py` | 217 | 盘古自适应学习系统 — 从用户行为中学习 |
 | `adaptive_params.py` | 211 | 盘古自适应参数系统 — 动态调整记忆策略参数 |
 | `advanced_reasoning.py` | 764 | 盘古高级推理引擎 — 因果推断、趋势预测与异常检测 |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 105 文件 / 32,248 行
+## `tests/` — 105 文件 / 32,523 行
 
 测试
 
@@ -194,7 +194,7 @@
 | `test_hotfix_llm_key.py` | 51 | 热修：resolveLlmApiKey + testConnection 逻辑分支测试 |
 | `test_ingestion.py` | 79 | 盘古 ingestion.py 测试 — 核心写入路径 |
 | `test_integration.py` | 659 | 盘古 API 服务器 + MCP 集成测试 |
-| `test_lifecycle_endpoint.py` | 146 | `/api/v2/memories/lifecycle` 读取端点的回归（2026-09-27）。 |
+| `test_lifecycle_endpoint.py` | 421 | `/api/v2/memories/lifecycle` 读取端点的回归（2026-09-27）。 |
 | `test_llm_model_switch.py` | 257 | 盘古 — LLM 候选模型发现与切换测试 |
 | `test_llm_optimizations.py` | 734 | 盘古 — LLM 优化功能测试 |
 | `test_llm_providers.py` | 378 | 盘古 — LLM 后端集成测试 |
@@ -297,7 +297,7 @@
 | `web_server.py` | 543 | 盘古 Web 服务器 — 提供记忆管理 Web UI 和 REST API |
 | `websocket_server.py` | 334 | 盘古 WebSocket 服务器 — 实时记忆流推送 |
 
-## `pangu/api/` — 16 文件 / 5,976 行
+## `pangu/api/` — 16 文件 / 6,058 行
 
 FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传输
 
@@ -312,7 +312,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `rbac.py` | 306 | 盘古 — RBAC 角色权限模型 |
 | `routes_dashboard.py` | 164 | 盘古 REST API 路由 — /api/v2/dashboard（仪表盘） |
 | `routes_keys.py` | 285 | 盘古 REST API 路由 — /api/v2/admin/keys（钥匙管理） |
-| `routes_memory.py` | 983 | 盘古 REST API 路由 — /api/v2/memories（伏羲移植） |
+| `routes_memory.py` | 1065 | 盘古 REST API 路由 — /api/v2/memories（伏羲移植） |
 | `routes_platforms.py` | 141 | 盘古 REST API 路由 — /api/v2/platforms（平台接入审核） |
 | `routes_tags.py` | 303 | 盘古标签管理 API — CRUD + 统计 + 合并 + 推荐 |
 | `routes_tasks.py` | 249 | 盘古任务状态同步 API — 跨 Agent 任务追踪（SQLite 持久化） |

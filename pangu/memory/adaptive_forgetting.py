@@ -221,12 +221,37 @@ class AdaptiveForgetting:
                         "wing": d.wing,
                         "room": getattr(d, "room", "general"),
                         "importance": d.importance,
+                        # created_at / action / reason：生命周期页要表达
+                        # 「从入库到遗忘」，缺入库时刻就没有时间跨度，缺原因
+                        # 就看不出为什么被归档（2026-09-27 补）
+                        "created_at": getattr(d, "created_at", "") or "",
+                        "action": "archive",
+                        "reason": decision.reason,
                         "archived_at": datetime.now().isoformat(),
                     }
                 )
                 archived.append(d.id)
 
             elif decision.action == "forget":
+                # ⚠ 留痕（2026-09-27）：此前这里只 forgotten.append(id) 然后把条目
+                # 从 drawers 移除 —— 既不在 drawers.json 也不在归档表，只剩
+                # _forgetting_history 里的一个计数。于是「记忆从入库到遗忘的全轨迹」
+                # （ROADMAP P2-4.4）在**数据上根本不存在**：遗忘过的记忆无从查询。
+                # 现在写入同一张表并标 action="forgotten"，默认口径
+                # get_archive() 仍排除它（pangu_get_archive 契约不变）。
+                self._archive.append(
+                    {
+                        "id": d.id,
+                        "content": d.content,
+                        "wing": d.wing,
+                        "room": getattr(d, "room", "general"),
+                        "importance": d.importance,
+                        "created_at": getattr(d, "created_at", "") or "",
+                        "action": "forgotten",
+                        "reason": decision.reason,
+                        "archived_at": datetime.now().isoformat(),
+                    }
+                )
                 forgotten.append(d.id)
 
         # 真正生效：把归档与遗忘的条目从活动集合中移出（do nothing 的老行为已修）
@@ -261,8 +286,14 @@ class AdaptiveForgetting:
         与 `auto_forget` 的归档分支写入同一结构（含 room），使
         `get_archive()` / `get_forgetting_stats()` 对两条路径的结果口径一致。
 
+        ⚠ 必须带 `created_at` / `action` / `reason`（2026-09-27 补）：
+        「记忆生命周期」页要表达的是**从入库到遗忘**的轨迹，而归档条目一旦
+        `remove_drawer` 就从 drawers.json 消失、只剩这张表 —— 不记入库时刻，
+        时间线上就定位不到它，跨度永远缺一头；不记原因，页面只能显示一个
+        光秃秃的状态，看不出**为什么**被归档。
+
         Returns:
-            写入归档表的条目（含 archived_at / wing / room）。
+            写入归档表的条目（含 created_at / action / reason / archived_at / wing / room）。
         """
         entry = {
             "id": drawer.id,
@@ -270,16 +301,41 @@ class AdaptiveForgetting:
             "wing": getattr(drawer, "wing", "default"),
             "room": getattr(drawer, "room", "general"),
             "importance": getattr(drawer, "importance", 0.0),
-            "archived_at": datetime.now().isoformat(),
+            "created_at": getattr(drawer, "created_at", "") or "",
+            "action": "archive",
             "reason": "manual_archive",
+            "archived_at": datetime.now().isoformat(),
         }
         self._archive.append(entry)
         self._persist_archive()
         return entry
 
-    def get_archive(self, limit: int = 20) -> list[dict]:
-        """获取归档记忆"""
-        return self._archive[-limit:]
+    @staticmethod
+    def _is_forgotten(entry: dict) -> bool:
+        """条目是否属于「彻底遗忘」而非「归档」。
+
+        老数据没有 action 字段 —— 那时只有归档一条路，按归档处理。
+        """
+        return (entry.get("action") or "archive") == "forgotten"
+
+    def _rows(self, include_forgotten: bool) -> list[dict]:
+        """归档表按口径过滤后的行。"""
+        if include_forgotten:
+            return list(self._archive)
+        return [e for e in self._archive if not self._is_forgotten(e)]
+
+    def get_archive(self, limit: int = 20, include_forgotten: bool = False) -> list[dict]:
+        """获取归档记忆。
+
+        Args:
+            limit: 返回条数（取末尾 limit 条）。
+            include_forgotten: 是否把「彻底遗忘」的条目一并返回。
+
+        ⚠ 默认 `False` —— `pangu_get_archive`（handlers/advanced.py）与
+        `pangu_archive_memory` 的 archive_count 都依赖这个默认口径，把它打开
+        会往既有契约里混入遗忘条目。**生命周期页需要完整轨迹时才显式传 True。**
+        """
+        return self._rows(include_forgotten)[-limit:]
 
     def get_forgetting_stats(self) -> dict:
         """获取遗忘统计"""
@@ -292,7 +348,8 @@ class AdaptiveForgetting:
             "total_cycles": len(self._forgetting_history),
             "total_archived": total_archived,
             "total_forgotten": total_forgotten,
-            "archive_size": len(self._archive),
+            # 按默认口径（不含 forgotten）计数，保持 archive_count 语义不变
+            "archive_size": len(self._rows(include_forgotten=False)),
         }
 
 

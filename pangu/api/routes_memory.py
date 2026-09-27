@@ -915,39 +915,121 @@ async def export_memories(
 # ── 记忆生命周期（P2-4.4）──────────────────────────────────────────────
 @router.get("/memories/lifecycle")
 async def get_memory_lifecycle(request: Request, wing: str = None, limit: int = 50):
-    """获取记忆生命周期时间线（从入库到遗忘的全轨迹）。
+    """获取记忆生命周期时间线：**从入库到遗忘的全轨迹**。
+
+    ROADMAP P2-4.4 的验收标准原文是「dashboard 展示记忆从入库到遗忘的全轨迹」
+    （docs/ROADMAP.md:167）。初版（commit e76e5b6）只调了 ``build_timeline``，
+    交付出来的是「活跃记忆按 created_at 排序的清单」—— 与验收标准差三件事：
+    **没有状态、看不到已归档/已遗忘的那部分、顺序与 limit 都反了**。本实现补齐：
+
+    * 活跃记忆 → ``status="active"`` + ``next_action``（keep/compress/archive/forget）
+      + ``status_reason`` + ``status_score``，数据源是 ``AdaptiveForgetting.evaluate_all``；
+    * 已归档 / 已遗忘 → 从冷存储 ``forgetting_archive.json`` 合并（它们被
+      ``remove_drawer`` 移出了 drawers.json，只活在那张表里，不合并就永远缺尾）；
+    * 按时间**倒序**、limit 截在**最新**的条目上（初版是升序 + 取文件头部，
+      实测把全库最旧的 50 条当成「最近 50 条」展示）；
+    * ``stats`` 反映**全库**而非 ``limit``（初版 ``total = len(drawers[:limit])``
+      恒等于 limit，被 UI 读成「全库只有 50 条」）。
 
     Args:
         wing: 限定 Wing（可选）
-        limit: 返回最多多少条（默认 50）
+        limit: 返回最多多少条（默认 50，作用在合并排序后的结果上）
 
     Returns:
         {"code": 0, "data": {"events": [...], "stats": {...}}}
     """
     try:
+        from pangu.memory.adaptive_forgetting import get_forgetting
         from pangu.memory.timeline import TimelineEngine
 
-        stack = _memory_stack(request)
-        drawers = stack.get_drawers()
+        cfg = _authoritative_cfg()
+        active = _memory_stack(request).get_drawers()
         if wing:
-            drawers = [d for d in drawers if d.wing == wing]
-        drawers = drawers[:limit]
+            active = [d for d in active if d.wing == wing]
 
-        engine = TimelineEngine(_authoritative_cfg())
-        events = engine.build_timeline(drawers, wing=wing)
+        # ── 活跃记忆：逐条算出当前状态/建议去向（纯内存运算，无 IO）──
+        af = get_forgetting(cfg)
+        report = af.evaluate_all(active)
+        decisions = {dec.memory_id: dec for dec in report.decisions}
 
-        # 统计：按状态分组
-        stats = {"total": len(drawers), "events": len(events)}
-        # ⚠ 读取端点必须解密 content —— 写入方按 is_enabled() 加密，此处原样回传
-        # e.__dict__ 会让客户端拿到 gAAAAAB… 密文并直接渲染（2026-09-27 实测：
-        # lifecycle 返回的 content 全是 Fernet 密文，而列表/搜索/详情/导出都过了
-        # _plain_content）。生命周期页是读取端点，同一规则适用。
-        events_out = []
-        for e in events:
-            item = dict(e.__dict__)
-            item["content"] = _plain_content(item.get("content") or "")
-            events_out.append(item)
-        return ApiResponse.ok({"events": events_out, "stats": stats})
+        events: list[dict] = []
+        engine = TimelineEngine(cfg)
+        for e in engine.build_timeline(active, wing=wing):
+            dec = decisions.get(e.drawer_id)
+            events.append(
+                {
+                    "id": e.id,
+                    "drawer_id": e.drawer_id,
+                    # 读取端点必须解密：写入方按 is_enabled() 加密 content，
+                    # 不解密客户端拿到的是 gAAAAAB…（列表/搜索/详情/导出都过了这步）
+                    "content": _plain_content(e.content),
+                    "timestamp": e.timestamp,
+                    "wing": e.wing,
+                    "room": e.room,
+                    "importance": e.importance,
+                    "tags": e.tags or [],
+                    "status": "active",
+                    "next_action": dec.action if dec else "",
+                    "status_reason": dec.reason if dec else "",
+                    "status_score": dec.current_score if dec else 0.0,
+                    "archived_at": "",
+                }
+            )
+
+        # ── 已归档 / 已遗忘：合并进同一条时间轴 ──
+        # include_forgotten=True 是这里的要点 —— 「到遗忘」这一段只存在于
+        # 冷存储，默认口径（pangu_get_archive）仍排除遗忘条目，契约不变。
+        rows = af.get_archive(limit=10**6, include_forgotten=True)
+        if wing:
+            rows = [r for r in rows if r.get("wing") == wing]
+        n_archived = sum(1 for r in rows if not af._is_forgotten(r))
+        n_forgotten = len(rows) - n_archived
+        for r in rows:
+            # 老归档条目（2026-09-27 之前写入）没有 created_at —— 回退到
+            # archived_at，保证时间线不因缺字段崩掉，也不把它丢弃。
+            ts = r.get("created_at") or r.get("archived_at") or ""
+            try:
+                importance = float(r.get("importance") or 0)
+            except (TypeError, ValueError):
+                importance = 0.0
+            events.append(
+                {
+                    "id": f"lc_{r.get('id', '')}",
+                    "drawer_id": r.get("id", ""),
+                    "content": _plain_content(r.get("content") or ""),
+                    "timestamp": ts,
+                    "wing": r.get("wing", ""),
+                    "room": r.get("room", ""),
+                    "importance": importance,
+                    # 归档条目写入时不带 tags，不臆造
+                    "tags": [],
+                    "status": "forgotten" if af._is_forgotten(r) else "archived",
+                    "next_action": "",
+                    "status_reason": r.get("reason", ""),
+                    "status_score": 0.0,
+                    "archived_at": r.get("archived_at", ""),
+                }
+            )
+
+        # 倒序：最新入库的在最前（初版是升序，且 limit 取的是文件头部最旧的）
+        events.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+        shown = events[: max(0, limit)]
+
+        stats = {
+            # total = 全库规模（活跃 + 归档/遗忘），**不受 limit 影响**
+            "total": len(active) + len(rows),
+            "events": len(shown),
+            # 生命周期终态分布
+            "active": len(active),
+            "archived": n_archived,
+            "forgotten": n_forgotten,
+            # 活跃记忆的建议去向分布 —— 这页的核心读数
+            "keep": report.keep_count,
+            "compress": report.compress_count,
+            "archive": report.archive_count,
+            "forget": report.forget_count,
+        }
+        return ApiResponse.ok({"events": shown, "stats": stats})
     except Exception as e:
         return ApiResponse.error(500, f"获取生命周期失败: {e}")
 
