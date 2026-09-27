@@ -912,6 +912,37 @@ async def export_memories(
         return ApiResponse.error(500, str(e))
 
 
+# ── 记忆生命周期（P2-4.4）──────────────────────────────────────────────
+@router.get("/memories/lifecycle")
+async def get_memory_lifecycle(request: Request, wing: str = None, limit: int = 50):
+    """获取记忆生命周期时间线（从入库到遗忘的全轨迹）。
+
+    Args:
+        wing: 限定 Wing（可选）
+        limit: 返回最多多少条（默认 50）
+
+    Returns:
+        {"code": 0, "data": {"events": [...], "stats": {...}}}
+    """
+    try:
+        from pangu.memory.timeline import TimelineEngine
+
+        stack = _memory_stack(request)
+        drawers = stack.get_drawers()
+        if wing:
+            drawers = [d for d in drawers if d.wing == wing]
+        drawers = drawers[:limit]
+
+        engine = TimelineEngine(_authoritative_cfg())
+        events = engine.build_timeline(drawers, wing=wing)
+
+        # 统计：按状态分组
+        stats = {"total": len(drawers), "events": len(events)}
+        return ApiResponse.ok({"events": [e.__dict__ for e in events], "stats": stats})
+    except Exception as e:
+        return ApiResponse.error(500, f"获取生命周期失败: {e}")
+
+
 # ── 路由顺序修正（2026-09-20）────────────────────────────────────────────
 # FastAPI/Starlette **按注册顺序**匹配路径，`/memories/{memory_id}` 会吞掉
 # `/memories/context`、`/memories/export` 这类字面段。实测：
