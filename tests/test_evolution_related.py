@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import pytest
 from cryptography.fernet import Fernet
 
 from pangu.memory.evolution import MemoryEvolution, _plain_text, _tokenize
@@ -79,6 +80,84 @@ class TestTokenize:
     def test_empty_returns_empty(self):
         assert _tokenize("") == set()
         assert _tokenize("   ") == set()
+
+
+class _CountingJieba:
+    """记录 cut 调用次数的假 jieba —— 用来证明「缓存真的挡住了重算」。"""
+
+    def __init__(self):
+        self.calls: list = []
+
+    def cut(self, text: str):
+        self.calls.append(text)
+        return ["盘古", "服务", "端口", "19529", "，"]
+
+
+class TestTokenizeCache:
+    """④ 分词缓存 —— 没有它，每次写入要对全库 357 条重算（0.023s → 0.813s）。"""
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from pangu.memory import evolution as ev
+
+        ev._TOKEN_CACHE.clear()
+        yield
+        ev._TOKEN_CACHE.clear()
+
+    def test_second_call_hits_cache(self, monkeypatch):
+        from pangu.memory import evolution as ev
+
+        fake = _CountingJieba()
+        monkeypatch.setattr("pangu.memory.fts_search._get_jieba", lambda: fake)
+
+        text = "盘古服务端口配置为19529"
+        first = ev._tokenize(text)
+        calls_after_first = len(fake.calls)
+        assert calls_after_first == 1
+
+        second = ev._tokenize(text)
+        assert len(fake.calls) == calls_after_first, (
+            f"同样内容第二次不该重新分词，实际又调了 {len(fake.calls) - calls_after_first} 次"
+        )
+        assert first == second, "缓存返回值必须与首次一致"
+
+    def test_different_text_is_not_served_from_cache(self, monkeypatch):
+        """缓存不许串味：换内容必须重算。"""
+        from pangu.memory import evolution as ev
+
+        fake = _CountingJieba()
+        monkeypatch.setattr("pangu.memory.fts_search._get_jieba", lambda: fake)
+
+        ev._tokenize("盘古服务端口配置为19529")
+        ev._tokenize("完全不同的另一段内容")
+        assert len(fake.calls) == 2, f"换内容应重算，实际只调了 {len(fake.calls)} 次"
+
+    def test_cache_grows_then_resets_at_cap(self, monkeypatch):
+        """超过上限整体清空 —— 宁可重算，不可无界增长吃内存。"""
+        from pangu.memory import evolution as ev
+
+        fake = _CountingJieba()
+        monkeypatch.setattr("pangu.memory.fts_search._get_jieba", lambda: fake)
+
+        cap = ev._TOKEN_CACHE_MAX
+        monkeypatch.setattr(ev, "_TOKEN_CACHE_MAX", 3)
+        try:
+            for i in range(3):
+                ev._tokenize(f"内容{i}")
+            assert len(ev._TOKEN_CACHE) == 3
+            ev._tokenize("内容第四个")
+            assert len(ev._TOKEN_CACHE) <= 3, f"超限未清空: {len(ev._TOKEN_CACHE)}"
+        finally:
+            monkeypatch.setattr(ev, "_TOKEN_CACHE_MAX", cap)
+
+    def test_cache_returns_shared_immutable_set(self, monkeypatch):
+        """返回 frozenset：调用方共享同一对象，改不了别人的缓存。"""
+        from pangu.memory import evolution as ev
+
+        monkeypatch.setattr("pangu.memory.fts_search._get_jieba", lambda: _CountingJieba())
+        out = ev._tokenize("盘古服务端口配置为19529")
+        assert isinstance(out, frozenset)
+        assert ev._tokenize("盘古服务端口配置为19529") is out  # 同一对象（省分配）
 
 
 class TestFindRelated:

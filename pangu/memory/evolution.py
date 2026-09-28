@@ -5,6 +5,7 @@
 旧版本保留为快照，方便复查。
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -40,6 +41,14 @@ def _plain_text(text) -> str:
         return ""
 
 
+# 分词结果缓存：内容没变，分词结果就不该重算。
+# 2026-09-28 加 —— 修好「中文按空格切」后 `find_related_memories` 从 0.023s 涨到
+# 0.813s/次（对全库 357 条逐条 jieba），而这些内容根本没变。加缓存后应回到 ~0.03s。
+# 按 sha1(text) 取键：定长、省内存（直接用 text 做键会把整篇正文留在内存里）。
+_TOKEN_CACHE: dict = {}
+_TOKEN_CACHE_MAX = 20000  # 远大于当前库规模；超限整体清空（宁可重算，不可无界增长）
+
+
 def _tokenize(text: str) -> set:
     """分词 —— **中文必须分词，不能 `str.split()`**。
 
@@ -52,20 +61,34 @@ def _tokenize(text: str) -> set:
     """
     text = (text or "").strip()
     if not text:
-        return set()
+        return frozenset()
+
+    # 先查缓存：库里的正文在两次写入之间不会变，分词结果自然也不变
+    key = hashlib.sha1(text.encode("utf-8", "ignore")).hexdigest()
+    hit = _TOKEN_CACHE.get(key)
+    if hit is not None:
+        return hit
+
+    tokens: frozenset
     try:
         from .fts_search import _get_jieba
 
         jieba = _get_jieba()
         if jieba is not None:
-            return {
+            tokens = frozenset(
                 w
                 for w in jieba.cut(text)
                 if w.strip() and any(ch.isalnum() or "一" <= ch <= "鿿" for ch in w)
-            }
+            )
+        else:
+            tokens = frozenset(text.split())
     except Exception:
-        pass
-    return set(text.split())
+        tokens = frozenset(text.split())
+
+    if len(_TOKEN_CACHE) >= _TOKEN_CACHE_MAX:
+        _TOKEN_CACHE.clear()
+    _TOKEN_CACHE[key] = tokens
+    return tokens
 
 
 @dataclass
