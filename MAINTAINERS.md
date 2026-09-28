@@ -262,13 +262,26 @@ EOF
 > 会让「避免错误记忆误导别的平台 agent」这个设计目标失效。实测 275 条里 152 条已毕业共享、
 > 123 条按门禁待验证 —— 后者不是「该共享却没共享」，是**还没被验证过**。
 
-### 4.3 内容是密文
+### 4.3 内容是明文（2026-09-28 起）
 
-`drawers.json` 里的 `content` 是 **Fernet 密文**（以 `gAAAAA` 开头）。
+`drawers.json` 里的 `content` **原本是 Fernet 密文，2026-09-28 已全部转为明文**。
 
-- **grep 内容搜不到**，只能按 `id` 前 8 位找，或用 `pangu.memory.encryption.decrypt` 解密。
-- 任何要读正文的地方都必须先解密；解密失败要**跳过**而不是把密文当明文 ——
-  这是 2026-09-19 修过的同类泄露/误判坑（`search` / `recall` / `hybrid` / `embeddings` 四处都漏过）。
+- **为什么去掉**：单用户部署没有隐私诉求，密文的代价却是实打实的 ——
+  **grep 内容搜不到**、全仓 **29 处**解密调用、2026-09-28 一天内两次栽在
+  「忘了解密」上（送 LLM 复核前喂密文、`find_related_memories` 拿密文做关键词比对）。
+- **写入加密开关（一直存在，此前 MAINTAINERS/AGENTS/docs 全都没记载）**：
+  `PANGU_ENCRYPTION=off|0|false|no` —— 写进 `/root/.pangu/pangu.env`
+  （systemd `EnvironmentFile`，**重启即生效，不必改 systemd 单元**）。
+  实现见 `encryption.py:48 _write_disabled_by_config()`。**只影响写入**。
+- **`decrypt` 三态不变**：对明文原样返回、对历史密文仍能解开（密钥文件保留），
+  所以 29 处解密调用**一行都不用改**，自动变成透传。
+- **存量**：372 条已批量转明文（`/tmp/plain_all.py`，默认 dry-run、
+  解不开的**保留密文**、原子写）。回滚：`/root/pangu-backup-plain-20260928-112831`
+  + `/root/.pangu/pangu.env.bak-20260928-112831`。
+- ⚠ **判真密文别用 grep 数字**：用 `content.startswith("gAAAAA")` ——
+  明文内容里本来就可能提到这个词（实测 9 条记忆提到 `gAAAAA`，全是讲密文的正文）。
+- **历史坑不会因为关掉加密就消失**：读正文前要考虑解密，是 2026-09-19 四处漏过、
+  2026-09-28 又各漏一次的老问题。**哪天若重新开启加密，这些点会立刻复发。**
 
 ---
 
@@ -512,6 +525,81 @@ cd /root/pangu
 
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
+
+- **2026-09-28** — 移除落库加密：372 条密文转明文 + 关闭写入加密（用户决定）。
+  - **决策与理由**：单用户部署**没有隐私诉求**，密文的代价却是实打实的 ——
+    ① `grep` 内容搜不到（§4.3 原本把它当既定约束写着）；② 全仓 **29 处**解密调用；
+    ③ 当天**两次**栽在「忘了解密」上：送 LLM 复核前喂密文（LLM 回「无法解析」）、
+    `find_related_memories` 拿密文做关键词重叠（恒 0 ⇒ 快照机制 0 条）。
+  - **★ 关闭开关早就存在，只是没人记载**：`encryption.py:48
+    _write_disabled_by_config()` 读 `PANGU_ENCRYPTION=off|0|false|no`，
+    `encrypt()` 里有对应分支并打 INFO —— 但 **MAINTAINERS / AGENTS / docs 里
+    全都没有它**，所以「机制在、没人知道」。这正是规矩 8 的活教材。
+  - **改① 开关**：写进 `/root/.pangu/pangu.env`（systemd `EnvironmentFile`）
+    追加 `PANGU_ENCRYPTION=off` —— **不改 systemd 单元、无需 daemon-reload**，
+    重启即生效。**只影响写入**，`decrypt` 三态不变 ⇒ 29 处解密调用自动变透传。
+  - **改② 存量**：`/tmp/plain_all.py --apply` 转明文 ——
+    `drawers.json` **354** 条 + `forgetting_archive.json` **18** 条 = **372 条全部成功、
+    0 失败**。脚本默认 **dry-run**；解不开的**保留密文**（绝不把占位符写进库）；
+    原子写（tmp + rename）。
+  - **改③ 自检文案**（`api/server.py`）：原恒报「加密可用…0 处密文」，而实际写入
+    已是明文 —— 现在优先报「**写入加密已按配置关闭**（PANGU_ENCRYPTION=off）」。
+    **报一个与事实不符的"可用"比不报更糟。** 解不开的 ERROR 仍然优先级最高。
+  - **改④ §4.3 文档**：从「内容是密文 / grep 搜不到」改写为「内容是明文」，
+    并记下开关用法与「判真密文别用 grep 数字」。
+  - **验证**：`grep` 直接搜库 —— 「盘古」**297 次**、「llmDaily」**13 次**
+    （改造前搜不到任何内容）；Python 精确扫描**真密文字段 0**
+    （drawers 0 / archive 0）；新写入 `278ca1bc` `startswith("gAAAAA")` = **False**；
+    全库 355 条 `{False: 355}`。⚠ 剩余 9+1 处 `gAAAAA` 是**明文里提到这个词**
+    （本会话大量讲解密），grep 数字会误导，判据必须是 `startswith`。
+  - **回滚**：`/root/pangu-backup-plain-20260928-112831`（28M 全库）+
+    `/root/.pangu/pangu.env.bak-20260928-112831`（env 改前）。
+    要恢复加密只需删掉 env 里那一行再重启（**已有明文不会自动加密**）。
+  - **生效方式**：数据 = 停服改文件 + 起服（已完成）；
+    `api/server.py` 自检文案 = scp + `systemctl --user restart pangu-api`。
+
+- **2026-09-28** — 防臃肿规矩落地 + 激活被密文和中文分词堵死的「快照/替换」机制（两道关卡一起修掉）。
+  - **规矩 8（用户定）**：加东西之前**先查盘古有没有等价物** —— 有就在原机制上
+    增强，没有才新增；判据三问「谁读、谁写、和哪个重复」。**重复叠加的代价是
+    维护面翻倍 + 两套逻辑漂移**。现有反面教材直接写进规矩：
+    `LifecycleManager` 曾是死代码、`no_strong_match` 从未触发、
+    `memory_snapshots.json` **0 条** —— 与其加新的，不如先把这三个激活。
+  - **激活快照/替换机制（`memory/evolution.py`）**：机制早就在，
+    `memory_ops.py` 进化路径每次都调 `find_related_memories` → `should_replace`
+    → `save_snapshot`，但云端快照表**始终 0 条**。挖出**两道关卡**把它堵死：
+    1. **密文**：`content` 在 `ingestion._encrypt_text` 就加密了，而本函数拿
+       `to_dict()["content"].lower()` 直接比对 ⇒ 关键词重叠**恒 0**；
+    2. **中文按空格切**：`str.split()` 把整句当**一个词** ⇒ 除非两句完全相同，
+       `word_overlap` 恒 0 —— **就算解了密，这道仍在**。
+    改法：新增 `_plain_text()`（解密，解不开当空串 —— 宁可不替换也不拿乱码比对）
+    与 `_tokenize()`（**复用 FTS 的 `fts_search._get_jieba`，不另起炉灶**；
+    jieba 缺失退回按空白切；丢标点）。两处都修，机制才真转起来。
+    ⚠ 这正是规矩 8 的正面示范：**没有新增任何"相关记忆匹配"机制，只把现有的修活。**
+  - **⚠ 自查：我这轮一度违反规矩 8** —— 加了 `retrieval_status`，而既有
+    `no_strong_match` 与它**逻辑同源**（都基于 `relevant`，`all(not relevant)` 与
+    `top < threshold` 等价）。两者都留，但必须标明是**同一判断的两个视图**，
+    不得各自演化；`hints_note` 与既有 `note` 文案重复，属同源冗余，待收敛。
+    新增中真正合理的只有 `receipt`（现有无等价物）与 `relevance`/`relevant`
+    （**补缺失字段**，不是新机制）。
+  - **加密机制取证（回答"是不是残留"）**：落库加密是**有意设计**且
+    `MAINTAINERS §7` 明确记载（「grep 内容搜不到，只能按 id 找或 decrypt」），
+    但 **`config.py` 里没有任何加密开关**（`grep encrypt` 零命中），
+    `is_enabled()` 只看密钥能否解析；引入它的 commit 是 `8e79a83`
+    「**L2 召回排序并入衰减分**」——**标题与安全无关**，像搭车进来。
+    代价：全仓 **29 处**解密调用点，本日已两次踩到「忘了解密」
+    （送 LLM 复核前、`find_related` 比对前）。
+    **关掉的迁移成本很低**：`decrypt` 三态（明文原样返回）、`encrypt` fail-open
+    ⇒ 29 处自动变透传、调用点不用改；旧密文只要密钥文件仍在就仍可解。
+    **是否关闭待用户决定，本次未动。**
+  - **验证**：新增 `tests/test_evolution_related.py` **16 例**（解密三态、
+    中文分词非整句、`split` 对无空格中文只出 1 段的反证、密文记忆能配对、
+    无关记忆不许硬凑、自身跳过、标签重叠单独可达标、最多返回 5 条）；
+    还原 `evolution.py` 后测试即 `ImportError` 红、恢复后 16 绿。
+    ⚠ 首版插桩把 `@dataclass` 落到了 `_plain_text` 函数上（锚点选在了
+    `class MemorySnapshot:`，而装饰器在其**上一行**）—— **插入前必须看清锚点上一行**。
+    ⚠ 首版测试样本也有两处错：中英混排带空格导致 `split` 本就能切（反证失效）、
+    改写句重叠率不足 0.3 阈值（测成了阈值而非分词）。
+  - **生效方式**：`memory/evolution.py` 是服务端代码 → scp + `systemctl --user restart pangu-api`。
 
 - **2026-09-28** — 借鉴 DSH-KRouter 的三处能力落到盘古（规矩 + 检索收据）。
   - **起因**：对比 `github.com/398894496-arch/DSH-KRouter`（Agent 知识 OS，Obsidian +
@@ -1301,3 +1389,12 @@ cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
    （`hit`/`weak`/`miss`）+ `receipt` + `hints`。分数低于可信阈值 = `weak`，
    零结果 = `miss`，这两种情况**必须给 hints 而不是硬凑十条**。
    「装着有答案」比「承认没命中」贵得多 —— 参照 KRouter 的原话 *Neighbor cite is a failure*。
+8. **加东西之前先查有没有（防臃肿，2026-09-28 用户定）**：要新增模块/字段/机制前，
+   **先 grep 盘古是否已有等价物**；有就在**原机制上增强**，没有才新增。
+   - 判据问三句：**谁在读它？谁在写它？和现有哪个字段/机制重复？**
+     `no_strong_match` 与 `retrieval_status` 就是同源的两个视图（都基于 `relevant`），
+     必须标明是同一个判断的两种表达，别当两套机制各自演化。
+   - **重复叠加的代价是真实的**：维护面翻倍、两套逻辑漂移、读的人不知道信哪个。
+   - 现成的反面教材（机制在、没人用）：`LifecycleManager` 曾是死代码、
+     `no_strong_match` 引入后从未触发、`memory_snapshots.json` **0 条** ——
+     **与其加新的，不如先把这仨激活**（见 §13 2026-09-28 evolution 修复）。

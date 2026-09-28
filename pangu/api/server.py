@@ -365,6 +365,14 @@ def create_app() -> FastAPI:
                         "这些记忆将显示为占位符。"
                         "检查 ~/.pangu/.encryption_key 与 PANGU_ENCRYPTION_KEY 是否与加密时一致"
                     )
+                elif _enc._write_disabled_by_config():
+                    # 2026-09-28 用户决定关闭落库加密（单用户无隐私诉求）。
+                    # 此前这里恒报「加密可用…」，而实际写入早已是明文 —— 自检必须说人话，
+                    # 报一个与事实不符的「可用」比不报更糟。
+                    logger.info(
+                        "启动体检：**写入加密已按配置关闭**（PANGU_ENCRYPTION=off），"
+                        f"内容以明文落库；历史密文仍可解开（抽样 {len(samples)} 处通过）"
+                    )
                 else:
                     logger.info(
                         f"启动体检：加密可用（{_verdict['keys']} 把密钥，"

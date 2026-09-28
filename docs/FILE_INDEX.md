@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **356** 个 py 文件 / **109,872** 行。
+共 **357** 个 py 文件 / **110,076** 行。
 
 
-## `pangu/memory/` — 136 文件 / 43,832 行
+## `pangu/memory/` — 136 文件 / 43,887 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -63,7 +63,7 @@
 | `error_monitor.py` | 162 | 盘古错误监控 — 集中日志 + 异常追踪 + 健康报告 |
 | `evaluation.py` | 131 | 盘古 — 评估缓存独立化（从伏羲 v1.5.6 移植） |
 | `event_bus.py` | 180 | 盘古 — 统一事件总线（从伏羲 v1.5.6 移植） |
-| `evolution.py` | 265 | 盘古记忆进化模块 |
+| `evolution.py` | 320 | 盘古记忆进化模块 |
 | `explainable_search.py` | 156 | 盘古可解释搜索 — 为什么这条记忆被返回 |
 | `export_import.py` | 404 | 盘古记忆导出导入 — 多格式导出和跨系统导入 |
 | `feishu_webhook.py` | 151 | 盘古飞书 Webhook — 记忆事件自动推送到飞书群 |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 109 文件 / 33,700 行
+## `tests/` — 110 文件 / 33,841 行
 
 测试
 
@@ -187,6 +187,7 @@
 | `test_embedding_onnx_cache.py` | 149 | ONNX 批量嵌入必须走缓存 —— 修「每次搜索重算整个语料」。 |
 | `test_embedding_remote_api.py` | 196 | 盘古 — 远程 Embedding API 分支可用性测试（v0.1.3 P0） |
 | `test_encryption.py` | 57 | 盘古 encryption.py 测试 — E2E 加密模块 |
+| `test_evolution_related.py` | 141 | `MemoryEvolution.find_related_memories` 的两道关卡（2026-09-28 修复）。 |
 | `test_fuxi_port.py` | 212 | 盘古伏羲移植模块测试 |
 | `test_gap1_exposure.py` | 68 | 缺口 1 回归测试：核心链路工具必须出现在 tools/list。 |
 | `test_gap2_write_channel.py` | 69 | 缺口 2 回归测试：handle_add_memory 接入 remember() 管道。 |
@@ -301,7 +302,7 @@
 | `web_server.py` | 543 | 盘古 Web 服务器 — 提供记忆管理 Web UI 和 REST API |
 | `websocket_server.py` | 334 | 盘古 WebSocket 服务器 — 实时记忆流推送 |
 
-## `pangu/api/` — 16 文件 / 6,111 行
+## `pangu/api/` — 16 文件 / 6,119 行
 
 FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传输
 
@@ -322,7 +323,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `routes_tasks.py` | 249 | 盘古任务状态同步 API — 跨 Agent 任务追踪（SQLite 持久化） |
 | `routes_tools.py` | 105 | 盘古 REST API 路由 — /api/v2/tools（通用 MCP 工具网关） |
 | `safe_eval.py` | 218 | Safe expression evaluator for ABAC conditions. |
-| `server.py` | 1562 | 盘古 FastAPI 服务器工厂（伏羲移植） |
+| `server.py` | 1570 | 盘古 FastAPI 服务器工厂（伏羲移植） |
 
 ## `scripts/` — 21 文件 / 3,349 行
 

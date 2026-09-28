@@ -17,6 +17,57 @@ from typing import Optional
 logger = logging.getLogger("pangu.memory.evolution")
 
 
+def _plain_text(text) -> str:
+    """取可读正文 —— `content` 在创建 drawer 时就被加密（`ingestion._encrypt_text`）。
+
+    2026-09-28 实测：`find_related_memories` 原本拿 `to_dict()["content"]` 直接
+    `.lower()` 比对，而那是 Fernet 密文 ⇒ 关键词重叠**恒为 0** ⇒ 找不到相关记忆
+    ⇒ `should_replace` 永不执行 ⇒ `save_snapshot` 永不触发 ⇒ 云端快照表 **0 条**。
+    机制一直在，只是被密文堵死（同族：送 LLM 复核前没解密、no_strong_match 缺字段）。
+
+    `decrypt` 三态：明文原样、密文解开、解不开给占位符 —— 解不开就当空串，
+    宁可找不到相关记忆（不替换），也不拿乱码去比对。
+    """
+    if not isinstance(text, str) or not text:
+        return ""
+    if not text.startswith("gAAAAA"):
+        return text
+    try:
+        from .encryption import decrypt
+
+        return decrypt(text) or ""
+    except Exception:
+        return ""
+
+
+def _tokenize(text: str) -> set:
+    """分词 —— **中文必须分词，不能 `str.split()`**。
+
+    2026-09-28 实测：原文用 `.split()`，而中文没有空格 ⇒ 整句被当成**一个词**
+    ⇒ `word_overlap` 只有在两句完全相同时才 > 0 ⇒ 就算解了密也找不到相关记忆。
+    解密是第一道关卡，这是第二道 —— 两道都修，机制才真的转起来。
+
+    与 FTS 用**同一套分词器**（`fts_search._get_jieba`），不另起炉灶；
+    jieba 不可用时退回按空白切（英文仍可用）。只保留含中英文数字的词，丢掉标点。
+    """
+    text = (text or "").strip()
+    if not text:
+        return set()
+    try:
+        from .fts_search import _get_jieba
+
+        jieba = _get_jieba()
+        if jieba is not None:
+            return {
+                w
+                for w in jieba.cut(text)
+                if w.strip() and any(ch.isalnum() or "一" <= ch <= "鿿" for ch in w)
+            }
+    except Exception:
+        pass
+    return set(text.split())
+
+
 @dataclass
 class MemorySnapshot:
     """记忆快照 — 被替换的旧版本记忆"""
@@ -163,10 +214,15 @@ class MemoryEvolution:
     def find_related_memories(self, new_memory: dict, all_memories: list[dict], threshold: float = 0.3) -> list[dict]:
         """查找相关记忆
 
-        使用简单的文本相似度匹配，找到与新记忆相关的旧记忆。
+        使用文本相似度匹配，找到与新记忆相关的旧记忆。
+
+        ⚠ 两处必须解密 + 分词（2026-09-28 修，见 `_plain_text` / `_tokenize`）：
+        此前直接拿密文 `.split()` 比对，导致**永远找不到相关记忆**，
+        快照/替换机制因此从未触发（云端 `memory_snapshots.json` 0 条）。
         """
-        new_content = new_memory.get("content", "").lower()
-        new_tags = set(new_memory.get("tags", []))
+        new_content = _plain_text(new_memory.get("content", "")).lower()
+        new_tags = set(new_memory.get("tags", []) or [])
+        new_words = _tokenize(new_content)
 
         related = []
         for mem in all_memories:
@@ -174,8 +230,8 @@ class MemoryEvolution:
             if mem.get("id") == new_memory.get("id"):
                 continue
 
-            old_content = mem.get("content", "").lower()
-            old_tags = set(mem.get("tags", []))
+            old_content = _plain_text(mem.get("content", "")).lower()
+            old_tags = set(mem.get("tags", []) or [])
 
             # 计算相似度
             score = 0.0
@@ -185,9 +241,8 @@ class MemoryEvolution:
                 tag_overlap = len(new_tags & old_tags) / max(len(new_tags | old_tags), 1)
                 score += tag_overlap * 0.4
 
-            # 内容关键词重叠
-            new_words = set(new_content.split())
-            old_words = set(old_content.split())
+            # 内容关键词重叠（分词后的词集合，不是整句）
+            old_words = _tokenize(old_content)
             if new_words and old_words:
                 word_overlap = len(new_words & old_words) / max(len(new_words | old_words), 1)
                 score += word_overlap * 0.6
