@@ -7,6 +7,13 @@ from ..core.palace import Drawer
 
 logger = logging.getLogger(__name__)
 
+# 可信阈值：**原始余弦相似度**（未归一化）低于它 = 「有结果但不值得当答案」。
+# 2026-09-19 实测相关查询 Top1 是 0.36+、无关查询 0.19-0.31，0.32 落在两者之间。
+# ⚠ 这个阈值只能配**原始 sim**：`hybrid_search` 的 rrf_score 被归一化到 0-1、
+# 第一名恒为 1.0，拿去比阈值会恒判命中（2026-09-28 实测）。
+# 由 `memory_ops.py` 导入共用，别在两处各写一份。
+STRONG_MATCH_THRESHOLD = 0.32
+
 
 class SemanticSearch:
     """语义搜索 — 支持关键词匹配和向量搜索双模式"""
@@ -190,6 +197,50 @@ class HybridSearch:
         self.semantic = SemanticSearch(config)
         self.lexical = LexicalSearch(config)
 
+    def _relevance_map(self, query: str, pool: list) -> dict:
+        """取 query 与候选的**原始余弦相似度**（`VectorEmbedder` 体系）。
+
+        三套分数体系实测对比（2026-09-28，350 条真实库）—— **别再用错**：
+
+        | 体系 | 相关查询 top | 无关查询 top | 能否卡 0.32 阈值 |
+        |---|---|---|---|
+        | `hybrid_search.rrf_score` | 归一化后**第一名恒 1.0** | 同左 | ❌ 恒判命中 |
+        | `vector_index` 的 sim | 0.48 ~ 0.56 | **0.49 ~ 0.65** | ❌ 完全重叠，无关最高 0.65 反超所有相关查询 |
+        | **`VectorEmbedder` 的 sim** | 0.44 ~ 0.78（4/4 正确） | 0.10 / 0.26 正确拒绝 | ✅ 这才是 `RELEVANCE_FLOOR=0.32` 的原生体系 |
+
+        本轮复测 8 条查询：6 条正确、2 条边界（`蓝鲸迁徙量子隧穿` 0.396 误收，
+        `Photoshop 海报渐变` 0.437 —— 而库里确实有视觉重构记忆，可能算真相关）。
+
+        性能：`EmbeddingCache` 让条目嵌入只算一次 —— **冷启动 3.06s、
+        稳态 0.00~0.05s**（换查询只重算 query 向量）。
+        """
+        if not pool:
+            return {}
+        try:
+            from ..memory.encryption import decrypt
+            from ..search.embedder import VectorEmbedder
+
+            items = []
+            for d in pool:
+                c = d.content or ""
+                if c.startswith("gAAAAA"):
+                    try:
+                        c = decrypt(c)
+                    except Exception:
+                        continue  # 解不开就跳过：密文没有语义，嵌入它只会污染分数
+                items.append({"id": d.id, "content": c})
+            if not items:
+                return {}
+
+            res = VectorEmbedder(self.config).search(query, items, top_k=len(items))
+            return {
+                r.get("id"): float(r.get("score"))
+                for r in res
+                if isinstance(r, dict) and r.get("id") and r.get("score") is not None
+            }
+        except Exception:
+            return {}  # 取不到相似度 = 降级，绝不能因此把搜索弄崩
+
     def _search_rrf(
         self, query: str, drawers: list[Drawer], wing: str | None, room: str | None, n_results: int
     ) -> list[dict]:
@@ -228,10 +279,21 @@ class HybridSearch:
 
         by_id = {d.id: d for d in pool}
         out: list[dict] = []
+        # 相关性判据：VectorEmbedder 的原始余弦相似度。见 `_relevance_map` 的
+        # 三体系实测对比 —— rrf_score 归一化后第一名恒 1、vector_index 的 sim
+        # 相关与无关完全重叠，两者都做不了阈值判断。
+        rel_map = self._relevance_map(query, pool)
         for r in hits:
             d = by_id.get(r.get("id"))
             item = dict(r)
             item["score"] = float(r.get("rrf_score") or 0.0)
+            # relevance = 原始相似度（可能 None：纯字面命中、无向量命中）
+            # relevant  = 是否达到可信阈值 —— 补上 RRF 路径**一直缺失**的这个字段，
+            #             老的 `no_strong_match`（memory_ops）依赖它，此前因取不到
+            #             默认 True 而**恒不触发**，等于失效。
+            _rel = rel_map.get(r.get("id"))
+            item["relevance"] = None if _rel is None else round(float(_rel), 4)
+            item["relevant"] = bool(_rel is not None and _rel >= STRONG_MATCH_THRESHOLD)
             if r.get("vector_rank") is not None:
                 item["source"] = "semantic"
             elif r.get("fts_rank") is not None:

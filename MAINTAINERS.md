@@ -513,6 +513,59 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-28** — 借鉴 DSH-KRouter 的三处能力落到盘古（规矩 + 检索收据）。
+  - **起因**：对比 `github.com/398894496-arch/DSH-KRouter`（Agent 知识 OS，Obsidian +
+    确定性锁）。它有三点是盘古缺的，本条把它们变成盘古的约束：
+    **证据分层不可合并 / correction-first / 未命中要明说**。
+  - **落点① `MAINTAINERS.md` §16 新增规矩 5、6、7**（并入已有节 —— ⚠ AGENTS.md
+    现 4081/4096 **只剩 15 字节**，加 `§17` 索引行必然超限，故不能新增节）：
+    * **规矩 5 证据分级**：实现验证（本机复现）/ 对比验证（同条件对照）/ 自报
+      （未复现的数字）**三类不可合并**；报「100% 准确率」必须交代样本是构造还是
+      真实语料、谁判的卷、有无存疑题。**教训直指我自己**：2026-09-28 交的
+      「40/40 = 100%」里 36 对是构造样本，直到三模型盲测才拆出「卷一零正例」。
+    * **规矩 6 correction-first**：当前指令 > 最新 `supersedes`/`review_verdict` >
+      旧日志；自动 supersede **必须过 LLM 复核才许下架**。
+    * **规矩 7 检索要能说「没命中」**：引用 KRouter 的 *Neighbor cite is a failure*。
+  - **落点② `server/handlers/memory_ops.py` 检索状态与收据**（新常量
+    `HINTS_MAX=5`；`STRONG_MATCH_THRESHOLD=0.32` **定义在 `search/engine.py`**
+    由 handler 导入共用，两处各写一份必然漂移）：
+    * `retrieval_status`：`hit` / `weak` / `miss` —— 让「没命中」成为一等公民；
+    * `hints` + `hints_note`：**只在 weak/miss 时给**（hit 不给，防止调用方拿线索当答案）；
+    * `receipt`：`queried_at` / `top_relevance` / `top_score` / `threshold` /
+      `results` / `channels` / `elapsed_ms`。
+  - **★ 实测翻车三次才拿到正确判据（这条最值钱）**：三套分数体系逐一实测
+    （350 条真实库、8 条查询），**别再用错**：
+    1. `score`（= 归一化 `rrf_score`）—— `hybrid_search._rrf_fusion` 做了
+       `score / max_score` 归一化，**每次搜索第一名恒为 1.0** ⇒ 拿它比 0.32
+       阈值，「蓝鲸迁徙/量子隧穿」这种查询也返回 `top_score=1` 判 `hit`。
+    2. `rerank_score` —— 混入 recency/importance/quality，实测两个毫不相干的查询
+       同为 `0.845`、`context` 同为 `0.5`，零区分度。
+    3. `vector_index` 的 sim —— 相关 0.48~0.56、无关 **0.49~0.65**，
+       **完全重叠且无关最高 0.65 反超所有相关查询**，同样不能用。
+    **✅ 正确判据 = `VectorEmbedder` 的原始余弦相似度**（`relevance` 字段）——
+    它才是 `RELEVANCE_FLOOR=0.32` 的原生体系（`embedder.py` 注释实测
+    无关 0.19-0.31 / 相关 0.36-0.62）。本轮复测 8 条查询 6 条正确（2 条边界：
+    `蓝鲸迁徙量子隧穿` 0.396 误收；`Photoshop 海报渐变` 0.437 —— 但库里确有视觉
+    重构记忆，可能算真相关）。**性能靠 `EmbeddingCache`**：冷启动 3.06s、
+    稳态 0.00~0.05s（换查询只重算 query 向量），实测通过。
+    取不到相似度时降级看**字面命中**（有 `fts_rank` 即 `hit` —— 确定性字面召回
+    本身就是有效答案，正是 KRouter「锁」的语义），既无向量又无字面命中才 `weak`。
+  - **★ 顺带发现老标记 `no_strong_match` 一直是死的**：它依赖 `relevant` 字段，
+    而 `_build_results`（RRF 路径）**根本不产出该字段** ⇒ `r.get("relevant", True)`
+    恒 True ⇒ `all(not True)` 恒假 ⇒ 2026-09-19 引入以来**从未触发过**。
+    `_search_rrf` 补上 `relevance`/`relevant` 后这条才真正复活。
+  - **验证**：`tests/test_search_receipt.py` **20 例**（三态判定含阈值边界 0.32、
+    **`score=1.0` 但 `relevance=0.11` 必须判 weak**、字面命中算 hit、既无向量又无
+    字面命中判 weak、hints 只在未命中时出现、receipt 七字段齐全且
+    `top_relevance ≠ top_score`、老字段不丢、无 score 时不崩）；
+    `test_search_rrf_recall + test_search_receipt + test_core + test_search_own_first`
+    **191 passed**；全量见提交信息。
+    ⚠ 测试首版把 fake `HybridSearch.search` 写成返回 dict，导致 handler 走
+    `else` 分支不构造 `query` —— **fake 必须与真实签名一致（返回 list）**。
+  - **没做的（有意）**：不改检索排序去实现 correction-first 的降权 —— 那会动所有查询的
+    结果顺序，风险与收益不匹配；规矩 6 先以**显式规则**落地，排序层面的实现留待有实测需求时再做。
+  - **生效方式**：`memory_ops.py` 是服务端代码 → scp + `systemctl --user restart pangu-api`。
+
 - **2026-09-28** — 冲突复核的「LLM 输出解析失败」加一次重试（降级率 3.7% → 约 1%）。
   - **起因**：三模型盲测（45 题、3 个独立模型交叉审卷）暴露出
     `_llm_confirm_conflict` 的一个系统性弱点 —— 模型返回的不是合法 JSON 时，
@@ -1214,3 +1267,18 @@ cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
 3. 改数据前先备份；`merge_kg_duplicates.py` 是范例（dry-run 默认、事务、自动备份、幂等、校验）。
 4. 定位到根因再动手。**注释和文档可能说谎**：今天就遇到
    `graph_data` 的 docstring 声称「已从豁免前缀中移除」，而代码里其实一直还在。
+5. **报结论必须给证据分级，三类不可合并**（借鉴 DSH-KRouter 的三层分离）：
+   - **实现验证** = 在**本机复现**的测试/脚本结果（`pytest 2017 passed`、`clone_25 25/25`）；
+   - **对比验证** = 与基线同条件跑出的对照（「三路 RRF 第 7 名 vs 纯向量 271/331」）；
+   - **自报** = 来自文档、他人陈述、**未经本机复现**的数字（「作者 25/25」、README 宣称的模块数）。
+   ⚠ 混在一句话里就是误导。写「100% 准确率」必须同时交代**样本是构造还是真实语料、
+   谁判的卷、有没有存疑题**。教训：2026-09-28 交的「40/40 = 100%」里 36 对是构造样本，
+   直到三模型盲测才拆出「卷一零正例」——那个 100% 只证明不乱咬，不证明会咬。
+6. **冲突时谁说了算（correction-first）**：当前用户指令 > 最新 `supersedes` / `review_verdict`
+   标记 > 旧日志与旧记忆。两条记忆打架先 `pangu_get_supersede_chain` 看方向，
+   **别拿旧的盖新的**。⚠ 自动 supersede 的判定必须过 LLM 复核（§13 2026-09-27/28 两次教训），
+   **不复核不下架**；复核链上的 `review_verdict` 就是这条规矩的落地痕迹。
+7. **检索必须能说「没命中」**：`pangu_search_memories` 返回 `retrieval_status`
+   （`hit`/`weak`/`miss`）+ `receipt` + `hints`。分数低于可信阈值 = `weak`，
+   零结果 = `miss`，这两种情况**必须给 hints 而不是硬凑十条**。
+   「装着有答案」比「承认没命中」贵得多 —— 参照 KRouter 的原话 *Neighbor cite is a failure*。

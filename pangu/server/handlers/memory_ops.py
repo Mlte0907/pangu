@@ -3,8 +3,10 @@
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 
 from ...core.palace import Drawer
+from ...search.engine import STRONG_MATCH_THRESHOLD  # 与检索层共用一份，别两处各写
 
 TOOLS = [
     {
@@ -225,6 +227,14 @@ _OWN_FIRST_MAX_POOL = 100
 # 另：boost 在任何位次下都**不会**把改前第 1 名挤出前 10（只是下移），只有 split 会挤出去。
 _OWN_FIRST_BOOST_POSITIONS = 4
 
+# ── 检索状态与收据（2026-09-28，借鉴 DSH-KRouter）────────────────────────
+# `STRONG_MATCH_THRESHOLD` 从 search.engine 导入（顶部）—— 必须与检索层同一份，
+# 否则两边阈值漂移会导致「检索层判 relevant、handler 层判 hit」自相矛盾。
+#
+# weak/miss 时给几条提示。**只是提示**，调用方不得当成答案 ——
+# KRouter 的原话：Neighbor cite is a failure（引用邻居就是失败）。
+HINTS_MAX = 5
+
 
 def _own_first_mode() -> str:
     """读 env 而非模块常量：切模式只要重启服务，不必改代码重新部署。"""
@@ -398,18 +408,76 @@ async def handle_search_memories(server, drawers, arguments):
     except Exception:
         pass
 
-    # 结果质量自检（2026-09-19）：语义搜索修好打分后，无关查询的 Top1 只有
-    # 0.19-0.31（相关查询 0.36+）。若全部低于阈值，显式告诉调用方"没有高度
-    # 相关的记忆"——而不是硬凑 10 条不相关的让它猜。结果照常返回供参考。
+    # 结果质量自检（2026-09-19）+ 检索状态与收据（2026-09-28）
+    # 自检原意：无关查询 Top1 只有 0.19-0.31（相关查询 0.36+），低于阈值就显式
+    # 说「没有高度相关的记忆」，而不是硬凑十条不相关的让它猜。
+    # 2026-09-28 借鉴 DSH-KRouter 把它系统化：
+    #   retrieval_status —— hit/weak/miss，让「没命中」成为一等公民
+    #   hints            —— weak/miss 时给线索，且明说「这是线索不是答案」
+    #   receipt          —— 分数/阈值/召回通道/耗时，调用方可核对（可审计）
+    # 参照 KRouter 的 *Neighbor cite is a failure*：装着有答案比承认没命中贵得多。
     try:
         _items = payload.get("results", []) if isinstance(payload, dict) else []
+        # ★ 判据用 relevance（原始余弦相似度，未归一化）。
+        #   不能用 score：它是归一化的 rrf_score，第一名恒为 1.0，拿它比固定阈值
+        #   ⇒ 只要有结果就恒判 hit（2026-09-28 实测：乱查也返回 top_score=1）。
+        _rels = [
+            r.get("relevance")
+            for r in _items
+            if isinstance(r, dict) and isinstance(r.get("relevance"), (int, float))
+        ]
+        _top_rel = max(_rels) if _rels else None  # None = 无向量命中（可能纯字面召回）
         _scores = [r.get("score") for r in _items if isinstance(r, dict) and isinstance(r.get("score"), (int, float))]
+        _top = max(_scores) if _scores else 0.0  # 归一化分，仅用于回显
+
+        # 老标记 no_strong_match（2026-09-19）。它一直依赖 `relevant`，而 RRF 路径
+        # 此前根本不产出该字段 ⇒ 默认 True ⇒ `all(not True)` 恒假 ⇒ **从没触发过**。
+        # _search_rrf 补上 relevant 后这条才真正活过来。
         if _items and all(not r.get("relevant", True) for r in _items if isinstance(r, dict)):
             payload["no_strong_match"] = True
             payload["note"] = (
-                f"未找到与查询高度相关的记忆（最高相似度 {max(_scores):.2f}，"
-                f"低于可信阈值 0.32）；以下为最接近的条目，仅供参考"
+                "未找到与查询高度相关的记忆"
+                + (f"（最高相似度 {float(_top_rel):.2f}" if _top_rel is not None else "（无向量相似度可用")
+                + f"，低于可信阈值 {STRONG_MATCH_THRESHOLD}）；以下为最接近的条目，仅供参考"
             )
+
+        if isinstance(payload, dict):
+            if not _items:
+                _status = "miss"
+            elif _top_rel is not None:
+                _status = "hit" if _top_rel >= STRONG_MATCH_THRESHOLD else "weak"
+            else:
+                # 没有向量相似度时退而看**字面命中**（FTS）—— 确定性字面召回本身
+                # 就是有效答案（KRouter 的「锁」正是字面语义），不算 weak。
+                _has_fts = any(r.get("fts_rank") is not None for r in _items if isinstance(r, dict))
+                _status = "hit" if _has_fts else "weak"
+            payload["retrieval_status"] = _status
+
+            if _status != "hit":
+                payload["hints"] = [
+                    {"id": r.get("id"), "relevance": r.get("relevance"),
+                     "wing": r.get("wing"), "created_at": r.get("created_at")}
+                    for r in _items if isinstance(r, dict)
+                ][:HINTS_MAX]
+                payload["hints_note"] = (
+                    "以上是线索（hints），不是答案："
+                    + (f"最高相似度 {float(_top_rel):.2f} 未达可信阈值 {STRONG_MATCH_THRESHOLD}，"
+                       if _top_rel is not None else "没有向量相似度支撑，")
+                    + "请换更具体的名词重查"
+                )
+
+            payload["receipt"] = {
+                "queried_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                # top_relevance 才是判据（原始 sim）；top_score 是归一化排序分，仅回显
+                "top_relevance": None if _top_rel is None else round(float(_top_rel), 4),
+                "top_score": round(float(_top), 4),
+                "threshold": STRONG_MATCH_THRESHOLD,
+                "results": len(_items),
+                "channels": sorted(
+                    {str(r.get("source")) for r in _items if isinstance(r, dict) and r.get("source")}
+                ),
+                "elapsed_ms": round((_perf_counter() - _t0) * 1000, 1),
+            }
     except Exception:
         pass
 

@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **355** 个 py 文件 / **109,511** 行。
+共 **356** 个 py 文件 / **109,872** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,832 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 108 文件 / 33,469 行
+## `tests/` — 109 文件 / 33,700 行
 
 测试
 
@@ -251,6 +251,7 @@
 | `test_retrievability_audit.py` | 201 | 可检索性体检（memory/retrievability.py）的回归测试。 |
 | `test_retrievability_llm.py` | 148 | 可检索性体检的 LLM 阶段（2026-09-26）。 |
 | `test_search_own_first.py` | 321 | 搜索「本平台优先」的两个模式（2026-09-26）。 |
+| `test_search_receipt.py` | 231 | `pangu_search_memories` 的检索状态与收据（2026-09-28，借鉴 DSH-KRouter）。 |
 | `test_search_rrf_recall.py` | 176 | `search/engine.py::HybridSearch` 改走三路 RRF 的回归（2026-09-28）。 |
 | `test_supersede_llm_review.py` | 426 | 方案 A：冲突 supersede 改为「后台 LLM 复核」（2026-09-27）。 |
 | `test_top_level_intelligence.py` | 258 | 盘古顶级智能验证 — 端到端集成测试 |
@@ -267,7 +268,7 @@
 | `test_vector_degradation_visible.py` | 167 | 向量路径的降级必须**看得见**。 |
 | `test_warmup_audit.py` | 133 | 盘古 — 缓存预热审计日志测试 |
 
-## `pangu/server/` — 26 文件 / 11,514 行
+## `pangu/server/` — 26 文件 / 11,582 行
 
 服务器层：MCP 服务器、Web 服务器、WebSocket、工具 handler 与暴露面
 
@@ -285,7 +286,7 @@
 | `handlers/knowledge.py` | 178 | 盘古 MCP Handler — knowledge (8 tools, P2-1 Step 1) |
 | `handlers/knowledge_graph.py` | 116 | 盘古 MCP Handler — knowledge_graph (7 tools) |
 | `handlers/llm_tools.py` | 288 | 盘古 MCP Handler — llm_tools (19 tools) |
-| `handlers/memory_ops.py` | 784 | 盘古 MCP Handler — memory_ops (4 tools) |
+| `handlers/memory_ops.py` | 852 | 盘古 MCP Handler — memory_ops (4 tools) |
 | `handlers/multimodal.py` | 324 | 盘古 MCP Handler — multimodal (17 tools) |
 | `handlers/palace.py` | 88 | 盘古 MCP Handler — palace (4 tools) |
 | `handlers/quality.py` | 407 | 盘古 MCP Handler — quality (20 tools) |
@@ -410,6 +411,16 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `performance_monitor.py` | 119 | 盘古性能基准监控 — 持续监控性能变化 |
 | `tracing.py` | 115 | 盘古 — OpenTelemetry 分布式追踪模块 |
 
+## `pangu/search/` — 3 文件 / 828 行
+
+搜索层：嵌入引擎 + 混合检索引擎
+
+| 文件 | 行 | 职责（首句 docstring） |
+| --- | ---: | --- |
+| `__init__.py` | 5 | 盘古搜索模块 |
+| `embedder.py` | 479 | 盘古向量嵌入引擎 — 真正的语义搜索 |
+| `engine.py` | 344 | 盘古搜索模块 — 多模式记忆搜索 |
+
 ## `pangu/plugins/` — 2 文件 / 782 行
 
 插件系统
@@ -418,16 +429,6 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | --- | ---: | --- |
 | `__init__.py` | 327 | 盘古插件系统 — 可扩展的记忆处理器 |
 | `plugin_manager.py` | 455 | 盘古插件管理器 — 插件化架构核心 |
-
-## `pangu/search/` — 3 文件 / 766 行
-
-搜索层：嵌入引擎 + 混合检索引擎
-
-| 文件 | 行 | 职责（首句 docstring） |
-| --- | ---: | --- |
-| `__init__.py` | 5 | 盘古搜索模块 |
-| `embedder.py` | 479 | 盘古向量嵌入引擎 — 真正的语义搜索 |
-| `engine.py` | 282 | 盘古搜索模块 — 多模式记忆搜索 |
 
 ## `pangu/wiki/` — 2 文件 / 376 行
 
