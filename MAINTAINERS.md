@@ -517,6 +517,16 @@ cd /root/pangu
   - **起因**：对比 `github.com/398894496-arch/DSH-KRouter`（Agent 知识 OS，Obsidian +
     确定性锁）。它有三点是盘古缺的，本条把它们变成盘古的约束：
     **证据分层不可合并 / correction-first / 未命中要明说**。
+  - **⚠ 规矩 6 初版写错、经用户指出后修正（2026-09-28）**：我最初写成
+    「新的覆盖旧的、别拿旧的盖新的」——**措辞不准**。实测两套机制都**不覆盖不删除**：
+    * **冲突取代** `_apply_supersede` 只打 `superseded` 标记，`ingestion.py` 里
+      `remove_drawer`/`del drawer` **零命中**，本体仍在库；
+    * **质量替换** 走 `memory_ops.py` 进化路径，旧记忆先
+      `evolution.save_snapshot` 存进 `memory_snapshots.json`（带 `replaced_by` 与
+      理由），本体 `version+1` + `replaced_by` 照样留库；每次写入最多替换 1 条。
+    正确表述是**「新的说了算，但旧的不消失」**——取信顺序与数据处置是两件事。
+    ⚠ 顺带查实：云端 `memory_snapshots.json` **0 条**，快照机制**至今没触发过**，
+    别当已验证能力（同族：`LifecycleManager` 曾是死代码、`no_strong_match` 从未触发）。
   - **落点① `MAINTAINERS.md` §16 新增规矩 5、6、7**（并入已有节 —— ⚠ AGENTS.md
     现 4081/4096 **只剩 15 字节**，加 `§17` 索引行必然超限，故不能新增节）：
     * **规矩 5 证据分级**：实现验证（本机复现）/ 对比验证（同条件对照）/ 自报
@@ -1274,9 +1284,18 @@ cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
    ⚠ 混在一句话里就是误导。写「100% 准确率」必须同时交代**样本是构造还是真实语料、
    谁判的卷、有没有存疑题**。教训：2026-09-28 交的「40/40 = 100%」里 36 对是构造样本，
    直到三模型盲测才拆出「卷一零正例」——那个 100% 只证明不乱咬，不证明会咬。
-6. **冲突时谁说了算（correction-first）**：当前用户指令 > 最新 `supersedes` / `review_verdict`
-   标记 > 旧日志与旧记忆。两条记忆打架先 `pangu_get_supersede_chain` 看方向，
-   **别拿旧的盖新的**。⚠ 自动 supersede 的判定必须过 LLM 复核（§13 2026-09-27/28 两次教训），
+6. **新的说了算，但旧的不消失** —— 这是**两件事**，别混成"覆盖"：
+   - **谁说了算（取信顺序）**：当前用户指令 > 最新 `supersedes` / `review_verdict`
+     标记 > 旧日志。两条记忆打架先 `pangu_get_supersede_chain` 看方向。
+   - **旧的去哪（数据处置）**：盘古**从不覆盖、从不删除**，两条路都留痕：
+     * **冲突取代**（`_apply_supersede`）：旧的打 `memory_status=superseded` +
+       `superseded_by`，**本体仍在库里**、仍可按 id 取回；
+     * **质量替换**（`memory_ops.py` 进化路径）：旧的先 `evolution.save_snapshot`
+       进 `memory_snapshots.json`（带 `replaced_by` 与替换理由），本体
+       `version+1` + `replaced_by`，**同样仍在库里**；每次写入最多替换 1 条。
+     ⚠ 截至 2026-09-28 云端快照表 **0 条** —— 该机制**尚未被触发过**，
+     别当成已验证能力；仪表盘 `/dashboard/snapshots` 可查。
+   ⚠ 自动 supersede 的判定必须过 LLM 复核（§13 2026-09-27/28 两次教训），
    **不复核不下架**；复核链上的 `review_verdict` 就是这条规矩的落地痕迹。
 7. **检索必须能说「没命中」**：`pangu_search_memories` 返回 `retrieval_status`
    （`hit`/`weak`/`miss`）+ `receipt` + `hints`。分数低于可信阈值 = `weak`，
