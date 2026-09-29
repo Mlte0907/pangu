@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **357** 个 py 文件 / **110,178** 行。
+共 **357** 个 py 文件 / **110,196** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 43,910 行
@@ -400,6 +400,16 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `self_aware.py` | 11 | 自我感知实验工具 — self_aware 组 |
 | `worldmodel.py` | 12 | 世界模型实验工具 — worldmodel 组 |
 
+## `pangu/search/` — 3 文件 / 846 行
+
+搜索层：嵌入引擎 + 混合检索引擎
+
+| 文件 | 行 | 职责（首句 docstring） |
+| --- | ---: | --- |
+| `__init__.py` | 5 | 盘古搜索模块 |
+| `embedder.py` | 479 | 盘古向量嵌入引擎 — 真正的语义搜索 |
+| `engine.py` | 362 | 盘古搜索模块 — 多模式记忆搜索 |
+
 ## `pangu/observability/` — 5 文件 / 836 行
 
 可观测性：健康检查、Prometheus 指标、OpenTelemetry 追踪
@@ -411,16 +421,6 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `metrics.py` | 367 | 盘古 Prometheus 指标导出（伏羲移植） |
 | `performance_monitor.py` | 119 | 盘古性能基准监控 — 持续监控性能变化 |
 | `tracing.py` | 115 | 盘古 — OpenTelemetry 分布式追踪模块 |
-
-## `pangu/search/` — 3 文件 / 828 行
-
-搜索层：嵌入引擎 + 混合检索引擎
-
-| 文件 | 行 | 职责（首句 docstring） |
-| --- | ---: | --- |
-| `__init__.py` | 5 | 盘古搜索模块 |
-| `embedder.py` | 479 | 盘古向量嵌入引擎 — 真正的语义搜索 |
-| `engine.py` | 344 | 盘古搜索模块 — 多模式记忆搜索 |
 
 ## `pangu/plugins/` — 2 文件 / 782 行
 

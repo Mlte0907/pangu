@@ -526,6 +526,46 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-30** — 修盘古常驻 1GB 内存：搜索热路径每次调用都新建 `VectorEmbedder`。
+  - **现象**：云端机器只有 1.76GB，盘古一个进程 RSS **993MB（占全机 54.9%）**，
+    `MemAvailable` 只剩 **200MB**，swap 已换出 **862MB**。
+  - **先排除的（都不是，别再往这些方向查）**：
+    - **不是泄漏**：RSS 连续 20s 采样 `1016544→1016544→1016544→1006112` kB 是**平的**，
+      且 `VmHWM` 峰值 1.18GB **高于**当时值（涨到头又回落过）。
+    - **不是 OOM / 重启**：`NRestarts=0`，`Active since 2026-09-28 12:23:37`，dmesg 无 OOM。
+    - **不是 ONNX 线程数放大**：机器 `nproc=2` ⇒ `intra_op_num_threads = 2//2 = 1`。
+    - **不是死 WebSocket 堆积**：连接记账 502 接入 / 500 摘除 / 净留存 2，推送失败 0。
+    - **不是 `evolution._TOKEN_CACHE`**：有上界 20000、超限整体清空、按 sha1 取键不留正文。
+  - **真因**：`search/engine.py` 的 `_relevance_map`（被 `_search_rrf` 调用）里写的是
+    `VectorEmbedder(self.config).search(...)` —— **每次调用新建一个嵌入器**，而
+    `VectorEmbedder.__init__` 会**从 JSON 重读一遍嵌入缓存**（756 条）然后用完就扔。
+    实测日志「嵌入缓存已加载: 756 条」累计 **3289 次**，且后台自主任务**每 10~20s 触发一次**。
+    反复的「分配-丢弃」把 glibc 堆撑大，而 **glibc 不把空闲页还给内核** ——
+    地址空间里两块 `[heap]` 虚拟 **793MB / 404MB**、驻留只有 **0.3MB**，就是「撑大后空着」
+    的铁证。所以是**浪费 + 不归还**，不是漏。
+    *顺带*：真货只有两个 ONNX 模型文件 113MB + 22MB；磁盘数据才 39MB。
+  - **改法（一行语义）**：改用**长生命周期的活实例** `self.semantic.embedder`
+    （`engine.py:25` 的懒加载属性），并显式处理 `None`（不可用时降级返回 `{}`，
+    与原 `except` 同语义）。同时删掉函数内已无用的 `VectorEmbedder` 局部 import。
+    - **活实例在 `SemanticSearch` 上，不在 `HybridSearch`** —— 调用点必须写
+      `self.semantic.embedder`。`api/server.py:442` 的注释指认的也是
+      `MCPServer.search.semantic._embedder`。
+    - **不改变行为**：`HybridSearch.__init__` 传的是**原始** config，而
+      `self.config` 是 `authoritative_memory_config()` 之后的副本；该方法**只改存储
+      路径**（`palace_path` 等），而嵌入器只读 `onnx_model_id` / `quantized` /
+      `max_length` / `cache_dir` / `mirror_base` / `embedding_dim` / `embedding_model`
+      —— **没有一个在路径改写范围内**。
+    - 这个坑**此前已被踩过一次**：`api/server.py:442` 明确写着「若新构造一个
+      `VectorEmbedder(config)`，它自带一个空缓存，flush 什么都没写还静默返回 False」。
+  - **验证**：
+    - **A/B 实测**（同一脚本、5 次 `_relevance_map` 调用，数嵌入器构造次数）：
+      旧代码 **5 次**、新代码 **1 次**；两版返回值都正常（5/5 拿到 dict），行为未变。
+    - `pytest tests/test_p0_2_search_quality.py test_p1_3_search_quality.py
+      test_search_own_first.py test_search_receipt.py test_search_rrf_recall.py` → **74 passed**。
+  - **⚠ 同一函数 docstring 里那句「`EmbeddingCache` 让条目嵌入只算一次 —— 冷启动
+    3.06s、稳态 0.00~0.05s」此前是假的**：实例用完就丢，缓存在**单次调用内**才有效，
+    跨调用等于每次冷启动。复用活实例后这句话才成立。
+
 - **2026-09-28** — 给分词加缓存：修好快照机制后引入的性能回归（0.023s → 0.813s）。
   - **来龙去脉**：修「中文按空格切」那道关卡时，把 `find_related_memories` 的
     `str.split()` 换成了 FTS 在用的 jieba。**修对了，但带来回归** ——

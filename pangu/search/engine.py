@@ -218,7 +218,6 @@ class HybridSearch:
             return {}
         try:
             from ..memory.encryption import decrypt
-            from ..search.embedder import VectorEmbedder
 
             items = []
             for d in pool:
@@ -232,7 +231,26 @@ class HybridSearch:
             if not items:
                 return {}
 
-            res = VectorEmbedder(self.config).search(query, items, top_k=len(items))
+            # ⚠ 必须用**长生命周期的活实例**（self.semantic.embedder → engine.py:25），
+            # 不要再 `VectorEmbedder(self.config)` 新建 —— 新建一次就得从 JSON 重读
+            # 一遍嵌入缓存（756 条）然后用完就扔。
+            # 2026-09-30 实测：本行让日志「嵌入缓存已加载: 756 条」累计 **3289 次**
+            # （后台自主任务每 10~20s 触发一次），反复的「分配-丢弃」把 glibc 堆撑大
+            # 而不再归还（地址空间里两块 793MB / 404MB 的 [heap] 只驻留 0.3MB）
+            # ⇒ 盘古 RSS 993MB、占全机 55%、MemAvailable 只剩 200MB。
+            # **不是泄漏**：RSS 20s 采样是平的，峰值 1.18GB 还高于当时值。
+            # 同一坑 api/server.py:442 已踩过一次（新建实例自带空缓存，flush 什么都没
+            # 写还静默返回 False）；上面 docstring 那句「稳态 0.00~0.05s」也只有
+            # 复用活实例才真正成立。
+            # 用活实例不改变行为：它由**原始** config 构造，而 self.config 是
+            # authoritative_memory_config() 之后的副本 —— 该方法只改存储路径
+            # （palace_path 等），而嵌入器只读 onnx_model_id / quantized / max_length /
+            # cache_dir / mirror_base / embedding_dim / embedding_model，都不在路径改写
+            # 范围内。
+            emb = self.semantic.embedder
+            if emb is None:
+                return {}  # 嵌入器不可用 → 拿不到相似度 = 降级（与下面 except 同语义）
+            res = emb.search(query, items, top_k=len(items))
             return {
                 r.get("id"): float(r.get("score"))
                 for r in res
