@@ -875,7 +875,33 @@ def remember(
         raise ValueError(f"importance must be between 0.0 and 1.0, got {importance}")
     if confidence is None:
         confidence = 1.0
-    tags = tags or []
+
+    # tags 类型归一（2026-09-30 修）
+    #
+    # 为什么必须在这里挡：`Drawer` 是 **@dataclass**，不是 pydantic ——
+    # `tags: list` 只是**类型注解，运行时零校验**，所以任何调用方传 dict/string
+    # 都会原样存进权威库。实测后果（2026-10-01）：一条 MCP 写入的记忆
+    # tags={'item':'取证','room':'tech'}，让仪表盘 `MemRow` 的
+    # `(m.tags || []).slice(0,3)` 抛 `slice is not a function`，
+    # **React 整棵子树崩掉 → 仪表盘白屏，而 tab 还在**（tab 是宿主的）。
+    # 一条脏数据拖垮整个面板，而且只有 F12 控制台看得到。
+    #
+    # 处置：**不静默丢内容**。dict/字符串按值提取成列表（保留信息），
+    # 其它类型退化为空列表并**响亮记日志**（fail-loud，不能静默）。
+    if tags is None:
+        tags = []
+    elif isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    elif isinstance(tags, dict):
+        # 形如 {'item': '取证', 'room': 'tech'} → 取值成 ['取证', 'tech']
+        tags = [str(v).strip() for v in tags.values() if str(v).strip()]
+    elif isinstance(tags, (list, tuple, set)):
+        tags = [str(t).strip() for t in tags if str(t).strip()]
+    else:
+        logger.warning(
+            f"tags 类型异常（{type(tags).__name__}），已按空列表处理：{tags!r:.80}"
+        )
+        tags = []
 
     # 脱敏处理
     raw_text = _sanitize_text(raw_text)
