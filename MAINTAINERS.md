@@ -551,9 +551,12 @@ cd /root/pangu
       `collect_encryption_samples`，即本地后来的功能）。**垃圾文件，非分叉**，已从体检范围排除。
     - 本地有云端缺：`docs/ROADMAP*.md`、`docs/api-v2.md`（已同步）；
       `plugins/dsh-pangu/` 6 个文件是**故意落后**的副本，写进脚本 `EXCLUDE_PATHS`。
-    - **⚠ 顺带发现 5 个 `.bak` 文件被 git 跟踪**（`ingestion.py.bak` 只有 890 行 vs
-      现行 1246 行，**差 576 处**），且全仓**无任何引用** —— 是回退习惯留下的沉淀。
-      **未删**（删不删 tracked 文件由用户定）；体检脚本已把 `*.bak` 排除在漂移判定外。
+    - **已删除 5 个 `.bak` 文件**（`git rm`，用户定）：`pangu/memory/` 下的
+      `hybrid_search.py.bak`、`ingestion.py.bak`、**`ingestion.py.bak2`**、
+      `layers.py.bak`、`neural_memory.py.bak`。它们**被 git 跟踪着**、全仓**无任何引用**
+      （`ingestion.py.bak` 只有 890 行 vs 现行 1246 行，**差 576 处**）——
+      是「改前先备份」习惯留下的沉淀，却让**漂移体检每次都把它们列成「本地有云端缺」**。
+      删除**完全可逆**：git 历史里仍在（`git show <rev>:pangu/memory/ingestion.py.bak`）。
   - **顺带核实云端鉴权没被漏掉**（因为 `install.sh` 那段正是这个加固）：
     `mcp_require_auth=True`、`auth_enabled=True`、**无凭据 `POST /mcp` 实测 401**、
     公网扫描器被拒 ⇒ **没有暴露**。
