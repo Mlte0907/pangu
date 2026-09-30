@@ -526,6 +526,77 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-30** — 统一嵌入模型：默认模型不再硬编码英文模型 + 全量重算存量向量。
+  - **根因**：`get_onnx_embedder()` 与 `ONNXEmbedder.__init__` 的 `model_id` **默认值**
+    硬编码旧的纯英文 `Xenova/all-MiniLM-L6-v2`，而 `config.onnx_model_id` 早在 2026-09-19
+    就换成了多语模型。⇒ 全仓 **16 处 `get_onnx_embedder()` 无参调用**（ingestion /
+    retrieval / handlers/embed / hybrid_search / cluster / layers / cli…）全部拿错模型；
+    又因为它**按参数元组缓存**，还多常驻一个 session（云端日志两条 `ONNX model loaded`：
+    `22433KB` + `115535KB`）。
+  - **代价是数据，不只是内存**：云端 **418/418 条**抽屉的 `metadata["embedding"]` 全是
+    **英文模型**算的，而搜索侧 `VectorEmbedder` 用多语模型 —— 两套向量不在同一空间。
+    本地实测中文判别力：英文 **+0.1209** vs 多语 **+0.3789**（差 3.1 倍）。
+    *更正一处旧说法*：`config.py` 原注释称英文模型「任意两中文串 cos 0.9+」——
+    实测无关句只有 **0.4814**，**那句夸大了**，但判别力差 3 倍是真的。
+  - **改法**：
+    1. 新增 `_default_model_id()`：**读 `pangu.core.config` 模块级单例**，不用
+       `PanguConfig.load()`（后者每次都读 config.json 磁盘，`config.py:469`，调用点在热路径）。
+    2. 两个入口的 `model_id` 默认值改为 `None`，运行时解析。
+       ⚠ **必须在算缓存 key 之前解析** —— 否则 `get_onnx_embedder()` 的 key 是 `(None,…)`
+       而显式多语是 `(多语,…)`，又变成两个实例。
+       ⚠ `ONNXEmbedder.__init__` 里**必须回写局部变量** `model_id`：只赋 `self.model_id`
+       的话，后面拼 `cache_dir` 时 `None.replace()` 直接 AttributeError（无参直接构造才触发，
+       `warmup.py:45` 就会；2026-09-30 实测踩到）。
+    3. `config.embedding_model`（ONNX 挂掉时的 sentence-transformers 兜底）也改成多语模型 ——
+       它曾一直是英文模型，ONNX 一挂中文搜索立刻回到「从未工作过」且**无任何症状**。
+    4. 新增 `scripts/rewrite_drawer_embeddings.py`：用**当前默认模型**重算存量向量。
+       - **为什么不能用 `scripts/embed_all.py`**：它重建的是 `vector_index`
+         （纯内存 HNSW，`/root/.pangu/index/` 是空的 ⇒ 不落盘、重启即清），
+         而要改的是抽屉 metadata 里那个**持久化**字段。
+       - 安全性：写前自动备份 `drawers.json.bak-rewrite-emb-<时间戳>`；**原子写**
+         （tmp + flush + fsync + os.replace，与 `layers._save_drawers` 同款）；
+         默认 dry-run，要真写必须 `--apply`；每条记 `metadata.embedding_model`，
+         日后能一眼看出这条向量是谁算的。
+       - **重算失败/正文太短的条目会清掉陈旧向量**而不是留着 —— 混着两个模型的向量
+         比没有更糟。
+  - **为什么必须重算而不是只改代码**：ingestion 写入端切到多语后，存量 418 条仍是英文模型
+    算的，新旧混在同一个字段里被 `retrieval._search_vectors_bruteforce` 互相比较 ——
+  **那才是真正的跨模型混用，比现状更糟**。
+  - **验证**：
+    - **新测试 `tests/test_default_embedder_model.py`（7 个）**，且**在旧代码上 7 个全红、
+      新代码 7 个全绿**（测不出问题的测试等于没测）。守住：无参不硬编码、默认解析跟 config
+      走、config 缺值时退回**多语**而非英文、无参与显式多语**同一实例**、直接构造也解析、
+      fallback 模型是多语、两个后端说同一种语言。
+    - 相关 8 个测试文件 **119 passed**。
+    - 重算脚本在**合成 drawers.json** 上验证过 4 个边界：无 `metadata` 的条目不炸、
+      短正文的陈旧向量被清、空正文无向量、已是本模型的条目计入 `unchanged`；
+      备份与原子写均生效。
+  - **🛑 全量测试：8 failed / 2056 passed（`tests/test_p0_1_supersede.py`）—— 尚未部署，等产品决策。**
+    - 8 个失败**不是本次改动写错了代码**，而是**暴露了一个从未对中文生效过的代码路径**。
+      实测证据（本地跑两模型对比）：
+      - `_dedup_and_fuse` 拿**新鲜的 query 向量**（`EmbeddingService` → 多语模型）
+        去比**存量向量**（`ingestion._embed_text` → 改动前是**英文模型**）。
+        **改动前这是跨模型比较**：`A(多语) vs ¬A(英文) cos=0.2208`、`0.1720`
+        —— 本该 0.76 相似的一对文字只算出 0.17 ⇒ **恒低于 `SUPERSEDE_THRESHOLD=0.65`
+        ⇒ 去重路径对中文从未触发**。
+      - 改动后同源比较：`A vs ¬A cos=0.7563 ≥ 0.65` ⇒ **去重路径第一次对中文生效**，
+        而它的规则是「相似但新内容不够丰富 → 判重复 → **拒绝写入**」。
+      - 于是种子里那对 `token 是正确` / `token 是错误的`（长度几乎相同、互相矛盾）
+        被当成**重复而丢弃**，`remember()` 提前早退，冲突检测根本没轮到
+        （`_dedup_and_fuse` 在 `remember()` 头部，`:836`；`_detect_conflicts` 在末尾，`:919`）。
+      - 6 个失败是 `assert 'active' == 'superseded'`（旧的没被标记为已替代）；
+        2 个是旁路 `_detect_conflicts` 后 `supersedes` 仍出现 —— 因为**写 `supersedes`
+        的本来就有两处**（`:529` 冲突检测那条、`:909` dedup 的 supersede_id 那条），
+        旁路前一处拦不住后一处。**那两个测试的「唯一作者」假设本身就是错的，只是从未被触发。**
+    - **⚠ 这 8 个测试此前是绿的，靠的是跨模型比较产生的垃圾分数** —— 属实的"绿得没道理"。
+    - **⚠ 需要产品决策（我没有擅自改）**：同长度的**纠正**该不该被当重复丢掉？
+      按盘古的记忆模型（纠错优先、旧记忆标记 superseded 且可追溯），**不该丢**。
+      但 `_dedup_and_fuse` 的「不够丰富 ⇒ 拒绝写入」规则从来没在中文上跑过，
+      它的边界没人验证过。**这属于写入路径语义变更，应当单独立项讨论，不该捎带在
+      「统一嵌入模型」里悄悄上线。**
+  - **顺带记录**：`onnx_embedder.DEFAULT_MODELS` **全仓无人使用**（只有定义处匹配），
+    不是兜底链，且第一项还是旧英文模型 —— 已加注释警告，别拿它当「默认」的依据。
+
 - **2026-09-30** — 修盘古常驻 1GB 内存：搜索热路径每次调用都新建 `VectorEmbedder`。
   - **现象**：云端机器只有 1.76GB，盘古一个进程 RSS **993MB（占全机 54.9%）**，
     `MemAvailable` 只剩 **200MB**，swap 已换出 **862MB**。

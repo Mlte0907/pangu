@@ -179,7 +179,12 @@ class PanguConfig(BaseSettings):
     llm_cache_vacuum_interval_hours: float = 0.0  # 周期 VACUUM（0=禁用）
 
     # ── 嵌入模型配置 ──
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # ⚠ 2026-09-30：这里曾一直是 all-MiniLM-L6-v2（**纯英文**）。它是 ONNX 不可用时
+    # 的 fallback（search/embedder.py 的 SentenceTransformer 分支）—— 一旦 ONNX 挂掉
+    # 就回退到英文模型，中文语义搜索立刻回到「从未真正工作过」的状态
+    # （中文全变 [UNK]，任意两串 cos 0.9+，实测无关句也有 0.48）。
+    # 与 onnx_model_id 保持同一个多语模型，两个后端说同一种语言。
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 384
     embed_cache_max: int = 256
     embed_api_url: str = ""

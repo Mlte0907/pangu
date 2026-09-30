@@ -51,6 +51,30 @@ DEFAULT_MODELS = [
     ("Xenova/paraphrase-MiniLM-L3-v2", "onnx/model_quantized.onnx", "tokenizer.json", 384),
 ]
 
+# ⚠ 上面这份候选表**全仓无人使用**（只有定义处匹配），不是兜底链 —— 留着只为不擅自删。
+#    注意它第一项仍是旧的纯英文模型，别拿它当"默认"的依据；真正的默认见
+#    `_default_model_id()`。
+
+# 无参调用时的默认模型。**必须来自 config，绝不能硬编码。**
+#
+# 2026-09-30 修：这里的默认值曾长期停在旧的纯英文 `all-MiniLM-L6-v2`，而
+# `config.onnx_model_id` 早在 2026-09-19 就换成了多语模型（中文分词全变 [UNK]
+# 会让语义搜索对中文失效）。后果实测：
+#   * 全仓 16 处 `get_onnx_embedder()` **无参**调用（ingestion / retrieval /
+#     handlers/embed / hybrid_search / cluster / layers / cli…）拿到的都是英文模型；
+#   * `get_onnx_embedder` 按参数元组缓存 ⇒ **两个 ONNX session 同时常驻**
+#     （云端实测 22433KB + 115535KB，日志里两条 "ONNX model loaded"）；
+#   * `ingestion._embed_and_store` 写进 `drawer.metadata["embedding"]` 的向量，
+#     与搜索侧 `VectorEmbedder` 用的**不是同一个模型**。
+# 中文判别力实测：英文 0.1209 vs 多语 0.3789（差 3.1 倍）。
+#
+# 读**模块级单例**而不是 `PanguConfig.load()` —— 后者每次都读 config.json 磁盘
+# （config.py:469），这些调用点在热路径上。
+def _default_model_id() -> str:
+    from ..core.config import config  # 函数内导入：避免与 core.config 的循环导入
+
+    return getattr(config, "onnx_model_id", None) or "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
+
 
 class ONNXEmbedder:
     """ONNX 嵌入器 — 本地 CPU 推理，零外部 API 依赖
@@ -60,13 +84,17 @@ class ONNXEmbedder:
 
     def __init__(
         self,
-        model_id: str = "Xenova/all-MiniLM-L6-v2",
+        model_id: str | None = None,
         quantized: bool = True,
         max_length: int = 128,
         cache_dir: str | None = None,
         mirror_base: str = "https://hf-mirror.com",
         embedding_dim: int = 384,
     ):
+        # ⚠ 必须回写局部变量：下面拼 cache_dir 用的还是 model_id 这个名字，
+        #   只赋 self.model_id 会让「无参直接构造」（warmup.py:45）在 model_id
+        #   为 None 时 AttributeError —— 2026-09-30 实测踩到。
+        model_id = model_id or _default_model_id()
         self.model_id = model_id
         self.quantized = quantized
         self.max_length = max_length
@@ -388,7 +416,7 @@ _onnx_lock = threading.Lock()
 
 
 def get_onnx_embedder(
-    model_id: str = "Xenova/all-MiniLM-L6-v2",
+    model_id: str | None = None,
     quantized: bool = True,
     max_length: int = 128,
     cache_dir: str | None = None,
@@ -401,7 +429,14 @@ def get_onnx_embedder(
     之后任何用不同 model_id 的调用（配置热更新 / 测试对照 / 多租户不同模型）
     都会**静默拿到别人的模型**，输出错向量且无任何线索（实测：换模型对照实验
     里两"不同"实例输出逐位相同）。现按参数元组缓存多实例。
+
+    2026-09-30 修正：model_id 的默认值曾硬编码旧的纯英文 all-MiniLM-L6-v2，
+    而 config.onnx_model_id 早已是多语模型 ⇒ 16 处无参调用全部拿错模型，
+    还因「按参数缓存」而**多常驻一个 session**。现默认走 _default_model_id()
+    （读 config 单例，不读盘）。**必须在算 key 之前解析**，否则
+    get_onnx_embedder() 与 get_onnx_embedder(model_id=<多语>) 会是两个实例。
     """
+    model_id = model_id or _default_model_id()
     key = (model_id, quantized, max_length, cache_dir, mirror_base, embedding_dim)
     with _onnx_lock:
         inst = _onnx_embedders.get(key)
