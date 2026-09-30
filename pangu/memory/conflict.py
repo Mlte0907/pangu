@@ -286,9 +286,9 @@ class ConflictDetector:
         return conflicts
 
     def _polarity(self, text: str) -> tuple[bool, bool]:
-        """文本在矛盾词表上的极性 `(含正词, 含负词)`。
+        """文本在矛盾词表上的极性 `(含正词, 含负词)` —— 转调模块级 `text_polarity`。
 
-        **同位置长词优先（最长匹配）** —— 裸子串匹配是 2026-09-27 三处假阳性的
+        ⚠ **同位置长词优先（最长匹配）** —— 裸子串匹配是 2026-09-27 三处假阳性的
         来源之一：
 
             「于是 gAAAAAB… 直出」含子串「是」  → 被当成正词「是」
@@ -298,34 +298,12 @@ class ConflictDetector:
         长词先占位后，「不是」会覆盖其内部的「是」、「没有」覆盖「有」，于是
         「不是 git」只记负、不记正。这**不能**单独解决全部误报（长文常常两边
         同时有正负词），但能让极性如实反映文本，是相似度闸门之外的第二道网。
-        """
-        t = (text or "").lower()
-        entries: list[tuple[str, bool]] = []
-        for positive_words, negative_words in self.CONTRADICTION_PATTERNS:
-            entries.extend((w, True) for w in positive_words)
-            entries.extend((w, False) for w in negative_words)
-        entries.sort(key=lambda e: -len(e[0]))  # 长的先占位
 
-        occupied: list[tuple[int, int]] = []
-        has_pos = has_neg = False
-        for word, is_positive in entries:
-            if not word:
-                continue
-            start = 0
-            while True:
-                i = t.find(word, start)
-                if i < 0:
-                    break
-                j = i + len(word)
-                start = j
-                if any(i >= a and j <= b for a, b in occupied):
-                    continue  # 已被同位置更长的词覆盖
-                occupied.append((i, j))
-                if is_positive:
-                    has_pos = True
-                else:
-                    has_neg = True
-        return has_pos, has_neg
+        2026-09-30：实现搬到模块级 `text_polarity()`，因为 `ingestion._dedup_and_fuse`
+        也要用同一份词表判「纠正 vs 重述」。本方法保留是为了不破坏既有调用方
+        （`tests/test_conflict_fp_guard.py:168` 直接调它）。
+        """
+        return text_polarity(text)
 
     def _contradiction_score(self, text_a: str, text_b: str, semantic_sim: float = 0.0) -> dict:
         """计算两个文本的矛盾程度"""
@@ -423,3 +401,60 @@ class ConflictDetector:
             return "轻微不一致：可能是表述差异，建议统一用词。"
         else:
             return "潜在冲突：两条记忆语义相似，建议确认是否存在矛盾。"
+
+
+def text_polarity(text: str) -> tuple[bool, bool]:
+    """文本在矛盾词表上的极性 `(含正词, 含负词)`。
+
+    2026-09-30 从 `ConflictDetector._polarity` 提升为**模块级函数** ——
+    去重链路（`ingestion._dedup_and_fuse`）也要判「这是纠正还是重述」，
+    需要同一份极性词表与同一套最长匹配逻辑。跨模块调私有方法不合适，
+    复制一份更糟（两份词表必然漂移）。
+    原私有方法保留并转调这里，行为不变（含 `tests/test_conflict_fp_guard.py`）。
+    """
+    t = (text or "").lower()
+    entries: list[tuple[str, bool]] = []
+    for positive_words, negative_words in ConflictDetector.CONTRADICTION_PATTERNS:
+        entries.extend((w, True) for w in positive_words)
+        entries.extend((w, False) for w in negative_words)
+    entries.sort(key=lambda e: -len(e[0]))  # 长的先占位
+
+    occupied: list[tuple[int, int]] = []
+    has_pos = has_neg = False
+    for word, is_positive in entries:
+        if not word:
+            continue
+        start = 0
+        while True:
+            i = t.find(word, start)
+            if i < 0:
+                break
+            j = i + len(word)
+            start = j
+            if any(i >= a and j <= b for a, b in occupied):
+                continue  # 已被同位置更长的词覆盖
+            occupied.append((i, j))
+            if is_positive:
+                has_pos = True
+            else:
+                has_neg = True
+    return has_pos, has_neg
+
+
+def polarity_escalation(old_text: str, new_text: str) -> bool:
+    """新文本相对旧文本**是否朝"否定"方向变化**（= 这是一次纠正，不是重述）。
+
+    2026-09-30 新增。**为什么需要它**：嵌入相似度**分不开"重述"和"纠正"** ——
+    长文本共享大部分字符时，只翻转极性那几个字，向量几乎不动。实测
+    「测试缓存查询 X: 配置正确」vs「…配置是错误的」cos=**0.9324**，
+    比多数真重复还高；靠阈值区分必然出错。
+
+    判据是**极性增量**而不是"干净翻转"：中文长句常常正负词都有
+    （「配置是错误的」里「是」是正词、「错误」是负词，两边都命中），
+    所以要求"干净翻转"永远不触发。真正稳定的信号是：
+    **新文本多出旧文本没有的负词**，或**丢掉了旧文本有的正词**。
+    """
+    o_pos, o_neg = text_polarity(old_text)
+    n_pos, n_neg = text_polarity(new_text)
+    return (n_neg and not o_neg) or (o_pos and not n_pos)
+

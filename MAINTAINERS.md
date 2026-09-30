@@ -526,6 +526,70 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-09-30** — **纠正优先于去重**：`_dedup_and_fuse` 不再把纠正当重复丢掉。
+  - **要守的规则**：写入时三种结局 —— 拒绝写入（同义重述）/ 建立 supersede（同主题且
+    新内容明显更丰富）/ 交给冲突检测（同主题、又不是重述）。**「拒绝写入」是三者里
+    唯一会丢信息的**，所以它必须是**最保守**的那一个。
+  - **旧实现的两个错**（都在同一处，`ingestion._dedup_and_fuse`）：
+    1. **把 `SUPERSEDE_THRESHOLD`(0.65) 顺手当成「拒绝写入」的门槛**。0.65 是用来圈
+       「同主题」的，两种语义混用 ⇒ 等长的纠正被判重复、**静默丢弃**，
+       旧的那条错话永远留着，且不留 supersede 痕迹。
+    2. **拿密文长度比明文长度**。加密开启时 `d.content` 是 `gAAAAA…` base64，
+       实测 `len(密文)=140` 对 `len(明文)=24` ⇒ `informativeness_new > old*1.3`
+       **恒为假** ⇒ supersede 分支在加密环境下**从未走过**。
+       `.split()` 也切不出中文词（整段 1 个「词」）。已复用既有 `_plain_for_review`
+       比明文，并改用**字符差集**算新增信息。
+  - **⚠ 关键教训：相似度分不开「重述」和「纠正」。** 我先按实测数据定了阈值
+    0.90（8 组样本里真重复 ≥0.9582、纠正 ≤0.7666，中间 0.19 的干净空档），
+    **结果被一条实测打掉**：
+    > 「测试缓存查询 X: 配置正确」vs「…配置是错误的」cos = **0.9324**
+    文本够长、共享大部分字符时，只翻转极性那几个字，**向量几乎不动** ——
+    离 0.92 只差 0.012。**靠阈值必然出错，必须叠一道极性否决。**
+  - **改法**：
+    1. 拒绝门槛**复用既有 `SIMILARITY_THRESHOLD`(0.92，注释即写「精确重复」)**
+       —— **没有另立 `DUPLICATE_THRESHOLD`**（规矩 8：两份阈值必然漂移）。
+       顺带发现：`tests/test_p0_1_supersede.py` 那个 autouse fixture 把
+       `SIMILARITY_THRESHOLD` 改成 0.9999 一直是**死补丁**（`_dedup_and_fuse`
+       根本不读它）；现在 dedup 真的读它了，那个补丁**才第一次生效** ——
+       所以**那 8 条 supersede 测试并不覆盖拒绝门槛**，覆盖它的是新增的
+       `tests/test_correction_first_dedup.py`。
+    2. 把 `ConflictDetector._polarity` 提升为**模块级 `text_polarity()`**
+       （同一份词表、同一套最长匹配），并新增 `polarity_escalation(old, new)`：
+       **新文本多出旧文本没有的负词，或丢掉旧文本有的正词** ⇒ 判定为纠正，
+       **绝不拒绝写入**。原私有方法保留并转调，行为不变。
+       *判据为什么是「增量」而不是「干净翻转」*：中文长句常常正负词都有
+       （「配置是错误的」里「是」是正词、「错误」是负词，两边都命中），
+       要求干净翻转**永远不触发** —— 第一版就是这么失败的，有测试钉住。
+       （`conflict.py` 原注释本就写着极性判定是「相似度闸门之外的第二道网」，
+       这次是把它真正接上。）
+    3. 同主题、不够丰富、又无极性变化 ⇒ **放行写入**，交给 `_detect_conflicts` 判定
+       （旧实现直接拒绝）。**有意放宽**：宁可多写一条让冲突检测判，
+       也不要静默丢掉可能重要的记忆。
+  - **改了两处既有测试的假设**（`test_p0_1_supersede.py` 的
+    `test_detect_conflict_exception_swallowed` 与
+    `test_injection_disable_detect_conflicts`）：它们断言「旁路 `_detect_conflicts`
+    ⇒ supersedes 必须为空」，但**写 supersedes 的本来就有两处**
+    （`:529` 冲突检测、`:909` dedup 的 supersede_id，后者**不需要 LLM**）。
+    已改为**同时中性化两个作者**，让测试真正隔离它要测的那条路径；
+    守护方向不变：**supersede 必须发生**由 `TestMustBlock` 那 6 条负责，
+    这两条负责**关掉冲突检测就不该发生** —— 仍是双向守护。
+  - **验证**：
+    - **新增 `tests/test_correction_first_dedup.py`（10 个，用 stub 嵌入服务、
+      0.24s 跑完、不加载模型、可离线）**，覆盖：逐字重复被拒 / 高相似无极性变化仍被拒 /
+      **高相似+极性翻转放行** / 同主题不够丰富放行 / 更丰富仍给 supersede_id /
+      极性判定的 5 个单测（含「两边都有正负词」那个坑）。
+    - **A/B：只回退 `ingestion.py`（保留新 helper）⇒ 3 failed / 7 passed**，
+      还原后 27 passed（10 + `test_p0_1_supersede.py` 17）。
+    - 原本变红的 8 条**现已全绿**；相关 8 个文件 **89 passed**。
+  - **⚠ 已知但本次未修（生产暂不受影响，留给后人）**：
+    - **`ConflictDetector.detect_conflicts` 在密文上跑极性/关键词匹配** ——
+      加密一开，冲突检测是**瞎的**（`tests/test_p0_1_supersede.py` 的 fixture
+      正是靠「关掉加密」绕开它）。只有 `_llm_confirm_conflict` 那一步解密了。
+      **生产当前 `PANGU_ENCRYPTION=off`，所以不紧急**；但谁要开加密就得先修这个。
+    - `polarity_escalation` 是**词典法**，覆盖不了无关键词的纯语义反转
+      （例：「该用 A」→「不该用 B」里若两边都没命中词表）。这类仍要靠
+      `_detect_conflicts` 的 LLM 复核兜底 —— 所以第 3 条「放行给冲突检测」不能省。
+
 - **2026-09-30** — 统一嵌入模型：默认模型不再硬编码英文模型 + 全量重算存量向量。
   - **根因**：`get_onnx_embedder()` 与 `ONNXEmbedder.__init__` 的 `model_id` **默认值**
     硬编码旧的纯英文 `Xenova/all-MiniLM-L6-v2`，而 `config.onnx_model_id` 早在 2026-09-19

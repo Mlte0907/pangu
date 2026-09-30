@@ -25,6 +25,22 @@ logger = logging.getLogger("pangu.memory.ingestion")
 IMPORTANCE_SCALE = 5.0  # 盘古 importance 使用 0-5 范围
 SIMILARITY_THRESHOLD = 0.92  # 语义相似度阈值（精确重复）
 SUPERSEDE_THRESHOLD = 0.65  # 替代阈值：同一主题但新内容更丰富时放行（旧的标记替代）
+# 「拒绝写入」的门槛复用既有的 SIMILARITY_THRESHOLD（0.92，注释即写着「精确重复」），
+# **不再另立一个 DUPLICATE_THRESHOLD**（规矩 8：两份阈值必然漂移）。
+#
+# ⚠ 旧实现把 SUPERSEDE_THRESHOLD(0.65) **同时**当作「拒绝写入」的门槛，而 0.65 是
+# **替代**阈值（用来圈「同主题」的）。两者混用 ⇒ 等长的纠正被判成重复、**静默丢弃**，
+# 旧的那条错的话永远留在库里，且不留任何 supersede 痕迹。
+#
+# ⚠ **光靠相似度仍然不够**，必须叠一道极性否决（`polarity_escalation`）。实测
+# 8 组真实文本对（多语模型）：
+#     真重复·逐字 1.0000 / 换序改写 0.9831 / 加同义前缀 0.9582   ← 真重复都在 0.92 以上
+#     同主题·不同结论 0.7437 / 纠正·等长否定 0.7666 / 同主题·补充细节 0.6860
+#     纠正·加证据 0.5099
+# 但只要文本够长、共享大部分字符，**纠正也能冲到 0.93**：
+#     「测试缓存查询 X: 配置正确」vs「…配置是错误的」cos=**0.9324** —— 高于真重复里的
+#     「加同义前缀」（0.9582）不算低，离 0.92 只差 0.012。
+# ⇒ 结论：**相似度分不开「重述」和「纠正」**，只能靠极性。
 BOOST_INCREMENT = 0.25  # 重复记忆重要性提升值
 MAX_IMPORTANCE = 5.0  # 最大重要性值
 CONFIDENCE_INCREMENT = 0.1  # 融合时置信度增量
@@ -161,18 +177,40 @@ def _dedup_and_fuse(
                 logger.debug(f"Exact duplicate found: {best_drawer.id[:8]}")
                 return best_drawer, None, None
 
-            # 语义相似 → 判断谁更丰富
-            # 不再融合（不改写旧内容）。新内容明显更丰富时放行写入，旧的标记为
-            # "已被替代"；否则视为重复，拒绝写入。
+            # ★ 真重复（近乎逐字）→ 拒绝写入。这里才是「拒绝」的门槛（SIMILARITY_THRESHOLD=0.92）。
+            #   ⚠ 但**光靠相似度不行**：长文本共享大部分字符时，只翻转极性那几个字，
+            #   向量几乎不动 —— 实测「测试缓存查询 X: 配置正确」vs「…配置是错误的」
+            #   cos=**0.9324**。所以先用盘古既有的极性词表否决一次：新文本朝"否定"
+            #   方向变化 ⇒ 是纠正，**绝不**当重复丢弃。
+            old_plain_dup = _plain_for_review(best_drawer.content or "")
+            try:
+                from pangu.memory.conflict import polarity_escalation
+
+                is_correction = polarity_escalation(old_plain_dup, raw_text)
+            except Exception:  # noqa: BLE001 — 判不出就按"不是纠正"处理，保持原行为
+                is_correction = False
+
+            if best_score >= SIMILARITY_THRESHOLD and not is_correction:
+                logger.info(
+                    f"Memory duplicate rejected: score={best_score:.3f} ≥ {SIMILARITY_THRESHOLD} "
+                    f"且无极性反转（真重复）: {best_drawer.id[:8]}"
+                )
+                return best_drawer, None, None
+
+            # 同主题、但不是真重复 → 判断谁更丰富
             #
-            # 丰富度计算：信息量 = 内容长度 × (1 + 0.5 × 新增关键词比例)。
-            # 例如：旧记忆是猜测（50字），新记忆拿证据纠正（120字 + 30%新词）
-            # → 旧=50，新≈120×1.15=138 → 新是旧的 2.76 倍 → 放行。
-            old_words = set(best_drawer.content.lower().split()) if best_drawer.content else set()
-            new_words = set(raw_text.lower().split()) if raw_text else set()
-            new_ratio = len(new_words - old_words) / max(len(old_words), 1) if old_words else 1.0
-            informativeness_new = len(raw_text) * (1 + 0.5 * new_ratio)
-            informativeness_old = len(best_drawer.content) if best_drawer.content else 1
+            # ⚠ 两处必须比**明文**（2026-09-30 修）：加密开启时 `d.content` 是
+            #   `gAAAAA…` 的 base64。实测旧记忆 len=140（密文）对新记忆 len=24（明文）
+            #   ⇒ `informativeness_new > old*1.3` **恒为假**，supersede 分支在加密环境
+            #   下**从未走过**。复用既有的 `_plain_for_review`（解密失败原样返回），
+            #   不另造解密件。
+            # ⚠ 新信息量改用**字符差集**：`.split()` 对中文只能切出 1 个「词」、
+            #   对整段 base64 也只有 1 个，new_ratio 在两种文本上都失去意义。
+            old_plain = old_plain_dup
+            new_chars, old_chars = set(raw_text), set(old_plain)
+            novel_ratio = len(new_chars - old_chars) / max(len(new_chars), 1)
+            informativeness_new = len(raw_text) * (1 + 0.5 * novel_ratio)
+            informativeness_old = len(old_plain) if old_plain else 1
 
             if informativeness_new > informativeness_old * 1.3:
                 # 新内容明显更丰富 → 放行写入 + 标记旧的为"已替代"
@@ -182,23 +220,37 @@ def _dedup_and_fuse(
                     f"old={best_drawer.id[:8]} new is {informativeness_new / informativeness_old:.1f}x richer"
                 )
                 return None, None, best_drawer.id
-            else:
-                # 内容差不多 → 重复，拒绝写入
-                logger.info(
-                    f"Memory duplicate rejected: score={best_score:.3f}, "
-                    f"not significantly richer (new={informativeness_new:.0f} vs old={informativeness_old:.0f})"
-                )
-                return best_drawer, None, None
+
+            # ★ 纠正优先（2026-09-30）：这里**不再**判重复、**不再**拒绝写入。
+            #   同主题、又不是真重复、新内容也没明显更丰富 —— 这正是「纠正」的样子
+            #   （`token 是正确` → `token 是错误的`：等长、相似 0.77）。
+            #   旧实现在此处 `return best_drawer`，于是纠正被**静默丢弃**，
+            #   错的那条永远留在库里。按盘古的记忆模型（纠错优先、旧记忆标
+            #   superseded 且可追溯），**丢新留旧是最坏的结果**。
+            #   现在放行写入，由 `remember()` 末尾的 `_detect_conflicts`（LLM 复核）
+            #   判定是否建立 supersede —— 那才是这条链路上唯一该写 supersedes 的地方。
+            logger.info(
+                f"Memory written, pending conflict review: score={best_score:.3f}, "
+                f"not a near-duplicate (>={SIMILARITY_THRESHOLD}) and not clearly richer "
+                f"(new={informativeness_new:.0f} vs old={informativeness_old:.0f}) "
+                f"→ 交 _detect_conflicts 判定，{best_drawer.id[:8]}"
+            )
+            return None, None, None
 
     # 3) 文本相似度降级去重
+    #    ⚠ 同样必须比明文（2026-09-30 修）：加密开启时 `d.content` 是 base64 密文，
+    #    拿它算长度差与逐位置字符重合，等于拿随机字节比对 —— 恒不命中，退化成没有这道闸。
     if len(raw_text) >= MIN_TEXT_LENGTH_FOR_DEDUP:
         for d in existing_drawers:
-            if d.wing != wing or len(d.content) < MIN_CONTENT_LENGTH:
+            if d.wing != wing:
                 continue
-            if abs(len(raw_text) - len(d.content)) > MAX_LENGTH_DIFF_FOR_DEDUP:
+            old_plain = _plain_for_review(d.content or "")
+            if len(old_plain) < MIN_CONTENT_LENGTH:
                 continue
-            overlap = sum(1 for a, b in zip(raw_text, d.content, strict=False) if a == b)
-            len_norm = max(len(raw_text), len(d.content))
+            if abs(len(raw_text) - len(old_plain)) > MAX_LENGTH_DIFF_FOR_DEDUP:
+                continue
+            overlap = sum(1 for a, b in zip(raw_text, old_plain, strict=False) if a == b)
+            len_norm = max(len(raw_text), len(old_plain))
             if overlap / len_norm > TEXT_OVERLAP_THRESHOLD:
                 return d, None, None
 

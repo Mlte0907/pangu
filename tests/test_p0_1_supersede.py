@@ -517,10 +517,21 @@ class TestExceptions:
         assert old_id in (meta.get("supersedes") or [])
 
     def test_detect_conflict_exception_swallowed(self):
-        """ConflictDetector.detect_conflicts 抛异常 ⇒ remember 不抛；新 drawer 无 conflicts/supersedes"""
+        """ConflictDetector.detect_conflicts 抛异常 ⇒ remember 不抛；新 drawer 无 conflicts/supersedes
+
+        ⚠ 2026-09-30：写 `supersedes` 的有**两处**，本测试隔离的是冲突检测那一处，
+        所以必须把另一处也中性化，否则测的不是本意：
+          - `ingestion._detect_conflicts`（LLM 复核，本测试的对象）
+          - `ingestion._dedup_and_fuse` 的 supersede_id 分支（"新内容明显更丰富"，
+            **不需要 LLM**；文本只多几个字就会被它判为 richer，相似度 0.93 的纠正
+            也会走这条）
+        旧版只旁路前者，却断言"supersedes 必须为空"—— 那个假设当时成立只是因为
+        嵌入侧拿两个不同模型的向量比较、相似度恒低于阈值，这两条路径都不触发。
+        """
         from unittest.mock import patch
 
         from pangu.memory import conflict as conflict_mod
+        from pangu.memory import ingestion as ing_mod
         from pangu.memory.ingestion import remember
 
         stack = _stack_with_config()
@@ -536,7 +547,10 @@ class TestExceptions:
         f2_id, f2 = remember("填充 2", wing=_WING, room=_ROOM, importance=0.3)
         stack.add_drawer(f2)
 
-        with patch.object(conflict_mod.ConflictDetector, "detect_conflicts", side_effect=RuntimeError("simulated")):
+        with (
+            patch.object(conflict_mod.ConflictDetector, "detect_conflicts", side_effect=RuntimeError("simulated")),
+            patch.object(ing_mod, "_dedup_and_fuse", return_value=(None, None, None)),
+        ):
             new_id, new_drawer = remember(
                 "测试异常: 配置是错误的",
                 wing=_WING,
@@ -635,7 +649,16 @@ class TestInjectionValidation:
     """注入验证：手动改回旧逻辑，测试必须立刻失败"""
 
     def test_injection_disable_detect_conflicts(self):
-        """monkeypatch _detect_conflicts 为 no-op ⇒ _seed_supersede_scenario 不再产生 superseded"""
+        """monkeypatch _detect_conflicts 为 no-op ⇒ 本场景不再产生 superseded
+
+        ⚠ 2026-09-30：写 `supersedes` 的有**两处**，本测试隔离的是冲突检测那一处，
+        所以另一处也必须中性化，否则测的不是本意：
+          - `ingestion._detect_conflicts`（LLM 复核，本测试的对象）
+          - `ingestion._dedup_and_fuse` 的 supersede_id 分支（不需要 LLM）
+
+        守护方向不变：**supersede 必须发生**由 `TestMustBlock` 那 6 条负责，
+        本条负责**关掉冲突检测就不该发生** —— 两侧合起来仍是双向守护。
+        """
         from unittest.mock import patch
 
         from pangu.memory import ingestion as ing_mod
@@ -654,7 +677,10 @@ class TestInjectionValidation:
         f2_id, f2 = remember("注入填充 2", wing=_WING, room=_ROOM, importance=0.3)
         stack.add_drawer(f2)
 
-        with patch.object(ing_mod, "_detect_conflicts", lambda *a, **kw: None):
+        with (
+            patch.object(ing_mod, "_detect_conflicts", lambda *a, **kw: None),
+            patch.object(ing_mod, "_dedup_and_fuse", return_value=(None, None, None)),
+        ):
             new_id, new_drawer = remember(
                 "注入 A: 配置是错误的",
                 wing=_WING,
