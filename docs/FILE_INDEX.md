@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **360** 个 py 文件 / **110,829** 行。
+共 **361** 个 py 文件 / **111,011** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 44,032 行
@@ -327,7 +327,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `safe_eval.py` | 218 | Safe expression evaluator for ABAC conditions. |
 | `server.py` | 1570 | 盘古 FastAPI 服务器工厂（伏羲移植） |
 
-## `scripts/` — 22 文件 / 3,522 行
+## `scripts/` — 23 文件 / 3,704 行
 
 运维脚本
 
@@ -335,6 +335,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | --- | ---: | --- |
 | `ab_own_first.py` | 164 | 搜索「本平台优先」改造前后的 A/B 对比（只读，不改任何数据）。 |
 | `bench_large_scale.py` | 160 | 盘古大规模数据测试脚本 — 生成1000条测试记忆并测试搜索性能 |
+| `check_cloud_drift.py` | 182 | 云端漂移体检：本地仓库 vs 云端 `/root/pangu`（云端**不是 git 仓库**）。 |
 | `consolidate.py` | 100 | 盘古记忆巩固定时任务 |
 | `dump_llm_cache.py` | 203 | 盘古 — LLM 缓存调试脚本 |
 | `e2e_warmup.py` | 260 | 盘古 — LLM 缓存预热 E2E 验证 |
