@@ -42,7 +42,10 @@ EXCLUDE_DIRS = {
     ".venv", ".git", "__pycache__", "node_modules", ".pytest_cache",
     ".ruff_cache", ".mypy_cache", "dist", "build", ".idea", ".vscode",
 }
-EXCLUDE_SUFFIX = (".pyc", ".log", ".db", ".db-shm", ".db-wal", ".orig", ".rej", ".tgz", ".tar.gz")
+# 运行期产物 / 二进制数据。
+# `.coverage` 是 pytest-cov 的数据文件：`pytest --cov` 一跑就生成，属纯产物、
+# 从不部署，漏掉它会让漂移体检每次都报「本地有、云端缺」（2026-10-02 实测）。
+EXCLUDE_SUFFIX = (".pyc", ".log", ".db", ".db-shm", ".db-wal", ".orig", ".rej", ".tgz", ".tar.gz", ".coverage")
 
 # 有意不同步的路径（附理由，改动前请先确认理由仍成立）
 EXCLUDE_PATHS = {
@@ -57,7 +60,7 @@ cd {root} && find . -type f \
   -not -path "./.venv/*" -not -path "./.git/*" \
   -not -path "*/__pycache__/*" \
   -not -path "./node_modules/*" -not -path "./.pytest_cache/*" -not -path "./.ruff_cache/*" \
-  -not -name "*.pyc" -not -name "*.log" \
+  -not -name "*.pyc" -not -name "*.log" -not -name "*.coverage" \
   -not -name "*.db" -not -name "*.db-shm" -not -name "*.db-wal" \
   -not -name "*.orig" -not -name "*.rej" -not -name "*.bak*" \
   -print0 | xargs -0 -I{{}} sh -c 'printf "%s  %s\n" "$(md5sum "{{}}" | cut -d" " -f1)" "{{}}"' \
