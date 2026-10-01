@@ -255,7 +255,7 @@ _TOOL_SCHEMAS = {
             "importance": {
                 "type": "number",
                 "description": "重要性，写入契约 0.0–1.0。注意：GET / 搜索结果里的 importance 是 0–5 读标度，"
-                               "把读回值回填前要先除以 5（4.5 → 0.9），否则会被拒。",
+                "把读回值回填前要先除以 5（4.5 → 0.9），否则会被拒。",
                 "default": 0.5,
             },
             "tags": {"type": "array", "items": {"type": "string"}, "description": "标签"},

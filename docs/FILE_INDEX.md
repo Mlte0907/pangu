@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **362** 个 py 文件 / **111,683** 行。
+共 **362** 个 py 文件 / **111,679** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 44,067 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 113 文件 / 34,712 行
+## `tests/` — 113 文件 / 34,708 行
 
 测试
 
@@ -257,7 +257,7 @@
 | `test_search_receipt.py` | 341 | `pangu_search_memories` 的检索状态与收据（2026-09-28，借鉴 DSH-KRouter）。 |
 | `test_search_rrf_recall.py` | 176 | `search/engine.py::HybridSearch` 改走三路 RRF 的回归（2026-09-28）。 |
 | `test_supersede_llm_review.py` | 426 | 方案 A：冲突 supersede 改为「后台 LLM 复核」（2026-09-27）。 |
-| `test_supersede_recall.py` | 282 | 召回补全（2026-10-01）—— 搜索命中旧版时把它的后继带回来。 |
+| `test_supersede_recall.py` | 278 | 召回补全（2026-10-01）—— 搜索命中旧版时把它的后继带回来。 |
 | `test_top_level_intelligence.py` | 258 | 盘古顶级智能验证 — 端到端集成测试 |
 | `test_v2_features.py` | 231 | 盘古 v2.0 新功能测试 — neural_memory / multi_agent / social_memory |
 | `test_v3_modules_a.py` | 334 | 盘古 V3.0 模块测试 — 7 个记忆引擎 |

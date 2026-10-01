@@ -537,6 +537,42 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-10-02** — 修自己引入的 ruff 格式违规 + 补全量验证数据 + 订正一条过时的备份路径。
+  - **① 格式违规是谁的：用基线逐个对照分清了。** CI 跑 `ruff format --check pangu/ tests/`，
+    报我 7 个改动文件里多个要重排。`git worktree` 切到改动前的 `6843aca` 对照后：
+    * **是这次引入、已修**：`server/handlers/__init__.py`（基线 ✓ → 我加的多行 dict 让它 ✗）、
+      新建的 `tests/test_supersede_recall.py`。两处已 `ruff format` 处理。
+      ⚠ 记录一笔自己判错过的地方：我一度把 `tests/test_ingestion.py` 也算成「被我弄坏」，
+      实际 `git status` 显示它**从未被改动**（`ruff format` 报的是 "left unchanged"）——
+      第一轮按「6 个要重排」笼统计数时把它误算了。**对照基线要逐个跑，别按总数倒推。**
+    * **本来就没格式化、本次不动**：`memory/ingestion.py`、`server/handlers/memory_ops.py`、
+      `tests/test_search_receipt.py`、`tests/test_maintainers_doc.py` —— 既有状态，
+      顺手重排会让本次 diff 混进无关改动。
+    * `ruff check pangu/ tests/` 的 **11 个 lint 错误没有一个在本次改动的文件里**
+      （分布在 `routes_memory.py`、`embedding.py`、`retrievability.py` 及数个更早的测试文件）。
+  - **② 补上 CI 单元测试的根因（一行依赖漏了）**：
+    `pyproject.toml` 声明 **25** 个依赖，`requirements.txt` 只有 **24** 个 —— **缺的正好是
+    `jieba>=0.42.1`**。CI 装 `requirements.txt` ⇒ 无 jieba ⇒ `evolution._tokenize` 走它
+    docstring 里写明的「jieba 不可用时退回按空白切」⇒ 中文整句变 1 个词 ⇒
+    `test_evolution_related.py::TestTokenize::test_split_would_have_failed` 挂
+    （实测 `assert 1 > 1, where 1 = len(frozenset({'盘古服务端口配置为部署方式确认'}))`）。
+    **与本次改动无关**（该测试文件未被触碰），但它是 `test.yml` 每次红的唯一原因。
+    已把 jieba 补进 `requirements.txt`（带注释说明为何不能漏），pyproject 与 requirements 差集归零。
+  - **③ 日志订正两条**：
+    1. 验证一栏原写「云端 `pytest` **198 passed**」—— 那只是部署时**定向跑的 6 个文件**。
+       补上全量：**2105 passed / 19 skipped / 0 failed，673s（11:13），退出码 0**，
+       与本地全量（2105/19/0，Python 3.13.5）**逐项一致**，§12.4「本地绿 ≠ 能上线」到此闭环。
+    2. 备份路径从 `/root/pangu/.deploy-backup-20261001/` 订正为 `/root/pangu-backup-20261001/`
+       —— 2026-10-02 已把它挪出部署目录（理由见 10-01 那条记录末尾的括注）。
+       **日志指向一个不存在的路径，就是文档在说谎**，所以必须跟着改。
+  - **④ 仍未处理（既有，非本次引入）**：`ci.yml` 的 `Lint (ruff + bandit)` 还红 ——
+    `ruff check pangu/ tests/` **11 个错**、`ruff format --check` **36 个文件要重排**。
+    历史上**每次提交固定挂同样 2 个工作流**（至少从 2026-09-30 起）。
+    `质量门禁` 是级联失败（打印「上游任务存在失败/取消」）。
+    全量 `ruff format` 会重排 36 个文件、让 git blame 变噪，属需要单独拍板的决定。
+  - **怎么验证**：`tests/test_maintainers_doc.py` **30 passed**（含文件索引与日志日期两道门禁）；
+    `tests/test_evolution_related.py` + 相关测试 **74 passed**。
+
 - **2026-10-01** — 三件：importance 撞墙时报错教换算、**召回补全**（supersede 后继）、新增 **§17 模块不变量层**。
   - **① importance：不改刻度，改「撞墙时没人告诉你怎么翻过去」**
     - **先纠正一个易误判**：0–1 写 / 0–5 读**是有意契约，不是 bug**，
@@ -592,9 +628,17 @@ cd /root/pangu
     7 个改动文件 `ast.parse(feature_version=(3,11))` 全过 —— 云端是 **3.11.2**、本地 3.13.5（§12.4 那条坑）。
   - **怎么验证（已部署云端 113.45.134.86，实测 2026-10-01 23:2x）**：
     部署前漂移体检退出码 **0**（云端 0 个手改文件），`scp` 10 个文件 + 部署前先在
-    `/root/pangu/.deploy-backup-20261001/` 备份被覆盖的 9 个（云端非 git，无 VCS 可回退）；
-    云端 `pytest` **198 passed**（3.11.2）→ `systemctl --user restart pangu-api` →
+    `/root/pangu-backup-20261001/` 备份被覆盖的 9 个（云端非 git，无 VCS 可回退；
+    ⚠ 2026-10-02 已从 `/root/pangu/.deploy-backup-20261001/` **挪到 `/root/` 下**——
+    按 2026-09-27 定的规矩，备份躺在部署目录里会「看起来像现行代码」，也会让漂移体检
+    每次报 9 行「云端多出来的文件」。挪走后体检恢复全零）；
+    云端 `pytest` **198 passed**（3.11.2，部署时定向跑 6 个相关文件）→
+    `systemctl --user restart pangu-api` →
     部署后漂移体检 **481 一致 / 0 落后 / 0 手改 / 0 缺失**。
+    **全量补证（2026-10-02 03:28:13）**：云端 `pytest -q` →
+    **2105 passed / 19 skipped / 0 failed，673s（11:13），退出码 0**，
+    与本地全量（2105/19/0，Python 3.13.5）**逐项一致** ——
+    §12.4「本地绿 ≠ 能上线」到这一条才算闭环。
     端到端（走真实 MCP 路径，非单测）：
     * `pangu_add_memory` 传 `4.5` → 报错含 **`4.5 -> 0.9`** 换算式 ✅
     * 搜索 payload `importance_scale=5.0` + `importance_note`（miss 时也在）✅

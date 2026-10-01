@@ -153,9 +153,7 @@ class TestCompletedItemSelfDescribe:
         items = [_result(1, superseded=True, superseded_by=["d9"])]
         out, _ = _complete_superseded(items, [old, new])
         ranked_keys = {k for k in out[0] if k != "recalled_via"}
-        assert ranked_keys <= set(out[1].keys()), (
-            f"补入项缺字段: {ranked_keys - set(out[1].keys())}"
-        )
+        assert ranked_keys <= set(out[1].keys()), f"补入项缺字段: {ranked_keys - set(out[1].keys())}"
 
     def test_no_fabricated_ranks(self):
         """没参与本次排序就不许有 rank —— 伪造会污染按通道的判定。"""
@@ -214,9 +212,7 @@ class TestBounds:
         out, added = _complete_superseded(items, drawers, max_total=2)
         assert added == min(MAX_SUCC_PER_ITEM, 2)
         picked = [r["id"] for r in out[1:]]
-        assert picked == [f"s{i}" for i in range(10 - len(picked), 10)], (
-            f"应取末尾最新的，实际 {picked}"
-        )
+        assert picked == [f"s{i}" for i in range(10 - len(picked), 10)], f"应取末尾最新的，实际 {picked}"
 
     def test_missing_successor_is_skipped_not_invented(self):
         """后继 id 指向的 drawer 不可见（被租户过滤掉）时必须跳过，不许凭空造。"""

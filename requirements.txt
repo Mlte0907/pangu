@@ -40,6 +40,13 @@ numpy>=1.24.0
 onnxruntime>=1.16.0
 tokenizers>=0.15.0
 
+# ── 中文分词 ──
+# FTS 与 evolution 共用同一套分词器（fts_search._get_jieba / evolution._tokenize）。
+# 缺它时 `_tokenize` 静默回退到按空白切 ⇒ 中文整句被当成**一个词** ⇒
+# `tests/test_evolution_related.py::TestTokenize::test_split_would_have_failed` 必挂。
+# pyproject.toml 早已声明 `jieba>=0.42.1`，本清单此前漏列 —— 2026-10-02 补上。
+jieba>=0.42.1
+
 # ── 模板与文档 ──
 markdown>=3.6.0
 watchfiles>=0.21.0
