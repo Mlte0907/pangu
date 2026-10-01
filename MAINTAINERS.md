@@ -494,6 +494,27 @@ EOF
     - 正确做法：拿**能独立复核的判据**（`/proc/<pid>/stat` 的 CPU tick 增量、
       拿真实进程重跑一遍），别拿单一读数下结论。
 
+13. **改任何 `.py` 之后，`gen_file_index.py` 必须是「最后一步」—— 顺序反了就白跑。**
+
+    索引扫的是 `ROOT.rglob("*.py")`（**全仓库，`scripts/` 也在内**），记的是每个文件的**行数**。
+    所以只要在生成之后又动了任何 `.py`，索引立刻过期，
+    `tests/test_maintainers_doc.py::test_file_index_is_current` 就红。
+
+    2026-10-02 一天之内踩了 **4 次**，最后一次有时间线铁证：
+    ```
+    docs/FILE_INDEX.md            生成于 03:37:28
+    scripts/check_cloud_drift.py  改于   03:42:50   ← 晚 5 分钟
+    ```
+    那次还因此把刚修绿的 CI `Test` 工作流又弄红了一轮。
+
+    **正确顺序**（步骤之间不能插任何 `.py` 改动）：
+    ```sh
+    .venv/bin/python scripts/gen_file_index.py        # 1. 改完所有 .py 之后生成
+    .venv/bin/python -m pytest tests/test_maintainers_doc.py -q   # 2. 跑门禁
+    # 3. 才提交
+    ```
+    > 这道门会替你兜底，但它红的时候你得重新推导一次原因 —— 按顺序走更省事。
+
 ---
 
 ## 11. 可检索性体检（`retrievability` 自主任务）
