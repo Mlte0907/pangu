@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **361** 个 py 文件 / **111,024** 行。
+共 **362** 个 py 文件 / **111,683** 行。
 
 
-## `pangu/memory/` — 136 文件 / 44,032 行
+## `pangu/memory/` — 136 文件 / 44,067 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -79,7 +79,7 @@
 | `hybrid_search.py` | 428 | 盘古混合检索引擎 — 融合 FTS + 向量 + KG 的 RRF 排序 |
 | `image_engine.py` | 315 | 盘古图片记忆引擎 — CLIP 嵌入 + 图片分析 + 跨模态搜索 |
 | `importance_scorer.py` | 154 | 盘古记忆重要性评分 — 基于多维度特征的智能评分 |
-| `ingestion.py` | 1246 | 盘古 — 记忆摄入管道（从伏羲 v1.5.6 移植，适配盘古数据模型） |
+| `ingestion.py` | 1281 | 盘古 — 记忆摄入管道（从伏羲 v1.5.6 移植，适配盘古数据模型） |
 | `intent_prediction.py` | 174 | 盘古用户意图预测 — 时序意图建模 / 任务链追踪 / 上下文感知建议 |
 | `judge.py` | 248 | 盘古 MemoryJudge — LLM 记忆价值判断 |
 | `knowledge.py` | 244 | 盘古知识生成模块 |
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 112 文件 / 34,253 行
+## `tests/` — 113 文件 / 34,712 行
 
 测试
 
@@ -196,13 +196,13 @@
 | `test_gap3_admission_gate.py` | 206 | P1-3 回归测试：四问准入门强化 + 毕业区。 |
 | `test_graph_dedupe_by_id.py` | 154 | 图谱接口按 id 合并的回归测试（2026-09-26）。 |
 | `test_hotfix_llm_key.py` | 51 | 热修：resolveLlmApiKey + testConnection 逻辑分支测试 |
-| `test_ingestion.py` | 79 | 盘古 ingestion.py 测试 — 核心写入路径 |
+| `test_ingestion.py` | 98 | 盘古 ingestion.py 测试 — 核心写入路径 |
 | `test_integration.py` | 659 | 盘古 API 服务器 + MCP 集成测试 |
 | `test_lifecycle_endpoint.py` | 421 | `/api/v2/memories/lifecycle` 读取端点的回归（2026-09-27）。 |
 | `test_llm_model_switch.py` | 257 | 盘古 — LLM 候选模型发现与切换测试 |
 | `test_llm_optimizations.py` | 734 | 盘古 — LLM 优化功能测试 |
 | `test_llm_providers.py` | 378 | 盘古 — LLM 后端集成测试 |
-| `test_maintainers_doc.py` | 409 | 维护说明书（MAINTAINERS.md）与代码的一致性检查。 |
+| `test_maintainers_doc.py` | 457 | 维护说明书（MAINTAINERS.md）与代码的一致性检查。 |
 | `test_mcp_auth_exposure.py` | 35 | 「监听暴露 + MCP 免鉴权」告警的单测。 |
 | `test_mcp_tenant_fallback.py` | 107 | MCP 写入的 tenant_id 归属回退（2026-09-26）。 |
 | `test_mcp_warmup.py` | 87 | 盘古 — MCP 服务器启动预热测试 |
@@ -254,9 +254,10 @@
 | `test_retrievability_audit.py` | 201 | 可检索性体检（memory/retrievability.py）的回归测试。 |
 | `test_retrievability_llm.py` | 148 | 可检索性体检的 LLM 阶段（2026-09-26）。 |
 | `test_search_own_first.py` | 321 | 搜索「本平台优先」的两个模式（2026-09-26）。 |
-| `test_search_receipt.py` | 231 | `pangu_search_memories` 的检索状态与收据（2026-09-28，借鉴 DSH-KRouter）。 |
+| `test_search_receipt.py` | 341 | `pangu_search_memories` 的检索状态与收据（2026-09-28，借鉴 DSH-KRouter）。 |
 | `test_search_rrf_recall.py` | 176 | `search/engine.py::HybridSearch` 改走三路 RRF 的回归（2026-09-28）。 |
 | `test_supersede_llm_review.py` | 426 | 方案 A：冲突 supersede 改为「后台 LLM 复核」（2026-09-27）。 |
+| `test_supersede_recall.py` | 282 | 召回补全（2026-10-01）—— 搜索命中旧版时把它的后继带回来。 |
 | `test_top_level_intelligence.py` | 258 | 盘古顶级智能验证 — 端到端集成测试 |
 | `test_v2_features.py` | 231 | 盘古 v2.0 新功能测试 — neural_memory / multi_agent / social_memory |
 | `test_v3_modules_a.py` | 334 | 盘古 V3.0 模块测试 — 7 个记忆引擎 |
@@ -271,7 +272,7 @@
 | `test_vector_degradation_visible.py` | 167 | 向量路径的降级必须**看得见**。 |
 | `test_warmup_audit.py` | 133 | 盘古 — 缓存预热审计日志测试 |
 
-## `pangu/server/` — 26 文件 / 11,582 行
+## `pangu/server/` — 26 文件 / 11,747 行
 
 服务器层：MCP 服务器、Web 服务器、WebSocket、工具 handler 与暴露面
 
@@ -279,7 +280,7 @@
 | --- | ---: | --- |
 | `__init__.py` | 7 | 盘古服务器模块 |
 | `exposure.py` | 235 | 暴露面过滤器 — MCP/REST 双通道单一拦截点 |
-| `handlers/__init__.py` | 325 | 盘古 MCP Handler 路由 |
+| `handlers/__init__.py` | 330 | 盘古 MCP Handler 路由 |
 | `handlers/advanced.py` | 2121 | 盘古 MCP Handler — advanced (121 tools) |
 | `handlers/analytics.py` | 751 | 盘古 MCP Handler — analytics (37 tools) |
 | `handlers/batch.py` | 57 | 盘古 MCP Handler — batch (3 tools) |
@@ -289,7 +290,7 @@
 | `handlers/knowledge.py` | 178 | 盘古 MCP Handler — knowledge (8 tools, P2-1 Step 1) |
 | `handlers/knowledge_graph.py` | 116 | 盘古 MCP Handler — knowledge_graph (7 tools) |
 | `handlers/llm_tools.py` | 288 | 盘古 MCP Handler — llm_tools (19 tools) |
-| `handlers/memory_ops.py` | 852 | 盘古 MCP Handler — memory_ops (4 tools) |
+| `handlers/memory_ops.py` | 1012 | 盘古 MCP Handler — memory_ops (4 tools) |
 | `handlers/multimodal.py` | 324 | 盘古 MCP Handler — multimodal (17 tools) |
 | `handlers/palace.py` | 88 | 盘古 MCP Handler — palace (4 tools) |
 | `handlers/quality.py` | 407 | 盘古 MCP Handler — quality (20 tools) |

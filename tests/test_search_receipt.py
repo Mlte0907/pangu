@@ -83,10 +83,11 @@ def _item(
     }
 
 
-def _run(results, query="llmDaily 根因") -> dict:
+def _run(results, query="llmDaily 根因", drawers=None) -> dict:
     """跑一次 handler，返回解析后的 payload。"""
     srv = _FakeServer(results)
-    drawers = []  # 预过滤用不到，交空即可
+    if drawers is None:
+        drawers = []  # 预过滤用不到，交空即可
     out = asyncio.run(
         handle_search_memories(srv, drawers, {"query": query, "limit": 10})
     )
@@ -229,3 +230,112 @@ class TestBackwardCompatibility:
         assert p["retrieval_status"] in ("weak", "miss")
         assert "receipt" in p
         assert p["receipt"]["top_score"] == 0.0
+
+
+class TestImportanceScaleSelfDescribed:
+    """⑤ 读回标度自述（2026-10-01）—— 结果必须自己说清自己是 0–5。
+
+    病史：写入契约 0–1、读回 0–5（`test_rest_v2_contract` 锁定），但搜索结果
+    此前只吐裸的 `importance: 4.5`。实测调用方看到后原样回填给
+    `pangu_add_memory`，撞 `code 5000: importance must be between 0.0 and 1.0`。
+    坑不在刻度设计（有意的），在**读端不自述**。
+    """
+
+    def test_payload_declares_read_scale(self):
+        p = _run([_item(1, relevance=0.6)], query="部署方式")
+        assert p["importance_scale"] == 5.0, p.get("importance_scale")
+
+    def test_note_tells_the_caller_how_to_convert_back(self):
+        """光给数字不够，要给出「怎么翻过去」的换算式。"""
+        p = _run([_item(1, relevance=0.6)], query="部署方式")
+        note = p["importance_note"]
+        assert "0–1" in note and "0–5" in note, note
+        assert "4.5" in note and "0.9" in note, note  # 换算实例必须在
+
+    def test_scale_matches_the_write_side_constant(self):
+        """读端标度必须与写入端 `IMPORTANCE_SCALE` 同源，不许两处各写。"""
+        from pangu.memory.ingestion import IMPORTANCE_SCALE
+
+        p = _run([_item(1, relevance=0.6)])
+        assert p["importance_scale"] == IMPORTANCE_SCALE
+
+    def test_declared_on_miss_too(self):
+        """miss 时也要说 —— 调用方拿到的字段语义不该随命中与否变化。"""
+        p = _run([], query="毫无关系的查询")
+        assert p["retrieval_status"] == "miss"
+        assert p["importance_scale"] == 5.0
+
+    def test_old_fields_still_intact(self):
+        p = _run([_item(1, 0.7)], query="部署方式")
+        assert p["query"] == "部署方式"
+        assert isinstance(p["results"], list)
+        assert p["total"] == 1
+
+
+class TestSupersedeRecallWiring:
+    """⑥ 召回补全**接进 handler**了没有（2026-10-01）。
+
+    `test_supersede_recall.py` 锁的是函数本身；这里锁的是**接线** ——
+    函数正确但没被调用，是这类改动最常见的失败方式。
+    """
+
+    @staticmethod
+    def _drawers():
+        from pangu.core.palace import Drawer
+
+        def mk(did, content, *, superseded_by=None):
+            d = Drawer(id=did, content=content, wing="技术", room="general")
+            md = dict(d.metadata or {})
+            if superseded_by is None:
+                md["memory_status"] = "active"
+            else:
+                md["memory_status"] = "superseded"
+                md["superseded_by"] = list(superseded_by)
+            d.metadata = md
+            return d
+
+        return [
+            mk("m1", "旧的客户端图谱去重", superseded_by=["m9"]),
+            mk("m9", "已改为注释停用"),
+        ]
+
+    def test_handler_injects_the_successor(self):
+        p = _run(
+            [_item(1, relevance=0.6)],
+            query="图谱去重",
+            drawers=self._drawers(),
+        )
+        ids = [r["id"] for r in p["results"]]
+        assert "m9" in ids, f"补全没接上，实际 {ids}"
+        injected = next(r for r in p["results"] if r["id"] == "m9")
+        assert injected["recalled_via"] == "m1"
+
+    def test_completion_does_not_pollute_search_stats_or_receipt(self):
+        """插入点必须在 `record_search` 之后 —— 补全条数不许进搜索次数统计；
+        但 `receipt.results` 要反映补全后的条数。"""
+        p = _run([_item(1, relevance=0.6)], query="图谱去重", drawers=self._drawers())
+        assert p["receipt"]["results"] == len(p["results"]), (
+            "receipt.results 必须等于补全后的条数"
+        )
+        assert p["supersede_completed"] == 1
+
+    def test_total_contract_survives_completion(self):
+        """`total == len(results)` 是既有契约（否则 record_search 会记错次数）。"""
+        p = _run([_item(1, relevance=0.6)], query="图谱去重", drawers=self._drawers())
+        assert p["total"] == len(p["results"])
+
+    def test_no_completion_leaves_payload_shape_untouched(self):
+        """结果里没有被取代的条目时，不该多出 `supersede_completed` ——
+        免得调用方以为发生了什么。注意补全看的是**结果**不是查询词：
+        `_item(1)` 是 `m1`（被取代那条），换个 id 才算「无事可补」。"""
+        p = _run([_item(2, relevance=0.6)], query="部署方式", drawers=self._drawers())
+        assert "m1" not in [r["id"] for r in p["results"]]
+        assert "supersede_completed" not in p
+        assert p["total"] == len(p["results"])
+
+    def test_completion_still_runs_alongside_status_and_scale(self):
+        """三件事要共存：补全、检索状态、刻度自述。"""
+        p = _run([_item(1, relevance=0.6)], query="图谱去重", drawers=self._drawers())
+        assert p["retrieval_status"] == "hit"
+        assert p["importance_scale"] == 5.0
+        assert "m9" in [r["id"] for r in p["results"]]

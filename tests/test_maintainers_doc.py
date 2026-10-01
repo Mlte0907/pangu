@@ -407,3 +407,51 @@ def test_doc_points_at_the_protected_tests(doc):
     """那几个测试锁的是有意设计，文档必须点名，否则会被当成历史包袱删掉。"""
     for t in ("test_p1_3_tenant_scope", "test_p1_3_kg_tenant_scope", "test_p1_3_leak_sweep"):
         assert t in doc, f"说明书没点名 {t}"
+
+
+# ── §17 模块不变量：改的时候不能弄坏什么 ──
+#
+# §13 是「上次动了哪」的流水，会翻篇；§17 才回答「这个模块的约束是什么」。
+# 没有这一层，了解一个模块只能回去读源码 —— 那正是这层要省掉的。
+
+
+_SECTION_17_RE = re.compile(r"^## 17\. 模块不变量.*$", re.M)
+
+
+def _section_17(doc: str) -> str:
+    m = _SECTION_17_RE.search(doc)
+    assert m, "说明书缺「## 17. 模块不变量」—— 日志会翻篇，不变量不会"
+    tail = doc[m.end():]
+    nxt = re.search(r"^## ", tail, re.M)
+    return tail[: nxt.start()] if nxt else tail
+
+
+def test_section_17_exists_with_module_subsections(doc):
+    """必须真的按模块分栏，而不是一段笼统的散文。"""
+    sec = _section_17(doc)
+    subsections = re.findall(r"^### ", sec, re.M)
+    assert len(subsections) >= 3, f"§17 只有 {len(subsections)} 个模块栏，少于 3"
+
+
+def test_every_invariant_cites_a_runnable_source(doc):
+    """★ 本层的核心纪律：**没有出处的不变量不许写**。
+
+    没有出处的「不变量」就是又一段会说谎的文档 —— §16 规矩 4 的教训不能在这里重演。
+    每个 ### 模块栏至少要有一个「出处：」。
+    """
+    sec = _section_17(doc)
+    blocks = re.split(r"^### ", sec, flags=re.M)[1:]  # [0] 是引言
+    assert blocks, "§17 一个模块栏都没有"
+    for block in blocks:
+        title = block.splitlines()[0].strip()
+        assert "出处" in block, f"§17「{title}」没有出处 —— 没证据的不变量不许写"
+
+
+def test_agents_md_indexes_section_17(doc):
+    """AGENTS.md 是常驻注入的唯一入口，§17 必须能从那里被找到。"""
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "§17" in agents, "AGENTS.md 没有指向 §17，agent 永远发现不了这层"
+    # 行格式：`| 你要知道的 | §17 模块不变量 |`
+    assert re.search(r"^\|[^|]*\|\s*§17\s+模块不变量\s*\|", agents, re.M), (
+        "AGENTS.md 里 §17 的索引行格式坏了"
+    )

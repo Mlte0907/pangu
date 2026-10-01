@@ -537,6 +537,74 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-10-01** — 三件：importance 撞墙时报错教换算、**召回补全**（supersede 后继）、新增 **§17 模块不变量层**。
+  - **① importance：不改刻度，改「撞墙时没人告诉你怎么翻过去」**
+    - **先纠正一个易误判**：0–1 写 / 0–5 读**是有意契约，不是 bug**，
+      被 `test_rest_v2_contract.py::TestImportanceScale` 明确锁定（docstring 直写
+      「0–5 值回填被 422 拒」）。20+ 处读取路径也都在 `÷5.0`。所以**不能动刻度**。
+    - **真正的坑在读端不自述**：搜索结果只吐裸的 `importance: 4.5`，
+      调用方（我）看到后原样传给 `pangu_add_memory` → `code 5000: must be between 0.0 and 1.0`。
+      REST 侧 docstring 早就写了「需先除以 5」，MCP 侧**一个字没写**。
+    - **改 3 处（全增量，不动任何刻度）**：
+      1. `memory/ingestion.py` 报错**给换算实例**（`4.5 -> 0.9`），撞墙即自救；
+      2. `server/handlers/memory_ops.py` 搜索 payload 加 `importance_scale` + `importance_note`
+         （成对，沿用既有 `hints`/`hints_note` 形式），**miss 时也给**；
+      3. `server/handlers/__init__.py` `pangu_add_memory` 的入参描述点明读回是 0–5。
+    - **验证**：`test_ingestion.py` +1、`test_search_receipt.py` +5（含「与写入端常量同源」防两处各写）。
+  - **② 召回补全 `_complete_superseded` —— 诊断出的真问题**
+    - **诊断数据**：supersede 链完整（`pangu_get_supersede_chain` found=true, depth=18, 19 节点），
+      但**检索从不解引用 `superseded_by`**。真实历史对 `04538e81`（**22 个后继**）
+      查「错误 之前是错的」→ 同批后继 **0/22**；换旧记忆原文也只有 **2/22**。
+      只有我当天新写、关键词高度重合的 `ffd04842`→`9d7a74f8` 是 3/3 —— **那是样本偏差，不是机制**
+      （我一度据此得出「新版会跟着出现」的错误结论，靠换真实样本才拆出来）。
+    - **为什么是召回补全而不是改排序**（2026-09-28 已评估过改排序、当时决定不做）：
+      改排序动**所有查询的顺序**；召回补全只是**在命中的旧版后继多插一条，已有条目相对次序原封不动**。
+      风险面完全不同。
+    - **实现要点**：插入点选在 `record_search` 之后（**搜索次数统计不被补全条数污染**）、
+      质量自检之前（`receipt.results` 要反映补全后条数）；补全后重算 `total` 保住
+      `total == len(results)` 契约。两道封顶（总 5 条 / 单条 2 个后继）—— 真实库有 22 后继的记录，
+      不封顶会把 10 条搜索撑成 30+。取后继时**取末尾最新**（`superseded_by` 按取代顺序 append）。
+      **两条检索路径都能工作**：回退路径（`search/engine.py` 非 RRF 分支）结果项**不带** supersede 键，
+      改为从 drawer 现算。失败不阻断搜索，但**响亮记日志**（不静默）。
+    - **刻意不做的**：补入项**不带** `rrf_score`/`fts_rank`/`relevance`/`score`（它没参与排序，伪造会污染通道判定）；
+      **不带 `Drawer.source`**（那是来源平台 mcp/dsh，与结果项 `source`=召回通道 semantic/lexical **同名不同义**）。
+    - **验证**：新增 `tests/test_supersede_recall.py` **17 例**，覆盖只插入不重排 / 取最新 / 封顶 /
+      双路径 / 不越租户 / 不伪造。
+    - ⚠ 写测试时我自己踩了两个坑，记下来：夹具默认 `status="active"` 与
+      `ingestion.py:561-567` 真实写法（`superseded_by` 与 `memory_status="superseded"` 同时写）不符 → **假阴性**；
+      后继 id 造成功 `d100..` 而 `superseded_by` 里是 `s0..s9` → 对不上 → `added` 恒 0 → **假通过**。
+      **教训：夹具必须和真实写入路径同构，否则测的是夹具自己。**
+  - **③ 新增 §17 模块不变量层**（用户指出的结构性缺口）
+    - **为什么**：§13 是「上次动了哪」的流水，**粒度答不了「这个模块的约束是什么」** ——
+      而后者才省得掉读源码。此前缺这一层。
+    - **纪律**：每条必须给**可复跑的出处**（测试名/文件行号），**没出处的不写** ——
+      否则这层自己就成了 §16 规矩 4 说的「会说谎的文档」。
+      **按需生长**（动到哪个模块补哪个），不做一次性全量盘点 —— 盘点完那天就开始过期。
+    - **门禁**：`test_every_invariant_cites_a_runnable_source`（每个 `###` 栏必须含「出处」）、
+      `test_section_17_exists_with_module_subsections`（≥3 栏）、`test_agents_md_indexes_section_17`。
+    - **AGENTS.md 预算**：4096 只剩 15 字节，塞不下索引行（43 字节）。**没有抬预算** ——
+      从两处挤：`Python` 行的冗长括号改短、`FILE_INDEX` 行的 `（346 个）` 去掉
+      （**那个数字本来就过期了**：实际 362，而且 §环境速查自己写着「别信任何文档写的数字」）。
+      现 4087/4096，余 9 字节，原「刻意紧」的意图保住。
+  - **怎么验证（本地）**：`pytest tests/` → **2105 passed / 19 skipped / 0 failed**
+    （改前基线 2095；新增 17 + 6 + 5 + 3 + 1 例）；`gen_file_index.py --check` 绿
+    （361→362 文件、111,024→111,565 行）；`test_maintainers_doc.py` 30 passed；
+    7 个改动文件 `ast.parse(feature_version=(3,11))` 全过 —— 云端是 **3.11.2**、本地 3.13.5（§12.4 那条坑）。
+  - **怎么验证（已部署云端 113.45.134.86，实测 2026-10-01 23:2x）**：
+    部署前漂移体检退出码 **0**（云端 0 个手改文件），`scp` 10 个文件 + 部署前先在
+    `/root/pangu/.deploy-backup-20261001/` 备份被覆盖的 9 个（云端非 git，无 VCS 可回退）；
+    云端 `pytest` **198 passed**（3.11.2）→ `systemctl --user restart pangu-api` →
+    部署后漂移体检 **481 一致 / 0 落后 / 0 手改 / 0 缺失**。
+    端到端（走真实 MCP 路径，非单测）：
+    * `pangu_add_memory` 传 `4.5` → 报错含 **`4.5 -> 0.9`** 换算式 ✅
+    * 搜索 payload `importance_scale=5.0` + `importance_note`（miss 时也在）✅
+    * **召回补全**：查「客户端图谱去重已按用户决定注释停用」→ 旧版 `04538e81` **#1**、
+      后继 `78a2465a` **紧随其后** 且 `recalled_via=04538e81`，`total==len==11`、`receipt.results=11` ✅
+      （诊断时同一查询的旧版后继是 **0/22**）
+    * 一个**边界行为**（正确、记录在案）：补全只在**旧版本身进了返回页**时触发。
+      带身份的调用会走 own-first 重排 + `[:limit]` 截断，旧版掉出 top-N 时无从补 ——
+      此时调用方也没收到过期信息，无需纠正。`supersede_completed` 缺省即「本页无旧版」。
+
 - **2026-09-30** — 全系统漂移体检脚本化 + 装 sysstat（用户：「不想哪天你又告诉我抓出遗漏点」）。
   - **新增 `scripts/check_cloud_drift.py`**，把 §10 第 7 条那次事故的教训变成常规检查。
     关键设计是回答**手改 vs 落后**（两者处置相反）：
@@ -1676,3 +1744,57 @@ cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
    - 顺带核对「云端缺的测试/脚本」：2026-09-26 那次三个修复的回归测试**一个都没部署**，
      线上因此没有任何测试在保护它们。
    - 同一条链上还要做：代码与它的测试**当成一个不可分割的部署单元**（§10 第 7 条）。
+
+## 17. 模块不变量（这个模块「必须永远成立」的事）
+
+> §13 回答「上次动了哪」，本节回答「**改的时候不能弄坏什么**」—— 日志会翻篇，不变量不会。
+> **改任何模块前先看它这一栏；改完若某条不再成立，必须在同一次提交里更新这里**，
+> 否则它就成了 §16 规矩 4 说的「文档会说谎」。
+> 每条必须给**可复跑的出处**（测试名或文件行号），没出处的不写。
+> 本节**按需生长：动到哪个模块就补哪个模块的栏**，不做一次性全量盘点 —— 盘点完那天就开始过期。
+
+### 存取管道（`memory/ingestion.py` + `core/palace.py`）
+
+- **importance 三分刻度必须同步**：入参 `[0.0, 1.0]` → 落库 `×IMPORTANCE_SCALE`(=5) → 读回 `0–5`。
+  动任何一端都要同步另外两端，以及 MCP 工具描述与搜索结果里的 `importance_scale` 自述。
+  出处：`tests/test_v3_modules_g.py::test_remember_importance_scaling`（0.6 → 3.0）、
+  `tests/test_rest_v2_contract.py::TestImportanceScale`（GET 回 0–5；回填 2.0 必须 422）。
+- **`remember()` 越界必须抛 `ValueError`，不许静默钳制**，且报错要**教调用方换算**（读回值 ÷5）。
+  出处：`memory/ingestion.py:874` 校验 + `tests/test_ingestion.py::test_importance_rejection_teaches_the_read_scale_conversion`。
+- **`Drawer` 是 `@dataclass` 而非 pydantic —— 字段类型零校验**。任何调用方传错类型会**原样进权威库**，
+  所以类型必须在**写入路径**上挡，不能指望模型层。
+  出处：`core/palace.py` 的 `Drawer` 定义；实证是 §10 2026-10-01 那次 `tags` 存成 dict 让仪表盘
+  React 整棵子树崩掉、面板白屏而 tab 还在。
+- **`tags` 归一保留三态**（str 拆分 / dict 取值 / 其它退化空并**响亮记日志**），
+  **不许改成静默丢弃** —— 「不静默丢内容」是那次事故定下的处置原则。
+  出处：`memory/ingestion.py` 的 tags 归一段。
+
+### 检索（`search/` + `memory/*_search.py` + `server/handlers/memory_ops.py`）
+
+- **`STRONG_MATCH_THRESHOLD`(0.32) 只能配原始余弦相似度**。`rrf_score` 归一化后第一名恒 1.0，
+  拿它比阈值 = 恒判命中 = **等于没有阈值**。
+  出处：`search/engine.py:12-14` 注释、
+  `tests/test_search_receipt.py::test_normalized_score_cannot_fake_a_hit`。
+- **结果项的 `source` 是召回通道（semantic/lexical），`Drawer.source` 是来源平台（mcp/dsh/api）——
+  同名不同义，不得互写**。写错会污染 `record_search` 的通道分桶，让 vector/fts 分布失去参考价值。
+  出处：`server/handlers/memory_ops.py` 的 `_completed_result`（刻意不带 `source`）与 `record_search` 段。
+- **`payload["total"] == len(payload["results"])`**，且 `record_search` 直接拿 `total` 当搜索次数记 ——
+  任何放大 `total` 的改动都会污染检索统计。
+  出处：`server/handlers/memory_ops.py` 内注释 + `_complete_superseded` 补全后重算 `total`。
+- **`retrieval_status` 三态必须能说「没命中」**：`miss`/`weak` 给 `hints`，`hit` 不给（免得被当答案）。
+  出处：`tests/test_search_receipt.py`（含「score=1.0 但 relevance=0.11 必须判 weak」一例）。
+
+### supersede 与版本链（`memory/ingestion.py` + `server/handlers/supersede.py`）
+
+- **只追加、不覆盖、不删除**：取代时旧本体仍在库、仍可按 id 取回；
+  `superseded_by` 按取代顺序 `append`，**末尾最新**（补全取后继时靠这条取新的）。
+  出处：`memory/ingestion.py:561-567`、`pangu_get_supersede_chain` 实测 `found=true` / `depth=18`。
+- **检索端必须自己解引用 `superseded_by`** —— 链存在**不等于**召回时会带出来。
+  2026-10-01 实测：真实历史对 `04538e81`（22 个后继）同批召回 **0/22**，换旧记忆原文也只有 2/22；
+  只有当天新写、关键词高度重合的那条是 3/3 —— 那是样本偏差，不是机制。
+  补全由 `_complete_superseded` 承担，且**只插入、不重排**（这是它区别于「改排序」的风险面）。
+  出处：`tests/test_supersede_recall.py`。
+- **补入的后继不得伪造排序字段**（`rrf_score`/`fts_rank`/`relevance`/`score`）—— 它没参与本次排序，
+  伪造会污染按通道的判定。同理不得带 `Drawer.source`。
+  出处：`tests/test_supersede_recall.py::test_no_fabricated_ranks`、
+  `::test_drawer_source_not_leaked_as_retrieval_channel`。

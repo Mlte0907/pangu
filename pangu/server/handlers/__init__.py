@@ -252,7 +252,12 @@ _TOOL_SCHEMAS = {
             "content": {"type": "string", "description": "记忆内容"},
             "wing": {"type": "string", "description": "Wing 名称", "default": "default"},
             "room": {"type": "string", "description": "Room 名称", "default": "general"},
-            "importance": {"type": "number", "description": "重要性（0.0–1.0）", "default": 0.5},
+            "importance": {
+                "type": "number",
+                "description": "重要性，写入契约 0.0–1.0。注意：GET / 搜索结果里的 importance 是 0–5 读标度，"
+                               "把读回值回填前要先除以 5（4.5 → 0.9），否则会被拒。",
+                "default": 0.5,
+            },
             "tags": {"type": "array", "items": {"type": "string"}, "description": "标签"},
         },
         "required": ["content"],

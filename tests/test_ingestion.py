@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pangu.core.palace import Drawer
@@ -44,6 +46,23 @@ class TestIngestion:
             raise AssertionError("Should raise ValueError")
         except ValueError:
             pass
+
+    def test_importance_rejection_teaches_the_read_scale_conversion(self):
+        """撞墙时报错要**教调用方翻过去**（2026-10-01）。
+
+        写 0–1、读 0–5 是有意契约，但旧报错只说「must be between 0.0 and 1.0」，
+        拿着读回值 4.5 的调用方不知道自己错在哪、除以几。实测 MCP 调用方就是这么
+        撞 `code 5000` 的。
+        """
+        from pangu.memory.ingestion import remember
+
+        with pytest.raises(ValueError) as exc:
+            remember(raw_text="test", importance=4.5)
+
+        msg = str(exc.value)
+        assert "0.0 and 1.0" in msg, "区间本身仍要说清"
+        assert "0-5" in msg, "必须点明读回是 0–5 标度"
+        assert "4.5 -> 0.9" in msg, "必须给出可照抄的换算实例"
 
     def test_remember_with_embedding(self):
         from pangu.memory.ingestion import remember

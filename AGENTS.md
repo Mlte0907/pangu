@@ -17,7 +17,7 @@
 | --- | --- |
 | 本地 | 就是 git 仓库（`origin` = Mlte0907/pangu），改完 commit/push |
 | 云端 | `/root/pangu` **非 git**：靠 `scp` 部署 + `systemctl --user restart pangu-api` |
-| Python | `.venv/bin/python`（版本以 `.venv/bin/python -V` 为准，别写死进文档） |
+| Python | `.venv/bin/python`，`-V` 实测为准，别写死进文档 |
 | 服务 | `systemctl --user pangu-api`，`0.0.0.0:19529`（MCP 与 REST 同端口） |
 | 权威数据 | `/root/.pangu/pangu.db/v2_memories/`（`drawers.json` + `knowledge_graph.db`） |
 | MCP 工具数 | **以 `tools/list` 实测为准**（别信任何文档写的数字，含本文件） |
@@ -60,7 +60,8 @@ cd /root/pangu && .venv/bin/python -m pytest tests/test_xxx.py -q
 | 行为规则、配置热加载、容器约束、死亡循环预防 | §14 运维与协作细节 |
 | 部署形态相关的事实（端口/路径/服务名） | §15 环境前提 |
 | 维护规矩 | §16 维护规矩 |
-| 每个文件干什么（346 个） | [`docs/FILE_INDEX.md`](./docs/FILE_INDEX.md)（自动生成） |
+| 模块不变量 | §17 模块不变量 |
+| 每个文件干什么 | [`docs/FILE_INDEX.md`](./docs/FILE_INDEX.md)（自动生成） |
 
 ## 两条最贵的教训
 

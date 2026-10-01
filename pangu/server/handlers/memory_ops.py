@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from ...core.palace import Drawer
+from ...memory.ingestion import IMPORTANCE_SCALE  # 与写入侧共用一份标度，别两处各写
 from ...search.engine import STRONG_MATCH_THRESHOLD  # 与检索层共用一份，别两处各写
 
 TOOLS = [
@@ -306,6 +307,128 @@ def _apply_own_first(items, owner_by_id, own_tenant):
     return _boost_own(items, owner_by_id, own_tenant)
 
 
+# 召回补全的两道封顶。真实库里一条记忆（04538e81）有 22 个后继，
+# 不封顶会把一次 10 条的搜索撑成 30+ 条。
+MAX_SUPERSEDE_COMPLETIONS = 5   # 单次搜索最多补入的后继总数
+MAX_SUCC_PER_ITEM = 2           # 单条旧版最多带几个后继
+
+
+def _supersede_of(drawer):
+    """从 Drawer 取 supersede 二元组 `(superseded, superseded_by)`。
+
+    与 `hybrid_search._build_results` 同口径：只有 `memory_status ==
+    "superseded"` 才算被取代。**不能**从结果 dict 直接读 —— 回退路径
+    （`search/engine.py` 非 RRF 分支）根本不产出这两个键。
+    """
+    md = getattr(drawer, "metadata", None)
+    if not isinstance(md, dict):
+        md = {}
+    if md.get("memory_status") != "superseded":
+        return False, []
+    by = md.get("superseded_by")
+    return True, (list(by) if isinstance(by, list) else [])
+
+
+def _completed_result(drawer, recalled_via: str) -> dict:
+    """把后继 Drawer 重建成与 RRF 路径**同形**的结果项。
+
+    刻意**不**带 `rrf_score`/`fts_rank`/`vector_rank`/`kg_rank`：它不是这次查询
+    排出来的名次，伪造这些会污染调用方按通道做的判定。
+    刻意**不**带 `Drawer.source`：那里存的是来源平台（mcp/dsh/api），而结果项的
+    `source` 键语义是召回通道（semantic/lexical）—— 同名不同义，写进去会污染分桶。
+    """
+    superseded, by = _supersede_of(drawer)
+    content = getattr(drawer, "content", "")
+    if isinstance(content, str) and content.startswith("gAAAAA"):
+        try:
+            from ...memory.encryption import decrypt
+
+            content = decrypt(content)
+        except Exception:
+            pass
+    return {
+        "id": getattr(drawer, "id", ""),
+        "content": content,
+        "wing": getattr(drawer, "wing", ""),
+        "room": getattr(drawer, "room", ""),
+        "importance": getattr(drawer, "importance", 0.0),
+        "tags": getattr(drawer, "tags", None) or [],
+        "created_at": getattr(drawer, "created_at", ""),
+        "superseded": superseded,
+        "superseded_by": by,
+        "warning": "⚠ 已被更新" if superseded else None,
+        "recalled_via": recalled_via,
+    }
+
+
+def _complete_superseded(items, drawers, max_total=MAX_SUPERSEDE_COMPLETIONS):
+    """给命中的旧版补上它的后继，**只插入、不重排**。
+
+    诊断实测（2026-10-01）：`supersede` 链完整可查，但检索从不解引用
+    `superseded_by` —— 后继只在自己碰巧也匹配同一查询时才出现，真实历史对是
+    0/22、2/22。更正类记忆措辞与原话题不同，全文那一路必输。
+
+    返回 `(新列表, 补入条数)`；无事可做时**原样返回入参**（同一对象），调用方
+    据此判断有没有变化。已有条目的相对顺序不变，插入点紧跟其对应旧版之后。
+
+    @param items - 检索返回的结果项列表（原地不改，返回新列表）。
+    @param drawers - 当前可见的 Drawer 集合（已过租户过滤，补全不得越过它）。
+    @param max_total - 本次最多补入几条。
+    @returns (补全后的列表, 实际补入条数)。
+    """
+    if not isinstance(items, list) or not items:
+        return items, 0
+
+    by_id = {}
+    for d in drawers or []:
+        did = getattr(d, "id", None)
+        if did and did not in by_id:
+            by_id[did] = d
+
+    # 旧版条目可能来自不产出 supersede 键的回退路径 —— 从 drawer 现算补上。
+    pending = []
+    for idx, it in enumerate(items):
+        if not isinstance(it, dict):
+            continue
+        d = by_id.get(it.get("id"))
+        if d is None:
+            continue
+        superseded, by = _supersede_of(d)
+        if not superseded:
+            continue
+        # 结果项若已带键就以它为准（RRF 路径带），否则用刚算的
+        by = it.get("superseded_by") or by
+        if by:
+            pending.append((idx, it.get("id"), by))
+    if not pending:
+        return items, 0
+
+    present = {it.get("id") for it in items if isinstance(it, dict)}
+    out = list(items)
+    added = 0
+    # 从后往前插：高下标先插才不会把低下标的位置顶偏。
+    for idx, old_id, successors in reversed(pending):
+        if added >= max_total:
+            break
+        fresh = [s for s in successors if s not in present]
+        if not fresh:
+            continue
+        # superseded_by 是按取代顺序 append 的（ingestion.py:561）→ 末尾最新。
+        block = []
+        for sid in fresh[-MAX_SUCC_PER_ITEM:]:
+            if added >= max_total:
+                break
+            d = by_id.get(sid)
+            if d is None:
+                continue
+            block.append(_completed_result(d, recalled_via=old_id))
+            present.add(sid)
+            added += 1
+        if block:
+            out[idx + 1:idx + 1] = block
+    return out, added
+
+
 async def handle_search_memories(server, drawers, arguments):
     """搜索记忆（P1-3 阶段 2.2：按 metadata.tenant_id 过滤 + public 毕业区）
 
@@ -408,6 +531,34 @@ async def handle_search_memories(server, drawers, arguments):
     except Exception:
         pass
 
+    # ── 召回补全（2026-10-01）────────────────────────────────────────────
+    # 诊断实测：supersede 链完整可查（pangu_get_supersede_chain found=true），
+    # 但检索阶段**从不解引用 superseded_by** —— 后继只在"自己碰巧也匹配同一查询"
+    # 时才出现。真实历史对是 0/22、2/22；只有我自己当天写、关键词高度重合的那条
+    # 更正是 3/3（样本偏差）。根因：更正类记忆措辞与原话题不同，全文那一路必输。
+    #
+    # 改法是**召回补全**，不是改排序：只把命中的旧版对应的后继**多带一条**，
+    # 已有条目的相对顺序原封不动 —— 这与"改排序会动所有查询顺序"的风险面不同。
+    # 位置选在 record_search 之后：搜索次数统计不该被补全条数污染；
+    # 质量自检之前：receipt.results 要能反映补全后的条数。
+    try:
+        if isinstance(payload, dict):
+            _items = payload.get("results")
+            if isinstance(_items, list) and _items:
+                _completed, _added = _complete_superseded(_items, drawers)
+                if _added:
+                    payload["results"] = _completed
+                    payload["total"] = len(_completed)  # 契约：total == len(results)
+                    payload["supersede_completed"] = _added
+    except Exception:
+        # 补全是增益，不是主链：任何异常都不能让一次本来能用的搜索失败。
+        # 与本函数其余自检一致 —— 但这里要响亮记日志，不许静默。
+        import logging
+
+        logging.getLogger("pangu.memory_ops").warning(
+            "supersede 补全失败（搜索结果仍可用）", exc_info=True
+        )
+
     # 结果质量自检（2026-09-19）+ 检索状态与收据（2026-09-28）
     # 自检原意：无关查询 Top1 只有 0.19-0.31（相关查询 0.36+），低于阈值就显式
     # 说「没有高度相关的记忆」，而不是硬凑十条不相关的让它猜。
@@ -452,6 +603,15 @@ async def handle_search_memories(server, drawers, arguments):
                 _has_fts = any(r.get("fts_rank") is not None for r in _items if isinstance(r, dict))
                 _status = "hit" if _has_fts else "weak"
             payload["retrieval_status"] = _status
+
+            # 读回标度自述（2026-10-01）。写入 0–1、读回 0–5 是 test_rest_v2_contract
+            # 锁定的契约，但读端此前不说自己是 0–5：调用方从这里看到 4.5，再原样传给
+            # pangu_add_memory 就撞 5000。成对给值+说明，沿用上面 hints/hints_note 的形式。
+            payload["importance_scale"] = IMPORTANCE_SCALE
+            payload["importance_note"] = (
+                f"results[].importance 是 0–{IMPORTANCE_SCALE:g} 读标度；"
+                f"pangu_add_memory 的 importance 入参是 0–1，回填前除以 {IMPORTANCE_SCALE:g}（4.5 → 0.9）"
+            )
 
             if _status != "hit":
                 payload["hints"] = [

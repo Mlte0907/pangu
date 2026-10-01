@@ -871,8 +871,17 @@ def remember(
     # 契约：importance ∈ [0.0, 1.0]（tests/test_ingestion.py 与
     # tests/test_v3_modules_g.py 都断言越界必须抛错）。调用方一律不得传 1–5
     # 旧量纲 —— handler 与插件的默认值已同步改为 0.5。
+    #
+    # 2026-10-01 补：错误要**教调用方翻过去**。写入 0–1、读回 0–5 是被
+    # tests/test_rest_v2_contract.py 锁定的有意契约，但撞墙的人只看到
+    # 「must be between 0.0 and 1.0」，不知道自己手里的 4.5 正是读回值。
+    # 实测 MCP 调用方从搜索结果看到 importance: 4.5 后照传即报 code 5000。
     if not isinstance(importance, (int, float)) or importance < 0.0 or importance > 1.0:
-        raise ValueError(f"importance must be between 0.0 and 1.0, got {importance}")
+        raise ValueError(
+            f"importance must be between 0.0 and 1.0, got {importance}. "
+            "Write contract is 0-1; GET/search return importance on a 0-5 READ scale — "
+            "divide a read-back value by 5 before sending it (4.5 -> 0.9)."
+        )
     if confidence is None:
         confidence = 1.0
 
