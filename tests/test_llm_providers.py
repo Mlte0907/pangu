@@ -187,7 +187,7 @@ class TestRetryFallback:
         result = await engine.chat([{"role": "user", "content": "hi"}])
         assert result.content.startswith("[LMM 调用失败")
         # call_count 反映成功请求，重试时也只计入成功调用
-        assert engine._call_count <= 2
+        assert engine._usage()["call_count"] <= 2
 
 
 # ── 错误处理 ──
@@ -329,15 +329,15 @@ class TestLLMMetrics:
         """测试调用计数"""
         engine = LLMEngine()
         # 直接累加模拟多次成功调用
-        engine._call_count = 10
-        engine._total_latency = 1000.0
+        engine._usage()["call_count"] = 10
+        engine._usage()["total_latency"] = 1000.0
         assert engine.avg_latency_ms == 100.0
 
     def test_avg_latency(self):
         """测试平均延迟"""
         engine = LLMEngine()
-        engine._call_count = 10
-        engine._total_latency = 1000.0
+        engine._usage()["call_count"] = 10
+        engine._usage()["total_latency"] = 1000.0
         assert engine.avg_latency_ms == 100.0
 
     def test_zero_calls_avg(self):

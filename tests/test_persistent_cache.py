@@ -292,7 +292,7 @@ class TestLLMEnginePersistentCache:
             temperature=0,
         )
         assert r1.content == "first response"
-        assert engine._call_count == 1
+        assert engine._usage()["call_count"] == 1
 
         # 关闭并清空内存缓存
         engine._cache.clear()
@@ -371,11 +371,11 @@ class TestPrometheusMetrics:
                 ),
             )
         # 模拟统计
-        engine._call_count = 10
+        engine._usage()["call_count"] = 10
         engine._cache_hits = 5
         engine._cache_misses = 5
-        engine._total_prompt_tokens = 100
-        engine._total_completion_tokens = 200
+        engine._usage()["total_prompt_tokens"] = 100
+        engine._usage()["total_completion_tokens"] = 200
 
         output = engine.export_prometheus_metrics()
         assert "pangu_llm_persistent_cache_entries" in output
@@ -439,7 +439,7 @@ class TestEndToEndPersistence:
             messages=[{"role": "user", "content": "stable"}],
             temperature=0,
         )
-        assert engine1._call_count == 1
+        assert engine1._usage()["call_count"] == 1
         # 关闭（实际不需要 close，但模拟重启）
         del engine1
 
@@ -452,6 +452,9 @@ class TestEndToEndPersistence:
             llm_cache_persist_path=db_path,
         )
         engine2 = LLMEngine(cfg2)
+        # 快照「换实例之前」的进程级计数：用量是进程级事实，新实例会继承它
+        # （2026-10-10 语义变更，见本用例末尾的说明）。
+        before_count = engine2._usage()["call_count"]
         # 内存缓存应为空
         assert len(engine2._cache) == 0
         # 但持久化缓存应有 1 条
@@ -473,4 +476,15 @@ class TestEndToEndPersistence:
         mock_client2.post.assert_not_called()
         # 命中磁盘
         assert engine2._cache_disk_hits == 1
-        assert engine2._call_count == 0
+        # ★ 2026-10-10 语义变更：断言从「新引擎实例 call_count 归零」改为
+        # 「命中缓存**不**产生新的 LLM 调用」。
+        #
+        # 原断言 `engine2._call_count == 0` 依赖的是「用量计数器属于实例」——
+        # 而这正是 2026-10-10 修掉的缺陷：同进程内第二个引擎（结晶直连路径、
+        # 配置热加载后 system.py 现造的临时引擎）各记各的，仪表盘读到的只是
+        # 其中一份，于是用量凭空少算甚至归零，面板却显示一切正常。
+        # 用量已迁到进程级共享存储，所以同进程的新实例会**继承**已有计数。
+        #
+        # 改写后仍严格更强：它断言的是「本次命中没有新增调用」，
+        # 而「进程重启后归零」仍然成立（存储是内存，见 LLMEngine._USAGE 注释）。
+        assert engine2._usage()["call_count"] == before_count, "命中持久化缓存不应产生新的 LLM 调用计数"

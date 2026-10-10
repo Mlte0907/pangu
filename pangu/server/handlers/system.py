@@ -118,11 +118,14 @@ def collect_stats(server, drawers: list | None = None) -> dict:
     stats["daily_creates"] = [{"date": day, "count": count} for day, count in daily.items()]
     # 当日 LLM token 使用量（dsh-pangu 仪表盘「LLM 用量」卡片的数据源）
     try:
-        from ...core.llm import LLMEngine
-
-        engine = getattr(server, "_llm", None)
-        if engine is None:
-            engine = LLMEngine(server.config)
+        # ★ 必须走 `server.llm` **属性**，不能读私有的 `server._llm`（2026-10-10 修）。
+        # `_llm` 是惰性单例的私有槽位，任何一次配置热加载（mcp_server 的
+        # drop_cached_components 会把它置 None）之后、且**还没有人碰过
+        # server.llm 属性**之前，`getattr(server, "_llm", None)` 恒为 None ——
+        # 于是这里现造一个**临时引擎**，它的计数器全是 0，面板于是显示
+        # 「今日 0 / 累计 0」，而进程重启前明明已经调过 LLM。
+        # 属性访问会惰性重建并**留在实例上**，与其它消费方同一个引擎。
+        engine = server.llm
         llm_stats = engine.get_stats()
         stats["llm_daily"] = llm_stats.get("daily", {})
         stats["llm_total"] = {

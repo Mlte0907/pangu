@@ -558,6 +558,63 @@ cd /root/pangu
 > 格式：`- **YYYY-MM-DD** — 改了什么 / 为什么 / 怎么验证的`
 > **最新的一条在最上面。** 由 `tests/test_maintainers_doc.py` 核对最新日期。
 
+- **2026-10-10** — 修 LLM 用量计量：三处记账缺陷让仪表盘「用量」恒为 0，而供应商账单在涨。
+  - **起因（用户报的现象）**：「dsh 的盘古插件的 LLM 用量一直没有改变」。
+    **LLM 本身没坏**（端点 200、主力模型 0.9s 返回正常），断的是**计量**。
+  - **三处缺陷，每一处单独看都"合理"，叠在一起就成了"面板一切正常但数字是假的"**：
+    1. **用量挂在引擎实例上**（`core/llm.py`）。而同一进程内存在多个引擎 ——
+       知识结晶的直连路径、配置热加载后 `handlers/system.py` 现造的临时引擎。
+       它们各记各的，仪表盘读到的只是其中一份 ⇒ 用量凭空少算甚至归零。
+       改为**进程级共享存储** `LLMEngine._USAGE`。**缓存类计数器保持每实例**
+       （缓存描述的是"本引擎这张缓存"，合并就成了假数据）——
+       `tests/test_llm_usage_accounting.py::test_cache_counters_stay_per_instance` 钉住这条边界。
+    2. **直连路径完全不记账**：`autonomous._llm_chat` 用 urllib 直连端点，
+       不经过 `LLMEngine` ⇒ 结晶的 token 对所有人不可见。新增公开方法
+       `record_external_usage()`，直连路径把响应里的真实 `usage` 报回来。
+       记账是**旁路**：记坏了只 debug 日志，不让结晶失败 ——
+       它失败会静默降级成规则式内容，用户看不出少了什么。
+    3. **Anthropic 路径只记调用数不记 token**：`usage` 键名是
+       `input_tokens`/`output_tokens`，与 OpenAI 的 `prompt_tokens`/`completion_tokens`
+       不同，此前**从不读**。表现是「调用 1 次 / Token 0」，看不出问题在哪。
+  - **`handlers/system.py` 的第二个坑**：它读私有的 `server._llm`。而 `_llm` 是惰性
+    单例的私有槽位，`drop_cached_components` 会在配置热加载时置 None ——
+    此后只要还没人碰过 `server.llm` 属性，`getattr(..., None)` 恒为 None，
+    于是**现造一个临时引擎**，计数器全 0，面板显示「今日 0 / 累计 0」。
+    改走 `server.llm` **属性**（惰性重建且留在实例上）。
+    ★ 这解释了为什么故障表现为"数字归零"而不是"数字偏小"：**配置一改就归零**。
+  - **⚠ 记账必须容错 —— 这是我自己写测试时才发现的**：`_account_usage` 在**响应处理
+    路径**上，`int("abc")` / `int(float("nan"))` 会抛，抛出去等于把一次**成功**的
+    LLM 调用报成失败。新增 `_safe_int()`：脏值一律降级 0，负数与 NaN 同样归零
+    （它们是脏数据，不是"抵扣"）。
+  - **⚠ 抽取记账方法时我自己引入的 bug**：`_account_usage` 已累加延迟，调用点却又留了
+    一行 `self._total_latency += latency` ⇒ `avg_latency` **虚高一倍**，且没有任何
+    测试会报警。已删，并由 `test_latency_is_accumulated_exactly_once` 钉住。
+  - **⚠ 进程级可变状态会让测试互相污染**：pytest 全程同进程，不复位则 A 用例记的账
+    被 B 用例读到，测试变成顺序依赖、偶发失败 —— 比测试挂掉更难查。
+    故新增 `LLMEngine.reset_usage()` 单一复位入口 + `tests/conftest.py` 的
+    `autouse` 夹具每个用例前后各复位一次。
+  - **顺手修正 `observability/metrics.py`**：它读 `engine._total_prompt_tokens` /
+    `engine._call_count` 等实例属性，属性迁移后会 **AttributeError 打挂整个
+    Prometheus 导出块**。改走 `engine._usage()`，与 `get_stats()` 同源。
+  - **改了一处既有测试假设**：`test_persistent_cache_survives_restart` 断言
+    「新引擎实例 `call_count == 0`」，那依赖的是**已被修掉的**每实例语义。
+    改为「命中持久化缓存**不产生新的调用计数**」（改写后严格更强），
+    并在注释里写明为什么语义变了。「进程重启后归零」仍然成立（存储是内存）。
+  - **⚠ 仍未做（明说，别当已修）**：`_USAGE` 是**内存**存储，进程重启即清零 ——
+    所以「今日」口径实际是「今天**且本次启动后**」。跨重启统计需落盘，未做。
+    `LLMEngine.stream_chat` 也仍无记账，但**全仓无调用方**（死代码路径），
+    故未动 —— 补记账属于给没人走的路加风险。
+  - **验证**：
+    - 新增 `tests/test_llm_usage_accounting.py` **13 项**（三条不变量：跨实例共享、
+      直连可见、供应商键名归一）。**鉴别力实测**：把 `core/llm.py` 还原到
+      改动前的 HEAD，这 13 项**全部 error/失败**；恢复后 **13 passed**。
+      —— 不是"写完就绿"的装饰测试。
+    - 其中一条测试抓到真 bug（脏 usage 抛异常），已修。
+    - 相关子集 `pytest -k "llm or usage or metric or autonomous or crystall or cache"`
+      **293 passed / 0 failed**。
+    - **全量 `pytest tests/`：2116 passed / 19 skipped / 0 failed**（9m59s）。
+  - **配套前端修复在 dsh-pangu 仓**（仪表盘面板改读供应商账单 + schema 修正）。
+
 - **2026-10-02** — 修自己引入的 ruff 格式违规 + 补全量验证数据 + 订正一条过时的备份路径。
   - **① 格式违规是谁的：用基线逐个对照分清了。** CI 跑 `ruff format --check pangu/ tests/`，
     报我 7 个改动文件里多个要重排。`git worktree` 切到改动前的 `6843aca` 对照后：

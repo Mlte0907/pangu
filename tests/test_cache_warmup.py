@@ -354,4 +354,4 @@ class TestWarmupE2E:
         # 命中缓存
         assert r.content == "first call"
         # 实际 API 仍只调用 1 次
-        assert engine._call_count == 1
+        assert engine._usage()["call_count"] == 1

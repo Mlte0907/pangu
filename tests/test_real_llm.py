@@ -522,7 +522,7 @@ async def test_quick_smoke():
     print(f"    {summary!r}")
 
     # 统计
-    print(f"\n[统计] 调用次数={working_engine._call_count}, 平均延迟={working_engine.avg_latency_ms:.0f}ms")
+    print(f"\n[统计] 调用次数={working_engine._usage()['call_count']}, 平均延迟={working_engine.avg_latency_ms:.0f}ms")
     print(f"{'=' * 50}\n")
 
     assert not resp1.content.startswith("[LMM"), f"对话失败: {resp1.content}"

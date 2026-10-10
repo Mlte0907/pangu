@@ -325,18 +325,23 @@ def update_llm_metrics(engine) -> None:
                 pass
 
         # Tokens 与成本
-        if engine._total_prompt_tokens > 0:
-            LLM_TOKENS_TOTAL.labels(provider=provider, model=model, type="prompt").inc(engine._total_prompt_tokens)
-        if engine._total_completion_tokens > 0:
+        # ⚠ 2026-10-10：用量类计数已迁到**进程级共享存储**（LLMEngine._USAGE），
+        # 这里原先读 `engine._total_prompt_tokens` 等实例属性 —— 那些属性已经
+        # 不存在，直接读会 AttributeError（整个 Prometheus 导出块挂掉）。
+        # 统一走 engine._usage()，与 get_stats() / export_metrics() 同源。
+        _u = engine._usage()
+        if _u["total_prompt_tokens"] > 0:
+            LLM_TOKENS_TOTAL.labels(provider=provider, model=model, type="prompt").inc(_u["total_prompt_tokens"])
+        if _u["total_completion_tokens"] > 0:
             LLM_TOKENS_TOTAL.labels(provider=provider, model=model, type="completion").inc(
-                engine._total_completion_tokens
+                _u["total_completion_tokens"]
             )
-        if engine._estimated_cost_usd > 0:
-            LLM_COST_USD.labels(provider=provider, model=model).inc(engine._estimated_cost_usd)
+        if _u["estimated_cost_usd"] > 0:
+            LLM_COST_USD.labels(provider=provider, model=model).inc(_u["estimated_cost_usd"])
 
         # 调用次数
-        if engine._call_count > 0:
-            LLM_CALLS.labels(provider=provider, model=model).inc(engine._call_count)
+        if _u["call_count"] > 0:
+            LLM_CALLS.labels(provider=provider, model=model).inc(_u["call_count"])
 
         # 平均延迟
         if engine.avg_latency_ms > 0:

@@ -175,11 +175,11 @@ class TestEngineStats:
         """调用后统计更新"""
         engine = LLMEngine(PanguConfig(llm_api_key="dummy"))
         # 手动更新内部状态
-        engine._call_count = 5
-        engine._total_latency = 1000
-        engine._total_prompt_tokens = 100
-        engine._total_completion_tokens = 50
-        engine._estimated_cost_usd = 0.001
+        engine._usage()["call_count"] = 5
+        engine._usage()["total_latency"] = 1000
+        engine._usage()["total_prompt_tokens"] = 100
+        engine._usage()["total_completion_tokens"] = 50
+        engine._usage()["estimated_cost_usd"] = 0.001
 
         stats = engine.get_stats()
         assert stats["call_count"] == 5
@@ -281,8 +281,8 @@ class TestJSONModeIntegration:
         assert response.content == '{"key": "value"}'
         assert captured_payload.get("response_format") == {"type": "json_object"}
         # Token 累计
-        assert engine._total_prompt_tokens == 10
-        assert engine._total_completion_tokens == 5
+        assert engine._usage()["total_prompt_tokens"] == 10
+        assert engine._usage()["total_completion_tokens"] == 5
 
     @pytest.mark.asyncio
     async def test_json_extract_after_chat(self):
@@ -465,7 +465,7 @@ class TestResponseCache:
         )
         assert r1.content == "cached response"
         assert engine._cache_misses == 1
-        assert engine._call_count == 1
+        assert engine._usage()["call_count"] == 1
 
         # 第二次相同调用（应命中缓存）
         r2 = await engine.chat(
@@ -474,7 +474,7 @@ class TestResponseCache:
         )
         assert r2.content == "cached response"
         assert engine._cache_hits == 1
-        assert engine._call_count == 1  # 不应再增加
+        assert engine._usage()["call_count"] == 1  # 不应再增加
 
     @pytest.mark.asyncio
     async def test_chat_skips_cache_for_stochastic(self):
@@ -506,7 +506,7 @@ class TestResponseCache:
         await engine.chat(messages=[{"role": "user", "content": "hi"}], temperature=0.7)
         await engine.chat(messages=[{"role": "user", "content": "hi"}], temperature=0.7)
         # 两次都未命中缓存（temperature > 0）
-        assert engine._call_count == 2
+        assert engine._usage()["call_count"] == 2
         assert engine._cache_misses == 2
 
 
@@ -605,7 +605,7 @@ class TestBatchOperations:
         # 第一次 miss，后续 2 次 hit
         assert engine._cache_misses == 1
         assert engine._cache_hits == 2
-        assert engine._call_count == 1  # 只实际调用 1 次
+        assert engine._usage()["call_count"] == 1  # 只实际调用 1 次
 
     @pytest.mark.asyncio
     async def test_batch_classify_memories(self):

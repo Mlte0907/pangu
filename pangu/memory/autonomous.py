@@ -744,7 +744,17 @@ class AutonomousMemoryEngine:
         return discover_chat_models(base, key)
 
     def _llm_chat(self, base: str, key: str, model: str, system: str, user: str) -> str:
-        """单次对话补全（同步，调度线程内直跑）。失败抛异常由调用方降级。"""
+        """单次对话补全（同步，调度线程内直跑）。失败抛异常由调用方降级。
+
+        ★ 为什么直连而不用 LLMEngine：这里要按**动态发现的模型列表**逐个试降
+        （`_llm_discover_models`），而 LLMEngine 的模型是配置里那一个。
+
+        ★ 2026-10-10 修：本方法**绕过 LLMEngine**，此前它的 token 用量对仪表盘
+        完全不可见 —— 面板恒显示「今日 0」，而供应商账单在涨。现在把响应里的
+        `usage` 原样报给引擎的公共记账通道（`record_external_usage`），
+        直连与引擎两条路共用同一份记账逻辑。
+        """
+        import time as _time
         import urllib.request
 
         body = json.dumps(
@@ -763,9 +773,40 @@ class AutonomousMemoryEngine:
             data=body,
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
+        started = _time.time()
         with urllib.request.urlopen(req, timeout=self._LLM_TIMEOUT) as resp:
             data = json.loads(resp.read().decode())
+        # 记账放在解析之后、成功返回之前：只有**真的发出去了**才算一次调用。
+        # 失败由调用方降级重试，那些请求供应商也照样计费，所以严格说失败也该记
+        # —— 但那要求在 except 分支也埋点，而这里的失败会被 `except: continue`
+        # 静默吞掉，埋了也难核对。宁可少记不可错记，故只记成功这一路。
+        self._record_llm_usage(data, started, base)
         return str((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "")
+
+    def _record_llm_usage(self, data: dict, started: float, base: str) -> None:
+        """把直连调用的真实用量报给 LLMEngine 记账（失败只记日志，绝不影响产出）。
+
+        为什么**不能让它抛**：记账是旁路，一条统计写不进去不该让知识结晶整条失败
+        —— 而结晶失败会静默降级成规则式内容，用户看不出少了什么。
+        """
+        try:
+            usage = data.get("usage") or {}
+            if not usage:
+                return
+            from ..core.llm import LLMEngine
+
+            engine = getattr(self, "_llm_engine", None) or LLMEngine(self.config)
+            self._llm_engine = engine
+            engine.record_external_usage(
+                provider=str(self.config.llm_provider or "openai"),
+                # 原样传，不在这里 int() —— 脏 usage 的容错统一由
+                # LLMEngine._safe_int 负责，一处处理胜过两处各判一次。
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+                latency_ms=(time.time() - started) * 1000,
+            )
+        except Exception as exc:  # noqa: BLE001 — 旁路记账不允许影响主流程
+            logger.debug("LLM 用量记账失败（不影响结晶产出）: %s", exc)
 
     @staticmethod
     def _extract_json(content: str) -> dict | None:

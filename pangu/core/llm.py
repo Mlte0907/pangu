@@ -245,24 +245,71 @@ class LLMEngine:
     - 候选模型切换：配置值优先，其失败后动态 GET /models 补备选再试，
       整轮全败才线性退避 retry_delay×(n+1)
     - Prometheus 指标：cache_hit_rate / tokens / cost / latency
+
+    ⚠ 计量口径（2026-10-10 起）：**用量类统计是进程级的**（`_USAGE`），
+    缓存类统计是**每实例**的。理由见 `__init__` 里的注释。
     """
+
+    # ── 进程级用量存储 ──
+    # 用量是「本进程一共调用了多少、花了多少 token、花了多少钱」这个进程级事实。
+    # 放在实例上会导致同进程内多个引擎各记各的：知识结晶走直连路径自建的引擎、
+    # 配置热加载后 handlers/system.py 现造的临时引擎，都有自己的计数器，
+    # 仪表盘读到的只是其中一份 —— 表现为「用量突然归零」，却查不出哪里错了。
+    # 单一存储消除了「该读哪一份」这个问题。
+    _USAGE: dict = {
+        "call_count": 0,
+        "total_latency": 0.0,
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "daily_tokens": {},  # "YYYY-MM-DD" → {prompt, completion, call_count}
+    }
+
+    @classmethod
+    def _usage(cls) -> dict:
+        """取进程级用量存储（唯一入口，别直接摸 LLMEngine._USAGE）。"""
+        return cls._USAGE
+
+    @classmethod
+    def reset_usage(cls) -> None:
+        """把进程级用量清零。
+
+        存在的理由不是"测试要用"这么功利：进程级可变状态会让**测试互相污染**
+        （A 用例记的账会被 B 用例读到，测试变成顺序依赖且偶发失败）。
+        显式提供复位入口，比让每个用例自己去摸 `_USAGE` 的键安全得多 ——
+        前者只有一个入口，后者一旦加新计数器就会漏改。
+        """
+        cls._USAGE.update(
+            {
+                "call_count": 0,
+                "total_latency": 0.0,
+                "total_prompt_tokens": 0,
+                "total_completion_tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "daily_tokens": {},
+            }
+        )
 
     def __init__(self, config: PanguConfig = None):
         self.config = (config or PanguConfig.load()).authoritative_memory_config()
         self._client: httpx.AsyncClient | None = None
-        self._call_count: int = 0
+        # 缓存类计数器：**每实例**。它们描述的是「本引擎的这张缓存」，两个引擎
+        # 各有自己的缓存，分开统计是对的。
         self._cache_hits: int = 0
         self._cache_misses: int = 0
         self._cache_disk_hits: int = 0  # 仅来自磁盘的命中
         self._cache_writes: int = 0  # 持久化缓存写入次数
         self._tokens_saved: int = 0  # 缓存命中累计节省的 token
-        self._total_latency: float = 0.0
-        # token 与成本统计
-        self._total_prompt_tokens: int = 0
-        self._total_completion_tokens: int = 0
-        self._estimated_cost_usd: float = 0.0
-        # 按日 token 统计（key = "YYYY-MM-DD"）
-        self._daily_tokens: dict[str, dict[str, int]] = {}
+        # ⚠ 用量类计数器**已迁到进程级共享存储 `_USAGE`**（2026-10-10）。
+        # 原因：LLM 用量是「本进程一共花了多少」这个**进程级事实**，不是某个
+        # 引擎实例的属性。此前挂在实例上，于是同一进程里第二个引擎（知识结晶
+        # 的直连路径、配置热加载后 system.py 现造的那个临时引擎）各记各的，
+        # 仪表盘读到的数字只是其中一份 —— 用量少算甚至归零，而面板看不出异常。
+        #
+        # 读法统一走 `self._usage()`，别再直接摸 `_USAGE` 里的键。
+        #
+        # ⚠ 仍是**内存**存储：进程重启即清零，所以「今日」口径实际是
+        # 「今天且本次启动后」。要跨重启就得落盘，尚未做（见 §10 维护日志）。
         # 模型健康度：不可用的模型集合 + 上次探测时间
         self._unhealthy_models: set[str] = set()
         self._health_check_ts: float = 0.0
@@ -304,9 +351,10 @@ class LLMEngine:
 
     @property
     def avg_latency_ms(self) -> float:
-        if self._call_count == 0:
+        usage = self._usage()
+        if usage["call_count"] == 0:
             return 0.0
-        return self._total_latency / self._call_count
+        return usage["total_latency"] / usage["call_count"]
 
     def _get_api_key(self, provider: str) -> str:
         """获取 API Key，优先使用配置，其次环境变量"""
@@ -398,24 +446,15 @@ class LLMEngine:
             resp.raise_for_status()
             data = resp.json()
             latency = (time.time() - start) * 1000
-            self._call_count += 1
-            self._total_latency += latency
-
-            # 累计 token 用量
+            # ⚠ 延迟由 _account_usage 一并累加，这里**不要**再单独加 ——
+            # 曾经两处都加，avg_latency_ms 会虚高一倍且无从察觉。
             usage = data.get("usage", {})
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-            self._total_prompt_tokens += prompt_tokens
-            self._total_completion_tokens += completion_tokens
-            self._estimated_cost_usd += self._estimate_cost(
-                provider, prompt_tokens, completion_tokens
+            self._account_usage(
+                provider,
+                usage.get("prompt_tokens", 0),
+                usage.get("completion_tokens", 0),
+                latency_ms=latency,
             )
-            # 按日 token 统计（用于仪表盘当日用量可视化）
-            day_key = time.strftime("%Y-%m-%d")
-            daily = self._daily_tokens.setdefault(day_key, {"prompt_tokens": 0, "completion_tokens": 0, "call_count": 0})
-            daily["prompt_tokens"] += prompt_tokens
-            daily["completion_tokens"] += completion_tokens
-            daily["call_count"] += 1
 
             return LLMResponse(
                 content=data["choices"][0]["message"]["content"],
@@ -490,8 +529,17 @@ class LLMEngine:
             resp.raise_for_status()
             data = resp.json()
             latency = (time.time() - start) * 1000
-            self._call_count += 1
-            self._total_latency += latency
+            # ⚠ 2026-10-10 修：此前这条路径只加 `_call_count`，**从不读 usage**，
+            # 于是 Anthropic 的调用数进了统计、token 永远是 0 —— 面板上表现为
+            # 「调用 1 次 / Token 0」，看着像 bug 又看不出问题在哪。Anthropic 的
+            # usage 键名与 OpenAI 不同（input_tokens / output_tokens），须分别取。
+            usage = data.get("usage", {}) or {}
+            self._account_usage(
+                "anthropic",
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+                latency_ms=latency,
+            )
 
             return LLMResponse(
                 content=data["content"][0]["text"],
@@ -1128,20 +1176,95 @@ class LLMEngine:
             in_p, out_p = provider_pricing[matched]
         return (prompt_tokens / 1000.0) * in_p + (completion_tokens / 1000.0) * out_p
 
+    @staticmethod
+    def _safe_int(value) -> int:
+        """把 provider 回的 token 数安全转成 int；任何异常形态都降级为 0。
+
+        为什么需要：`int("abc")` / `int(float("nan"))` 都会抛，而调用点在
+        响应处理路径上 —— 抛出去等于把一次**成功**的 LLM 调用报成失败。
+        负数与 NaN 同样归零：它们是脏数据，不是"抵扣"。
+        """
+        try:
+            n = int(float(value))
+        except (TypeError, ValueError):
+            return 0
+        return n if n > 0 else 0
+
+    def _account_usage(
+        self,
+        provider: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_ms: float | None = None,
+    ) -> None:
+        """记账一次 LLM 调用：总调用数 / 总 token / 预估成本 / 按日 token。
+
+        为什么抽出来（2026-10-10）：知识结晶（autonomous._llm_chat）用 urllib
+        **直连**端点、不经过本引擎，于是它的用量对仪表盘完全不可见 —— 面板
+        恒显示「今日 0 / 累计 3」，而钱照花。现在它把真实 usage 报回来走这条
+        通道，两条路**共用一份记账逻辑**，不会再各算各的。
+
+        ⚠ 单一记账点比"两处各写一遍"更重要的理由：曾经就是因为直连路径漏了
+        记账，仪表盘与供应商账单出现无法解释的差额，而面板还显示得一切正常。
+        """
+        # ⚠ 必须容错：provider 回的 usage 是**外部输入**，可能是 None / "abc" / 负数 /
+        # NaN。而这个方法在**响应处理路径上**被调用 —— 抛异常会连带把真正的
+        # LLM 调用判失败。所以脏数据一律降级为 0，绝不外泄。
+        prompt_tokens = self._safe_int(prompt_tokens)
+        completion_tokens = self._safe_int(completion_tokens)
+        usage = self._usage()
+        usage["call_count"] += 1
+        if latency_ms is not None:
+            usage["total_latency"] += latency_ms
+        usage["total_prompt_tokens"] += prompt_tokens
+        usage["total_completion_tokens"] += completion_tokens
+        usage["estimated_cost_usd"] += self._estimate_cost(
+            provider, prompt_tokens, completion_tokens
+        )
+        # 按日 token 统计（用于仪表盘当日用量可视化）。
+        # ⚠ 这是**纯内存** dict，进程重启即清零 —— 所以「今日」口径其实是
+        # 「今天且本次启动后」。真要跨重启就得落盘，尚未做。
+        day_key = time.strftime("%Y-%m-%d")
+        daily = usage["daily_tokens"].setdefault(
+            day_key, {"prompt_tokens": 0, "completion_tokens": 0, "call_count": 0}
+        )
+        daily["prompt_tokens"] += prompt_tokens
+        daily["completion_tokens"] += completion_tokens
+        daily["call_count"] += 1
+
+    def record_external_usage(
+        self,
+        provider: str,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        latency_ms: float | None = None,
+    ) -> None:
+        """供**绕过本引擎**的直连调用方报账（见 _account_usage 的 docstring）。
+
+        刻意做成公开方法：外部模块（autonomous._llm_chat 等）拿得到引擎实例就
+        直接调，不要让它们去摸 `_usage()` 这类内部存储。
+        """
+        self._account_usage(provider, prompt_tokens, completion_tokens, latency_ms)
+
     def get_stats(self) -> dict:
-        """获取引擎统计信息（调用次数/延迟/token/成本/缓存）"""
+        """获取引擎统计信息（调用次数/延迟/token/成本/缓存）
+
+        ⚠ 用量类字段读**进程级共享存储**，缓存类字段读**本实例**。
+        """
+        usage = self._usage()
         total_lookups = self._cache_hits + self._cache_misses
         cache_hit_rate = self._cache_hits / total_lookups * 100 if total_lookups > 0 else 0.0
         stats = {
             "provider": self.config.llm_provider,
             "model": self.config.llm_model,
-            "call_count": self._call_count,
+            # ↓ 用量：进程级
+            "call_count": usage["call_count"],
             "avg_latency_ms": self.avg_latency_ms,
-            "total_latency_ms": self._total_latency,
-            "total_prompt_tokens": self._total_prompt_tokens,
-            "total_completion_tokens": self._total_completion_tokens,
-            "total_tokens": self._total_prompt_tokens + self._total_completion_tokens,
-            "estimated_cost_usd": round(self._estimated_cost_usd, 6),
+            "total_latency_ms": usage["total_latency"],
+            "total_prompt_tokens": usage["total_prompt_tokens"],
+            "total_completion_tokens": usage["total_completion_tokens"],
+            "total_tokens": usage["total_prompt_tokens"] + usage["total_completion_tokens"],
+            "estimated_cost_usd": round(usage["estimated_cost_usd"], 6),
             # 内存缓存统计
             "memory_cache_enabled": self._cache_enabled,
             "cache_hits": self._cache_hits,
@@ -1162,7 +1285,7 @@ class LLMEngine:
                 stats["persistent_cache"] = {"error": "unavailable"}
         # 当日 token 使用量（按日期键控，仪表盘/成本告警用）
         day_key = time.strftime("%Y-%m-%d")
-        daily = self._daily_tokens.get(day_key, {})
+        daily = usage["daily_tokens"].get(day_key, {})
         stats["daily"] = {
             "date": day_key,
             "prompt_tokens": daily.get("prompt_tokens", 0),
@@ -1462,11 +1585,12 @@ class LLMEngine:
             )
 
         lines = []
+        _u = self._usage()  # 用量类指标读进程级存储（与 get_stats 同源）
         total_lookups = self._cache_hits + self._cache_misses
         hit_rate = self._cache_hits / total_lookups * 100 if total_lookups > 0 else 0.0
 
         # 调用统计
-        lines.append(metric("pangu_llm_calls_total", self._call_count, "counter", "LLM 实际调用次数"))
+        lines.append(metric("pangu_llm_calls_total", _u["call_count"], "counter", "LLM 实际调用次数"))
         # 缓存统计
         lines.append(metric("pangu_llm_cache_hits_total", self._cache_hits, "counter", "缓存命中次数（内存+磁盘）"))
         lines.append(
@@ -1478,15 +1602,15 @@ class LLMEngine:
         lines.append(metric("pangu_llm_memory_cache_size", len(self._cache), "gauge", "内存 LRU 缓存当前条目数"))
         # Token 与成本
         lines.append(
-            metric("pangu_llm_prompt_tokens_total", self._total_prompt_tokens, "counter", "累计 prompt tokens")
+            metric("pangu_llm_prompt_tokens_total", _u["total_prompt_tokens"], "counter", "累计 prompt tokens")
         )
         lines.append(
             metric(
-                "pangu_llm_completion_tokens_total", self._total_completion_tokens, "counter", "累计 completion tokens"
+                "pangu_llm_completion_tokens_total", _u["total_completion_tokens"], "counter", "累计 completion tokens"
             )
         )
         lines.append(
-            metric("pangu_llm_cost_usd_total", round(self._estimated_cost_usd, 6), "counter", "累计估算成本（USD）")
+            metric("pangu_llm_cost_usd_total", round(_u["estimated_cost_usd"], 6), "counter", "累计估算成本（USD）")
         )
         # 性能
         lines.append(metric("pangu_llm_avg_latency_ms", round(self.avg_latency_ms, 2), "gauge", "LLM 平均延迟（毫秒）"))

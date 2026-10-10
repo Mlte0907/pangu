@@ -6,10 +6,10 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **362** 个 py 文件 / **111,682** 行。
+共 **363** 个 py 文件 / **112,186** 行。
 
 
-## `pangu/memory/` — 136 文件 / 44,067 行
+## `pangu/memory/` — 136 文件 / 44,108 行
 
 记忆系统主体（136 文件）：存取管道、搜索、知识、生命周期、质量治理、推理
 
@@ -27,7 +27,7 @@
 | `audio_engine.py` | 252 | 盘古音频记忆引擎 — whisper 转写 + 元数据 + 音频摘要 |
 | `audit_analytics.py` | 229 | 盘古审计与分析 — 追踪所有记忆操作 |
 | `auto_pilot.py` | 342 | 盘古自动驾驶模式 — 接入后自动完成记忆管理 |
-| `autonomous.py` | 1315 | 盘古自主记忆管理引擎 — 自动调度记忆生命周期 |
+| `autonomous.py` | 1356 | 盘古自主记忆管理引擎 — 自动调度记忆生命周期 |
 | `autonomous_learning.py` | 181 | 盘古自主学习 — 自动发现新知识，无需人工干预 |
 | `backup_restore.py` | 539 | 盘古记忆备份与恢复 — 防止数据丢失 |
 | `batch_import.py` | 242 | 盘古批量多模态导入 — 目录扫描 + 自动检测 + 批量入库 |
@@ -152,14 +152,14 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 113 文件 / 34,708 行
+## `tests/` — 114 文件 / 35,039 行
 
 测试
 
 | 文件 | 行 | 职责（首句 docstring） |
 | --- | ---: | --- |
 | `__init__.py` | 1 | 盘古测试模块 |
-| `conftest.py` | 299 | pytest session-level fixtures |
+| `conftest.py` | 317 | pytest session-level fixtures |
 | `manual_api_smoke.py` | 264 | 盘古系统接口契约/冒烟测试 — REST API + MCP 工具 + CLI |
 | `manual_benchmark.py` | 133 | 盘古 Benchmark — 性能基准测试 + 竞品对比 |
 | `manual_e2e/__init__.py` | 1 | (无 docstring) |
@@ -202,6 +202,7 @@
 | `test_llm_model_switch.py` | 257 | 盘古 — LLM 候选模型发现与切换测试 |
 | `test_llm_optimizations.py` | 734 | 盘古 — LLM 优化功能测试 |
 | `test_llm_providers.py` | 378 | 盘古 — LLM 后端集成测试 |
+| `test_llm_usage_accounting.py` | 299 | LLM 用量计量口径（2026-10-10）。 |
 | `test_maintainers_doc.py` | 457 | 维护说明书（MAINTAINERS.md）与代码的一致性检查。 |
 | `test_mcp_auth_exposure.py` | 35 | 「监听暴露 + MCP 免鉴权」告警的单测。 |
 | `test_mcp_tenant_fallback.py` | 107 | MCP 写入的 tenant_id 归属回退（2026-09-26）。 |
@@ -245,7 +246,7 @@
 | `test_p2_1_performance_batch.py` | 105 | P2-1 Step 3 回归测试：performance.BatchProcessor 接入 autonomous 向量索引任务。 |
 | `test_perf_regression.py` | 165 | 盘古性能回归检测 — 自动对比基准，检测性能退化 |
 | `test_performance_optimizations.py` | 420 | 测试性能优化效果 |
-| `test_persistent_cache.py` | 476 | 盘古 — 持久化缓存 + Prometheus 指标 测试 |
+| `test_persistent_cache.py` | 490 | 盘古 — 持久化缓存 + Prometheus 指标 测试 |
 | `test_phase1_keys.py` | 248 | 阶段 1 测试：钥匙管理 + 身份解析 + 管理端点鉴权 + require_auth |
 | `test_python_version_matrix.py` | 128 | CI 的 Python 矩阵必须与 `pyproject.toml` 的声明一致，且覆盖开发实际使用的版本。 |
 | `test_rbac.py` | 246 | 盘古 RBAC 角色权限测试 |
@@ -272,7 +273,7 @@
 | `test_vector_degradation_visible.py` | 167 | 向量路径的降级必须**看得见**。 |
 | `test_warmup_audit.py` | 133 | 盘古 — 缓存预热审计日志测试 |
 
-## `pangu/server/` — 26 文件 / 11,747 行
+## `pangu/server/` — 26 文件 / 11,750 行
 
 服务器层：MCP 服务器、Web 服务器、WebSocket、工具 handler 与暴露面
 
@@ -297,7 +298,7 @@
 | `handlers/search.py` | 919 | 盘古 MCP Handler — search (33 tools) |
 | `handlers/session.py` | 425 | 盘古 MCP Handler — session (28 tools) |
 | `handlers/supersede.py` | 170 | 盘古 MCP Handler — supersede (1 tool) |
-| `handlers/system.py` | 921 | 盘古 MCP Handler — system (44 tools) |
+| `handlers/system.py` | 924 | 盘古 MCP Handler — system (44 tools) |
 | `handlers/timeline.py` | 400 | 盘古 MCP Handler — timeline (16 tools) |
 | `handlers/wiki.py` | 66 | 盘古 MCP Handler — wiki (4 tools) |
 | `mcp_server.py` | 536 | 盘古 MCP 服务器 — 为 AI Agent 提供记忆工具接口 |
@@ -358,6 +359,19 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `test_real_llm.py` | 202 | 盘古 — 真实 LLM 快速验证脚本 |
 | `trigger_crystallize.py` | 69 | 一次性触发知识结晶（绕过时间窗口，跳过 LLM 用规则式） |
 
+## `pangu/core/` — 6 文件 / 3,306 行
+
+核心设施：配置、LLM 接入、加密、哈希、缓存、宫殿数据模型
+
+| 文件 | 行 | 职责（首句 docstring） |
+| --- | ---: | --- |
+| `__init__.py` | 7 | 盘古核心模块 |
+| `cache.py` | 452 | 盘古 — 持久化 LLM 响应缓存 |
+| `config.py` | 637 | 盘古核心配置模块 — 基于 pydantic-settings（伏羲移植） |
+| `hashing.py` | 39 | 盘古 — 统一哈希工具 |
+| `llm.py` | 1863 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
+| `palace.py` | 308 | 盘古宫殿核心 — Wings/Rooms/Drawers/Halls/Tunnels 管理 |
+
 ## `pangu/` — 6 文件 / 3,302 行
 
 | 文件 | 行 | 职责（首句 docstring） |
@@ -368,19 +382,6 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `client.py` | 163 | 盘古记忆客户端 — 外部系统交互封装（伏羲移植） |
 | `keys.py` | 145 | 盘古钥匙管理器 |
 | `task_tracker.py` | 143 | 任务进度追踪器 — 在工具执行后自动保存任务状态（伏羲移植） |
-
-## `pangu/core/` — 6 文件 / 3,182 行
-
-核心设施：配置、LLM 接入、加密、哈希、缓存、宫殿数据模型
-
-| 文件 | 行 | 职责（首句 docstring） |
-| --- | ---: | --- |
-| `__init__.py` | 7 | 盘古核心模块 |
-| `cache.py` | 452 | 盘古 — 持久化 LLM 响应缓存 |
-| `config.py` | 637 | 盘古核心配置模块 — 基于 pydantic-settings（伏羲移植） |
-| `hashing.py` | 39 | 盘古 — 统一哈希工具 |
-| `llm.py` | 1739 | 盘古 LMM 集成层 — 大语言模型驱动的智能记忆处理 |
-| `palace.py` | 308 | 盘古宫殿核心 — Wings/Rooms/Drawers/Halls/Tunnels 管理 |
 
 ## `experimental/` — 16 文件 / 1,172 行
 
@@ -415,7 +416,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | `embedder.py` | 479 | 盘古向量嵌入引擎 — 真正的语义搜索 |
 | `engine.py` | 362 | 盘古搜索模块 — 多模式记忆搜索 |
 
-## `pangu/observability/` — 5 文件 / 836 行
+## `pangu/observability/` — 5 文件 / 841 行
 
 可观测性：健康检查、Prometheus 指标、OpenTelemetry 追踪
 
@@ -423,7 +424,7 @@ FastAPI 层：路由、鉴权（ABAC/RBAC/JWT）、平台 Token、MCP-HTTP 传�
 | --- | ---: | --- |
 | `__init__.py` | 12 | 盘古可观测性模块 |
 | `health.py` | 223 | 盘古健康检查系统（伏羲移植） |
-| `metrics.py` | 367 | 盘古 Prometheus 指标导出（伏羲移植） |
+| `metrics.py` | 372 | 盘古 Prometheus 指标导出（伏羲移植） |
 | `performance_monitor.py` | 119 | 盘古性能基准监控 — 持续监控性能变化 |
 | `tracing.py` | 115 | 盘古 — OpenTelemetry 分布式追踪模块 |
 

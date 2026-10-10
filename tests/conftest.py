@@ -297,3 +297,21 @@ def _mock_sentence_transformer():
     import sys
 
     sys.modules.setdefault("sentence_transformers", sentence_transformers)
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_usage():
+    """每个用例前清零 LLM 的**进程级**用量存储（2026-10-10）。
+
+    为什么必须加这个夹具：用量计数从"每引擎实例"迁到了"进程共享"（见
+    LLMEngine._USAGE），而 pytest 全程跑在**同一个进程**里 —— 不复位的话
+    A 用例记的账会被 B 用例读到，测试变成顺序依赖、且偶发失败，
+    那比测试挂掉更难查。
+
+    autouse 而非让每个用例自己调：新增计数器时不会漏改。
+    """
+    from pangu.core.llm import LLMEngine
+
+    LLMEngine.reset_usage()
+    yield
+    LLMEngine.reset_usage()
