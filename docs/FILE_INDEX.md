@@ -6,7 +6,7 @@
 > 全仓库 `*.py` 的逐文件职责。**行数**用于判断体量，**首句 docstring** 是职责摘要。
 > 想了解「盘古是什么 / 怎么跑 / 架构与边界」→ 读 [`MAINTAINERS.md`](../MAINTAINERS.md)，本文件只回答「哪个文件干什么」。
 
-共 **363** 个 py 文件 / **112,186** 行。
+共 **364** 个 py 文件 / **112,353** 行。
 
 
 ## `pangu/memory/` — 136 文件 / 44,108 行
@@ -152,7 +152,7 @@
 | `working_memory.py` | 369 | 盘古工作记忆 — Miller 定律 7±2 槽位 + 注意力衰减 + Checkpoint |
 | `world_model.py` | 299 | 盘古预测性世界模型 — 基于记忆状态推演未来情景 |
 
-## `tests/` — 114 文件 / 35,039 行
+## `tests/` — 115 文件 / 35,196 行
 
 测试
 
@@ -207,6 +207,7 @@
 | `test_mcp_auth_exposure.py` | 35 | 「监听暴露 + MCP 免鉴权」告警的单测。 |
 | `test_mcp_tenant_fallback.py` | 107 | MCP 写入的 tenant_id 归属回退（2026-09-26）。 |
 | `test_mcp_warmup.py` | 87 | 盘古 — MCP 服务器启动预热测试 |
+| `test_memory_ops_logger_defined.py` | 157 | 回归测试：memory_ops 的 `logger` 必须真实存在（2026-10-12 线上故障）。 |
 | `test_memory_system.py` | 962 | 盘古记忆系统综合测试 — 覆盖存储/检索/遗忘曲线/巩固/自然语言查询/多Agent协作 |
 | `test_model_discovery_cache.py` | 234 | 模型列表的 TTL 缓存与偏好落空回退。 |
 | `test_onnx_embedder.py` | 417 | 盘古 — ONNX 嵌入器测试 |
@@ -273,7 +274,7 @@
 | `test_vector_degradation_visible.py` | 167 | 向量路径的降级必须**看得见**。 |
 | `test_warmup_audit.py` | 133 | 盘古 — 缓存预热审计日志测试 |
 
-## `pangu/server/` — 26 文件 / 11,750 行
+## `pangu/server/` — 26 文件 / 11,760 行
 
 服务器层：MCP 服务器、Web 服务器、WebSocket、工具 handler 与暴露面
 
@@ -291,7 +292,7 @@
 | `handlers/knowledge.py` | 178 | 盘古 MCP Handler — knowledge (8 tools, P2-1 Step 1) |
 | `handlers/knowledge_graph.py` | 116 | 盘古 MCP Handler — knowledge_graph (7 tools) |
 | `handlers/llm_tools.py` | 288 | 盘古 MCP Handler — llm_tools (19 tools) |
-| `handlers/memory_ops.py` | 1012 | 盘古 MCP Handler — memory_ops (4 tools) |
+| `handlers/memory_ops.py` | 1022 | 盘古 MCP Handler — memory_ops (4 tools) |
 | `handlers/multimodal.py` | 324 | 盘古 MCP Handler — multimodal (17 tools) |
 | `handlers/palace.py` | 88 | 盘古 MCP Handler — palace (4 tools) |
 | `handlers/quality.py` | 407 | 盘古 MCP Handler — quality (20 tools) |

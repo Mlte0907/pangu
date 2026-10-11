@@ -1,6 +1,7 @@
 """盘古 MCP Handler — memory_ops (4 tools)"""
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -8,6 +9,15 @@ from datetime import datetime, timezone
 from ...core.palace import Drawer
 from ...memory.ingestion import IMPORTANCE_SCALE  # 与写入侧共用一份标度，别两处各写
 from ...search.engine import STRONG_MATCH_THRESHOLD  # 与检索层共用一份，别两处各写
+
+# 2026-10-12 修：本模块在 :109 / :168 / :174 直接用 `logger.`，却从未 import logging
+# 或定义 logger —— 全仓唯一一处「用了没定义」。后果是两条**互相独立**的写入失败路径：
+#   ① :109 钳制告警（classification > clearance 时）→ NameError → 整条写入丢失；
+#   ② :168 记忆进化日志（should_replace 命中时）→ NameError 被同层 except 接住，
+#      但 except 体内的 :174 又调 logger.debug → 二次 NameError **逃出函数** → 整条写入丢失。
+# ② 比 ① 常见得多，且与 classification 无关：长文/高信息密度的新记忆更容易质量分领先旧记忆
+# 而触发替换，表现为「同样的内容，改短就成功」。
+logger = logging.getLogger(__name__)
 
 TOOLS = [
     {
