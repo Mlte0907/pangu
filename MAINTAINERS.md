@@ -589,6 +589,7 @@ cd /root/pangu
     而被它指向的新记忆**从未落盘** ⇒ **悬空引用**。
     云端实测已有 **6 条** `replaced_by` 指向不存在的 id（其中一条是我这次复现打出来的）。
     ★ 这比单条写入失败更危险：它会让「取代链」指向空气，且**没有任何日志会报这个**。
+    **→ 当日已清理，见下面「悬空引用清理」子条。**
   - **修法**：文件顶部补 `import logging` + `logger = logging.getLogger(__name__)`
     （与 `pangu/memory/ingestion.py` 等其余 130+ 模块一致；全仓**仅此一处**漏定义）。
   - **验证**：
@@ -600,8 +601,35 @@ cd /root/pangu
     - 云端直连复测：`classification=3/1` **从失败转为成功**；
       同标签长文触发替换的用例**从失败转为成功**。
     - 全量 `pytest tests/`：**2121 passed / 0 失败**。
-  - **未做（如实标注）**：6 条悬空 `replaced_by` **未回滚**（会指向旧版本链，
-    需单独评估后清理）；`_coerce_classification` / `clamp_classification` 逻辑本身未改。
+  - **未做（如实标注）**：`_coerce_classification` / `clamp_classification` 逻辑本身未改。
+  - **→ 悬空引用清理（同日跟进）**：5 条悬空 `replaced_by` **已清理**（1 条是复现产物）。
+    - **改了什么**：只删除 `metadata.replaced_by` 这一个键，且**仅当目标 id 既不在
+      `drawers.json`（存活）也不在 `forgetting_archive.json`（已归档）** 时 —— 即「真幻影」。
+      绝不触碰 `superseded_by` / `supersedes` / `conflict_candidates` / `version` /
+      `quality_score` / `content` 等任何其它字段。
+    - **为什么**：`replaced_by` 指向的是一次**从未落盘**的替换 ⇒ 指针为假。
+      先取证再删：**全仓确认 `drawer.metadata["replaced_by"]` 只写不读**
+      （唯一读取点 `evolution.py:131` 读的是 `MemorySnapshot.from_dict`，
+      `client.js:1532` 渲染的也是快照对象）⇒ 删除对功能零风险。
+    - **怎么验证**：① 修复脚本内置自校验 —— 逐条比对修改前后，除被删键外
+      **顶层与 metadata 必须完全一致**，否则拒绝落盘；② 写盘用「临时文件 + `os.replace`」
+      原子替换，格式与 `_save_drawers` 一致（`ensure_ascii=False, indent=2`）；
+      ③ 落盘后复验条数 670 不变、剩余悬空 `replaced_by` = 0；
+      ④ 服务重启后 5 条目标记忆**内容/version 原封未动**、搜索仍可命中、写入通路正常。
+    - **操作方式**：**先停 `pangu-api` 再改文件**（`add_drawer` 每次会 `_load_drawers()`
+      重读磁盘，运行中直改存在并发覆盖窗口）。备份：
+      `drawers.json.bak-dangling-20261012-010000`（md5 `7d670e52…` → `62d7b463…`）。
+    - **★ 顺带发现：悬空引用不止 `replaced_by` 一种**。按「存活 / 已归档 / 真幻影」三分类
+      全库扫描（`metadata` 四个 id 引用字段）：
+      `replaced_by` 5/0/**5**、`superseded_by` 319/10/**7**、`supersedes` 388/3/**1**、
+      `conflict_candidates` 999/34/**5** ⇒ 除已清理的 5 条外，**另有 13 条真幻影散落在
+      `superseded_by` / `supersedes` / `conflict_candidates`**。
+      ⚠ 这 13 条**不是本次 logger 缺陷的产物**（它们由 supersede / 冲突检测路径写入，
+      与 evolution 替换路径无关），更可能是**硬删除**留下的悬空引用。
+      **本轮未动**（超出「清理 5 条」的范围，且需先判定是否属预期行为）。
+      ★ 附带方法论：**判断悬空必须先知道「归档的记忆会离开 `drawers.json`」** ——
+      只扫 `drawers.json` 会把已归档记忆误报成幻影（首轮扫描就误报了 34 条归档的
+      `conflict_candidates`）。**「不在 drawers.json」≠「不存在」。**
 
 - **2026-10-10** — 修 LLM 用量计量：三处记账缺陷让仪表盘「用量」恒为 0，而供应商账单在涨。
   - **起因（用户报的现象）**：「dsh 的盘古插件的 LLM 用量一直没有改变」。
